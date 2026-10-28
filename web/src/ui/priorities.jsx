@@ -97,7 +97,7 @@ export function priorityValues(moneyDoc, compareDoc, tenures) {
   return out;
 }
 
-const UNIT_KO = { minutes: "분", index: "지수", won_month: "원/월", ratio: "%", count: "곳·건·회" };
+const UNIT_KO = { minutes: "분", index: "0–100", won_month: "원/월", ratio: "%", count: "곳·건·회" };
 
 function WeightStepper({ group, value, onChange }) {
   return (
@@ -161,7 +161,7 @@ export function PrioritiesTab({ state }) {
           )}
           {g.id === "money" && (
             <Text type="supporting">
-              {labels.map((l) => `${l} ${tenures[l]}`).join(" · ")} 기준. <Gloss term="주거비 부담률" />는 생활비 탭의 점유 형태를 따라갑니다.
+              {labels.map((l) => `${l} ${tenures[l]}`).join(" · ")} 기준이에요. <Gloss term="주거비 부담률" />은 생활비 탭에서 고른 사는 방식을 따라가요.
             </Text>
           )}
         </VStack>
@@ -174,13 +174,13 @@ export function PrioritiesTab({ state }) {
           </HStack>
         )}
         {showNumber && weighed && !weighed.ok && (
-          <Banner status="warning" title="한 숫자를 내지 못했습니다" description={weighed.error} />
+          <Banner status="warning" title="한 숫자를 내지 못했어요" description={weighed.error} />
         )}
         {showNumber && weighed && weighed.ok && (
           <>
             <MetadataList>
               {labels.map((l) => (
-                <MetadataListItem key={l} label={`홈 ${l} 가중 참고값`}>
+                <MetadataListItem key={l} label={`홈 ${l} 한 숫자 참고값`}>
                   <Text hasTabularNumbers>
                     {weighed.homes[l].score === null ? "–" : weighed.homes[l].score.toFixed(2)}
                   </Text>

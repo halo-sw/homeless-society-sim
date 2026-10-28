@@ -4,6 +4,7 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -13,6 +14,8 @@ import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
 import { Gloss } from "./gloss.jsx";
 import { glossaryTerms } from "./glossary.js";
+import { monthlyHousingLabel, BURDEN_PLAIN_LABEL, BURDEN_PLAIN_NOTE,
+  REMAINING_PLAIN_LABEL, HOW_CALCULATED } from "./copy.js";
 import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
 import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { MONEY_CATEGORY_KO } from "../money/timeline.js";
@@ -45,12 +48,38 @@ export function tenureOf(state, label, doc) {
 
 function TenureSwitch({ label, options, value }) {
   return (
-    <SegmentedControl label={`${label} 점유 형태`} value={value}
+    <SegmentedControl label={`${label} 사는 방식`} value={value}
       onChange={(v) => act("setMoneyTenure", label, v)} size="sm">
       {options.map((t) => (
         <SegmentedControlItem key={t} value={t} label={t} />
       ))}
     </SegmentedControl>
+  );
+}
+
+// "어떻게 계산했나요?" — the ingredients behind 매달 집에 드는 돈,
+// from the tenure breakdown (same numbers, explained).
+function HowCalculated({ tenure, housing, maintenanceWon }) {
+  const lines = [];
+  if (tenure === "전세") {
+    lines.push(`전세 대출 이자 ${fmtWon(housing.monthly_won, { monthly: true })} + 관리비 ${fmtWon(maintenanceWon, { monthly: true })}`);
+    lines.push(`보증금 ${fmtWon(housing.upfront_won)} 중 내 돈 ${fmtWon(housing.cash_used_won)}, 나머지 ${fmtWon(housing.loan_won)}는 빌리는 것으로 가정해요`);
+  } else if (tenure === "매매") {
+    lines.push(`대출 갚는 돈 ${fmtWon(housing.monthly_won, { monthly: true })} (빌린 돈 ${fmtWon(housing.loan_won)}, 이자율 ${housing.rate_pct}% ${housing.years}년, 매달 같은 금액)`);
+    lines.push(`집값 ${fmtWon(housing.upfront_won)} 중 내 돈 ${fmtWon(housing.cash_used_won)}을 먼저 내는 것으로 가정해요`);
+  } else {
+    lines.push(`${tenure === "공공임대" ? "월 임대료" : "월세"} ${fmtWon(housing.monthly_won, { monthly: true })} + 관리비 ${fmtWon(maintenanceWon, { monthly: true })}`);
+    lines.push(`보증금 ${fmtWon(housing.upfront_won)}은 가진 돈에서 내는 것으로 가정해요`);
+  }
+  if (housing.breakdown && housing.breakdown.note) lines.push(housing.breakdown.note);
+  return (
+    <Collapsible trigger={<Text type="supporting">{HOW_CALCULATED}</Text>} defaultIsOpen={false}>
+      <VStack gap={1}>
+        {lines.map((l, i) => (
+          <Text key={i} type="supporting" hasTabularNumbers>{l}</Text>
+        ))}
+      </VStack>
+    </Collapsible>
   );
 }
 
@@ -86,7 +115,7 @@ function BalanceLines({ series }) {
   const Y = (v) => H - 10 - ((v - lo) / Math.max(1, hi - lo)) * (H - 20);
   const zeroY = Y(0);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="30일 잔액">
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="30일 동안 남은 돈">
       <line x1="8" y1={zeroY} x2={W - 8} y2={zeroY} stroke="rgba(61,50,39,0.4)" strokeWidth="1" />
       {series.map((s) => (
         <polyline key={s.label} fill="none" stroke={s.color} strokeWidth="2"
@@ -106,8 +135,8 @@ function CandidateRow({ c }) {
       </HStack>
       <Text type="supporting">
         {`보증금 ${fmtWon(c.deposit_won)} · 월 ${fmtWon(c.monthly_rent_won)}`}
-        {c.burden_pct !== null && c.burden_pct !== undefined ? ` · 부담률 ${c.burden_pct}%` : ""}
-        {c.commute_minutes !== null && c.commute_minutes !== undefined ? ` · 통근 ${fmtMinutes(c.commute_minutes)} (그래프)` : " · 시뮬레이션은 지역 생성 후"}
+        {c.burden_pct !== null && c.burden_pct !== undefined ? ` · ${BURDEN_PLAIN_LABEL} ${c.burden_pct}%` : ""}
+        {c.commute_minutes !== null && c.commute_minutes !== undefined ? ` · 출퇴근 ${fmtMinutes(c.commute_minutes)} (걸어서 직접 잰 시간)` : " · 시뮬레이션은 지역 생성 후"}
       </Text>
       {(c.notices || []).slice(0, 2).map((n) => (
         <Text key={n.id} type="supporting">
@@ -149,7 +178,7 @@ export function MoneyTab({ state }) {
   return (
     <VStack gap={2}>
       <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text>가구 실수령 합계 {fmtWon(net, { monthly: true })}</Text>
+        <Text>식구들 한 달 실수령 합계 {fmtWon(net, { monthly: true })}</Text>
         <SrcBadge source={doc.payroll ? "payroll_estimate" : "user_input"} />
       </HStack>
       {labels.map((label) => {
@@ -163,7 +192,7 @@ export function MoneyTab({ state }) {
               <Heading level={4}>{`홈 ${label} · ${h.complex_name || ""}`}</Heading>
               {options.length > 0 && <TenureSwitch label={label} options={options} value={t} />}
             </HStack>
-            {!sel && <Text type="supporting">이 점유 형태의 기준가가 없습니다. 상담에서 면적·형태를 바꿔보세요.</Text>}
+            {!sel && <Text type="supporting">이 사는 방식으로는 실제로 거래된 값이 없어요. 상담에서 면적·사는 방식을 바꿔보세요.</Text>}
             {sel && (
               <>
                 <SpendBar totals={sel.totals_by_category} net={net} />
@@ -176,31 +205,36 @@ export function MoneyTab({ state }) {
                   ))}
                 </HStack>
                 <MetadataList>
-                  <MetadataListItem label="월 주거비">
+                  <MetadataListItem label={monthlyHousingLabel(t)}>
                     <HStack gap={1} vAlign="center">
                       <Text hasTabularNumbers>{fmtWon(sel.housing.monthly_won, { monthly: true })}</Text>
                       <SrcBadge source={sel.housing.source} />
                     </HStack>
                   </MetadataListItem>
-                  <MetadataListItem label="주거비 부담률">
-                    <Text hasTabularNumbers>{sel.burden_ratio === null ? "–" : fmtPct(sel.burden_ratio)}</Text>
+                  <MetadataListItem label={BURDEN_PLAIN_LABEL}>
+                    <VStack gap={1}>
+                      <Text hasTabularNumbers>{sel.burden_ratio === null ? "–" : fmtPct(sel.burden_ratio)}</Text>
+                      <Text type="supporting">{BURDEN_PLAIN_NOTE}</Text>
+                    </VStack>
                   </MetadataListItem>
-                  <MetadataListItem label="남는 돈">
+                  <MetadataListItem label={REMAINING_PLAIN_LABEL}>
                     <Text hasTabularNumbers>{fmtWon(sel.remaining_won, { monthly: true })}</Text>
                   </MetadataListItem>
-                  <MetadataListItem label="목돈">
+                  <MetadataListItem label="처음에 한 번에 드는 돈">
                     <Text type="supporting" hasTabularNumbers>
-                      {`필요 ${fmtWon(sel.housing.upfront_won)} · 보유 ${fmtWon(doc.cash_won)}${sel.housing.loan_won > 0 ? ` · 대출 ${fmtWon(sel.housing.loan_won)}` : ""}`}
+                      {`필요 ${fmtWon(sel.housing.upfront_won)} · 가진 돈 ${fmtWon(doc.cash_won)}${sel.housing.loan_won > 0 ? ` · 빌리는 돈 ${fmtWon(sel.housing.loan_won)}` : ""}`}
                     </Text>
                   </MetadataListItem>
                 </MetadataList>
+                <HowCalculated tenure={t} housing={sel.housing}
+                  maintenanceWon={Math.abs(sel.totals_by_category.maintenance || 0)} />
                 <Text type="supporting">
-                  {`통근 ${fmtCount(sel.counts.commute_legs, "회")} × ${fmtWon(doc.assumptions.transit_fare_won)} · 장보기 ${fmtCount(sel.counts.errand_visits, "회")} × ${fmtWon(doc.assumptions.basket_won)} · ${sel.payday_note}`}
+                  {`출퇴근 ${fmtCount(sel.counts.commute_legs, "번")} × ${fmtWon(doc.assumptions.transit_fare_won)} · 장보기 ${fmtCount(sel.counts.errand_visits, "번")} × ${fmtWon(doc.assumptions.basket_won)} · ${sel.payday_note}`}
                 </Text>
                 {h.reference && (
                   <Text type="supporting">
-                    {`기준가 ${h.area_m2}㎡ (${h.match_method === "parcel+name" ? "필지+단지명" : "단지명"} ${h.parcel_rows + h.name_rows}건 중): `}
-                    {h.reference.trade.count > 0 ? `매매 중간 ${fmtWon(h.reference.trade.median)}` : "매매 없음"}
+                    {`실제로 거래된 값 ${h.area_m2}㎡ (${h.match_method === "parcel+name" ? "땅+단지 이름" : "단지 이름"}으로 찾은 ${h.parcel_rows + h.name_rows}건 중): `}
+                    {h.reference.trade.count > 0 ? `매매 한가운데 ${fmtWon(h.reference.trade.median)}` : "매매 없음"}
                     {h.reference.jeonse.count > 0 ? ` · 전세 ${fmtWon(h.reference.jeonse.deposit.median)}` : ""}
                     {h.reference.wolse.count > 0 ? ` · 월세 ${fmtWon(h.reference.wolse.deposit.median)}/${fmtWon(h.reference.wolse.monthly.median)}` : ""}
                   </Text>
@@ -213,7 +247,7 @@ export function MoneyTab({ state }) {
       {series.length > 0 && (
         <VStack gap={1}>
           <HStack gap={2} vAlign="center">
-            <Text>30일 잔액</Text>
+            <Text>30일 동안 들고 나는 돈</Text>
             {series.map((s) => (
               <HStack gap={1} vAlign="center" key={s.label}>
                 <span className="ui-swatch" style={{ background: s.color }} aria-hidden="true" />
@@ -222,29 +256,29 @@ export function MoneyTab({ state }) {
             ))}
           </HStack>
           <BalanceLines series={series} />
-          <Text type="supporting">월 현금흐름 잔액 (보증금·매매 대금 등 목돈 제외)</Text>
+          <Text type="supporting">한 달 들고 나는 돈의 남은 금액이에요 (보증금·집값 같은 처음에 한 번에 내는 돈은 빼고요)</Text>
         </VStack>
       )}
       <VStack gap={1}>
         <Text>
           <>어려운 말: {glossaryTerms().map((t, i) => (
             <span key={t}>{i > 0 ? " · " : ""}<Gloss term={t} /></span>
-          ))} (단어에 마우스를 올리면 뜻이 보입니다)</>
+          ))} (단어에 마우스를 올리면 뜻이 보여요)</>
         </Text>
-        <Text>가정값</Text>
+        <Text>정해 둔 값</Text>
         <HStack gap={1} vAlign="center" wrap="wrap">
-          <Text type="supporting">{`금리 ${doc.assumptions.loan_rate_pct}% · ${doc.assumptions.loan_years}년`}</Text>
+          <Text type="supporting">{`이자율 ${doc.assumptions.loan_rate_pct}% · 갚는 기간 ${doc.assumptions.loan_years}년`}</Text>
           <Text type="supporting">{`관리비 ${fmtWon(doc.assumptions.maintenance_won_month, { monthly: true })}`}</Text>
           <SrcBadge source="scenario" />
         </HStack>
-        <Text type="supporting">연봉·현금·가정값은 상담에서 바꿀 수 있습니다.</Text>
+        <Text type="supporting">연봉·가진 돈·정해 둔 값은 상담에서 바꿀 수 있어요.</Text>
         <Text type="supporting">{TENURE_DISCLAIMER}</Text>
         <Text type="supporting">{TRADE_TAX_NOTE}</Text>
-        <Text type="supporting">국토교통부 실거래가 공개시스템 참고용 자료로 법적 효력이 없으며 계약일 기준입니다.</Text>
+        <Text type="supporting">국토교통부 실거래가 공개시스템 참고용 자료라서 법적 효력이 없어요. 계약한 날짜 기준이에요.</Text>
       </VStack>
       {state.moneyCandidates.length > 0 && (
         <VStack gap={1}>
-          <Text>공공임대 후보 (상담 결과)</Text>
+          <Text><Gloss term="공공임대">공공임대</Gloss> 후보 (상담에서 찾은 것)</Text>
           {state.moneyCandidates.slice(0, 5).map((c, i) => (
             <CandidateRow key={`${c.complex_id}-${c.unit_type}-${i}`} c={c} />
           ))}
@@ -266,25 +300,25 @@ function QolHome({ label, doc, tenure, active }) {
     <VStack gap={1}>
       <Heading level={4}>{`홈 ${label} · ${h.complex_name || ""}`}</Heading>
       <MetadataList>
-        <MetadataListItem label="시간 · 하루 통근">
+        <MetadataListItem label="하루 출퇴근에 쓰는 시간">
           <HStack gap={1} vAlign="center">
             <Text hasTabularNumbers>{fmtMinutes(time.commute_minutes_per_day)}</Text>
             <SrcBadge source="graph" />
           </HStack>
         </MetadataListItem>
-        <MetadataListItem label="시간 · 저녁 재택">
+        <MetadataListItem label="저녁에 집에서 보내는 시간">
           <HStack gap={1} vAlign="center">
             <Text hasTabularNumbers>{fmtMinutes(time.evening_at_home_minutes_per_day)}</Text>
             <SrcBadge source="scenario" />
           </HStack>
         </MetadataListItem>
-        <MetadataListItem label="돈 · 월 주거비">
+        <MetadataListItem label={monthlyHousingLabel(tenure)}>
           <HStack gap={1} vAlign="center">
             <Text hasTabularNumbers>{sel ? fmtWon(sel.housing.monthly_won, { monthly: true }) : "–"}</Text>
             {sel && <SrcBadge source={sel.housing.source} />}
           </HStack>
         </MetadataListItem>
-        <MetadataListItem label="돈 · 부담률 / 남는 돈">
+        <MetadataListItem label={`${BURDEN_PLAIN_LABEL} / ${REMAINING_PLAIN_LABEL}`}>
           <Text hasTabularNumbers>
             {sel && sel.burden_ratio !== null
               ? `${fmtPct(sel.burden_ratio)} / ${fmtWon(sel.remaining_won, { monthly: true })}` : "–"}
@@ -292,25 +326,25 @@ function QolHome({ label, doc, tenure, active }) {
         </MetadataListItem>
         {fat && (
           <>
-            <MetadataListItem label="피로 · 출근 도착">
+            <MetadataListItem label="회사 도착할 때 피곤한 정도">
               <HStack gap={1} vAlign="center">
                 <Text hasTabularNumbers>{fmtIndex(fat.arrival_work_avg)}</Text>
                 <SrcBadge source="scenario" />
               </HStack>
             </MetadataListItem>
-            <MetadataListItem label="피로 · 퇴근 후">
+            <MetadataListItem label="퇴근해서 집에 왔을 때 피곤한 정도">
               <HStack gap={1} vAlign="center">
                 <Text hasTabularNumbers>{fmtIndex(fat.after_home_avg)}</Text>
                 <SrcBadge source="scenario" />
               </HStack>
             </MetadataListItem>
-            <MetadataListItem label="피로 · 30일 평균">
+            <MetadataListItem label="30일 평균 피곤한 정도">
               <HStack gap={1} vAlign="center">
                 <Text hasTabularNumbers>{fmtIndex(fat.avg_30d)}</Text>
                 <SrcBadge source="scenario" />
               </HStack>
             </MetadataListItem>
-            <MetadataListItem label="피로 · 혼잡 100% 초과 탑승">
+            <MetadataListItem label="만원 지하철에 탄 시간">
               <HStack gap={1} vAlign="center">
                 <Text hasTabularNumbers>{fmtMinutes(fat.crowded_min)}</Text>
                 <SrcBadge source="scenario" />
@@ -318,7 +352,7 @@ function QolHome({ label, doc, tenure, active }) {
             </MetadataListItem>
           </>
         )}
-        <MetadataListItem label="편의 · 10분 도보">
+        <MetadataListItem label="걸어서 10분 안에 갈 수 있는 곳">
           <HStack gap={1} vAlign="center" wrap="wrap">
             {QOL_CATS.map(([k, ko]) => (
               <span key={k} className={active ? "ui-qolcat" : undefined}
@@ -358,7 +392,7 @@ export function QualityTab({ state }) {
         <QolHome key={label} label={label} doc={doc}
           tenure={tenureOf(state, label, doc)} active={state.home === label} />
       ))}
-      <Text type="supporting">내 비중으로 나란히 보려면 내 기준으로 보기 탭을 여세요. 종합 점수는 매기지 않습니다.</Text>
+      <Text type="supporting">내가 정한 비중으로 나란히 보려면 내 기준으로 보기 탭을 여세요. 종합 점수는 매기지 않아요.</Text>
     </VStack>
   );
 }

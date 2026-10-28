@@ -72,7 +72,7 @@ export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WAL
     crowded_min: h.fatigue_crowded_min ?? null,
     unit: "index",
     source: "scenario",
-    note: "피로도 지수 · 가정 모델이며 건강·의학적 판단이 아닙니다",
+    note: "피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요",
   };
   const home = { label: run.meta.home, area: run.meta.area, complex: run.meta.complex };
   let resolved = null;

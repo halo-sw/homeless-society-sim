@@ -64,3 +64,13 @@ link to this file or the sources above.
   지하철혼잡도정보(2026-09-30 기준)” with every congestion reading and
   in the journey legend; lines without coverage (신분당선·수인분당선·9호선
   등) show “혼잡도 자료 없음” and use the C-congestion 가정값.
+* **주택도시기금 상품 안내 (stage 10, Part F)** — 버팀목·디딤돌·신생아
+  특례 조건값은 공식 상품 페이지(nhuf.molit.go.kr, 2026-10-29 확인)를
+  옮긴 것으로 `scenarios/assumptions/kr-support-programs.json`에
+  프로그램별 `source_url`·`as_of`·조건별 `note`와 함께 기록한다.
+  화면에는 “(2026-10-29 공식 페이지 기준)”과 공식 페이지 링크를 함께
+  보여주며, 최종 판정은 하지 않는다.
+* **전세사기 피해 현황 문맥 (stage 10, Part F)** —
+  `scenarios/assumptions/kr-jeonse-checklist.json`의 문맥줄은 국토교통부
+  자료를 인용한 2025-03-10 SBS Biz 보도(피해자 27,372명, 20·30대
+  20,432명 ≈ 74.6 %)에서 가져왔으며 출처 URL과 함께 기록한다.

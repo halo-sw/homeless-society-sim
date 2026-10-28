@@ -38,6 +38,9 @@ export const INITIAL_STATE = {
   ready: false,
   viewChip: "", // "화면 이동: B · 3일차 08:18"
   consultOpen: false,
+  agentNudges: true, // floating-agent Toast nudges (off with reduced motion too)
+  listingCheck: null, // last check_listing result (매물 tab)
+  shareOpen: false, // result-card share dialog
   askError: "",
   scenarioName: "demo-two-homes",
   // Stage 7: Now card + ticker + intro + criteria + highlight state.

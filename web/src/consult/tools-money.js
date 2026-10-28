@@ -19,6 +19,8 @@ import { moneyTimeline } from "../money/timeline.js";
 import { worthItComparison, applyOwnershipCosts,
   WORTHIT_HORIZONS, WORTHIT_DEFAULT_SCENARIOS } from "../money/worthit.js";
 import { jeonseRatio, registerSignals, JEONSE_SPARSE_NOTE } from "../money/jeonse.js";
+import { parseListingText, guardListingValues, plainListingFields,
+  listingPosition, last12Months } from "../money/listing.js";
 import { mockDepositLoss, MOCKLOSS_PATHS } from "../money/mockloss.js";
 import { compareAllSupport } from "../money/support.js";
 import {
@@ -764,7 +766,7 @@ async function jeonse_check(session, args) {
 
 async function mock_deposit_loss(session, args) {
   if (!MOCKLOSS_PATHS.includes(args.path)) {
-    return fail(`path wants one of ${MOCKLOSS_PATHS.join("/")} (보증보험 가입 / 미가입+경매 / 미회수)`);
+    return fail(`path wants one of ${MOCKLOSS_PATHS.join("/")} (보증보험 가입 / 보험 없이 경매 / 한 푼도 못 받음)`);
   }
   const deposit = Number(args.deposit_won);
   if (!(deposit > 0)) return fail("deposit_won (> 0) is required — the customer's jeonse deposit");
@@ -825,6 +827,220 @@ async function support_programs(session, args) {
     programs: compared.programs,
     public_rentals: rentals,
     note: "조건을 한 줄씩 대조만 한다. 최종 판정(대상 여부)은 하지 않는다. 공고 원문에서 확인해 주세요.",
+  };
+}
+
+// --- parse_listing / check_listing / add_listing_c (stage 10) -------------------
+// The customer pastes the listing text they see in a real-estate app.
+// parse_listing reads only values that appear in the text (guarded);
+// check_listing places the asking price among the same complex/bucket's
+// real transactions and reuses the 전세 signals + checklist; add_listing_c
+// adds the listing as home C for a 30-day live-in. Never 싼지/비싼지,
+// never a contract verdict.
+
+async function parse_listing(session, args) {
+  void session;
+  const text = String(args.text || "");
+  const r = parseListingText(text);
+  if (!r.ok) return fail(r.error);
+  const errors = guardListingValues(r.fields, text);
+  if (errors.length > 0) return fail(`values not in the pasted text: ${errors.join("; ")}`);
+  const evidence = {};
+  for (const [key, f] of Object.entries(r.fields || {})) {
+    if (f && typeof f === "object" && typeof f.evidence === "string") evidence[key] = f.evidence;
+  }
+  return {
+    ok: true,
+    fields: plainListingFields(r.fields),
+    evidence,
+    missing: r.missing,
+    note: r.note,
+    next: r.missing.length > 0
+      ? `ask the customer: ${r.missing.map((m) => m.ask).join(" ")}`
+      : "call check_listing with these fields",
+  };
+}
+
+async function locateListingComplex(session, areaArg, complexName) {
+  // Returns {areaId, area, complex} or {error}. Prefers the named area,
+  // else searches the session-cached built areas for the complex name.
+  const want = String(complexName || "").replace(/\s+/g, "");
+  if (areaArg) {
+    const areaId = String(areaArg);
+    let area = null;
+    try {
+      area = await session.loadArea(areaId);
+    } catch (err) {
+      return { error: `cannot load area ${areaId}: ${String((err && err.message) || err).slice(0, 200)}` };
+    }
+    const complex = (area.complexes || []).find((c) =>
+      String(c.name || "").replace(/\s+/g, "") === want
+      || (want && (String(c.name || "").includes(complexName) || complexName.includes(c.name))));
+    if (!complex) return { error: `no complex named ${JSON.stringify(complexName)} in ${areaId} — call list_complexes` };
+    return { areaId, area, complex };
+  }
+  const idx = await commuteIndex(session);
+  for (const [areaId, entry] of idx.areas) {
+    const complex = ((entry.area && entry.area.complexes) || []).find((c) =>
+      String(c.name || "").replace(/\s+/g, "") === want
+      || (want && (String(c.name || "").includes(complexName) || complexName.includes(c.name))));
+    if (complex) return { areaId, area: entry.area, complex };
+  }
+  return { error: `no complex named ${JSON.stringify(complexName)} in the built areas — the 30-day live-in needs a built region` };
+}
+
+async function check_listing(session, args) {
+  const deal = String(args.deal_type || "");
+  if (!["매매", "전세", "월세"].includes(deal)) {
+    return fail("deal_type wants one of 매매/전세/월세 (parse_listing result)");
+  }
+  const areaM2 = Number(args.area_m2);
+  if (!(areaM2 > 0)) return fail("area_m2 is required — ask the customer for the size (예: 59㎡)");
+  const asking = deal === "매매" ? Number(args.price_won)
+    : deal === "전세" ? Number(args.deposit_won) : Number(args.monthly_won);
+  if (!(asking > 0)) {
+    return fail(deal === "월세"
+      ? "monthly_won is required — ask the customer for the monthly rent"
+      : `${deal === "매매" ? "price_won" : "deposit_won"} is required — ask the customer`);
+  }
+  const complexName = String(args.complex_name || "");
+  const address = String(args.address || "");
+  if (!complexName && !address) return fail("complex_name or address is required");
+  const located = complexName
+    ? await locateListingComplex(session, args.area || null, complexName)
+    : { error: null, areaId: null, area: null, complex: null };
+  if (located.error && complexName) {
+    // Address-only or unknown complex: still report what we can, honestly.
+    return { ok: true, listing_check: true, deal_type: deal,
+      complex: complexName || null, address: address || null,
+      computable: false,
+      note: `${located.error}. 같은 단지 실거래 비교는 지은 지역에서만 돼요. 체크리스트는 전세 점검 탭에서 볼 수 있어요.` };
+  }
+  const areaId = located.areaId;
+  const district = areaId ? AREA_RTMS_DISTRICT[areaId] : null;
+  if (!district) {
+    return { ok: true, listing_check: true, deal_type: deal,
+      complex: complexName || null, address: address || null,
+      computable: false,
+      note: "이 지역은 실거래 자료가 없어요. 체크리스트는 전세 점검 탭에서 볼 수 있어요." };
+  }
+  const rows = await needRtms(session, district).catch((err) => ({ __error: err }));
+  if (rows.__error) return fail(rows.__error.message);
+  const { parcelHits, nameHits } = matchRowsToComplex(rows, located.area, located.complex.name, pnuIndexFor(located.area));
+  const used = parcelHits.length >= 3 ? parcelHits : nameHits;
+  const matchMethod = parcelHits.length >= 3 ? "parcel+name" : "name-only";
+  const recent = last12Months(used);
+  const bucket = recent.filter((r) =>
+    Number.isFinite(r.area_m2) && Math.abs(r.area_m2 - areaM2) <= 5);
+  const tradeVals = bucket.filter((r) => r.deal === "trade").map((r) => r.trade_won);
+  const jeonseVals = bucket.filter((r) => r.deal === "rent" && !(r.monthly_won > 0))
+    .map((r) => r.deposit_won);
+  const wolseDepVals = bucket.filter((r) => r.deal === "rent" && r.monthly_won > 0)
+    .map((r) => r.deposit_won);
+  const wolseMonVals = bucket.filter((r) => r.deal === "rent" && r.monthly_won > 0)
+    .map((r) => r.monthly_won);
+  const positions = {};
+  const bucketNote = ` (${areaM2}㎡ ±5㎡, 최근 1년)`;
+  if (deal === "매매") {
+    positions.price = { field: "price_won",
+      ...listingPosition(asking, tradeVals, { label: "최근 1년 거래", tolNote: bucketNote }) };
+  } else if (deal === "전세") {
+    positions.deposit = { field: "deposit_won",
+      ...listingPosition(asking, jeonseVals, { label: "최근 1년 거래", tolNote: bucketNote }) };
+  } else {
+    positions.deposit = { field: "deposit_won",
+      ...listingPosition(Number(args.deposit_won), wolseDepVals, { label: "최근 1년 거래", tolNote: bucketNote }) };
+    positions.monthly = { field: "monthly_won",
+      ...listingPosition(asking, wolseMonVals, { label: "최근 1년 거래", tolNote: bucketNote }) };
+  }
+  // Address confirmation: the listing's sigungu token against row data.
+  const sigunguM = /([가-힣]+[시군구])/.exec(address);
+  const addressMatch = sigunguM
+    ? used.some((r) => String(r.sigungu || "").includes(sigunguM[1]))
+    : null;
+  const scenario = parseScenario(clone(session.scenario));
+  const flat = resolveCriteria(scenario).flat;
+  const ratio = jeonseRatio(used, { areaM2,
+    cautionPct: flat.jeonse_caution_pct, warningPct: flat.jeonse_warning_pct });
+  const buildings = (Array.isArray(located.area.buildings) ? located.area.buildings : [])
+    .filter((b) => ((located.complex.building_ids || [])).includes(b.id));
+  const register = registerSignals(buildings);
+  let checklist = null;
+  try {
+    checklist = await needAssumption(session, "kr-jeonse-checklist.json");
+  } catch {
+    checklist = null;
+  }
+  const pnu = (() => {
+    const b = buildings.find((bb) => bb.register && bb.register.pnu);
+    return b ? b.register.pnu : null;
+  })();
+  return {
+    ok: true, listing_check: true, deal_type: deal,
+    area: areaId, complex: located.complex.name, pnu,
+    area_m2: areaM2, match_method: matchMethod,
+    parcel_rows: parcelHits.length, name_rows: nameHits.length,
+    address_match: addressMatch,
+    maintenance_won_month: Number(args.maintenance_won_month) > 0
+      ? Number(args.maintenance_won_month) : null,
+    floor: Number(args.floor) > 0 ? Number(args.floor) : null,
+    positions, ratio, register, checklist,
+    note: "값이 싼지 비싼지는 말하지 않아요. 같은 단지 실거래에서 어디쯤인지만 보여줘요. 계약 판단은 하지 않아요. 이 매물로 30일 살아 보려면 add_listing_c를 부르세요.",
+  };
+}
+
+async function add_listing_c(session, args) {
+  const deal = String(args.deal_type || "");
+  if (!["매매", "전세", "월세"].includes(deal)) {
+    return fail("deal_type wants one of 매매/전세/월세");
+  }
+  const complexName = String(args.complex || "");
+  if (!complexName) return fail("pass complex (the checked listing's complex name)");
+  const located = await locateListingComplex(session, args.area || null, complexName);
+  if (located.error) return fail(located.error);
+  const areaM2 = Number(args.area_m2);
+  if (!(areaM2 > 0)) return fail("area_m2 is required — the listing's exclusive area");
+  const price = {
+    price_won: deal === "매매" ? Number(args.price_won) : null,
+    deposit_won: deal !== "매매" ? Number(args.deposit_won) : null,
+    monthly_rent_won: deal === "월세" ? Number(args.monthly_won) : null,
+  };
+  const asking = deal === "매매" ? price.price_won
+    : deal === "전세" ? price.deposit_won : price.monthly_rent_won;
+  if (!(asking > 0)) return fail("the listing's asking value is required (price_won / deposit_won / monthly_won)");
+  const next = clone(session.scenario);
+  next.homes = (next.homes || []).filter((h) => h.label !== "C");
+  next.homes.push({ label: "C", area: located.areaId, complex_name: located.complex.name });
+  next.money = next.money || {};
+  next.money.tenure = { ...(next.money.tenure || {}), C: deal };
+  next.money.home_c = {
+    listing: true, deal_type: deal,
+    complex_name: located.complex.name, area: located.areaId,
+    exclusive_area_m2: areaM2,
+    price_won: price.price_won, deposit_won: price.deposit_won,
+    monthly_rent_won: price.monthly_rent_won,
+    maintenance_won_month: Number(args.maintenance_won_month) > 0
+      ? Number(args.maintenance_won_month) : null,
+    floor: Number(args.floor) > 0 ? Number(args.floor) : null,
+    source: "customer_listing",
+  };
+  let parsed;
+  try {
+    parsed = parseScenario(next);
+  } catch (err) {
+    return fail(String((err && err.message) || err).slice(0, 300));
+  }
+  try {
+    resolveHome(located.area, { label: "C", area: located.areaId, complex_name: located.complex.name },
+      new Router(located.area.graph));
+  } catch (err) {
+    return fail(`home C anchor failed: ${String((err && err.message) || err).slice(0, 200)}`);
+  }
+  session.scenario = parsed;
+  return {
+    ok: true, home: { label: "C", area: located.areaId, complex_name: located.complex.name },
+    candidate: next.money.home_c,
+    next: `run_simulation(home=C)으로 30일 시뮬레이션을 실행한 뒤 living_cost(run, ${JSON.stringify(deal)}, ${JSON.stringify(price.price_won ?? price.deposit_won ?? price.monthly_rent_won)}원, area_m2=${areaM2})로 생활비를 계산하세요.`,
   };
 }
 
@@ -913,6 +1129,32 @@ export const MONEY_TOOL_DEFS = [
         monthly_net_won: { type: "number" }, target_area_m2: { type: "number" },
         include_public_rental: { type: "boolean" },
       } } } },
+  { type: "function", function: { name: "parse_listing",
+    description: "Read a customer-pasted private listing text: deal type, asking values, area, floor, complex/address, maintenance. Only values that appear in the text are returned; missing ones come back as ask-back questions.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        text: { type: "string", description: "The pasted listing text (max 2000 chars)." },
+      }, required: ["text"] } } },
+  { type: "function", function: { name: "check_listing",
+    description: "Check a parsed listing: match to a complex (name + address), place the asking value among the same complex/bucket's last-12-month real transactions (median, range, position — never cheap/expensive), plus 전세 signals, register signals and the checklist. Never a contract verdict.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        area: { type: "string" }, deal_type: { type: "string" },
+        price_won: { type: "number" }, deposit_won: { type: "number" },
+        monthly_won: { type: "number" }, area_m2: { type: "number" },
+        floor: { type: "number" }, complex_name: { type: "string" },
+        address: { type: "string" }, maintenance_won_month: { type: "number" },
+      }, required: ["deal_type", "area_m2"] } } },
+  { type: "function", function: { name: "add_listing_c",
+    description: "Add a checked private listing as home C (its deal type) when the complex is inside a built area, for a 30-day live-in; then run_simulation(home=C) + living_cost with the listing's asking values.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        area: { type: "string" }, complex: { type: "string" },
+        deal_type: { type: "string" }, area_m2: { type: "number" },
+        price_won: { type: "number" }, deposit_won: { type: "number" },
+        monthly_won: { type: "number" }, maintenance_won_month: { type: "number" },
+        floor: { type: "number" },
+      }, required: ["complex", "deal_type", "area_m2"] } } },
 ];
 
 export { SUPPORT_PROFILE_KEYS };
@@ -921,6 +1163,7 @@ export const MONEY_HANDLERS = {
   set_money, estimate_net_pay, price_reference, living_cost,
   recommend_public_rental, add_home_c,
   worth_it, jeonse_check, mock_deposit_loss, support_programs,
+  parse_listing, check_listing, add_listing_c,
 };
 
 export { commuteIndex };

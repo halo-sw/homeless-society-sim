@@ -19,34 +19,61 @@ const BANNED = ["대상입니다", "대상자", "신청 가능", "지원 가능"
   "받으실 수 있", "자격", "eligible", "qualify"];
 
 describe("support programmes file", () => {
-  it("ships structure and names only, all numbers null + flagged", async () => {
+  // Stage 10, Part F: the orchestrator verified the file against the
+  // official 주택도시기금 product pages (2026-10-29). Values may be
+  // filled when needs_confirmation is false and source_url/as_of are
+  // present; anything else still reads 공식 확인 필요.
+  it("ships verified values with source_url + as_of", async () => {
     const doc = await realSupportDoc();
     assert.deepEqual(validateSupportPrograms(doc), []);
     assert.deepEqual(doc.programs.map((p) => p.id),
       ["beotimmok-jeonse", "youth-beotimmok", "newlywed-jeonse", "didimdol", "newborn-special"]);
     for (const p of doc.programs) {
       assert.ok(p.conditions.length >= 4);
+      assert.equal(p.needs_confirmation, false);
+      assert.ok(typeof p.source_url === "string" && p.source_url.startsWith("https://nhuf.molit.go.kr/"));
+      assert.ok(typeof p.as_of === "string" && p.as_of);
       for (const c of p.conditions) {
-        assert.equal(c.value, null);
-        assert.equal(c.needs_confirmation, true);
+        assert.equal(c.needs_confirmation, false);
+        assert.ok(c.value !== null && c.value !== undefined, `${p.id}.${c.id} value`);
+        assert.ok(typeof c.note === "string" && c.note.length > 0, `${p.id}.${c.id} note`);
       }
-      assert.equal(p.rate_range_pct.min, null);
-      assert.equal(p.limit_won.value, null);
-      assert.equal(p.source_url, null);
-      assert.equal(p.as_of, null);
-      assert.equal(p.needs_confirmation, true);
+      assert.ok(Number.isFinite(p.rate_range_pct.min) && Number.isFinite(p.rate_range_pct.max));
+      assert.ok(Number.isFinite(p.limit_won.value));
     }
+    // The 신혼 income-ceiling exception the brief calls out.
+    const newlywed = doc.programs.find((p) => p.id === "newlywed-jeonse");
+    const income = newlywed.conditions.find((c) => c.id === "income-max");
+    assert.equal(income.value, 75000000);
+    assert.match(income.note, /5,000만 원 이하/);
   });
 
-  it("shipped comparisons are all 확인 필요", async () => {
+  it("shipped comparisons judge filled rows, flag the rest, never a verdict", async () => {
     const doc = await realSupportDoc();
-    const out = compareAllSupport(doc, { age: 30, annual_income_won: 50000000,
-      owns_home: false, deposit_won: 200000000 });
+    const full = { age: 30, household_type: "세대주", marriage_years: 2,
+      annual_income_won: 40000000, assets_won: 100000000, owns_home: false,
+      has_newborn: false, deposit_won: 200000000, price_won: 400000000 };
+    const out = compareAllSupport(doc, full);
     assert.equal(out.programs.length, 5);
-    for (const p of out.programs) {
-      assert.ok(p.rows.length > 0);
+    const beotimmok = out.programs.find((p) => p.program_id === "beotimmok-jeonse");
+    const by = Object.fromEntries(beotimmok.rows.map((r) => [r.condition, r]));
+    assert.equal(by["나이 하한"].result, "충족");
+    assert.equal(by["연소득 상한"].result, "충족");
+    assert.equal(by["무주택 여부"].result, "충족");
+    assert.ok(beotimmok.rows.every((r) => typeof r.note === "string" && r.note.length > 0));
+    assert.ok(beotimmok.source_url.startsWith("https://nhuf.molit.go.kr/"));
+    assert.ok(beotimmok.as_of);
+    // Over the ceiling on one row: only that row reads 미충족.
+    const rich = compareAllSupport(doc, { ...full, annual_income_won: 90000000 });
+    const richRows = Object.fromEntries(
+      rich.programs.find((p) => p.program_id === "beotimmok-jeonse").rows.map((r) => [r.condition, r]));
+    assert.equal(richRows["연소득 상한"].result, "미충족");
+    assert.equal(richRows["무주택 여부"].result, "충족");
+    // Missing inputs still read 확인 필요 + 미입력.
+    const empty = compareAllSupport(doc, {});
+    for (const p of empty.programs) {
       assert.ok(p.rows.every((r) => r.result === "확인 필요"));
-      assert.ok(p.rows.every((r) => r.published === "공식 확인 필요"));
+      assert.ok(p.rows.every((r) => r.customer === "미입력"));
     }
     assert.equal(out.note, SUPPORT_NOTE);
     const blob = JSON.stringify(out);

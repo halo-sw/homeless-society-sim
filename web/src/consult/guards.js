@@ -138,12 +138,14 @@ export function consultTopic(text) {
 
 // The fatigue model note and health-advice refusals name the topic only
 // to disclaim it ("가정 모델이며 건강·의학적 판단이 아닙니다",
-// "건강 조언은 하지 않습니다") — strip those sentences before the
-// topic check so the disclaimer never trips its own guard. Genuine
-// health claims ("건강에 좋은 동네입니다") still trip.
+// "건강·의학적 판단이 아니에요", "건강 조언은 하지 않습니다") — strip
+// those sentences before the topic check so the disclaimer never trips
+// its own guard. Genuine health claims ("건강에 좋은 동네입니다") still
+// trip.
 const HEALTH_NOTE_RES = [
   /피로도 지수[^.!?\n]*가정 모델이며 건강·의학적 판단이 아닙니다[^.!?\n]*[.!\n]/g,
   /가정 모델이며 건강·의학적 판단이 아닙니다[^.!?\n]*[.!\n]/g,
+  /[^.!?\n]*건강·의학적 판단이 아니[^.!?\n]*[.!\n]/g,
   /[^.!?\n]*건강 (조언|판단|상담)[^.!?\n]*(하지 않|아닙니다|드리지 않)[^.!?\n]*[.!\n]/g,
 ];
 
@@ -362,9 +364,9 @@ export function forecastQuestion(text) {
 export function priceForecastReply(complexName) {
   const where = complexName ? ` ${complexName}의` : "";
   return [
-    `죄송합니다. 이 앱은 집값 전망을 하지 않습니다.`,
-    `대신${where} 최근 12개월 실거래(매매·전세·월세 중간값과 분포)를 보여드릴 수 있습니다.`,
-    `관심 면적을 알려주시면 실거래 기준가를 조회해 드리겠습니다.`,
+    `죄송해요. 이 앱은 집값을 미리 맞히지 않아요.`,
+    `대신${where} 최근 12개월에 실제로 거래된 값(매매·전세·월세 한가운데 값과 퍼진 정도)을 보여드릴 수 있어요.`,
+    `관심 있는 면적을 알려주시면 실제로 거래된 값을 찾아 드릴게요.`,
   ].join("\n");
 }
 
@@ -467,7 +469,7 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
       }
     } else if (r.summary && r.summary.totals) {
       const t = r.summary.totals;
-      lines.push(`- ${r.home || "홈"} 합계: 도보 ${fmtMinutes(t.walk_minutes)}/${fmtDistance(t.walk_distance_m)}, 장보기 ${t.errands_done}회, 산책 ${t.park_visits}회`);
+      lines.push(`- ${r.home || "홈"} 합계: 걸어서 ${fmtMinutes(t.walk_minutes)}/${fmtDistance(t.walk_distance_m)}, 장보기 ${t.errands_done}번, 산책 ${t.park_visits}번`);
     } else if (Array.isArray(r.trips)) {
       for (const t of r.trips.slice(0, 12)) {
         lines.push(`- ${t.depart}→${t.arrive} ${t.from}→${t.to} ${fmtMinutes(t.minutes)}(${fmtDistance(t.distance_m)})`);
@@ -488,7 +490,7 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
         lines.push(`- ${r.complex} 월세 ${r.area_m2}㎡: 보증금 중간 ${fmtWon(ref.wolse.deposit.median)} / 월 ${fmtWon(ref.wolse.monthly.median)} (${ref.wolse.count}건, 실거래)`);
       }
     } else if (r.timeline && r.housing) {
-      lines.push(`- ${r.home} ${r.tenure}: 실수령 ${fmtWon(r.monthly_net_won, { monthly: true })}, 주거비 ${fmtWon(r.housing.monthly_won, { monthly: true })}, 부담률 ${r.timeline.burden_ratio === null ? "–" : fmtPct(r.timeline.burden_ratio)}, 남는 돈 ${fmtWon(r.timeline.remaining_won, { monthly: true })}`);
+      lines.push(`- ${r.home} ${r.tenure}: 실수령 ${fmtWon(r.monthly_net_won, { monthly: true })}, 매달 집에 드는 돈 ${fmtWon(r.housing.monthly_won, { monthly: true })}, 월급에서 집에 나가는 비율 ${r.timeline.burden_ratio === null ? "–" : fmtPct(r.timeline.burden_ratio)}, 집값과 생활비를 내고 남는 돈 ${fmtWon(r.timeline.remaining_won, { monthly: true })}`);
     } else if (Number.isFinite(r.monthly_net_won) && r.deductions) {
       lines.push(`- ${r.estimated ? "추정 " : ""}실수령액: ${fmtWon(r.monthly_net_won, { monthly: true })} (세전 ${fmtWon(r.monthly_gross_won, { monthly: true })})`);
     } else if (Array.isArray(r.candidates)) {
@@ -506,16 +508,16 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
         }
         for (const [dir, ride_] of [["출근", ride.out], ["퇴근", ride.back]]) {
           const legs = (ride_.legs || []).map((l) =>
-            `${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} (혼잡도 ${l.congestion_pct}%, ${l.congestion_source})`).join(" · ");
-          lines.push(`- ${dir}: ${legs} (합계 ${fmtMinutes(ride_.minutes_total)} 고객 입력)`);
+            `${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} (붐비는 정도 ${l.congestion_pct}%, ${l.congestion_source})`).join(" · ");
+          lines.push(`- ${dir}: ${legs} (합계 ${fmtMinutes(ride_.minutes_total)} 고객님이 정한 값)`);
         }
       }
     } else if (r.summary_30d) {
       const s = r.summary_30d;
-      lines.push(`- 피로도 30일: 출근 도착 ${s.arrival_work_avg ?? "–"}, 퇴근 후 ${s.after_home_avg ?? "–"}, 평균 ${s.avg_30d ?? "–"}, 혼잡 초과 ${fmtMinutes(s.crowded_min)} (가정 모델)`);
+      lines.push(`- 피곤한 정도 30일: 회사 도착할 때 ${s.arrival_work_avg ?? "–"}, 퇴근해서 집에 왔을 때 ${s.after_home_avg ?? "–"}, 30일 평균 ${s.avg_30d ?? "–"}, 만원 지하철에 탄 시간 ${fmtMinutes(s.crowded_min)} (가정으로 계산한 값)`);
       if (r.day_fatigue) {
         const d = r.day_fatigue;
-        lines.push(`- ${r.day}일차: 시작 ${d.start} → 끝 ${d.end}, 최고 ${d.peak} (가정 모델)`);
+        lines.push(`- ${r.day}일차: 시작 ${d.start} → 끝 ${d.end}, 최고 ${d.peak} (가정으로 계산한 값)`);
       }
     } else if (r.persona && r.summary) {
       lines.push(`- 상황: ${r.summary} (가정값)`);
@@ -544,38 +546,61 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
     } else if (r.totals && r.breakeven_year && r.horizon_years) {
       lines.push(`- ${r.home || ""} 살 만한가(${r.horizon_years}년, 가정 시나리오):`);
       for (const [name, t] of Object.entries(r.totals)) {
-        lines.push(`  · ${name}: 지출 ${fmtWon(t.cash_out_won)} · 이자 ${fmtWon(t.interest_won)} · 묶인 돈 ${fmtWon(t.locked_won)}`);
+        lines.push(`  · ${name}: 쓴 돈 ${fmtWon(t.cash_out_won)} · 이자 ${fmtWon(t.interest_won)} · 집에 묶여 있는 돈 ${fmtWon(t.locked_won)}`);
       }
       for (const [name, per] of Object.entries(r.breakeven_year)) {
         const parts = Object.entries(per)
           .map(([g, y]) => `${g}% ${y === null ? "기간 안에 없음" : `${y}년차`}`)
           .join(" / ");
-        lines.push(`  · 매매 손익분기(${name} 대비): ${parts}`);
+        lines.push(`  · 매매가 ${name}보다 적게 드는 해: ${parts}`);
       }
-      if (r.dsr) lines.push(`  · DSR ${r.dsr.ratio_pct}% (보여주기만, 대출 가능 여부는 금융기관이 판단합니다)`);
+      if (r.dsr) lines.push(`  · 대출 갚는 부담 ${r.dsr.ratio_pct}% (보여주기만, 대출 가능 여부는 금융기관이 판단합니다)`);
+    } else if (r.listing_check === true) {
+      // Before the jeonse branch: a listing check embeds a ratio plus positions.
+      if (r.computable === false) {
+        lines.push(`- ${r.complex || r.address || "매물"}: ${r.note || "비교할 실거래가 없어요."}`);
+      } else {
+        for (const [key, pos] of Object.entries(r.positions || {})) {
+          if (!pos || pos.computable !== true) {
+            lines.push(`- ${key}: ${pos && pos.note ? pos.note : "비교할 실거래가 적어요."}`);
+          } else {
+            lines.push(`- ${key} ${fmtWon(pos.asking_won)}: ${pos.band_text} (한가운데 ${fmtWon(pos.median_won)}, ${pos.n}건)`);
+          }
+        }
+        if (r.ratio && r.ratio.computable) {
+          lines.push(`- 보증금이 집값의 ${r.ratio.ratio_pct}% (${r.ratio.band.label})`);
+        }
+        lines.push("- 값이 싼지 비싼지는 말하지 않아요. 계약 판단도 하지 않아요.");
+      }
     } else if (r.ratio && (r.ratio.computable === true || r.ratio.computable === false)) {
       if (!r.ratio.computable) {
-        lines.push(`- ${r.complex} 전세가율: 매매 거래가 적어 산출이 어렵습니다 (매매 ${r.ratio.trade.count}건 · 전세 ${r.ratio.jeonse.count}건)`);
+        lines.push(`- ${r.complex} 보증금이 집값의 몇 %인지: 매매 거래가 적어 계산하기 어려워요 (매매 ${r.ratio.trade.count}건 · 전세 ${r.ratio.jeonse.count}건)`);
       } else {
-        lines.push(`- ${r.complex} 전세가율 ${r.ratio.ratio_pct}% (${r.ratio.band.label}, 매매 ${r.ratio.trade.count}건 · 전세 ${r.ratio.jeonse.count}건, 실거래)`);
+        lines.push(`- ${r.complex} 보증금이 집값의 ${r.ratio.ratio_pct}% (${r.ratio.band.label}, 매매 ${r.ratio.trade.count}건 · 전세 ${r.ratio.jeonse.count}건, 실거래)`);
       }
     } else if (r.path_ko && r.deposit_won && r.label === "모의 시나리오") {
-      lines.push(`- 모의(${r.path_ko}): 보증금 ${fmtWon(r.deposit_won)} 중 ${fmtWon(r.recovery_won)} 회수, ${fmtWon(r.short_won)} 부족 (${r.locked_note}) 법률 자문이 아닙니다.`);
+      lines.push(`- 모의(${r.path_ko}): 보증금 ${fmtWon(r.deposit_won)} 중 ${fmtWon(r.recovery_won)} 돌려받고, ${fmtWon(r.short_won)} 못 받음 (${r.locked_note}) 법률 자문이 아닙니다.`);
     } else if (Array.isArray(r.programs) && r.programs.length > 0 && r.programs[0].rows) {
       for (const p of r.programs.slice(0, 5)) {
         lines.push(`- ${p.name} (${p.org}):`);
         for (const row of p.rows.slice(0, 8)) {
-          lines.push(`  · ${row.condition}: 고객 ${row.customer} / 공고 ${row.published} → ${row.result}`);
+          lines.push(`  · ${row.condition}: 내가 쓴 값 ${row.customer} / 공고에 나온 값 ${row.published} → ${row.result}`);
         }
       }
       lines.push("  · 공고 원문에서 조건을 확인해 주세요.");
+    } else if (r.fields && Array.isArray(r.missing)) {
+      const bits = Object.entries(r.fields)
+        .filter(([, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => `${k} ${typeof v === "number" ? fmtWon(v) : v}`).join(" · ");
+      lines.push(`- 매물에서 읽은 값: ${bits || "없음"}`);
+      for (const m of r.missing.slice(0, 4)) lines.push(`- 물어볼 것: ${m.ask}`);
     }
   }
   if (lines.length === 1) {
     if (forecastQuestion(opts.userText || "")) {
       return priceForecastReply(opts.complex || null);
     }
-    lines.push("- 이번 대화의 도구 결과에 수치가 없습니다. 조건을 정하고 run_simulation으로 실행해 주세요.");
+    lines.push("- 이번 대화의 도구 결과에 수치가 없어요. 조건을 정하면 상담이 다시 실행해 드려요.");
   }
   return lines.join("\n");
 }

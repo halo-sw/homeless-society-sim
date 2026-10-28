@@ -71,7 +71,7 @@ export function jeonseRatio(rows, { areaM2, tolM2 = AREA_BUCKET_TOL_M2,
 // Register signals for one complex's buildings (built area `register`
 // objects). Present fields show values; absent fields say so — in
 // particular 위반건축물, which our register extract does not carry.
-export const REGISTER_ABSENT_NOTE = "이 자료에는 해당 정보가 없습니다";
+export const REGISTER_ABSENT_NOTE = "이 자료에는 해당 정보가 없어요";
 
 export function registerSignals(buildings) {
   const list = Array.isArray(buildings) ? buildings : [];
@@ -96,19 +96,19 @@ export function registerSignals(buildings) {
   return {
     building_count: list.length,
     rows: [
-      row("주용도", uses.length > 0 ? uses.join(" · ") : null,
+      row("건물을 무엇에 쓰는지", uses.length > 0 ? uses.join(" · ") : null,
         uses.length > 0 ? null : REGISTER_ABSENT_NOTE),
-      row("사용승인일", approvals.length > 0
+      row("다 짓고 허가받은 날", approvals.length > 0
         ? (approvals[0] === approvals[approvals.length - 1] ? approvals[0] : `${approvals[0]} ~ ${approvals[approvals.length - 1]}`)
         : null,
         approvals.length > 0 ? null : REGISTER_ABSENT_NOTE),
-      row("구조", structures.length > 0 ? structures.join(" · ") : null,
+      row("건물 뼈대", structures.length > 0 ? structures.join(" · ") : null,
         structures.length > 0 ? null : REGISTER_ABSENT_NOTE),
-      row("세대수 합계", householdsKnown ? households : null,
+      row("사는 가구 수 합계", householdsKnown ? households : null,
         householdsKnown ? "건축HUB 표제부 합계" : REGISTER_ABSENT_NOTE),
       row("주소", addresses.length > 0 ? addresses.join(" · ") : null,
         addresses.length > 0 ? null : REGISTER_ABSENT_NOTE),
-      row("위반건축물 여부", null, "이 자료에는 위반건축물 정보가 없습니다. 건축물대장·등기부등본에서 직접 확인해 주세요."),
+      row("법을 어긴 건물인지", null, "이 자료에는 법 위반 건물 정보가 없어요. 건축물대장·등기부등본에서 직접 확인해 주세요."),
     ],
   };
 }

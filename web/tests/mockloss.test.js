@@ -26,7 +26,7 @@ describe("mock deposit loss", () => {
     const r = mockDepositLoss({ depositWon: 500000000,
       monthlyNetWon: 7000000, monthlySpentWon: 4000000,
       path: "auction", assumptions: DEFAULTS });
-    assert.equal(r.path_ko, "미가입 + 경매 배당 일부");
+    assert.equal(r.path_ko, "보험 없이 경매로 일부만 받음");
     assert.equal(r.recovery_month, 12);
     assert.equal(r.recovery_won, 350000000);
     assert.equal(r.short_won, 150000000);
@@ -42,7 +42,7 @@ describe("mock deposit loss", () => {
     assert.equal(r.recovery_month, null);
     assert.equal(r.recovery_won, 0);
     assert.equal(r.short_won, 500000000);
-    assert.match(r.locked_note, /끝나지 않습니다/);
+    assert.match(r.locked_note, /풀리지 않아요/);
     assert.ok(Math.abs(r.shortfall_in_remainder_months - 166.7) < 0.05);
   });
 
@@ -51,7 +51,7 @@ describe("mock deposit loss", () => {
       path: "auction", assumptions: DEFAULTS });
     assert.equal(r.monthly_remainder_won, null);
     assert.equal(r.shortfall_in_remainder_months, null);
-    assert.match(r.shortfall_note, /입력하면/);
+    assert.match(r.shortfall_note, /적으면/);
   });
 
   it("custom assumptions are honoured", () => {

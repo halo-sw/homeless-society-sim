@@ -17,8 +17,8 @@ import { PRIORITY_GROUPS, PRIORITY_METRICS } from "../priorities.js";
 function PrioritiesMap() {
   return (
     <VStack gap={1}>
-      <Heading level={4}>내 기준 (우선순위 → 지표)</Heading>
-      <Text type="supporting">고객이 직접 정하는 비중(각 0–5, 기본 모두 보통). 이 비중이 집을 비교하는 유일한 가중치이며, 항상 고객의 것으로 표시된다. 한 숫자로 볼 때 치안은 합산하지 않는다.</Text>
+      <Heading level={4}>내 기준 (중요한 것 → 재는 값)</Heading>
+      <Text type="supporting">고객님이 직접 정하는 비중(각 0–5, 기본 모두 보통). 이 비중이 집을 나란히 보는 유일한 잣대이며, 항상 고객님의 것으로 표시돼요. 한 숫자로 볼 때 치안은 합산하지 않아요.</Text>
       {PRIORITY_GROUPS.map((g) => (
         <VStack gap={0} key={g.id}>
           <Text>{`${g.title} — ${g.note}`}</Text>
@@ -112,8 +112,8 @@ export function CriteriaTab({ state }) {
     <VStack gap={2}>
       <PrioritiesMap />
       <Text type="supporting">
-        {`시뮬레이션 기준 ${doc.items.length}개 · ${doc.doc} v${doc.version}`}
-        {doc.overrides.length > 0 ? ` · 재정의 ${doc.overrides.length}개 (${doc.overrides.join(", ")})` : " · 재정의 없음"}
+        {`계산 기준 ${doc.items.length}개 · ${doc.doc} v${doc.version}`}
+        {doc.overrides.length > 0 ? ` · 고객님이 바꾼 것 ${doc.overrides.length}개 (${doc.overrides.join(", ")})` : " · 바꾼 것 없음"}
       </Text>
       {doc.groups.map((g) => (
         <VStack gap={1} key={g.id}>

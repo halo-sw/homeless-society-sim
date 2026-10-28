@@ -156,10 +156,15 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
       if (body.messages !== undefined && !Array.isArray(body.messages)) {
         throw new Error("messages must be an array");
       }
+      if (body.context !== undefined && body.context !== null
+          && (typeof body.context !== "object" || Array.isArray(body.context))) {
+        throw new Error("context must be an object");
+      }
       const out = await runTurn({
         provider,
         messages: Array.isArray(body.messages) ? body.messages : [],
         scenario: body.scenario,
+        context: body.context && typeof body.context === "object" ? body.context : null,
         cache,
         loadArea: (areaId) => loadAreaFs(dataDir, areaCache, areaId),
         loadDecisions: (name, label) => loadDecisionsFs(scenDir, name, label),

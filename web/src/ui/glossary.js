@@ -40,6 +40,12 @@ export const GLOSSARY = [
   { term: "주거비 부담률",
     def: "소득 대비 주거비 비율(월 주거비 ÷ 월 소득). 이 앱은 30%를 참고선으로만 보여준다.",
     source_url: null },
+  { term: "혼잡도",
+    def: "지하철 한 칸에 사람이 얼마나 찼는지. 정원을 100%로 두고, 넘으면 서서 가는 사람이 많다는 뜻이다.",
+    source_url: null },
+  { term: "등기부등본",
+    def: "집의 주민등록증 같은 서류. 진짜 주인, 빚(근저당), 압류가 있는지 인터넷등기소에서 뗄 수 있다.",
+    source_url: "https://www.iros.go.kr" },
 ];
 
 const BY_TERM = new Map(GLOSSARY.map((g) => [g.term, g]));

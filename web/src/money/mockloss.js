@@ -14,8 +14,8 @@ export const MOCKLOSS_LEGAL_NOTE = "법률 자문이 아닙니다.";
 export const MOCKLOSS_PATHS = ["insured", "auction", "unrecovered"];
 export const MOCKLOSS_PATH_KO = {
   insured: "보증보험 가입",
-  auction: "미가입 + 경매 배당 일부",
-  unrecovered: "미회수",
+  auction: "보험 없이 경매로 일부만 받음",
+  unrecovered: "한 푼도 못 받음",
 };
 export const MOCKLOSS_CRITERION_ID = "C-mockloss";
 
@@ -49,9 +49,9 @@ export function mockDepositLoss({ depositWon, monthlyNetWon = null,
     ? Math.round((shortWon / remainder) * 10) / 10
     : (shortWon === 0 ? 0 : null);
   const nextMove = {
-    insured: "보증보험금으로 다음 보증금을 마련하는 흐름을 가정합니다 (모의).",
-    auction: "배당 때까지 다음 보증금은 별도로 마련해야 하는 흐름을 가정합니다 (모의).",
-    unrecovered: "보증금 전액을 새로 마련해야 하는 흐름을 가정합니다 (모의).",
+    insured: "보증보험금으로 다음 보증금을 마련하는 흐름으로 봐요 (모의).",
+    auction: "경매 배당을 받을 때까지 다음 보증금은 따로 마련하는 흐름으로 봐요 (모의).",
+    unrecovered: "보증금 전부를 새로 마련하는 흐름으로 봐요 (모의).",
   }[path];
   return {
     label: MOCKLOSS_LABEL,
@@ -68,15 +68,15 @@ export function mockDepositLoss({ depositWon, monthlyNetWon = null,
     recovery_won: recoveryWon,
     short_won: shortWon,
     locked_note: t.months === null
-      ? "보증금이 묶인 채로 끝나지 않습니다 (모의)."
-      : `보증금이 약 ${t.months}개월 묶입니다 (모의).`,
+      ? "보증금이 묶인 채로 풀리지 않아요 (모의)."
+      : `보증금이 약 ${t.months}개월 묶여요 (모의).`,
     monthly_remainder_won: remainder,
     shortfall_in_remainder_months: shortfallMonths,
     shortfall_note: shortWon === 0
-      ? "잃는 금액이 없습니다 (모의 가정)."
+      ? "잃는 돈이 없어요 (모의로 본 가정이에요)."
       : (shortfallMonths !== null
-        ? `잃는 금액은 월 남는 돈의 약 ${shortfallMonths}개월분입니다 (모의 가정).`
-        : "월 남는 돈을 입력하면 잃는 금액을 개월분으로 보여줍니다."),
+        ? `잃는 돈은 한 달 남는 돈의 약 ${shortfallMonths}개월분이에요 (모의로 본 가정이에요).`
+        : "한 달 남는 돈을 적으면 잃는 돈을 개월분으로 보여줘요."),
     next_move_note: nextMove,
     legal_note: MOCKLOSS_LEGAL_NOTE,
   };

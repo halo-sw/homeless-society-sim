@@ -78,10 +78,10 @@ describe("consult guards", () => {
     assert.notEqual(forecastQuestion("잠실 집값이 오를까?"), null);
     assert.equal(forecastQuestion("잠실 실거래가를 보여줘"), null);
     const reply = priceForecastReply("레이크팰리스");
-    assert.match(reply, /전망을 하지 않습니다/);
-    assert.match(reply, /최근 12개월 실거래/);
+    assert.match(reply, /미리 맞히지 않아요/);
+    assert.match(reply, /최근 12개월에 실제로 거래된 값/);
     assert.deepEqual(checkConsultReply(reply, []), { ok: true });
-    assert.match(numbersOnlyAnswer([], { userText: "잠실 집값이 오를까?" }), /전망을 하지 않습니다/);
+    assert.match(numbersOnlyAnswer([], { userText: "잠실 집값이 오를까?" }), /미리 맞히지 않아요/);
   });
 
   it("refuses investment advice", () => {
@@ -114,10 +114,10 @@ describe("consult guards", () => {
       { places: [{ name: "슈퍼1", minutes: 3.2, distance_m: 251 }] },
     ]);
     assert.match(text, /도보 이동 시간 합계: A 10분 \/ B 20분/);
-    assert.match(text, /A 합계: 도보 10분\/800 m/);
+    assert.match(text, /A 합계: 걸어서 10분\/800 m/);
     assert.match(text, /08:00→08:10/);
     assert.match(text, /슈퍼1: 3분\(251 m/);
-    assert.match(numbersOnlyAnswer([]), /수치가 없습니다/);
+    assert.match(numbersOnlyAnswer([]), /수치가 없어요/);
     assert.ok(toolResultNumbers(null) instanceof Set);
   });
 
@@ -129,6 +129,10 @@ describe("consult guards", () => {
       null);
     assert.equal(
       consultTopic(withoutHealthNotes("건강 조언은 하지 않습니다. 도보 시간을 비교해 드릴게요.")),
+      null);
+    assert.equal(
+      consultTopic(withoutHealthNotes(
+        "회사 도착할 때 피곤한 정도 25.3이에요. 피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요.")),
       null);
     assert.equal(
       checkConsultReply("피로도 평균 25.3입니다(C-fatigue-load). 가정 모델이며 건강·의학적 판단이 아닙니다.",
@@ -149,7 +153,7 @@ describe("consult guards", () => {
       { summary_30d: { arrival_work_avg: 25.3, after_home_avg: 22.8, avg_30d: 11.3, crowded_min: 0 } },
     ]);
     assert.match(text, /A호선 중앙역→환승역/);
-    assert.match(text, /고객 입력/);
-    assert.match(text, /피로도 30일: 출근 도착 25.3/);
+    assert.match(text, /고객님이 정한 값/);
+    assert.match(text, /피곤한 정도 30일: 회사 도착할 때 25.3/);
   });
 });

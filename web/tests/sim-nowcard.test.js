@@ -26,7 +26,7 @@ describe("nowCardFor", () => {
     const mid = Math.floor((t.depart_min + t.arrive_min) / 2);
     const card = nowCardFor({ run, indexed, agentKey: "h1", day: t.day, minute: mid });
     assert.equal(card.state, "trip");
-    assert.match(card.now, /출근 중 · .+ → .+ \(도보 \d+분 남음\)/);
+    assert.match(card.now, /출근 중 · .+ → .+ \(걸어서 \d+분 남음\)/);
     assert.equal(card.why, t.cause.text);
     assert.equal(card.whyKind, "routine");
     assert.ok(card.criterionIds.includes("C-commute-depart"));
@@ -157,7 +157,7 @@ describe("nowCard fatigue", () => {
     const f = fatigueFor({ run, agentKey: "h1", day: 0, minute: mid });
     assert.ok(Number.isFinite(f.value));
     assert.equal(f.delta, away.detail.rides.out.legs[0].fatigueDelta);
-    assert.match(f.note, /A호선 중앙역→환승역 혼잡도 90%, 서서 감/);
+    assert.match(f.note, /A호선 중앙역→환승역 붐비는 정도 90%, 서서 감/);
     assert.equal(f.source, "서울교통공사");
     assert.deepEqual(f.criterionIds, ["C-congestion", "C-fatigue-load"]);
     assert.ok(f.series.length > 0);
@@ -171,7 +171,7 @@ describe("nowCard fatigue", () => {
     const walk = fatigueFor({ run, agentKey: "h1", day: 0,
       minute: Math.floor((t.depart_min + t.arrive_min) / 2) });
     assert.equal(walk.delta, t.fatigue_delta);
-    assert.match(walk.note, /도보/);
+    assert.match(walk.note, /걸어서/);
     const away = run.aways.find((a) => a.agent === "h1" && a.kind === "work");
     const work = fatigueFor({ run, agentKey: "h1", day: 0,
       minute: away.start_min + away.detail.ride_minutes + 10 });
@@ -187,7 +187,7 @@ describe("nowCard fatigue", () => {
       { region: tinyRegion() });
     const away = run.aways.find((a) => a.agent === "h1" && a.kind === "work");
     const f = fatigueFor({ run, agentKey: "h1", day: 0, minute: away.start_min + 2 });
-    assert.match(f.note, /혼잡도 자료 없음 · 가정값 70%/);
+    assert.match(f.note, /붐비는 정도 자료가 없어요 · 정해 둔 값 70%/);
     assert.equal(f.source, "가정값");
   });
 
@@ -195,7 +195,7 @@ describe("nowCard fatigue", () => {
     const run = simulate(tinyArea(), tinyScenario({ days: 1, background: 0, seed: 7 }), "A");
     const nbg = fatigueFor({ run, agentKey: "zzz", day: 0, minute: 500 });
     assert.equal(nbg, null);
-    assert.match(FATIGUE_MODEL_NOTE, /가정 모델이며 건강·의학적 판단이 아닙니다/);
+    assert.match(FATIGUE_MODEL_NOTE, /가정으로 계산한 값이에요.*건강·의학적 판단이 아니에요/);
     const rows = householdNow({ run, indexed: indexRun(run), day: 0, minute: 500 });
     assert.ok(rows.every((r) => Number.isFinite(r.fatigue)));
   });

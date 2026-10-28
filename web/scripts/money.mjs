@@ -31,6 +31,7 @@ import { educationCounts, schoolRoute } from "../src/education.js";
 import { safetyView } from "../src/safety.js";
 import { jeonseRatio, registerSignals } from "../src/money/jeonse.js";
 import { recommendPublicRental, normalizeSnapshot } from "../src/money/housing.js";
+import { filterPublicListings } from "../src/money/listing.js";
 import { AREA_RTMS_DISTRICT } from "../src/consult/tools-money.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -110,10 +111,12 @@ const net = householdMonthlyNet(scenario.money, scenario.household.members, tabl
 // Public-rental snapshot (dev-only, gitignored): candidates without
 // commute minutes (the consult tool adds the graph commute live).
 let supportRentals = null;
+let housingSnap = null;
 try {
   const snapRaw = JSON.parse(await readFile(
     join(REPO, "data", "raw", "public_housing", "snapshot_3districts.json"), "utf8"));
-  supportRentals = recommendPublicRental(normalizeSnapshot(snapRaw), {
+  housingSnap = normalizeSnapshot(snapRaw);
+  supportRentals = recommendPublicRental(housingSnap, {
     monthlyNetWon: net.household_monthly_net_won,
     thresholdPct: scenario.money.burden_threshold_pct,
     targetAreaM2: scenario.money.area_m2[scenario.homes[0].label] || null,
@@ -123,6 +126,7 @@ try {
   });
 } catch {
   supportRentals = null;
+  housingSnap = null;
 }
 const backend = createCsvBackend({
   rawDir: join(REPO, "data", "raw", "rtms"),
@@ -137,8 +141,10 @@ async function rtmsFor(district) {
 const crit = resolveCriteria(scenario);
 const A = moneyOptsFromCriteria(crit);
 const homes = {};
+const areasById = {};
 for (const h of scenario.homes) {
   const area = await loadArea(h.area);
+  areasById[h.area] = area;
   const router = new Router(area.graph);
   const run = simulate(area, structuredClone(scenarioRaw), h.label,
     region ? { region } : {});
@@ -265,6 +271,75 @@ for (const h of scenario.homes) {
       [k, v ? v.housing.monthly_won : null])) }));
 }
 
+// Workplace: the first named destination/work station resolved to a
+// station POI in the loaded areas (straight-line pin distance only).
+function findWorkplace() {
+  const wants = [];
+  for (const m of scenario.household.members || []) {
+    const w = m.work || {};
+    const dst = w.destination_station;
+    const dstName = typeof dst === "string" ? dst
+      : dst && typeof dst === "object" ? Object.values(dst)[0] : null;
+    const st = w.station_name;
+    const stName = typeof st === "string" ? st
+      : st && typeof st === "object" ? Object.values(st)[0] : null;
+    if (dstName) wants.push(String(dstName));
+    if (stName) wants.push(String(stName));
+  }
+  const stationPoi = (area) => (area.pois || []).filter((p) =>
+    p.category === "railway:station" || p.category === "railway:stop");
+  const matchName = (name, want) => name === want || name === `${want}역`
+    || `${want}역` === name || name.startsWith(want) || want.startsWith(name);
+  // Prefer full stations over stops.
+  for (const cats of [["railway:station"], ["railway:stop"]]) {
+    for (const want of wants) {
+      for (const area of Object.values(areasById)) {
+        for (const p of stationPoi(area)) {
+          if (!cats.includes(p.category)) continue;
+          const name = String(p.name || "");
+          if (name && matchName(name, want)) {
+            const [lon, lat] = (p.geometry && p.geometry.coordinates) || [];
+            if (Number.isFinite(lon) && Number.isFinite(lat)) {
+              return { label: name.endsWith("역") ? name : `${name}역`,
+                lon, lat, area: area.area || area.id || null };
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Public listings block: every snapshot complex (compact) with
+// straight-line workplace distance, plus the newest notices (capped).
+let publicListings = null;
+if (housingSnap) {
+  const workplace = findWorkplace();
+  const shaped = filterPublicListings(housingSnap, {
+    limit: Math.max(housingSnap.complexes.length, housingSnap.notices.length, 1),
+    near: workplace ? { lon: workplace.lon, lat: workplace.lat, max_km: null } : null,
+  });
+  const NOTICE_CAP = 150;
+  publicListings = {
+    fetched_at: shaped.fetched_at,
+    attribution: shaped.attribution,
+    workplace,
+    workplace_note: workplace
+      ? `직장(${workplace.label})에서 직선 거리예요. 출퇴근 시간은 아니에요.`
+      : "직장 위치를 찾지 못해서 거리를 재지 못했어요.",
+    complexes: shaped.complexes.map((c) => ({
+      ...c, distance_to_work_m: c.distance_km === null ? null : Math.round(c.distance_km * 1000),
+    })),
+    complex_total: shaped.complex_total,
+    notices: shaped.notices.slice(0, NOTICE_CAP),
+    notice_total: shaped.notice_total,
+    notice_cap_note: shaped.notice_total > NOTICE_CAP
+      ? `새로 올라온 순서대로 ${NOTICE_CAP}개만 담았어요.` : null,
+    notes: shaped.notes,
+  };
+}
+
 const doc = {
   scenario: scenario.name,
   days: scenario.days,
@@ -283,6 +358,7 @@ const doc = {
   homes,
   assumptions9b,
   support_rentals: supportRentals,
+  public_listings: publicListings,
 };
 const outDir = resolve(REPO, opts.out);
 await mkdir(outDir, { recursive: true });

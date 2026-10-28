@@ -169,8 +169,8 @@ export function schoolRoute(run, router, memberKey) {
     minutes: out.minutes,
     distance_m: out.distance_m,
     primary_ways: primaryWaysOnPath(router, out.path || []),
-    primary_note: "primary 구간 수 (횡단 여부 아님)",
-    speed_note: "어린이 속도 1.1 m/s (C-walk-speed)",
+    primary_note: "큰길 구간 수 (횡단 여부 아님)",
+    speed_note: "어린이 걸음 1.1 m/s (C-walk-speed)",
     source: "graph",
   };
 }

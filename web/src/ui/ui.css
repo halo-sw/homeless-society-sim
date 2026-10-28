@@ -55,12 +55,33 @@ body.sim .ui-legend { bottom: 218px; }
 .ui-dots { display: flex; gap: 6px; justify-content: center; }
 .ui-panel-spacer { flex: 1 1 auto; }
 
-/* Docked consult panel (in #panel-root, outside the canvas). */
-.ui-panel { height: 100%; padding: 8px 8px 8px 0; }
-.ui-panel > * { height: 100%; overflow: auto; }
-.ui-paneltab { height: 100%; padding: 8px 8px 8px 0; display: flex; flex-direction: column; }
-.ui-consult-chat { display: flex; flex-direction: column; min-height: 0; }
+/* Floating agent (FAB + Popover panel over the canvas). */
+.ui-agent-fab { position: absolute; bottom: 26px; z-index: 30; }
+.ui-agent-bottom-right { right: 12px; }
+.ui-agent-bottom-left { left: 12px; }
+.ui-agent-trigger { display: flex; gap: 8px; align-items: center; }
+.ui-agent-panel { display: flex; flex-direction: column; min-height: 0; padding: 12px; }
+.ui-agent-head { display: flex; gap: 8px; align-items: center; flex: none; }
+.ui-agent-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding-top: 8px; }
+.ui-agent-body > * { height: 100%; }
+.ui-agent-chips { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 8px; }
+.ui-agent-nudge { position: absolute; bottom: 92px; right: 12px; z-index: 31; max-width: min(340px, 80vw); }
+.ui-agent-bottom-left ~ .ui-agent-nudge, .ui-agent-nudge-left { right: auto; left: 12px; }
 .ui-consult-meta { display: flex; justify-content: space-between; align-items: center; }
+.ui-listing-paste { width: 100%; box-sizing: border-box; font: inherit; padding: 8px;
+  border: 1px solid var(--border, #d8d2c4); border-radius: 8px; background: #fffdf8; }
+/* Share dialog + print page. */
+.ui-share-scroll { max-height: 50dvh; overflow: auto; }
+.ui-share-canvas { position: absolute; left: -9999px; top: 0; }
+#share-print { display: none; }
+body.printing-share #app { display: none !important; }
+body.printing-share #share-print { display: block !important; padding: 24px;
+  color: #000; background: #fff; }
+/* Guided demo tour bar. */
+.ui-tour { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px;
+  width: min(560px, calc(100vw - 24px)); z-index: 32;
+  background: rgba(255, 253, 248, 0.97); border: 1px solid var(--border, #d8d2c4);
+  border-radius: 12px; padding: 10px 12px; }
 
 /* Compact judgment timeline. */
 .ui-timeline { list-style: none; margin: 0; padding: 0; }

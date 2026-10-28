@@ -305,7 +305,7 @@ describe("sim smoke (headless boot)", { skip: SKIP_ALL }, () => {
     for (const k of ["arrival_work", "after_home", "peak", "crowded_min"]) {
       assert.ok(Number.isFinite(fat[k]), k);
     }
-    assert.ok(FATIGUE_MODEL_NOTE.includes("가정 모델"));
+    assert.ok(FATIGUE_MODEL_NOTE.includes("가정으로 계산한"));
   });
 
   it("changes day (setDay branch)", () => {

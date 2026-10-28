@@ -5,6 +5,7 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { Theme } from "@astryxdesign/core/theme";
+import { LayerProvider } from "@astryxdesign/core/Layer";
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
 import "@astryxdesign/theme-neutral/theme.css";
@@ -40,8 +41,10 @@ export function mountUI() {
   createRoot(el).render(
     <StrictMode>
       <Theme theme={neutralTheme} mode="light">
-        <FirstVisit />
-        <App />
+        <LayerProvider>
+          <FirstVisit />
+          <App />
+        </LayerProvider>
       </Theme>
     </StrictMode>,
   );

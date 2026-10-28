@@ -127,8 +127,8 @@ describe("jeonse_check tool", () => {
     assert.equal(r.ratio.jeonse.count, 2);
     assert.equal(r.ratio.band.criterion_id, "C-jeonse-ratio-caution");
     const by = Object.fromEntries(r.register.rows.map((row) => [row.field, row]));
-    assert.equal(by["주용도"].value, "공동주택");
-    assert.equal(by["위반건축물 여부"].value, null);
+    assert.equal(by["건물을 무엇에 쓰는지"].value, "공동주택");
+    assert.equal(by["법을 어긴 건물인지"].value, null);
     assert.equal(r.checklist.items.length, 6);
     assert.match(r.note, /판정/);
   });
@@ -146,7 +146,7 @@ describe("mock_deposit_loss tool", () => {
   it("runs all three paths with criteria assumptions", async () => {
     const s = session9b();
     for (const [path, ko] of [["insured", "보증보험 가입"],
-        ["auction", "미가입 + 경매 배당 일부"], ["unrecovered", "미회수"]]) {
+        ["auction", "보험 없이 경매로 일부만 받음"], ["unrecovered", "한 푼도 못 받음"]]) {
       const r = await callTool(s, "mock_deposit_loss", { path,
         deposit_won: 400000000, monthly_net_won: 7000000, monthly_spent_won: 4000000 });
       assert.equal(r.ok, true);
@@ -154,7 +154,7 @@ describe("mock_deposit_loss tool", () => {
       assert.equal(r.path_ko, ko);
       assert.equal(r.criterion_id, "C-mockloss");
       assert.match(r.legal_note, /법률 자문/);
-      assert.equal(r.support_center.name, "전세피해지원센터");
+      assert.match(r.support_center.name, /전세피해지원센터/);
     }
   });
 
@@ -169,12 +169,21 @@ describe("support_programs tool", () => {
   it("compares row by row, never a verdict", async () => {
     const s = session9b();
     const r = await callTool(s, "support_programs", {
-      age: 30, annual_income_won: 55000000, owns_home: false,
-      deposit_won: 200000000, include_public_rental: false,
+      age: 30, household_type: "세대주", annual_income_won: 40000000,
+      assets_won: 100000000, owns_home: false, deposit_won: 200000000,
+      include_public_rental: false,
     });
     assert.equal(r.ok, true);
     assert.equal(r.programs.length, 5);
-    assert.ok(r.programs.every((p) => p.rows.every((row) => row.result === "확인 필요")));
+    // Verified file: filled rows judge for real (Part F contract).
+    const beotimmok = r.programs.find((p) => p.program_id === "beotimmok-jeonse");
+    const by = Object.fromEntries(beotimmok.rows.map((row) => [row.condition, row]));
+    assert.equal(by["나이 하한"].result, "충족");
+    assert.equal(by["연소득 상한"].result, "충족");
+    assert.equal(by["무주택 여부"].result, "충족");
+    assert.ok(beotimmok.rows.every((row) => typeof row.note === "string" && row.note));
+    const fresh = await callTool(s, "support_programs", { include_public_rental: false });
+    assert.ok(fresh.programs.every((p) => p.rows.every((row) => row.result === "확인 필요")));
     assert.equal(r.public_rentals, null);
     const blob = JSON.stringify(r);
     for (const word of ["대상입니다", "대상자", "신청 가능", "지원 가능", "받을 수 있", "자격"]) {
@@ -243,7 +252,7 @@ describe("stage 9b guards", () => {
         rows: [{ condition: "연소득 상한", customer: "5,000만원", published: "공식 확인 필요", result: "확인 필요" }] }] },
     ]);
     assert.match(out, /가정 시나리오/);
-    assert.match(out, /전세가율 40%/);
+    assert.match(out, /보증금이 집값의 40%/);
     assert.match(out, /모의\(보증보험 가입\)/);
     assert.match(out, /버팀목 전세자금/);
     assert.match(out, /공고 원문/);

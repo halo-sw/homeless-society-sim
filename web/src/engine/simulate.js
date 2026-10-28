@@ -162,19 +162,20 @@ export function meanOrNull(values) {
 export function compare(runA, runB) {
   const ha = runA.totals.household;
   const hb = runB.totals.household;
+  const span = `${runA.meta.days || 30}일 동안`;
   const metrics = [
-    { key: "walk_minutes", label: "도보 이동 시간 합계", unit: "minutes", source: "graph" },
-    { key: "walk_distance_m", label: "도보 이동 거리 합계", unit: "metres", source: "graph" },
-    { key: "commute_walk_minutes", label: "통근·통학 도보 시간 합계", unit: "minutes", source: "graph" },
-    { key: "commute_ride_minutes", label: "통근 승차 시간 합계(가정값)", unit: "minutes", source: "scenario" },
-    { key: "errands_done", label: "장보기 완료 횟수", unit: "count", source: "scenario" },
-    { key: "park_visits", label: "공원 산책 횟수", unit: "count", source: "scenario" },
-    { key: "home_evening_minutes", label: "18–24시 재택 시간 합계", unit: "minutes", source: "scenario" },
-    { key: "trips", label: "도보 이동 횟수", unit: "count", source: "graph" },
-    { key: "fatigue_arrival_work_avg", label: "출근 도착 피로도(가정 모델)", unit: "index", source: "scenario" },
-    { key: "fatigue_after_home_avg", label: "퇴근 후 피로도(가정 모델)", unit: "index", source: "scenario" },
-    { key: "fatigue_avg_30d", label: "피로도 30일 평균(가정 모델)", unit: "index", source: "scenario" },
-    { key: "fatigue_crowded_min", label: "혼잡 100% 초과 탑승 시간", unit: "minutes", source: "scenario" },
+    { key: "walk_minutes", label: `${span} 걸은 시간`, unit: "minutes", source: "graph" },
+    { key: "walk_distance_m", label: `${span} 걸은 거리`, unit: "metres", source: "graph" },
+    { key: "commute_walk_minutes", label: `${span} 출퇴근·등교로 걸은 시간`, unit: "minutes", source: "graph" },
+    { key: "commute_ride_minutes", label: `${span} 차·지하철을 탄 시간`, unit: "minutes", source: "scenario" },
+    { key: "errands_done", label: `${span} 장본 횟수`, unit: "count", source: "scenario" },
+    { key: "park_visits", label: `${span} 공원 산책 횟수`, unit: "count", source: "scenario" },
+    { key: "home_evening_minutes", label: `${span} 저녁에 집에 머문 시간`, unit: "minutes", source: "scenario" },
+    { key: "trips", label: `${span} 걸어서 이동한 횟수`, unit: "count", source: "graph" },
+    { key: "fatigue_arrival_work_avg", label: "회사 도착할 때 피곤한 정도", unit: "index", source: "scenario" },
+    { key: "fatigue_after_home_avg", label: "퇴근해서 집에 왔을 때 피곤한 정도", unit: "index", source: "scenario" },
+    { key: "fatigue_avg_30d", label: `${runA.meta.days || 30}일 평균 피곤한 정도`, unit: "index", source: "scenario" },
+    { key: "fatigue_crowded_min", label: "만원 지하철에 탄 시간", unit: "minutes", source: "scenario" },
   ].map((m) => ({ ...m, a: ha[m.key] ?? null, b: hb[m.key] ?? null,
     delta_b_minus_a: deltaOrNull(hb[m.key], ha[m.key]) }));
   const members = Object.keys(runA.totals.per_member)

@@ -5,11 +5,11 @@
 // here imports server modules or provider code, so no key material can
 // enter the bundle.
 
-export async function postConsult({ provider, messages, scenario }) {
+export async function postConsult({ provider, messages, scenario, context = null }) {
   const r = await fetch("/api/consult", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, messages, scenario }),
+    body: JSON.stringify({ provider, messages, scenario, context }),
   });
   let payload = null;
   try {

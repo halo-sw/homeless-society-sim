@@ -139,19 +139,19 @@ describe("register signals", () => {
     ]);
     assert.equal(s.building_count, 2);
     const by = Object.fromEntries(s.rows.map((r) => [r.field, r]));
-    assert.equal(by["주용도"].value, "공동주택");
-    assert.equal(by["사용승인일"].value, "2006-12-22");
-    assert.equal(by["구조"].value, "철근콘크리트구조");
-    assert.equal(by["세대수 합계"].value, 150);
+    assert.equal(by["건물을 무엇에 쓰는지"].value, "공동주택");
+    assert.equal(by["다 짓고 허가받은 날"].value, "2006-12-22");
+    assert.equal(by["건물 뼈대"].value, "철근콘크리트구조");
+    assert.equal(by["사는 가구 수 합계"].value, 150);
   });
 
   it("absent fields say so, 위반건축물 is never invented", () => {
     const s = registerSignals([{ register: null }, {}]);
     const by = Object.fromEntries(s.rows.map((r) => [r.field, r]));
-    assert.equal(by["주용도"].value, null);
-    assert.match(by["주용도"].note, /해당 정보가 없습니다/);
-    assert.equal(by["위반건축물 여부"].value, null);
-    assert.match(by["위반건축물 여부"].note, /위반건축물 정보가 없습니다/);
+    assert.equal(by["건물을 무엇에 쓰는지"].value, null);
+    assert.match(by["건물을 무엇에 쓰는지"].note, /해당 정보가 없어요/);
+    assert.equal(by["법을 어긴 건물인지"].value, null);
+    assert.match(by["법을 어긴 건물인지"].note, /법 위반 건물 정보가 없어요/);
     const empty = registerSignals([]);
     assert.equal(empty.building_count, 0);
     assert.ok(empty.rows.every((r) => r.value === null));
@@ -159,17 +159,32 @@ describe("register signals", () => {
 });
 
 describe("jeonse checklist file", () => {
-  it("validates with nulls flagged", async () => {
+  // Stage 10, Part F: the orchestrator verified the context line (국토교통부
+  // data via the 2025-03-10 SBS Biz report: 27,372 victims, 20·30대 20,432
+  // ≈ 74.6 %) and checked the official site URLs respond. senior-deposits
+  // keeps url: null (no single official page) and stays flagged.
+  it("validates with verified links, senior-deposits still flagged", async () => {
     const doc = JSON.parse(await readFile(
       join(REPO, "scenarios", "assumptions", "kr-jeonse-checklist.json"), "utf8"));
     assert.deepEqual(validateChecklist(doc), []);
-    assert.match(doc.context.text, /75 %가 20·30대/);
-    assert.equal(doc.context.source, "국토교통부 자료 인용 보도");
-    assert.equal(doc.context.date, "2025-03");
-    assert.equal(doc.context.needs_confirmation, true);
+    assert.match(doc.context.text, /2만 7,372명.*2만 432명.*75 ?%/);
+    assert.match(doc.context.source, /국토교통부.*SBS Biz/);
+    assert.equal(doc.context.date, "2025-03-10");
+    assert.ok(typeof doc.context.url === "string" && doc.context.url.startsWith("https://"));
+    assert.equal(doc.context.needs_confirmation, false);
     assert.equal(doc.items.length, 6);
-    assert.ok(doc.items.every((it) => it.url === null && it.needs_confirmation === true));
-    assert.equal(doc.support_center.name, "전세피해지원센터");
+    for (const it of doc.items) {
+      if (it.id === "senior-deposits") {
+        assert.equal(it.url, null);
+        assert.equal(it.needs_confirmation, true);
+      } else {
+        assert.ok(typeof it.url === "string" && it.url.startsWith("https://"), it.id);
+        assert.equal(it.needs_confirmation, false);
+      }
+    }
+    assert.match(doc.support_center.name, /전세피해지원센터/);
+    assert.ok(typeof doc.support_center.url === "string"
+      && doc.support_center.url.startsWith("https://"));
     assert.match(doc.disclaimer, /법률 자문/);
   });
 

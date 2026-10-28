@@ -96,6 +96,10 @@ describe("consult dev middleware", () => {
       const missing = await post(handler, { provider: "meta" });
       assert.equal(missing.statusCode, 400);
       assert.match(JSON.parse(missing.body).error, /scenario/);
+      const badContext = await post(handler, { provider: "meta",
+        scenario: SCENARIO, context: "이거" });
+      assert.equal(badContext.statusCode, 400);
+      assert.match(JSON.parse(badContext.body).error, /context/);
     } finally {
       if (saved === undefined) delete process.env.MODEL_API_KEY;
       else process.env.MODEL_API_KEY = saved;

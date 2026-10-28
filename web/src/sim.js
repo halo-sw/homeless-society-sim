@@ -241,7 +241,7 @@ export function followCaption(sample, agentLabel) {
   if (sample.state === "trip" && sample.trip) {
     const t = sample.trip;
     const dest = t.to.label || t.to.id;
-    return `${agentLabel} · ${purposeLabel(t.purpose)} → ${dest} · 도보 ${t.minutes}분 (${Math.round(t.distance_m)} m)`;
+    return `${agentLabel} · ${purposeLabel(t.purpose)} → ${dest} · 걸어서 ${t.minutes}분 (${Math.round(t.distance_m)} m)`;
   }
   if (sample.state === "place" && sample.away) {
     return `${agentLabel} · ${sample.away.label}`;

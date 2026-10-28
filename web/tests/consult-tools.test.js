@@ -58,7 +58,7 @@ async function demoScenario() {
 }
 
 describe("consult tools", () => {
-  it("exposes the thirty-one documented tools", () => {
+  it("exposes the thirty-four documented tools", () => {
     assert.deepEqual([...TOOL_NAMES].sort(), [
       "compare", "explain_decision", "find_places", "get_day", "get_fatigue", "get_journey",
       "get_scenario",
@@ -70,8 +70,9 @@ describe("consult tools", () => {
       "apply_persona", "get_priorities", "set_priorities",
       "get_safety", "get_education", "define_term",
       "worth_it", "jeonse_check", "mock_deposit_loss", "support_programs",
+      "parse_listing", "check_listing", "add_listing_c",
     ].sort());
-    assert.equal(TOOL_DEFS.length, 31);
+    assert.equal(TOOL_DEFS.length, 34);
     assert.equal(MAX_TOOL_ROUNDS, 6);
     for (const t of TOOL_DEFS) {
       assert.equal(t.type, "function");
@@ -253,7 +254,7 @@ describe("consult tools", () => {
     assert.equal(j.rides[0].out.minutes_total, 20);
     const f = await callTool(s, "get_fatigue", { run: id, member: "구성원 1" });
     assert.equal(f.ok, true);
-    assert.match(f.model_note, /건강·의학적 판단이 아닙니다/);
+    assert.match(f.model_note, /건강·의학적 판단이 아니에요/);
     assert.deepEqual(f.criteria, ["C-congestion", "C-fatigue-load", "C-fatigue-recovery"]);
     assert.ok(Number.isFinite(f.summary_30d.avg_30d));
     const fd = await callTool(s, "get_fatigue", { run: id, member: "h1", day: 1 });

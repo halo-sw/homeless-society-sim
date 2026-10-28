@@ -13,7 +13,12 @@ import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/Segme
 import { Text } from "@astryxdesign/core/Text";
 import { fmtWon } from "../money/format.js";
 import { ELIGIBILITY_NOTE } from "../money/housing.js";
+import { Gloss } from "./gloss.jsx";
+import { BURDEN_PLAIN_LABEL } from "./copy.js";
 import { compareAllSupport, SUPPORT_NOTE, SUPPORT_NEEDS_OFFICIAL } from "../money/support.js";
+
+// Engine results (충족/미충족/확인 필요) in the customer's words.
+const RESULT_PLAIN = { "충족": "조건에 맞아요", "미충족": "조건에 안 맞아요", "확인 필요": "확인 필요" };
 
 function numOrBlank(v) {
   if (v === "" || v === null || v === undefined) return undefined;
@@ -60,12 +65,15 @@ function ProgramCard({ program }) {
       <MetadataList>
         {program.rows.map((r) => (
           <MetadataListItem key={r.condition_id} label={r.condition}>
-            <Text type="supporting" hasTabularNumbers>
-              {`고객 ${r.customer} · 공고 ${r.published} → ${r.result}`}
-            </Text>
+            <VStack gap={1}>
+              <Text type="supporting" hasTabularNumbers>
+                {`내가 쓴 값 ${r.customer} · 공고에 나온 값 ${r.published} → ${RESULT_PLAIN[r.result] || r.result}`}
+              </Text>
+              {r.note && <Text type="supporting">{r.note}</Text>}
+            </VStack>
           </MetadataListItem>
         ))}
-        <MetadataListItem label="금리·한도">
+        <MetadataListItem label="이자율·빌릴 수 있는 돈">
           <Text type="supporting">{`${program.rate_range} · ${program.limit}`}</Text>
         </MetadataListItem>
       </MetadataList>
@@ -74,7 +82,7 @@ function ProgramCard({ program }) {
         {program.source_url
           ? <a href={program.source_url} target="_blank" rel="noreferrer">공식 페이지</a>
           : <Text type="supporting">{SUPPORT_NEEDS_OFFICIAL}</Text>}
-        {program.as_of && <Text type="supporting">{`(기준 ${program.as_of})`}</Text>}
+        {program.as_of && <Text type="supporting">{`(${program.as_of} 공식 페이지 기준)`}</Text>}
       </HStack>
     </VStack>
   );
@@ -114,38 +122,38 @@ export function SupportTab({ state }) {
   return (
     <VStack gap={2}>
       <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text>가구 실수령 합계 {fmtWon(doc.household_monthly_net_won || 0, { monthly: true })}</Text>
-        <Text type="supporting">(같은 월급에서 볼 수 있는 지원을 찾는다)</Text>
+        <Text>식구들 한 달 실수령 합계 {fmtWon(doc.household_monthly_net_won || 0, { monthly: true })}</Text>
+        <Text type="supporting">(같은 월급으로 볼 수 있는 도움을 찾아요)</Text>
       </HStack>
       <VStack gap={1}>
-        <Heading level={4}>내 조건 입력</Heading>
+        <Heading level={4}>내 조건 적기</Heading>
         <HStack gap={2} vAlign="center" wrap="wrap">
           <Field label="나이" value={age} onChange={setAge} />
-          <Field label="연소득(원)" value={income} onChange={setIncome} step="1000000" />
-          <Field label="자산(원)" value={assets} onChange={setAssets} step="1000000" />
-          <Field label="혼인 기간(년)" value={marriageYears} onChange={setMarriageYears} />
-          <Field label="보증금(원)" value={deposit} onChange={setDeposit} step="1000000" />
-          <Field label="주택가격(원)" value={price} onChange={setPrice} step="1000000" />
-          <YesNo label="유주택" value={ownsHome} onChange={setOwnsHome} />
-          <YesNo label="신생아 출산·입양" value={newborn} onChange={setNewborn} />
+          <Field label="1년에 버는 돈(원)" value={income} onChange={setIncome} step="1000000" />
+          <Field label="가진 재산(원)" value={assets} onChange={setAssets} step="1000000" />
+          <Field label="결혼한 지(년)" value={marriageYears} onChange={setMarriageYears} />
+          <Field label="전세 보증금(원)" value={deposit} onChange={setDeposit} step="1000000" />
+          <Field label="집값(원)" value={price} onChange={setPrice} step="1000000" />
+          <YesNo label="지금 집이 있어요" value={ownsHome} onChange={setOwnsHome} />
+          <YesNo label="2년 안에 아기 출산·입양" value={newborn} onChange={setNewborn} />
         </HStack>
-        <Text type="supporting">입력은 이 화면에서만 대조에 쓴다. 보증금은 비워두면 홈 A 전세 중간값으로 둔다.</Text>
+        <Text type="supporting">적은 값은 이 화면에서 조건을 비교할 때만 써요. 보증금을 비워두면 홈 A 전세 한가운데 값으로 둬요.</Text>
       </VStack>
       <VStack gap={1}>
-        <Heading level={4}>공공임대 후보</Heading>
+        <Heading level={4}><Gloss term="공공임대">공공임대</Gloss> 후보</Heading>
         {!rentals && (
-          <Text type="supporting">후보 스냅샷이 없습니다. 상담에서 recommend_public_rental로 물어보세요.</Text>
+          <Text type="supporting">후보 자료가 없어요. 상담에서 공공임대 후보를 물어보세요.</Text>
         )}
         {rentals && rentals.candidates.length === 0 && (
-          <Text type="supporting">부담선 안에서 면적이 맞는 후보가 없습니다.</Text>
+          <Text type="supporting">감당할 수 있는 선 안에서 면적이 맞는 후보가 없어요.</Text>
         )}
         {rentals && rentals.candidates.map((c) => (
           <VStack gap={1} key={`${c.complex_id}-${c.unit_type}`}>
             <Text>{`${c.address} ${c.exclusive_area_m2}㎡`}</Text>
             <Text type="supporting">
               {`보증금 ${fmtWon(c.deposit_won)} · 월 ${fmtWon(c.monthly_rent_won)}`}
-              {c.burden_pct !== null ? ` · 부담률 ${c.burden_pct}%` : ""}
-              {" · 통근 시간은 상담에서 확인 (그래프)"}
+              {c.burden_pct !== null ? ` · ${BURDEN_PLAIN_LABEL} ${c.burden_pct}%` : ""}
+              {" · 출퇴근 시간은 상담에서 확인해요 (걸어서 직접 잰 시간)"}
             </Text>
             {(c.notices || []).slice(0, 2).map((n) => (
               <Text key={n.id} type="supporting">
@@ -157,16 +165,16 @@ export function SupportTab({ state }) {
         {rentals && <Text type="supporting">{ELIGIBILITY_NOTE}</Text>}
       </VStack>
       <VStack gap={1}>
-        <Heading level={4}>정책 대출·청년·신혼 지원 (조건 대조)</Heading>
-        {!compared && <Text type="supporting">지원 제도 파일이 없습니다.</Text>}
+        <Heading level={4}>빌릴 수 있는 돈·청년·신혼 도움 (조건을 한 줄씩 비교해요)</Heading>
+        {!compared && <Text type="supporting">지원 제도 파일이 없어요.</Text>}
         {compared && compared.programs.map((p) => (
           <ProgramCard key={p.program_id} program={p} />
         ))}
         {compared && <Text type="supporting">{SUPPORT_NOTE}</Text>}
-        <Text type="supporting">이 탭은 최종 판정을 하지 않는다. 조건이 맞는지 공고 원문에서 직접 확인한다.</Text>
+        <Text type="supporting">이 탭은 최종 결정을 내리지 않아요. 조건이 맞는지 공고 원문에서 직접 확인하세요.</Text>
       </VStack>
       <VStack gap={1}>
-        <Text type="supporting">온통청년·복지로 공식 목록은 키가 오면 연결한다 (연결점 준비됨, 지금은 호출 없음).</Text>
+        <Text type="supporting">온통청년·복지로 공식 목록은 키가 오면 연결해요 (연결점 준비됨, 지금은 호출 없음).</Text>
       </VStack>
     </VStack>
   );

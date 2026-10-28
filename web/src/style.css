@@ -19,13 +19,11 @@ html, body {
 }
 
 #app { position: fixed; inset: 0; display: flex; flex-direction: row; }
-/* Stage 6: the consult panel docks right and shrinks the canvas — panels
-   never overlap the 3D view, the followed resident or the caption. */
+/* Stage 10: the consult agent floats over the canvas (FAB + Popover) —
+   the canvas keeps full width; #panel-root stays only as a legacy mount. */
 #scene-wrap { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; }
 #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-#panel-root { flex: 0 0 auto; height: 100%; overflow: hidden; }
-#panel-root[data-state="open"] { width: 372px; }
-#panel-root[data-state="tab"] { width: 56px; }
+#panel-root { display: none; }
 
 #vignette {
   position: absolute; inset: 0; pointer-events: none;

@@ -11,6 +11,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
+import { Gloss } from "./gloss.jsx";
 import { fmtWon, badgeFor } from "../money/format.js";
 import { MOCKLOSS_PATH_KO, MOCKLOSS_LEGAL_NOTE, mockDepositLoss } from "../money/mockloss.js";
 
@@ -78,36 +79,36 @@ export function JeonseTab({ state }) {
       </SegmentedControl>
       <VStack gap={1}>
         <HStack gap={1} vAlign="center">
-          <Heading level={4}>전세가율 신호</Heading>
+          <Heading level={4}>보증금이 집값의 몇 %인지 <Gloss term="전세가율" /></Heading>
           <SrcBadge source="rtms" />
         </HStack>
-        {!check && <Text type="supporting">이 집의 실거래 기준가가 없습니다.</Text>}
+        {!check && <Text type="supporting">이 집은 실제로 거래된 값이 없어요.</Text>}
         {check && !check.computable && (
           <Text>{check.note}</Text>
         )}
         {check && check.computable && (
           <MetadataList>
-            <MetadataListItem label="전세가율">
+            <MetadataListItem label="보증금이 집값의 몇 %인지">
               <Text hasTabularNumbers>{`${check.ratio_pct}% (${check.band.label})`}</Text>
             </MetadataListItem>
-            <MetadataListItem label="근거">
+            <MetadataListItem label="무슨 값으로 계산했는지">
               <Text type="supporting" hasTabularNumbers>
-                {`전세 중간 ${fmtWon(check.jeonse.median)} (${check.jeonse.count}건) ÷ 매매 중간 ${fmtWon(check.trade.median)} (${check.trade.count}건), ${check.area_m2}㎡ ±${check.bucket_m2}㎡, ${check.period.from}~${check.period.to}`}
+                {`전세 한가운데 ${fmtWon(check.jeonse.median)} (${check.jeonse.count}건) ÷ 매매 한가운데 ${fmtWon(check.trade.median)} (${check.trade.count}건), ${check.area_m2}㎡ ±${check.bucket_m2}㎡, ${check.period.from}~${check.period.to}`}
               </Text>
             </MetadataListItem>
-            <MetadataListItem label="참고선">
+            <MetadataListItem label="자주 쓰는 기준선">
               <Text type="supporting">{`${check.ref_note} (${check.band.criterion_id})`}</Text>
             </MetadataListItem>
           </MetadataList>
         )}
-        <Text type="supporting">이 탭은 안전/위험 판정을 하지 않는다. 신호와 빠진 정보만 보여준다.</Text>
+        <Text type="supporting">이 탭은 안전하다/위험하다고 판정하지 않아요. 신호와 빠진 정보만 보여줘요.</Text>
       </VStack>
       <VStack gap={1}>
         <HStack gap={1} vAlign="center">
-          <Heading level={4}>등기 신호 (보유 자료)</Heading>
+          <Heading level={4}>관청 자료에서 본 집 정보</Heading>
           <SrcBadge source="register" />
         </HStack>
-        {!reg && <Text type="supporting">등기 자료가 없습니다.</Text>}
+        {!reg && <Text type="supporting">관청 자료가 없어요.</Text>}
         {reg && (
           <MetadataList>
             {reg.rows.map((r) => (
@@ -119,23 +120,23 @@ export function JeonseTab({ state }) {
         )}
       </VStack>
       <VStack gap={1}>
-        <Heading level={4}>체크리스트 (공식 출처에서 확인)</Heading>
-        {!checklist && <Text type="supporting">체크리스트 파일이 없습니다.</Text>}
+        <Heading level={4}>꼭 확인할 것 (공식 사이트에서 직접 확인해요)</Heading>
+        {!checklist && <Text type="supporting">확인 목록 파일이 없어요.</Text>}
         {checklist && checklist.items.map((it) => (
           <VStack gap={1} key={it.id}>
             <Text>{it.what}</Text>
             <Text type="supporting">{it.why}</Text>
             <HStack gap={1} vAlign="center">
-              <Text type="supporting">어디서:</Text>
+              <Text type="supporting">어디서 확인해요:</Text>
               <OfficialLink url={it.url} where={it.where} />
             </HStack>
           </VStack>
         ))}
       </VStack>
       <VStack gap={1}>
-        <Heading level={4}>모의 피해 시나리오 — 계약 만료에 보증금을 돌려받지 못하면</Heading>
+        <Heading level={4}>만약에 — 계약이 끝나도 보증금을 못 돌려받으면 (모의로 보는 흐름)</Heading>
         <HStack gap={2} vAlign="center" wrap="wrap">
-          <SegmentedControl label="모의 경로" value={path} onChange={setPath} size="sm">
+          <SegmentedControl label="만약에 보는 흐름" value={path} onChange={setPath} size="sm">
             {Object.entries(MOCKLOSS_PATH_KO).map(([k, ko]) => (
               <SegmentedControlItem key={k} value={k} label={ko} />
             ))}
@@ -144,18 +145,18 @@ export function JeonseTab({ state }) {
             <Text type="supporting">보증금(원)</Text>
             <input className="ui-weight" type="number" min="0" step="1000000"
               value={depDraft} placeholder={String(depDefault)}
-              onChange={(e) => setDepDraft(e.target.value)} aria-label="모의 보증금" />
+              onChange={(e) => setDepDraft(e.target.value)} aria-label="만약에 보는 보증금" />
           </HStack>
         </HStack>
-        {!mock && <Text type="supporting">보증금을 입력하면 모의 결과가 보인다.</Text>}
+        {!mock && <Text type="supporting">보증금을 적으면 만약에 본 결과가 보여요.</Text>}
         {mock && (
           <MetadataList>
-            <MetadataListItem label="모의 결과">
+            <MetadataListItem label="만약에 본 결과">
               <VStack gap={1}>
-                <Text hasTabularNumbers>{`${mock.locked_note} ${fmtWon(mock.recovery_won)} 회수 · ${fmtWon(mock.short_won)} 부족`}</Text>
+                <Text hasTabularNumbers>{`${mock.locked_note} ${fmtWon(mock.recovery_won)} 돌려받고 · ${fmtWon(mock.short_won)} 못 받음`}</Text>
                 <Text type="supporting">{mock.shortfall_note}</Text>
                 <Text type="supporting">{`다음 이사: ${mock.next_move_note}`}</Text>
-                <Text type="supporting">{`가정: ${mock.assumptions_used.recovery_months === null ? "회수 없음" : `${mock.assumptions_used.recovery_months}개월 뒤 ${mock.assumptions_used.recovery_pct}%`} (${mock.assumptions_used.source}, ${mock.criterion_id} — 상담에서 변경 가능)`}</Text>
+                <Text type="supporting">{`가정한 것: ${mock.assumptions_used.recovery_months === null ? "돌려받지 못함" : `${mock.assumptions_used.recovery_months}개월 뒤 ${mock.assumptions_used.recovery_pct}%`} (${mock.assumptions_used.source}, ${mock.criterion_id} — 상담에서 바꿀 수 있어요)`}</Text>
               </VStack>
             </MetadataListItem>
           </MetadataList>

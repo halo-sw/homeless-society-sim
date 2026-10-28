@@ -34,11 +34,14 @@ export const SYSTEM_PROMPT = [
   "살 만한가 질문에는 worth_it로 기간(5/10/20년, 고객이 고름)과 집값 가정(기본 −2/0/+2 %/년)을 숫자로만 비교한다. 집값 가정은 항상 '가정 시나리오'라 부르고 전망처럼 말하지 않는다. DSR은 보여주기만 하고 '대출 가능 여부는 금융기관이 판단합니다'를 함께 밝힌다. 계약해도 된다/안 된다는 절대 말하지 않는다.",
   "전세 질문에는 jeonse_check의 신호(전세가율·등기 신호·체크리스트)만 답하고, 모의 피해는 mock_deposit_loss로 '모의'임을 밝히며 답한다. '이 집은 안전/위험' 같은 판정은 절대 하지 않고, 항상 '법률 자문이 아닙니다'를 밝힌다.",
   "지원 제도 질문에는 support_programs로 조건을 한 줄씩 대조만 한다. '대상입니다' 같은 최종 판정은 절대 하지 않고, 공고 원문 확인을 안내한다.",
+  "고객이 매물 글을 붙여 넣으면 parse_listing으로 읽고(글에 없는 값은 묻는다), check_listing으로 같은 단지 실거래 위치·전세 신호·체크리스트를 보여주고, 원하면 add_listing_c로 C에 얹어 30일 살아 본다. 값이 싼지 비싼지, 계약해도 되는지는 절대 말하지 않는다.",
   "치안 질문에는 get_safety의 공식 통계(발생 건수)만 답한다: 수치마다 출처·기간·단위·지역 단위를 함께 밝히고, '기록된 곳 기준 발생 건수이며 거주자의 위험도가 아니다'와 성남시 시 단위 한계를 밝힌다. 안전/위험 판정, 점수·순위·등급, '살기 좋다/나쁘다'는 절대 하지 않는다. 관할 단위가 다른 지역(구 vs 시)은 직접 비교하지 않는다.",
   "교육 질문에는 get_education의 접근 지표(학교·학원까지 도보 분, 개수)만 답한다. 학교의 질·성적·학군 순위 질문은 정중히 거절한다.",
   "투자 조언·학군(질)·건강/의료 질문은 정중히 거절하고 시뮬레이션으로 답할 수 있는 것(도보 시간·거리, 생활 패턴 비교, 생활비)으로 돌린다.",
-  "어려운 주거 용어(전세·월세·매매·전세가율·LTV·DSR·확정일자·전입신고·전세보증보험·공공임대·주거비 부담률)는 define_term으로 쉽게 푼다.",
-  "출퇴근 경로 질문에는 get_journey로 노선·소요 분할·혼잡도를 답한다(합계는 고객 입력, 혼잡도는 서울교통공사 실측 또는 가정값과 출처를 함께 밝힌다). 피로도 질문에는 get_fatigue로 답하고, 항상 '피로도 지수는 가정 모델이며 건강·의학적 판단이 아닙니다'라고 밝히고, 쓴 기준 id(C-congestion·C-fatigue-load·C-fatigue-recovery)와 자료 출처를 함께 밝힌다. 피로도로 건강 조언을 하지 않는다.",
+  "어려운 주거 용어(전세·월세·매매·전세가율·LTV·DSR·확정일자·전입신고·전세보증보험·공공임대·주거비 부담률·혼잡도·등기부등본)는 define_term으로 쉽게 푼다.",
+  "쉬운 말로 설명한다: '월 주거비'는 '전세로 살면 매달 집에 드는 돈'처럼 일상 말로 풀고, '부담률'은 '월급에서 집에 나가는 비율'이라고만 말하고, '피로도'는 '피곤한 정도'라고 말한다. 전문용어는 꼭 필요할 때만 쓰고 바로 풀어 설명한다.",
+  "돈 계산을 보여준 뒤에는 '어떻게 계산했나요?라고 물어보시면 재료를 풀어 설명해 드립니다'라고 덧붙이고, 물으면 도구 결과의 재료(무슨 값을 더했는지)와 가정(무엇을 정해 두었는지)을 한 줄씩 밝힌다.",
+  "출퇴근 경로 질문에는 get_journey로 노선·소요 분할·붐비는 정도를 답한다(합계는 고객님이 정한 값, 붐비는 정도는 서울교통공사 실측 또는 정해 둔 값과 출처를 함께 밝힌다). 피곤한 정도 질문에는 get_fatigue로 답하고, 항상 '피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요'라고 밝히고, 쓴 기준 id(C-congestion·C-fatigue-load·C-fatigue-recovery)와 자료 출처를 함께 밝힌다. 피곤한 정도로 건강 조언을 하지 않는다.",
   "오늘 고를 수 있는 지역은 판교·성수·송파구·잠실 4곳뿐이다. 다른 곳을 물으면 '전국 생성은 다음 단계'라고 안내한다.",
   "시뮬레이션은 현실 예측이 아니라 '가정한 조건의 시나리오'임을 분명히 한다. 현실을 예언하는 표현을 쓰지 않는다.",
   "decisions=muse 실행은 느리고 비용이 든다: 실행 전에 경고하고 고객 확인을 받는다. 한 대화에서 1회까지만.",
@@ -107,7 +110,7 @@ export function summarizeToolCall(name, args, result, ms) {
     case "get_journey":
       return { summary: `${r.day}일차 ${(r.rides || []).length}건 승차`, ok: true };
     case "get_fatigue":
-      return { summary: r.day ? `${r.day}일차 피로도` : "30일 피로도", ok: true };
+      return { summary: r.day ? `${r.day}일차 피곤한 정도` : "30일 피곤한 정도", ok: true };
     case "apply_persona":
       return { summary: `상황: ${r.title || r.persona || ""}`, ok: true };
     case "get_priorities":
@@ -127,7 +130,7 @@ export function summarizeToolCall(name, args, result, ms) {
     case "estimate_net_pay":
       return { summary: r.estimated ? "추정 실수령액" : "실수령액", ok: true };
     case "price_reference":
-      return { summary: `${r.complex || ""} 실거래 기준가`, ok: true };
+      return { summary: `${r.complex || ""} 실제로 거래된 값`, ok: true };
     case "living_cost":
       return { summary: `${r.home || ""} 생활비(${r.tenure || ""})`, ok: true };
     case "recommend_public_rental":
@@ -141,7 +144,13 @@ export function summarizeToolCall(name, args, result, ms) {
     case "mock_deposit_loss":
       return { summary: `모의 보증금(${r.path_ko || ""})`, ok: true };
     case "support_programs":
-      return { summary: `지원 제도 ${(r.programs || []).length}개 대조`, ok: true };
+      return { summary: `도움 제도 ${(r.programs || []).length}개 비교`, ok: true };
+    case "parse_listing":
+      return { summary: `매물 읽기(${(r.missing || []).length}개 물어봄)`, ok: true };
+    case "check_listing":
+      return { summary: `${r.complex || ""} 매물 확인`, ok: true };
+    case "add_listing_c":
+      return { summary: "매물 C로 추가", ok: true };
     case "get_scenario":
     case "list_areas":
       return { summary: "조회", ok: true };
@@ -165,9 +174,26 @@ function toProviderMessages(messages) {
   });
 }
 
+// The customer's current view (tab, home, day, time, followed member,
+// selected tenures) travels with each message so "이거" resolves.
+export function formatAgentContext(ctx) {
+  if (!ctx || typeof ctx !== "object") return "";
+  const bits = [];
+  if (ctx.tab_ko || ctx.tab) bits.push(`${ctx.tab_ko || ctx.tab} 탭`);
+  if (ctx.home) bits.push(`홈 ${ctx.home}`);
+  if (ctx.day && ctx.time) bits.push(`${ctx.day}일차 ${ctx.time}`);
+  if (ctx.followed_label) bits.push(ctx.followed_label);
+  const tenureBits = Object.entries(ctx.tenures || {})
+    .map(([h, t]) => `${h} ${t}`).join(", ");
+  if (tenureBits) bits.push(`고른 것: ${tenureBits}`);
+  if (ctx.criterion_focus) bits.push(`기준 ${ctx.criterion_focus}`);
+  const where = bits.length > 0 ? bits.join(" · ") : "첫 화면";
+  return `현재 화면: ${where}. 고객이 '이거'/'여기'라고 하면 이 화면의 것을 가리킨다.`;
+}
+
 export async function runTurn(opts) {
   const {
-    provider = "meta", messages = [], scenario,
+    provider = "meta", messages = [], scenario, context = null,
     cache, loadArea, loadDecisions = null, judgeHome = null,
     loadRegion = null,
     loadPayroll = null, loadRtms = null, loadHousing = null,
@@ -183,6 +209,10 @@ export async function runTurn(opts) {
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];
+  const contextLine = formatAgentContext(context);
+  if (contextLine) {
+    history.push({ role: "system", content: contextLine });
+  }
   const appended = []; // new messages for the browser to keep
   const toolCalls = []; // compact rows for the UI
   const toolResults = []; // parsed results, in order (guard scope)

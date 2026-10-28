@@ -204,7 +204,7 @@ export const TOOL_DEFS = [
         run: str("Optional run id from run_simulation for the child's school route."),
       }, required: ["area"] } } },
   { type: "function", function: { name: "define_term",
-    description: "Plain-Korean definition of a housing term, shared with the UI glossary (전세, 월세, 매매, 전세가율, LTV, DSR, 확정일자, 전입신고, 전세보증보험, 공공임대, 주거비 부담률).",
+    description: "Plain-Korean definition of a housing term, shared with the UI glossary (전세, 월세, 매매, 전세가율, LTV, DSR, 확정일자, 전입신고, 전세보증보험, 공공임대, 주거비 부담률, 혼잡도, 등기부등본).",
     parameters: { type: "object", additionalProperties: false,
       properties: {
         term: str("The term to define."),
@@ -890,7 +890,7 @@ function get_journey(session, args) {
       fallback: "C-congestion fallback_pct (가정값)" } };
 }
 
-const FATIGUE_MODEL_NOTE = "피로도 지수 · 가정 모델이며 건강·의학적 판단이 아닙니다";
+const FATIGUE_MODEL_NOTE = "피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요";
 
 function get_fatigue(session, args) {
   let hit;

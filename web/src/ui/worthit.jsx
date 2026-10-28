@@ -11,6 +11,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
+import { Gloss } from "./gloss.jsx";
 import { fmtWon, fmtPct, badgeFor } from "../money/format.js";
 import { worthItComparison, applyOwnershipCosts, breakevenLabel,
   WORTHIT_HORIZONS, WORTHIT_DEFAULT_SCENARIOS, LENDER_NOTE } from "../money/worthit.js";
@@ -77,7 +78,7 @@ function NetChart({ result }) {
     }
   }
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="누적 순비용">
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="돌려받을 돈을 뺀 실제 지출">
       <line x1="10" y1={zeroY} x2={W - 10} y2={zeroY} stroke="rgba(61,50,39,0.4)" strokeWidth="1" />
       {buy && <polygon points={bandPts} fill="rgba(178,90,51,0.15)" />}
       {lines.map((l) => (
@@ -104,7 +105,7 @@ function ScheduleRows({ rows }) {
     <VStack gap={1}>
       {shown.map((r) => (
         <Text key={r.year} type="supporting" hasTabularNumbers>
-          {`${r.year}년차: 납입 ${fmtWon(r.paid_won)} (이자 ${fmtWon(r.interest_won)} · 원금 ${fmtWon(r.principal_won)}) · 잔액 ${fmtWon(r.balance_won)}`}
+          {`${r.year}년차: 낸 돈 ${fmtWon(r.paid_won)} (이자 ${fmtWon(r.interest_won)} · 빌린 돈 중 갚은 돈 ${fmtWon(r.principal_won)}) · 아직 남은 빚 ${fmtWon(r.balance_won)}`}
         </Text>
       ))}
       {rows.length > 5 && (
@@ -135,7 +136,7 @@ export function WorthItTab({ state }) {
   const label = labels.includes(home) ? home : labels[0];
   const h = doc.homes[label];
   const ref = h.reference;
-  if (!ref) return <Text type="supporting">이 집의 실거래 기준가가 없습니다.</Text>;
+  if (!ref) return <Text type="supporting">이 집은 실제로 거래된 값이 없어요.</Text>;
   const oppRate = numOr(opp, 0);
   const scenarios = String(scen).split(",").map((s) => Number(s.trim())).filter(Number.isFinite);
   let result = null;
@@ -184,27 +185,27 @@ export function WorthItTab({ state }) {
       </HStack>
       <HStack gap={2} vAlign="center" wrap="wrap">
         <HStack gap={1} vAlign="center">
-          <Text type="supporting">현금 가정 수익률(연 %)</Text>
+          <Text type="supporting">다른 곳 이자율(연 %, 가정)</Text>
           <input className="ui-weight" type="number" min="0" max="20" step="0.5"
-            value={opp} onChange={(e) => setOpp(e.target.value)} aria-label="현금 가정 수익률" />
+            value={opp} onChange={(e) => setOpp(e.target.value)} aria-label="다른 곳 이자율" />
         </HStack>
         <HStack gap={1} vAlign="center">
-          <Text type="supporting">집값 가정(%/년, 쉼표 구분)</Text>
+          <Text type="supporting">집값이 매년 몇 %씩 바뀐다고 볼지 (쉼표로 구분, 가정)</Text>
           <input className="ui-weight" type="text" value={scen}
-            onChange={(e) => setScen(e.target.value)} aria-label="집값 가정 시나리오" />
+            onChange={(e) => setScen(e.target.value)} aria-label="집값이 매년 몇 %씩 바뀐다고 볼지" />
         </HStack>
         <SrcBadge source="scenario" />
       </HStack>
       <Text type="supporting">
-        {`기준가 ${h.area_m2}㎡: `}
+        {`실제로 거래된 값 ${h.area_m2}㎡: `}
         {buy ? `매매 ${fmtWon(buy.price_won)}` : "매매 없음"}
         {result.tenures["전세"] ? ` · 전세 ${fmtWon(result.tenures["전세"].deposit_won)}` : ""}
         {result.tenures["월세"] ? ` · 월세 ${fmtWon(result.tenures["월세"].deposit_won)}/${fmtWon(result.tenures["월세"].monthly_won)}` : ""}
-        {` (실거래 ${ref.period.from}~${ref.period.to}) · 보유 현금 ${fmtWon(doc.cash_won)}`}
+        {` (실거래 ${ref.period.from}~${ref.period.to}) · 가진 돈 ${fmtWon(doc.cash_won)}`}
       </Text>
       <VStack gap={1}>
         <HStack gap={2} vAlign="center" wrap="wrap">
-          <Text>누적 순비용 (지출 − 돌려받는 몫)</Text>
+          <Text>돌려받을 돈을 뺀 실제 지출</Text>
           {Object.entries(TENURE_COLORS).filter(([t]) => result.tenures[t]).map(([t, c]) => (
             <HStack gap={1} vAlign="center" key={t}>
               <span className="ui-swatch" style={{ background: c }} aria-hidden="true" />
@@ -214,7 +215,7 @@ export function WorthItTab({ state }) {
         </HStack>
         <NetChart result={result} />
         <Text type="supporting">
-          {`매매 띠·점선은 집값 가정 시나리오(${result.scenarios_pct.join(" / ")} %/년, 가정 시나리오, 전망 아님)다. 실선·점은 가운데 가정(${result.scenarios_pct[Math.floor(result.scenarios_pct.length / 2)]}%)에서 매매가 각 임차를 밑도는 해다.`}
+          {`매매 띠·점선은 집값 가정 시나리오(${result.scenarios_pct.join(" / ")} %/년, 가정 시나리오이며 전망이 아니에요)이에요. 실선·점은 가운데 가정(${result.scenarios_pct[Math.floor(result.scenarios_pct.length / 2)]}%)에서 매매가 전세·월세보다 적게 드는 해예요.`}
         </Text>
       </VStack>
       <MetadataList>
@@ -227,52 +228,52 @@ export function WorthItTab({ state }) {
               `${g}% ${fmtWon(rows[rows.length - 1].net_won)}`).join(" · ")
             : fmtWon(last.net_won);
           return (
-            <MetadataListItem key={name} label={`${name} · ${horizon}년 합계`}>
+            <MetadataListItem key={name} label={`${name} · ${horizon}년 동안 낸 돈 합계`}>
               <VStack gap={1}>
-                <Text hasTabularNumbers>{`지출 ${fmtWon(last.cash_out_won)} · 이자 ${fmtWon(t.total_interest_won)} · 묶인 돈 ${fmtWon(t.locked_won)} · 기회비용 ${fmtWon(t.opportunity_cum_won)}`}</Text>
-                <Text type="supporting" hasTabularNumbers>{`순비용 ${netText}`}</Text>
+                <Text hasTabularNumbers>{`쓴 돈 ${fmtWon(last.cash_out_won)} · 이자 ${fmtWon(t.total_interest_won)} · 집에 묶여 있는 돈 ${fmtWon(t.locked_won)} · 다른 곳에 두었으면 벌었을 돈 ${fmtWon(t.opportunity_cum_won)}`}</Text>
+                <Text type="supporting" hasTabularNumbers>{`돌려받을 돈을 뺀 실제 지출 ${netText}`}</Text>
               </VStack>
             </MetadataListItem>
           );
         })}
-        <MetadataListItem label="손익분기 (매매가 임차를 밑도는 해)">
+        <MetadataListItem label="매매가 전세·월세보다 적게 드는 해">
           <VStack gap={1}>
             {Object.entries(result.breakeven).map(([name, per]) => (
               <Text key={name} type="supporting" hasTabularNumbers>
-                {`${name} 대비: ${Object.entries(per).map(([g, y]) => `${g}% ${breakevenLabel(y)}`).join(" · ")}`}
+                {`${name}와 비교하면: ${Object.entries(per).map(([g, y]) => `${g}% ${breakevenLabel(y)}`).join(" · ")}`}
               </Text>
             ))}
             {Object.keys(result.breakeven).length === 0 && (
-              <Text type="supporting">비교할 임차 형태가 없습니다.</Text>
+              <Text type="supporting">비교할 전세·월세가 없어요.</Text>
             )}
           </VStack>
         </MetadataListItem>
         {result.dsr && (
-          <MetadataListItem label="DSR (보여주기만)">
+          <MetadataListItem label="대출 갚는 부담 (보여주기만)">
             <VStack gap={1}>
-              <Text hasTabularNumbers>{`${result.dsr.ratio_pct}% (연 상환 ${fmtWon(result.dsr.annual_service_won)} ÷ 연 실수령 ${fmtWon(result.dsr.annual_income_won)})`}</Text>
+              <Text hasTabularNumbers>{`${result.dsr.ratio_pct}% (1년에 갚는 돈 ${fmtWon(result.dsr.annual_service_won)} ÷ 1년 실수령 ${fmtWon(result.dsr.annual_income_won)}) — `}<Gloss term="DSR">DSR</Gloss></Text>
               <Text type="supporting">{LENDER_NOTE}</Text>
             </VStack>
           </MetadataListItem>
         )}
         {result.rate_stress && (
-          <MetadataListItem label="금리 스트레스 (월 납입)">
+          <MetadataListItem label="금리가 오르면 매달 내는 돈">
             <Text type="supporting" hasTabularNumbers>
-              {`기본 ${fmtWon(result.rate_stress.plus_0pp.monthly_won)} · +1%p ${fmtWon(result.rate_stress.plus_1pp.monthly_won)} · +2%p ${fmtWon(result.rate_stress.plus_2pp.monthly_won)}`}
+              {`지금 ${fmtWon(result.rate_stress.plus_0pp.monthly_won)} · +1%p ${fmtWon(result.rate_stress.plus_1pp.monthly_won)} · +2%p ${fmtWon(result.rate_stress.plus_2pp.monthly_won)}`}
             </Text>
           </MetadataListItem>
         )}
         {buy && buy.loan_won > 0 && (
-          <MetadataListItem label={`대출 상환표 (${buy.schedule.rate_pct}% · ${buy.schedule.years}년 · 원리금균등)`}>
+          <MetadataListItem label={`대출 갚는 표 (${buy.schedule.rate_pct}% · ${buy.schedule.years}년 · 매달 같은 금액)`}>
             <VStack gap={1}>
               <Text type="supporting" hasTabularNumbers>
-                {`대출 ${fmtWon(buy.loan_won)} · 월 ${fmtWon(buy.schedule.monthly_won)} · 총이자 ${fmtWon(buy.schedule.total_interest_won)}`}
+                {`빌리는 돈 ${fmtWon(buy.loan_won)} · 매달 ${fmtWon(buy.schedule.monthly_won)} · 이자로만 내는 돈 합계 ${fmtWon(buy.schedule.total_interest_won)}`}
               </Text>
               <ScheduleRows rows={buy.schedule.yearly} />
             </VStack>
           </MetadataListItem>
         )}
-        <MetadataListItem label="30일 생활 시뮬의 월 남는 돈">
+        <MetadataListItem label="30일 살아 보기에서 집값과 생활비를 내고 남는 돈">
           <Text type="supporting" hasTabularNumbers>
             {(["매매", "전세", "월세", "공공임대"]).map((t) => {
               const sel = h.by_tenure && h.by_tenure[t];
@@ -284,16 +285,16 @@ export function WorthItTab({ state }) {
       <VStack gap={1}>
         <Text type="supporting">
           {result.ownership_excluded.length > 0
-            ? `모형에 없음: ${result.ownership_excluded.map((e) => `${e.label}(미포함)`).join(" · ")} — 규칙표가 오면 더한다.`
-            : "보유 비용 규칙표의 항목을 모두 더했다."}
+            ? `아직 계산에 넣지 않은 것: ${result.ownership_excluded.map((e) => `${e.label}(빠짐)`).join(" · ")} — 규칙표가 오면 더해요.`
+            : "집을 가지고 있을 때 드는 돈 규칙표의 항목을 모두 더했어요."}
         </Text>
         {result.ownership_included.length > 0 && (
           <Text type="supporting">
-            {`더한 항목: ${result.ownership_included.map((e) => `${e.label} ${fmtWon(e.value_won)}`).join(" · ")}`}
+            {`계산에 넣은 항목: ${result.ownership_included.map((e) => `${e.label} ${fmtWon(e.value_won)}`).join(" · ")}`}
           </Text>
         )}
-        <Text type="supporting">보증금은 기간 끝에 전액 돌려받는 것으로 둔다 (가정). 기회비용은 손익분기에서 뺀다.</Text>
-        <Text type="supporting">이 탭은 숫자 비교만 보여준다. 살지 말지는 고객이 직접 결정한다.</Text>
+        <Text type="supporting">보증금은 기간이 끝나면 전부 돌려받는 것으로 봐요 (가정). 다른 곳에 두었으면 벌었을 돈은 "매매가 전세·월세보다 적게 드는 해"에서 빼고 계산해요.</Text>
+        <Text type="supporting">이 탭은 숫자 비교만 보여줘요. 살지 말지는 고객님이 직접 정하세요.</Text>
       </VStack>
     </VStack>
   );

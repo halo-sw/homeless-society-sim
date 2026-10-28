@@ -10,10 +10,10 @@
 export const TENURES = ["매매", "전세", "월세", "공공임대"];
 
 export const TENURE_DISCLAIMER =
-  "대출 가능 여부(LTV·DSR)와 입주 자격은 판단하지 않습니다.";
+  "돈을 빌릴 수 있는지와 입주 자격은 판단하지 않아요.";
 
 export const TRADE_TAX_NOTE =
-  "취득세·중개수수료 등 세금·수수료는 포함하지 않습니다.";
+  "집을 살 때 내는 세금·중개수수료는 포함하지 않아요.";
 
 // Standard amortised monthly payment (원리금균등상환).
 export function amortisedMonthly(principalWon, annualRatePct, years) {
@@ -55,8 +55,8 @@ export function tenureCost(args = {}) {
       deposit_won: deposit,
       monthly_rent_won: monthly,
       note: tenure === "월세"
-        ? "보증금은 보유 현금에서 충당하고 월세만 매달 지출합니다."
-        : "공공임대 API의 보증금·월임대료 그대로 계산합니다.",
+        ? "보증금은 가진 돈에서 먼저 내고, 월세만 매달 내는 것으로 계산해요."
+        : "공공임대 공식 자료의 보증금·월 임대료 그대로 계산해요.",
     });
   }
   if (tenure === "전세") {
@@ -66,7 +66,7 @@ export function tenureCost(args = {}) {
     return out(monthly, jeonse, loan, {
       kind: "jeonse",
       jeonse_won: jeonse,
-      note: "전세금 중 현금이 모자란 부분만 대출이자(가정값 금리, 이자만)로 계산합니다.",
+      note: "보증금에서 가진 돈을 뺀 나머지는 빌리는 것으로 두고, 그 이자만 매달 내는 것으로 계산해요 (금리는 정해 둔 값).",
     });
   }
   // 매매
@@ -76,6 +76,6 @@ export function tenureCost(args = {}) {
   return out(monthly, price, loan, {
     kind: "trade",
     price_won: price,
-    note: "대출금 원리금균등상환 월 납입액입니다.",
+    note: "빌린 돈을 매달 같은 금액씩 갚을 때 한 달에 내는 돈이에요.",
   }, { notes: [TRADE_TAX_NOTE] });
 }

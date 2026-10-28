@@ -24,6 +24,9 @@ import { SafetyEduTab } from "./safety-edu.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { JeonseTab } from "./jeonse.jsx";
 import { SupportTab } from "./support.jsx";
+import { ListingsTab } from "./listings.jsx";
+import { ShareDialog } from "./share.jsx";
+import { DemoTour } from "./DemoTour.jsx";
 import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand } from "../engine/journey.js";
@@ -80,7 +83,7 @@ function TopBar({ state }) {
                 <Button size="sm" variant="ghost" label="이 시뮬레이션은?"
                   onClick={() => act("setIntroOpen", true)} />
               )}
-              <ToggleButton size="sm" label="주거만 강조" isPressed={state.resOnly}
+              <ToggleButton size="sm" label="집만 밝게 보기" isPressed={state.resOnly}
                 onPressedChange={(next) => act("setResOnly", next)} />
               <ToggleButton size="sm" label="상담" isPressed={state.consultOpen}
                 onPressedChange={(next) => act("setConsultOpen", next)} />
@@ -122,13 +125,13 @@ function SimBar({ state }) {
             onChange={(v) => act("setFollow", Number(v))}
             items={state.followOptions} />
           {state.simTicks.length > 0 && (
-            <div className="ui-ticks" role="group" aria-label="판단·출발 순간 (누르면 이동)">
+            <div className="ui-ticks" role="group" aria-label="고른 순간·출발 순간 (누르면 이동)">
               {state.simTicks.map((t, i) => (
                 <button key={`${t.kind}-${t.minute}-${i}`}
                   className={`ui-tick ui-tick-${t.kind}`}
                   style={{ left: `${(t.minute / 1439 * 100).toFixed(2)}%` }}
-                  title={`${hhmm(t.minute)} ${t.kind === "decision" ? "판단" : "출발"}`}
-                  aria-label={`${hhmm(t.minute)} ${t.kind === "decision" ? "판단" : "출발"}로 이동`}
+                  title={`${hhmm(t.minute)} ${t.kind === "decision" ? "고른 순간" : "출발"}`}
+                  aria-label={`${hhmm(t.minute)} ${t.kind === "decision" ? "고른 순간" : "출발"}로 이동`}
                   onClick={() => act("setMinute", t.minute)} />
               ))}
             </div>
@@ -193,7 +196,7 @@ function JudgeLogCard({ state }) {
       <Card>
         <VStack gap={2}>
           <HStack gap={2} vAlign="center">
-            <Heading level={4}>판단 기록</Heading>
+            <Heading level={4}>선택 기록</Heading>
             <span className="ui-panel-spacer" />
             {state.judge && state.judge.canAsk && (
               <Button size="sm" variant="ghost" label="Muse에게 묻기"
@@ -229,7 +232,7 @@ function JudgeLogCard({ state }) {
   );
 }
 
-const WHY_KIND_KO = { routine: "일상 규칙", decision: "판단", input: "고객 입력", none: "기록 없음" };
+const WHY_KIND_KO = { routine: "평소 습관", decision: "고른 것", input: "고객님이 정한 것", none: "기록 없음" };
 
 const BAND_CSS = { calm: "#4a9b6b", normal: "#d9a83c", crowded: "#d96c3c", packed: "#c0392b" };
 
@@ -244,7 +247,7 @@ function FatigueSpark({ series, nowMin }) {
   let d = `M ${X(pts[0].m)} ${Y(pts[0].v)}`;
   for (const p of pts.slice(1)) d += ` L ${X(p.m)} ${Y(p.v)}`;
   return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="하루 피로도">
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="하루 피곤한 정도">
       {[0, 50, 100].map((v) => (
         <line key={v} x1={0} y1={Y(v)} x2={W} y2={Y(v)} stroke="#e5e0d5" strokeWidth={1} />
       ))}
@@ -269,10 +272,10 @@ function FatigueBar({ fatigue, nowMin }) {
   return (
     <VStack gap={1}>
       <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text>{`피로도 ${fmtIndex(f.value)}${deltaText}`}</Text>
+        <Text>{`지금 피곤한 정도 ${fmtIndex(f.value)}${deltaText}`}</Text>
         {f.source && <Badge variant="neutral" label={f.source === "서울교통공사" ? "실측" : "가정값"} />}
       </HStack>
-      <div className="ui-progress" role="progressbar" aria-label="피로도 지수"
+      <div className="ui-progress" role="progressbar" aria-label="피곤한 정도 (0–100)"
         aria-valuenow={Math.round(f.value)} aria-valuemin={0} aria-valuemax={100}>
         <div className="ui-progress-fill" style={{ width }} />
       </div>
@@ -319,7 +322,7 @@ function JourneyCard({ state }) {
                 )}
               </HStack>
               {journey.totalMin > 0 && (
-                <div className="ui-progress" role="progressbar" aria-label="승차 진행률"
+                <div className="ui-progress" role="progressbar" aria-label="이동 진행률"
                   aria-valuenow={journey.elapsedMin} aria-valuemin={0} aria-valuemax={journey.totalMin}>
                   <div className="ui-progress-fill"
                     style={{ width: `${Math.min(100, (journey.elapsedMin / journey.totalMin) * 100)}%` }} />
@@ -333,7 +336,7 @@ function JourneyCard({ state }) {
                       <span style={{ width: 8, height: 8, borderRadius: 4,
                         background: BAND_CSS[band], display: "inline-block" }} />
                       <Text type="supporting" hasTabularNumbers>
-                        {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 혼잡도 ${l.valuePct}%`}
+                        {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 붐비는 정도 ${l.valuePct}%`}
                       </Text>
                       <Badge variant="neutral" label={l.source === "서울교통공사" ? "실측" : "가정값"} />
                     </HStack>
@@ -351,7 +354,7 @@ function JourneyCard({ state }) {
               </HStack>
               <Text type="supporting">{journey.corridorLabel}</Text>
               {journey.detailNote && <Text type="supporting">{journey.detailNote}</Text>}
-              <Text type="supporting">{`혼잡도: ${journey.congestionSource}`}</Text>
+              <Text type="supporting">{`붐비는 정도 자료: ${journey.congestionSource}`}</Text>
             </>
           )}
         </VStack>
@@ -368,10 +371,10 @@ function NowCard({ state }) {
       <div className="ui-nowcard">
         <Card>
           <VStack gap={1}>
-            <Heading level={4}>지금 가구 모습 (자유 시점)</Heading>
+            <Heading level={4}>지금 식구들 모습</Heading>
             {n.rows.map((r) => (
               <Text key={r.agentKey} hasTabularNumbers>
-                {`${r.label} · ${r.line}${r.fatigue === null || r.fatigue === undefined ? "" : ` · 피로 ${fmtIndex(r.fatigue)}`}`}
+                {`${r.label} · ${r.line}${r.fatigue === null || r.fatigue === undefined ? "" : ` · 피곤한 정도 ${fmtIndex(r.fatigue)}`}`}
               </Text>
             ))}
           </VStack>
@@ -395,7 +398,7 @@ function NowCard({ state }) {
               <div className="ui-progress-fill" style={{ width: `${Math.round(n.progress * 100)}%` }} />
             </div>
           )}
-          <Text type="supporting">{`왜 · ${n.why}`}</Text>
+          <Text type="supporting">{`이렇게 한 까닭 · ${n.why}`}</Text>
           {d && d.chosen_by === "model" && (
             <HStack gap={1} vAlign="center" wrap="wrap">
               <Badge variant={d.provider === "baseten" ? "purple" : "blue"}
@@ -405,14 +408,14 @@ function NowCard({ state }) {
           )}
           {n.criterionIds.length > 0 && (
             <HStack gap={1} vAlign="center" wrap="wrap">
-              <Text type="supporting">기준</Text>
+              <Text type="supporting">적용한 기준</Text>
               {n.criterionIds.map((id) => (
                 <Button key={id} size="sm" variant="ghost" label={id}
                   onClick={() => act("openCriterion", id)} />
               ))}
             </HStack>
           )}
-          <Text type="supporting">{`다음 · ${n.next}`}</Text>
+          <Text type="supporting">{`다음 일정 · ${n.next}`}</Text>
           {n.fatigue && <FatigueBar fatigue={n.fatigue} nowMin={state.clock && state.clock.minute} />}
           {state.ticker.length > 0 && (
             <VStack gap={0}>
@@ -439,17 +442,17 @@ function IntroCard({ state }) {
             <span className="ui-panel-spacer" />
             <Button size="sm" variant="ghost" label="닫기" onClick={() => act("setIntroOpen", false)} />
           </HStack>
-          <Text>부동산 결정, 혼자 알아보기 어렵죠. 살아 보고(시뮬레이션), 계산해 보고(돈), 위험 신호를 확인하고(전세), 받을 수 있는 지원을 보고(공공임대·지원 제도) 직접 결정하세요.</Text>
-          <Text type="supporting">{`같은 가구가 ${m.homes.join("와 ")}에 살면 ${m.days}일 동안 시간·돈·생활이 어떻게 다른가 — 그 질문에 답하는 시나리오입니다.`}</Text>
+          <Text>부동산 결정, 혼자 알아보기 어렵죠. 살아 보고, 돈 계산해 보고, 전세 신호를 확인하고, 도움 제도를 보고 직접 결정하세요.</Text>
+          <Text type="supporting">{`같은 식구가 ${m.homes.join("와 ")}에 살면 ${m.days}일 동안 시간·돈·생활이 어떻게 다른가 — 그 질문에 답하는 시나리오예요.`}</Text>
           <MetadataList>
-            <MetadataListItem label="누가">
-              <Text type="supporting">{`${m.members.join(" · ")} + 시뮬레이션 이웃 ${m.neighbours}명`}</Text>
+            <MetadataListItem label="누가 나와요">
+              <Text type="supporting">{`${m.members.join(" · ")} + 가상으로 움직이는 이웃 ${m.neighbours}명`}</Text>
             </MetadataListItem>
-            <MetadataListItem label="언제">
-              <Text type="supporting">{`${m.startDate}부터 ${m.days}일 (KST, 1분 단위)`}</Text>
+            <MetadataListItem label="언제부터 며칠이에요">
+              <Text type="supporting">{`${m.startDate}부터 ${m.days}일 (한국 시간, 1분 단위)`}</Text>
             </MetadataListItem>
-            <MetadataListItem label="무엇을 재나">
-              <Text type="supporting">도보 시간·거리(그래프 실측), 장보기·산책 횟수, 저녁 재택, 생활비</Text>
+            <MetadataListItem label="무엇을 재나요">
+              <Text type="supporting">걸은 시간·거리(걸어서 직접 잰 시간), 장보기·산책 횟수, 저녁에 집에 머문 시간, 생활비</Text>
             </MetadataListItem>
           </MetadataList>
           {m.assumptions.length > 0 && (
@@ -463,7 +466,7 @@ function IntroCard({ state }) {
               ))}
             </VStack>
           )}
-          <Text type="supporting">판단하지 않는 것: 집값 전망, 대출 가능 여부, 입주 자격, 매매 판단.</Text>
+          <Text type="supporting">정하지 않는 것: 집값이 오를지, 돈을 빌릴 수 있는지, 입주 자격, 살지 말지.</Text>
         </VStack>
       </Card>
     </div>
@@ -497,9 +500,9 @@ function CompareTabBody({ state }) {
         ))}
       </MetadataList>
       {cmp.judgment && (
-        <Text type="supporting">{`판단 주체 — A: ${judgmentLine(cmp.judgment.a)} / B: ${judgmentLine(cmp.judgment.b)}`}</Text>
+        <Text type="supporting">{`고른 주체 — A: ${judgmentLine(cmp.judgment.a)} / B: ${judgmentLine(cmp.judgment.b)}`}</Text>
       )}
-      <Text type="supporting">그래프 = 도보 그래프 실측 · 가정값 = 시나리오 가정값</Text>
+      <Text type="supporting">그래프 = 걸어서 직접 잰 시간 · 가정값 = 미리 정해 둔 값</Text>
     </>
   );
 }
@@ -511,9 +514,10 @@ const COMPARE_TABS = [
   { value: "worthit", label: "살 만한가?" },
   { value: "quality", label: "삶의 질" },
   { value: "safety", label: "안전·교육" },
-  { value: "jeonse", label: "전세 안전 점검" },
+  { value: "jeonse", label: "전세 점검" },
   { value: "support", label: "지원 제도" },
-  { value: "criteria", label: "기준" },
+  { value: "listings", label: "매물" },
+  { value: "criteria", label: "계산 기준" },
 ];
 
 function CompareCard({ state }) {
@@ -525,6 +529,8 @@ function CompareCard({ state }) {
           <HStack gap={2} vAlign="center">
             <Heading level={4}>30일 생활 비교</Heading>
             <span className="ui-panel-spacer" />
+            <Button size="sm" variant="secondary" label="결과 공유"
+              onClick={() => store.set({ shareOpen: true })} />
             <Button size="sm" variant="ghost" label="닫기" onClick={() => act("toggleCompare")} />
           </HStack>
           <SegControl label="비교 탭" value={state.compareTab}
@@ -537,6 +543,7 @@ function CompareCard({ state }) {
           {state.compareTab === "safety" && <SafetyEduTab state={state} />}
           {state.compareTab === "jeonse" && <JeonseTab state={state} />}
           {state.compareTab === "support" && <SupportTab state={state} />}
+          {state.compareTab === "listings" && <ListingsTab state={state} />}
           {state.compareTab === "criteria" && <CriteriaTab state={state} />}
         </VStack>
       </Card>
@@ -547,7 +554,7 @@ function CompareCard({ state }) {
 function judgmentLine(side) {
   const s = side || {};
   const other = (s.rule || 0) + (s.replay || 0) + (s.hook || 0);
-  return `모델 ${s.model || 0} · 폴백 ${s.rule_fallback || 0} · 규칙 ${other}`;
+  return `Muse가 고름 ${s.model || 0} · 규칙이 대신 고름 ${s.rule_fallback || 0} · 평소대로 ${other}`;
 }
 
 function LegendCard({ state }) {
@@ -637,6 +644,8 @@ export function App() {
         </div>
       )}
       <ConsultPanel />
+      {isSim && <ShareDialog />}
+      {isSim && <DemoTour />}
     </>
   );
 }

@@ -22,7 +22,7 @@ function SafetyHome({ label, safety }) {
     return (
       <VStack gap={1}>
         <Heading level={4}>{`홈 ${label} · 치안`}</Heading>
-        <Text type="supporting">{(safety && safety.missing) || "안전 통계가 없습니다."}</Text>
+        <Text type="supporting">{(safety && safety.missing) || "안전 통계가 없어요."}</Text>
       </VStack>
     );
   }
@@ -34,7 +34,7 @@ function SafetyHome({ label, safety }) {
         <Text type="supporting">{`${safety.source} · ${safety.period} · 단위 ${safety.unit} · ${safety.geo_level_ko}`}</Text>
       </HStack>
       <MetadataList>
-        <MetadataListItem label="전체 발생 건수">
+        <MetadataListItem label="1년 동안 기록된 전체 건수">
           <Text hasTabularNumbers>{fmtCount(safety.total, "건")}</Text>
         </MetadataListItem>
         {(safety.groups || []).map((g) => (
@@ -74,7 +74,7 @@ function EducationHome({ label, home }) {
     return (
       <VStack gap={1}>
         <Heading level={4}>{`홈 ${label} · 교육`}</Heading>
-        <Text type="supporting">교육 접근 데이터가 없습니다.</Text>
+        <Text type="supporting">학교·학원까지 얼마나 걸리는지 자료가 없어요.</Text>
       </VStack>
     );
   }
@@ -84,13 +84,13 @@ function EducationHome({ label, home }) {
       <Heading level={4}>{`홈 ${label} · 교육 (${home.complex_name})`}</Heading>
       <HStack gap={1} vAlign="center" wrap="wrap">
         <Badge variant="teal" label="그래프" />
-        <Text type="supporting">{`도보 그래프 실측 · 성인 속도 ${edu.speed_mps} m/s · OSM 기준`}</Text>
+        <Text type="supporting">{`걸어서 직접 잰 시간 · 어른 걸음 ${edu.speed_mps} m/s · OSM 기준`}</Text>
       </HStack>
       <MetadataList>
         {bands.map((b) => {
           const counts = (edu.counts || {})[`within_${b}min`] || {};
           return (
-            <MetadataListItem key={b} label={`${b}분 안`}>
+            <MetadataListItem key={b} label={`걸어서 ${b}분 안에`}>
               <Text type="supporting" hasTabularNumbers>
                 {EDU_COUNT_KO.map(([k, ko]) => `${ko} ${counts[k] ?? 0}`).join(" · ")}
               </Text>
@@ -103,8 +103,8 @@ function EducationHome({ label, home }) {
             <MetadataListItem key={bucket} label={`가장 가까운 ${ko}`}>
               <Text type="supporting" hasTabularNumbers>
                 {near
-                  ? `${near.name}${near.level ? ` (${EDU_LEVEL_KO[near.level] || near.level})` : ""} · ${fmtMinutes(near.minutes)} (${fmtDistance(near.distance_m)})`
-                  : "도달 가능한 곳 없음"}
+                  ? `${near.name}${near.level ? ` (${EDU_LEVEL_KO[near.level] || near.level})` : ""} · 걸어서 ${fmtMinutes(near.minutes)} (${fmtDistance(near.distance_m)})`
+                  : "걸어서 갈 수 있는 곳이 없어요"}
               </Text>
             </MetadataListItem>
           );
@@ -117,7 +117,7 @@ function EducationHome({ label, home }) {
             <Text key={i} type="supporting" hasTabularNumbers>
               {r.minutes === undefined || r.minutes === null
                 ? `${r.label || "자녀"}: ${r.note}`
-                : `${r.label || "자녀"}: ${r.school} · ${fmtMinutes(r.minutes)} (${fmtDistance(r.distance_m)}) · primary 구간 ${r.primary_ways}곳 · ${r.speed_note}`}
+                : `${r.label || "자녀"}: ${r.school} · 걸어서 ${fmtMinutes(r.minutes)} (${fmtDistance(r.distance_m)}) · 큰길 구간 ${r.primary_ways}곳 · ${r.speed_note}`}
             </Text>
           ))}
         </VStack>

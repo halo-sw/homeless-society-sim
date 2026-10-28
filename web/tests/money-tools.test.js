@@ -80,7 +80,7 @@ describe("money tools", () => {
     assert.ok(lc.timeline.counts.commute_legs > 0);
     assert.equal(lc.timeline.daily_balance_won.length, 7);
     assert.match(lc.formatted.burden, /%/);
-    assert.ok(lc.housing.disclaimers.some((d) => d.includes("LTV")));
+    assert.ok(lc.housing.disclaimers.some((d) => d.includes("빌릴 수 있는지")));
   });
 
   it("recommend/add_home_c work on a fixture snapshot", async () => {
@@ -173,8 +173,8 @@ describe("consult agent (money)", () => {
     });
     assert.equal(out.ok, true);
     assert.equal(out.fallback, true);
-    assert.match(out.reply, /전망을 하지 않습니다/);
-    assert.match(out.reply, /최근 12개월 실거래/);
+    assert.match(out.reply, /미리 맞히지 않아요/);
+    assert.match(out.reply, /최근 12개월에 실제로 거래된 값/);
   });
 
   it("system prompt demands 존댓말 and the money flow", async () => {

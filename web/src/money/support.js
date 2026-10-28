@@ -4,9 +4,11 @@
 // its conditions; compareProgram lays the customer's input next to the
 // published condition, row by row: 충족 / 미충족 / 확인 필요. A null or
 // unconfirmed published value, or a missing customer input, always reads
-// 확인 필요 ("공식 확인 필요" on screen). The comparison NEVER emits a
-// final eligibility verdict — no "대상입니다" anywhere in this module's
-// output (pinned by tests).
+// 확인 필요 ("공식 확인 필요" on screen). Verified values (from the
+// official 주택도시기금 pages, 2026-10-29, with per-condition notes and
+// per-programme source_url + as_of) compare for real; the comparison
+// still NEVER emits a final eligibility verdict — no "대상입니다"
+// anywhere in this module's output (pinned by tests).
 
 export const SUPPORT_COMPARE_RESULTS = ["충족", "미충족", "확인 필요"];
 export const SUPPORT_NOTE = "공고 원문에서 조건을 확인해 주세요.";
@@ -108,6 +110,9 @@ export function compareProgram(program, profile = {}) {
       customer,
       published,
       result: compareOne(c, input),
+      // The condition's own exception note (verified file only; shown
+      // under the row in plain words on screen).
+      note: typeof c.note === "string" && c.note ? c.note : null,
     };
   });
   const rate = program.rate_range_pct || {};

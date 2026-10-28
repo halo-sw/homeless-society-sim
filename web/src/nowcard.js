@@ -15,7 +15,7 @@ import { fmtWon } from "./money/format.js";
 
 export const OLD_RUN_WHY = "이유 기록 없음 (이전 실행)";
 export const TICKER_LIMIT = 5;
-export const FATIGUE_MODEL_NOTE = "피로도 지수 · 가정 모델이며 건강·의학적 판단이 아닙니다";
+export const FATIGUE_MODEL_NOTE = "피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요";
 
 const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -117,7 +117,7 @@ export function nowCardFor({ run, indexed, agentKey, day, minute }) {
     const dur = Math.max(1, trip.arrive_min - trip.depart_min);
     const now = remain <= 0
       ? `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (곧 도착)`
-      : `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (도보 ${remain}분 남음)`;
+      : `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (걸어서 ${remain}분 남음)`;
     const progress = Math.min(1, Math.max(0, (minute - trip.depart_min) / dur));
     if (!trip.cause) {
       return { ...base, state: "trip", now, why: OLD_RUN_WHY, whyKind: "none",
@@ -176,7 +176,7 @@ export function fatigueFor({ run, agentKey, day, minute }) {
     && m >= t.depart_min && m < t.arrive_min);
   if (trip) {
     out.delta = trip.fatigue_delta ?? null;
-    out.note = `도보 ${trip.minutes}분`;
+    out.note = `걸어서 ${trip.minutes}분 이동`;
     out.criterionIds = ["C-fatigue-load"];
     return out;
   }
@@ -202,7 +202,7 @@ export function fatigueFor({ run, agentKey, day, minute }) {
         out.note = `${detail.rides[ride.dir].transfers[at.transferIndex].station} 환승 중`;
       } else {
         out.delta = leg.fatigueDelta;
-        out.note = `${leg.lineName} ${leg.from}→${leg.to} 혼잡도 ${c.valuePct}%, ${posture}`;
+        out.note = `${leg.lineName} ${leg.from}→${leg.to} 붐비는 정도 ${c.valuePct}%, ${posture}`;
       }
       out.source = c.source;
       out.criterionIds = ["C-congestion", "C-fatigue-load"];
@@ -211,7 +211,7 @@ export function fatigueFor({ run, agentKey, day, minute }) {
     if (ride && (ride.dir === "out" || ride.dir === "back") && detail.ride_fallback) {
       const fb = detail.ride_fallback;
       out.delta = ride.dir === "out" ? fb.out_delta : fb.back_delta;
-      out.note = `혼잡도 자료 없음 · 가정값 ${fb.congestion_pct}%`;
+      out.note = `붐비는 정도 자료가 없어요 · 정해 둔 값 ${fb.congestion_pct}%`;
       out.source = "가정값";
       out.criterionIds = ["C-congestion", "C-fatigue-load"];
       return out;
@@ -281,7 +281,7 @@ export function tickerFor({ run, indexed, agentKey, day, minute, moneyEvents = [
   for (const d of run.decisions || []) {
     if (d.agent !== agentKey || d.day !== day || d.minute > m) continue;
     events.push({ day, minute: d.minute, kind: "decision",
-      text: `${hhmm(d.minute)} 판단 · ${DECISION_KIND_KO[d.kind] || d.kind} → ${chosenLabel(d)}` });
+      text: `${hhmm(d.minute)} 고른 것 · ${DECISION_KIND_KO[d.kind] || d.kind} → ${chosenLabel(d)}` });
   }
   for (const e of dayMoney) {
     const what = MONEY_KO[e.category] || e.category;
@@ -307,11 +307,11 @@ export function simMetaFor({ household, scenario, run, homes }) {
   const assumptions = [];
   if (scenario) {
     if (scenario.workday_minutes) {
-      assumptions.push({ label: `근무 체류 ${scenario.workday_minutes}분`, source: "가정값" });
+      assumptions.push({ label: `회사에 머무는 시간 ${scenario.workday_minutes}분`, source: "가정값" });
     }
     for (const m of scenario.household.members || []) {
       if (m.work && m.work.type === "station_ride" && Number.isFinite(m.work.ride_minutes)) {
-        assumptions.push({ label: `${m.label} 승차 ${m.work.ride_minutes}분`,
+        assumptions.push({ label: `${m.label} 차·지하철 탄 시간 ${m.work.ride_minutes}분`,
           source: m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값" });
       }
     }

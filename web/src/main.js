@@ -956,6 +956,19 @@ async function bootSim() {
   destMark.renderOrder = 998;
   destMark.visible = false;
   scene.add(destMark);
+  // Public-listing pin (매물 tab "지도에 핀"): one reusable tag + cone.
+  const listingPin = document.createElement("div");
+  listingPin.className = "hopin";
+  listingPin.style.display = "none";
+  tagsLayer.appendChild(listingPin);
+  const listingMark = new THREE.Mesh(
+    new THREE.ConeGeometry(2.2, 5, 12),
+    new THREE.MeshBasicMaterial({ color: 0xb78bff, depthTest: false,
+      transparent: true, opacity: 0.9 }));
+  listingMark.renderOrder = 997;
+  listingMark.visible = false;
+  scene.add(listingMark);
+  let listingPinTarget = null; // {x, z, label} in world coords
   const rideStub = new THREE.Line(new THREE.BufferGeometry(),
     new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 4, gapSize: 3,
       transparent: true, opacity: 0.9, depthTest: false }));
@@ -1258,6 +1271,14 @@ async function bootSim() {
       destMark.visible = false;
       destPin.style.display = "none";
       lastRouteKey = "";
+    }
+    if (listingPinTarget) {
+      paintTagPin(listingPin, listingPinTarget.x, 14, listingPinTarget.z, listingPinTarget.label);
+      listingMark.position.set(listingPinTarget.x, 3, listingPinTarget.z);
+      listingMark.visible = true;
+    } else {
+      listingPin.style.display = "none";
+      listingMark.visible = false;
     }
   }
 
@@ -2077,13 +2098,22 @@ async function bootSim() {
       }
     },
     setCompareTab: async (tab) => {
-      if (!["compare", "priorities", "money", "quality", "safety", "criteria"].includes(tab)) return;
+      if (!["compare", "priorities", "money", "worthit", "quality", "safety",
+        "jeonse", "support", "listings", "criteria"].includes(tab)) return;
       store.set({ compareTab: tab });
       if (tab === "criteria") await paintCriteria();
       else if (tab !== "compare") await paintMoney();
     },
     setMoneyTenure: (label, tenure) => {
       store.set({ moneyTenure: { ...store.getState().moneyTenure, [label]: tenure } });
+    },
+    showListingPin: async ({ lon, lat, label } = {}) => {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      const [x, y] = lonLatToXY(lon, lat, origin);
+      listingPinTarget = { x, z: -y, label: String(label || "공공 매물") };
+    },
+    clearListingPin: async () => {
+      listingPinTarget = null;
     },
     askLive: () => askLive(),
     applyView: (view) => {
@@ -2124,11 +2154,16 @@ async function bootSim() {
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
-  // ?tab=money|quality|priorities|safety|criteria|worthit|jeonse|support opens the compare card on that tab.
+  // Tour deep links: ?agent=1 opens the floating agent, ?share=1 the
+  // result card (?tour=demo drives them per step).
+  if (PARAMS.get("agent") === "1") store.set({ consultOpen: true });
+  if (PARAMS.get("share") === "1") store.set({ shareOpen: true });
+  // ?tab=money|quality|priorities|safety|criteria|worthit|jeonse|support|listings opens the compare card on that tab.
   const wantTab = PARAMS.get("tab");
   if (wantTab === "money" || wantTab === "quality" || wantTab === "compare"
       || wantTab === "criteria" || wantTab === "priorities" || wantTab === "safety"
-      || wantTab === "worthit" || wantTab === "jeonse" || wantTab === "support") {
+      || wantTab === "worthit" || wantTab === "jeonse" || wantTab === "support"
+      || wantTab === "listings") {
     store.set({ compareOpen: true, compareTab: wantTab });
     paintCompare();
     paintMoney();
