@@ -19,6 +19,7 @@ import { mountUI } from "./ui/main.jsx";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
 import { litFractionFor } from "./render/facades.js";
+import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
 import { placeStreetlife } from "./render/streetlife.js";
@@ -259,45 +260,6 @@ function buildWorld(area) {
     dimMeshes, litMeshes, fadeMeshes,
     trees, trunkMesh, canopyMeshes, streetMeshes, dummy,
   };
-}
-
-// Occluder fade (tour mode): per-vertex alpha on the merged building
-// meshes so residual occluders — and the tall host tower of an embedded
-// POI stop — dim instead of hiding the stop. Patched once per mesh;
-// per-stop updates only rewrite the afade attribute.
-const OCCLUDE_FADE = 0.22;
-
-function makeFadeable(mesh) {
-  const count = mesh.geometry.attributes.position.count;
-  mesh.geometry.setAttribute("afade", new THREE.BufferAttribute(new Float32Array(count).fill(1), 1));
-  mesh.material.transparent = true;
-  // Chain-safe: facade materials already carry the night-emissive patch.
-  const prevCompile = mesh.material.onBeforeCompile;
-  const prevKey = mesh.material.customProgramCacheKey;
-  mesh.material.onBeforeCompile = (shader, renderer) => {
-    if (prevCompile) prevCompile(shader, renderer);
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float afade;\nvarying float vFade;")
-      .replace("#include <fog_vertex>", "#include <fog_vertex>\nvFade = afade;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vFade;")
-      .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.a *= vFade;");
-  };
-  mesh.material.customProgramCacheKey = () =>
-    `${prevKey ? prevKey() : "std"}:occluder-fade`;
-  mesh.material.needsUpdate = true;
-}
-
-function applyStopFade(fadeMeshes, ids) {
-  for (const { mesh, ranges } of fadeMeshes) {
-    const attr = mesh.geometry.attributes.afade;
-    attr.array.fill(1);
-    for (const id of ids) {
-      const r = ranges.get(id);
-      if (r) attr.array.fill(OCCLUDE_FADE, r.start, r.start + r.count);
-    }
-    attr.needsUpdate = true;
-  }
 }
 
 async function bootTour() {

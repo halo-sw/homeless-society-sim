@@ -73,7 +73,7 @@ export function patchLitMaterial(material) {
   const prevCompile = material.onBeforeCompile;
   const prevKey = material.customProgramCacheKey;
   material.onBeforeCompile = (shader, renderer) => {
-    if (prevCompile) prevCompile(shader, renderer);
+    if (prevCompile) prevCompile.call(material, shader, renderer);
     shader.uniforms.uNight = { value: pendingNight };
     shader.uniforms.uLampColor = { value: new THREE.Color(1.0, 0.72, 0.42) };
     shader.vertexShader = shader.vertexShader
@@ -89,7 +89,11 @@ export function patchLitMaterial(material) {
         "#endif\n");
     material.userData.shader = shader;
   };
-  material.customProgramCacheKey = () => `${prevKey ? prevKey() : "std"}:lit`;
+  // prevKey is usually Material.prototype.customProgramCacheKey, which
+  // reads this.onBeforeCompile — it must keep the material as `this`.
+  material.customProgramCacheKey = function () {
+    return `${prevKey ? prevKey.call(material) : "std"}:lit`;
+  };
   material.needsUpdate = true;
   litMaterials.add(material);
   return material;
