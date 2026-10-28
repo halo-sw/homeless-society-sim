@@ -1,7 +1,7 @@
 {
   "name": "kr-support-programs",
-  "as_of": null,
-  "note": "정책 대출·청년·신혼 지원 제도. 지금은 구조와 이름만 두고 모든 수치·URL을 null로 둔다. 오케스트레이터가 공식 페이지에서 확인한 값으로 채운다. 화면은 null을 공식 확인 필요로 보이고, 비교표는 최종 판정을 내리지 않는다.",
+  "as_of": "2026-10-29",
+  "note": "주택도시기금 공식 상품 페이지(nhuf.molit.go.kr)에서 2026-10-29에 확인한 값. 조건별 note에 예외를 적었다. 중복대출 금지·신용·대상주택 등 다른 요건은 공식 페이지를 따른다. 비교표는 최종 판정을 내리지 않는다.",
   "condition_kinds": {
     "max": "고객 입력이 공고 조건 이하이면 충족",
     "min": "고객 입력이 공고 조건 이상이면 충족",
@@ -14,87 +14,381 @@
       "name": "버팀목 전세자금",
       "org": "주택도시기금",
       "conditions": [
-        { "id": "age-min", "label": "나이 하한", "kind": "min", "profile_key": "age", "value": null, "unit": "세", "needs_confirmation": true },
-        { "id": "household", "label": "세대 구성", "kind": "one_of", "profile_key": "household_type", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "income-max", "label": "연소득 상한", "kind": "max", "profile_key": "annual_income_won", "value": null, "unit": "원/년", "needs_confirmation": true },
-        { "id": "assets-max", "label": "자산 상한", "kind": "max", "profile_key": "assets_won", "value": null, "unit": "원", "needs_confirmation": true },
-        { "id": "owns-home", "label": "무주택 여부", "kind": "equals", "profile_key": "owns_home", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "deposit-max", "label": "전세보증금 상한", "kind": "max", "profile_key": "deposit_won", "value": null, "unit": "원", "needs_confirmation": true }
+        {
+          "id": "age-min",
+          "label": "나이 하한",
+          "kind": "min",
+          "profile_key": "age",
+          "value": 19,
+          "unit": "세",
+          "needs_confirmation": false,
+          "note": "민법상 성년인 세대주"
+        },
+        {
+          "id": "household",
+          "label": "세대 구성",
+          "kind": "one_of",
+          "profile_key": "household_type",
+          "value": [
+            "세대주",
+            "세대주 예정자"
+          ],
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "대출 실행 1개월 안에 세대주가 될 예정인 사람 포함"
+        },
+        {
+          "id": "income-max",
+          "label": "연소득 상한",
+          "kind": "max",
+          "profile_key": "annual_income_won",
+          "value": 50000000,
+          "unit": "원/년",
+          "needs_confirmation": false,
+          "note": "부부 합산. 신혼부부 7,500만 원, 2자녀 이상 가구 등 6,000만 원 이하"
+        },
+        {
+          "id": "assets-max",
+          "label": "자산 상한",
+          "kind": "max",
+          "profile_key": "assets_won",
+          "value": 345000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "부부 합산 순자산 (2026년 기준)"
+        },
+        {
+          "id": "owns-home",
+          "label": "무주택 여부",
+          "kind": "equals",
+          "profile_key": "owns_home",
+          "value": false,
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "세대원 전원 무주택"
+        },
+        {
+          "id": "deposit-max",
+          "label": "전세보증금 상한",
+          "kind": "max",
+          "profile_key": "deposit_won",
+          "value": 300000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "수도권 3억 원, 수도권 외 2억 원. 신혼·2자녀 이상 가구는 수도권 4억 원"
+        }
       ],
-      "rate_range_pct": { "min": null, "max": null, "needs_confirmation": true },
-      "limit_won": { "value": null, "needs_confirmation": true },
-      "as_of": null,
-      "source_url": null,
-      "needs_confirmation": true
+      "rate_range_pct": {
+        "min": 2.5,
+        "max": 3.5,
+        "needs_confirmation": false,
+        "note": "변동금리(국토교통부 고시), 소득·보증금·우대조건에 따라 달라짐"
+      },
+      "limit_won": {
+        "value": 120000000,
+        "needs_confirmation": false,
+        "note": "수도권 1.2억 원, 수도권 외 0.8억 원 (신혼가구·2자녀 이상 가구는 더 높음)"
+      },
+      "as_of": "2026-10-29",
+      "source_url": "https://nhuf.molit.go.kr/FP/FP05/FP0502/FP05020101.jsp",
+      "needs_confirmation": false
     },
     {
       "id": "youth-beotimmok",
       "name": "청년전용 버팀목",
       "org": "주택도시기금",
       "conditions": [
-        { "id": "age-min", "label": "나이 하한", "kind": "min", "profile_key": "age", "value": null, "unit": "세", "needs_confirmation": true },
-        { "id": "age-max", "label": "나이 상한", "kind": "max", "profile_key": "age", "value": null, "unit": "세", "needs_confirmation": true },
-        { "id": "income-max", "label": "연소득 상한", "kind": "max", "profile_key": "annual_income_won", "value": null, "unit": "원/년", "needs_confirmation": true },
-        { "id": "assets-max", "label": "자산 상한", "kind": "max", "profile_key": "assets_won", "value": null, "unit": "원", "needs_confirmation": true },
-        { "id": "owns-home", "label": "무주택 여부", "kind": "equals", "profile_key": "owns_home", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "deposit-max", "label": "전세보증금 상한", "kind": "max", "profile_key": "deposit_won", "value": null, "unit": "원", "needs_confirmation": true }
+        {
+          "id": "age-min",
+          "label": "나이 하한",
+          "kind": "min",
+          "profile_key": "age",
+          "value": 19,
+          "unit": "세",
+          "needs_confirmation": false,
+          "note": "만 19세 이상 세대주(예비 세대주 포함)"
+        },
+        {
+          "id": "age-max",
+          "label": "나이 상한",
+          "kind": "max",
+          "profile_key": "age",
+          "value": 34,
+          "unit": "세",
+          "needs_confirmation": false,
+          "note": "만 34세 이하. 병역 이행 시 복무기간만큼 최대 만 39세까지 연장되는 경우 있음"
+        },
+        {
+          "id": "income-max",
+          "label": "연소득 상한",
+          "kind": "max",
+          "profile_key": "annual_income_won",
+          "value": 50000000,
+          "unit": "원/년",
+          "needs_confirmation": false,
+          "note": "부부 합산. 신혼가구 7,500만 원, 2자녀 이상 가구 등 6,000만 원 이하"
+        },
+        {
+          "id": "assets-max",
+          "label": "자산 상한",
+          "kind": "max",
+          "profile_key": "assets_won",
+          "value": 345000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "부부 합산 순자산 (2026년 기준)"
+        },
+        {
+          "id": "owns-home",
+          "label": "무주택 여부",
+          "kind": "equals",
+          "profile_key": "owns_home",
+          "value": false,
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "세대원 전원 무주택"
+        },
+        {
+          "id": "deposit-max",
+          "label": "전세보증금 상한",
+          "kind": "max",
+          "profile_key": "deposit_won",
+          "value": 300000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "임차보증금 3억 원 이하, 전용 85㎡ 이하 (만 25세 미만 단독세대주는 60㎡ 이하)"
+        }
       ],
-      "rate_range_pct": { "min": null, "max": null, "needs_confirmation": true },
-      "limit_won": { "value": null, "needs_confirmation": true },
-      "as_of": null,
-      "source_url": null,
-      "needs_confirmation": true
+      "rate_range_pct": {
+        "min": 2.2,
+        "max": 3.3,
+        "needs_confirmation": false,
+        "note": "변동금리(국토교통부 고시), 소득·보증금·우대조건에 따라 달라짐"
+      },
+      "limit_won": {
+        "value": 150000000,
+        "needs_confirmation": false,
+        "note": "최대 1.5억 원, 보증금의 80% 이내 (만 25세 미만 단독세대주는 1.2억 원)"
+      },
+      "as_of": "2026-10-29",
+      "source_url": "https://nhuf.molit.go.kr/FP/FP05/FP0502/FP05020301.jsp",
+      "needs_confirmation": false
     },
     {
       "id": "newlywed-jeonse",
       "name": "신혼부부전용 전세",
       "org": "주택도시기금",
       "conditions": [
-        { "id": "marriage-years-max", "label": "혼인 기간 상한", "kind": "max", "profile_key": "marriage_years", "value": null, "unit": "년", "needs_confirmation": true },
-        { "id": "household", "label": "세대 구성", "kind": "one_of", "profile_key": "household_type", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "income-max", "label": "연소득 상한", "kind": "max", "profile_key": "annual_income_won", "value": null, "unit": "원/년", "needs_confirmation": true },
-        { "id": "assets-max", "label": "자산 상한", "kind": "max", "profile_key": "assets_won", "value": null, "unit": "원", "needs_confirmation": true },
-        { "id": "owns-home", "label": "무주택 여부", "kind": "equals", "profile_key": "owns_home", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "deposit-max", "label": "전세보증금 상한", "kind": "max", "profile_key": "deposit_won", "value": null, "unit": "원", "needs_confirmation": true }
+        {
+          "id": "marriage-years-max",
+          "label": "혼인 기간 상한",
+          "kind": "max",
+          "profile_key": "marriage_years",
+          "value": 7,
+          "unit": "년",
+          "needs_confirmation": false,
+          "note": "혼인 7년 이내 또는 3개월 이내 결혼 예정"
+        },
+        {
+          "id": "household",
+          "label": "세대 구성",
+          "kind": "one_of",
+          "profile_key": "household_type",
+          "value": [
+            "신혼부부",
+            "결혼 예정(3개월 이내)"
+          ],
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "무주택 세대주"
+        },
+        {
+          "id": "income-max",
+          "label": "연소득 상한",
+          "kind": "max",
+          "profile_key": "annual_income_won",
+          "value": 75000000,
+          "unit": "원/년",
+          "needs_confirmation": false,
+          "note": "부부 합산. 합산이 넘어도 신청인 본인 소득이 5,000만 원 이하면 가능"
+        },
+        {
+          "id": "assets-max",
+          "label": "자산 상한",
+          "kind": "max",
+          "profile_key": "assets_won",
+          "value": 345000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "부부 합산 순자산 (2026년 기준)"
+        },
+        {
+          "id": "owns-home",
+          "label": "무주택 여부",
+          "kind": "equals",
+          "profile_key": "owns_home",
+          "value": false,
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "세대원 전원 무주택"
+        },
+        {
+          "id": "deposit-max",
+          "label": "전세보증금 상한",
+          "kind": "max",
+          "profile_key": "deposit_won",
+          "value": 400000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "수도권 4억 원, 수도권 외 3억 원"
+        }
       ],
-      "rate_range_pct": { "min": null, "max": null, "needs_confirmation": true },
-      "limit_won": { "value": null, "needs_confirmation": true },
-      "as_of": null,
-      "source_url": null,
-      "needs_confirmation": true
+      "rate_range_pct": {
+        "min": 1.9,
+        "max": 3.3,
+        "needs_confirmation": false,
+        "note": "변동금리(국토교통부 고시), 소득·보증금·우대조건에 따라 달라짐"
+      },
+      "limit_won": {
+        "value": 250000000,
+        "needs_confirmation": false,
+        "note": "수도권 2.5억 원, 수도권 외 1.6억 원, 보증금의 80% 이내"
+      },
+      "as_of": "2026-10-29",
+      "source_url": "https://nhuf.molit.go.kr/FP/FP05/FP0502/FP05020401.jsp",
+      "needs_confirmation": false
     },
     {
       "id": "didimdol",
       "name": "내집마련 디딤돌",
       "org": "주택도시기금",
       "conditions": [
-        { "id": "income-max", "label": "연소득 상한", "kind": "max", "profile_key": "annual_income_won", "value": null, "unit": "원/년", "needs_confirmation": true },
-        { "id": "assets-max", "label": "자산 상한", "kind": "max", "profile_key": "assets_won", "value": null, "unit": "원", "needs_confirmation": true },
-        { "id": "owns-home", "label": "무주택 여부", "kind": "equals", "profile_key": "owns_home", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "price-max", "label": "주택가격 상한", "kind": "max", "profile_key": "price_won", "value": null, "unit": "원", "needs_confirmation": true }
+        {
+          "id": "income-max",
+          "label": "연소득 상한",
+          "kind": "max",
+          "profile_key": "annual_income_won",
+          "value": 60000000,
+          "unit": "원/년",
+          "needs_confirmation": false,
+          "note": "부부 합산. 생애최초·2자녀 이상 7,000만 원, 신혼가구 8,500만 원 이하"
+        },
+        {
+          "id": "assets-max",
+          "label": "자산 상한",
+          "kind": "max",
+          "profile_key": "assets_won",
+          "value": 511000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "부부 합산 순자산"
+        },
+        {
+          "id": "owns-home",
+          "label": "무주택 여부",
+          "kind": "equals",
+          "profile_key": "owns_home",
+          "value": false,
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "무주택 세대주. 만 30세 미만 단독세대주는 제외"
+        },
+        {
+          "id": "price-max",
+          "label": "주택가격 상한",
+          "kind": "max",
+          "profile_key": "price_won",
+          "value": 500000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "담보주택 평가액 5억 원 이하 (신혼·2자녀 이상 가구 6억 원), 전용 85㎡ 이하"
+        }
       ],
-      "rate_range_pct": { "min": null, "max": null, "needs_confirmation": true },
-      "limit_won": { "value": null, "needs_confirmation": true },
-      "as_of": null,
-      "source_url": null,
-      "needs_confirmation": true
+      "rate_range_pct": {
+        "min": 2.85,
+        "max": 4.15,
+        "needs_confirmation": false,
+        "note": "변동금리(국토교통부 고시), 소득·보증금·우대조건에 따라 달라짐"
+      },
+      "limit_won": {
+        "value": 200000000,
+        "needs_confirmation": false,
+        "note": "일반 2억 원(생애최초 2.4억 원), 신혼가구·2자녀 이상 가구 3.2억 원. LTV 70%(생애최초 80%, 수도권·규제지역 70%), DTI 60% 이내"
+      },
+      "as_of": "2026-10-29",
+      "source_url": "https://nhuf.molit.go.kr/FP/FP05/FP0503/FP05030101.jsp",
+      "needs_confirmation": false
     },
     {
       "id": "newborn-special",
-      "name": "신생아 특례",
+      "name": "신생아 특례 디딤돌 (구입)",
       "org": "주택도시기금",
       "conditions": [
-        { "id": "newborn", "label": "신생아 출산·입양", "kind": "equals", "profile_key": "has_newborn", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "income-max", "label": "연소득 상한", "kind": "max", "profile_key": "annual_income_won", "value": null, "unit": "원/년", "needs_confirmation": true },
-        { "id": "assets-max", "label": "자산 상한", "kind": "max", "profile_key": "assets_won", "value": null, "unit": "원", "needs_confirmation": true },
-        { "id": "owns-home", "label": "무주택 여부", "kind": "equals", "profile_key": "owns_home", "value": null, "unit": null, "needs_confirmation": true },
-        { "id": "price-max", "label": "주택가격 상한", "kind": "max", "profile_key": "price_won", "value": null, "unit": "원", "needs_confirmation": true }
+        {
+          "id": "newborn",
+          "label": "신생아 출산·입양",
+          "kind": "equals",
+          "profile_key": "has_newborn",
+          "value": true,
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "대출 접수일 기준 2년 안에 출산(2023-01-01 이후 출생아)"
+        },
+        {
+          "id": "income-max",
+          "label": "연소득 상한",
+          "kind": "max",
+          "profile_key": "annual_income_won",
+          "value": 130000000,
+          "unit": "원/년",
+          "needs_confirmation": false,
+          "note": "부부 합산. 맞벌이는 2억 원 이하"
+        },
+        {
+          "id": "assets-max",
+          "label": "자산 상한",
+          "kind": "max",
+          "profile_key": "assets_won",
+          "value": 511000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "부부 합산 순자산"
+        },
+        {
+          "id": "owns-home",
+          "label": "무주택 여부",
+          "kind": "equals",
+          "profile_key": "owns_home",
+          "value": false,
+          "unit": null,
+          "needs_confirmation": false,
+          "note": "무주택 세대주 (1주택 세대주는 대환대출만)"
+        },
+        {
+          "id": "price-max",
+          "label": "주택가격 상한",
+          "kind": "max",
+          "profile_key": "price_won",
+          "value": 900000000,
+          "unit": "원",
+          "needs_confirmation": false,
+          "note": "담보주택 평가액 9억 원 이하, 전용 85㎡ 이하"
+        }
       ],
-      "rate_range_pct": { "min": null, "max": null, "needs_confirmation": true },
-      "limit_won": { "value": null, "needs_confirmation": true },
-      "as_of": null,
-      "source_url": null,
-      "needs_confirmation": true
+      "rate_range_pct": {
+        "min": 1.8,
+        "max": 4.5,
+        "needs_confirmation": false,
+        "note": "변동금리(국토교통부 고시), 소득·보증금·우대조건에 따라 달라짐"
+      },
+      "limit_won": {
+        "value": 400000000,
+        "needs_confirmation": false,
+        "note": "최대 4억 원. LTV 70%(생애최초 80%, 수도권·규제지역 70%), DTI 60% 이내. 신생아 특례 디딤돌(구입) 기준"
+      },
+      "as_of": "2026-10-29",
+      "source_url": "https://nhuf.molit.go.kr/FP/FP05/FP0503/FP05030801.jsp",
+      "needs_confirmation": false
     }
   ]
 }
