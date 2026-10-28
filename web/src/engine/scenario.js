@@ -90,9 +90,18 @@ function parseWork(raw, where) {
     if (!Number.isFinite(raw.ride_minutes) || raw.ride_minutes < 0) {
       fail(`${where}.work needs ride_minutes >= 0`);
     }
+    if (raw.destination_station !== undefined && raw.destination_station !== null
+        && typeof raw.destination_station !== "string"
+        && typeof raw.destination_station !== "object") {
+      fail(`${where}.work.destination_station wants a station name or {homeLabel: name}`);
+    }
     return {
       type: "station_ride",
       station_name: raw.station_name, // string or {homeLabel: name}
+      // Optional alighting station (string or {homeLabel: name}, null when
+      // unknown): only with it can the engine draw the real journey path.
+      // Never invented — without it the ride stays a minutes number.
+      destination_station: raw.destination_station === undefined ? null : raw.destination_station,
       ride_minutes: raw.ride_minutes,
       ride_minutes_source: raw.ride_minutes_source || "user_assumption",
       needs_user_input: raw.needs_user_input === true,
@@ -103,6 +112,19 @@ function parseWork(raw, where) {
     return { type: "local_poi", name: raw.name };
   }
   fail(`${where}.work has unknown type ${JSON.stringify(raw.type)}`);
+}
+
+// Optional per-home name (destination station): string, {A: ..., B: ...},
+// or null when unknown. Missing homes read null (never throw): an
+// unknown destination keeps the ride numeric, it never blocks the run.
+export function destForHome(nameOrMap, homeLabel) {
+  if (nameOrMap === undefined || nameOrMap === null) return null;
+  if (typeof nameOrMap === "string") return nameOrMap;
+  if (typeof nameOrMap === "object") {
+    const hit = nameOrMap[homeLabel];
+    return typeof hit === "string" ? hit : null;
+  }
+  return null;
 }
 
 // A name that may vary per home: string, or {A: ..., B: ...}.

@@ -5,13 +5,13 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { tinyArea, tinyScenario } from "./engine-fixture.js";
+import { tinyArea, tinyRegion, tinyScenario } from "./engine-fixture.js";
 import { parseScenario } from "../src/engine/scenario.js";
 import { indexRun } from "../src/sim.js";
 import { simulate } from "../src/engine/simulate.js";
 import { moneyTimeline } from "../src/money/timeline.js";
 import {
-  OLD_RUN_WHY, householdNow, nextLabel, nowCardFor, tickerFor,
+  FATIGUE_MODEL_NOTE, OLD_RUN_WHY, fatigueFor, householdNow, nextLabel, nowCardFor, tickerFor,
 } from "../src/nowcard.js";
 
 function run0() {
@@ -140,5 +140,63 @@ describe("tickerFor", () => {
     const tick = tickerFor({ run, indexed: indexRun(run), agentKey: "h1", day: 0,
       minute: 0, moneyEvents: [] });
     assert.deepEqual(tick, []);
+  });
+});
+
+describe("nowCard fatigue", () => {
+  function journeyRun() {
+    const scen = tinyScenario({ days: 1, background: 0, seed: 7 });
+    scen.household.members[0].work.destination_station = "직장역";
+    return simulate(tinyArea(), scen, "A", { region: tinyRegion() });
+  }
+
+  it("shows the value, the leg delta and congestion on a ride", () => {
+    const run = journeyRun();
+    const away = run.aways.find((a) => a.agent === "h1" && a.kind === "work");
+    const mid = away.start_min + 2; // inside the out-ride
+    const f = fatigueFor({ run, agentKey: "h1", day: 0, minute: mid });
+    assert.ok(Number.isFinite(f.value));
+    assert.equal(f.delta, away.detail.rides.out.legs[0].fatigueDelta);
+    assert.match(f.note, /A호선 중앙역→환승역 혼잡도 90%, 서서 감/);
+    assert.equal(f.source, "서울교통공사");
+    assert.deepEqual(f.criterionIds, ["C-congestion", "C-fatigue-load"]);
+    assert.ok(f.series.length > 0);
+    const card = nowCardFor({ run, indexed: indexRun(run), agentKey: "h1", day: 0, minute: mid });
+    assert.equal(card.fatigue.note, f.note);
+  });
+
+  it("shows walk legs, recovery and home rest honestly", () => {
+    const run = journeyRun();
+    const t = run.trips.find((x) => x.agent === "h1" && x.purpose === "commute");
+    const walk = fatigueFor({ run, agentKey: "h1", day: 0,
+      minute: Math.floor((t.depart_min + t.arrive_min) / 2) });
+    assert.equal(walk.delta, t.fatigue_delta);
+    assert.match(walk.note, /도보/);
+    const away = run.aways.find((a) => a.agent === "h1" && a.kind === "work");
+    const work = fatigueFor({ run, agentKey: "h1", day: 0,
+      minute: away.start_min + away.detail.ride_minutes + 10 });
+    assert.equal(work.note, "근무 중 · 앉아서 회복");
+    assert.equal(work.delta, null);
+    const home = fatigueFor({ run, agentKey: "h1", day: 0, minute: 60 });
+    assert.equal(home.note, "집에서 회복 중");
+    assert.equal(home.value, 0); // the overnight 8 clears within 10 minutes
+  });
+
+  it("falls back visibly without a journey", () => {
+    const run = simulate(tinyArea(), tinyScenario({ days: 1, background: 0, seed: 7 }), "A",
+      { region: tinyRegion() });
+    const away = run.aways.find((a) => a.agent === "h1" && a.kind === "work");
+    const f = fatigueFor({ run, agentKey: "h1", day: 0, minute: away.start_min + 2 });
+    assert.match(f.note, /혼잡도 자료 없음 · 가정값 70%/);
+    assert.equal(f.source, "가정값");
+  });
+
+  it("returns null without a series and labels the model", () => {
+    const run = simulate(tinyArea(), tinyScenario({ days: 1, background: 0, seed: 7 }), "A");
+    const nbg = fatigueFor({ run, agentKey: "zzz", day: 0, minute: 500 });
+    assert.equal(nbg, null);
+    assert.match(FATIGUE_MODEL_NOTE, /가정 모델이며 건강·의학적 판단이 아닙니다/);
+    const rows = householdNow({ run, indexed: indexRun(run), day: 0, minute: 500 });
+    assert.ok(rows.every((r) => Number.isFinite(r.fatigue)));
   });
 });

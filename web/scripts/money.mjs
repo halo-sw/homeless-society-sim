@@ -62,6 +62,23 @@ async function loadArea(areaId) {
 
 const opts = args(process.argv.slice(2));
 const scenarioRaw = JSON.parse(await readFile(resolve(REPO, opts.scenario), "utf8"));
+
+// Region data for journeys (stage 8): same files the sim CLI loads, so
+// QoL fatigue matches the compare tab exactly.
+async function loadRegion() {
+  const dir = join(REPO, "data", "build", "region");
+  const region = {};
+  for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
+    try {
+      region[key] = JSON.parse(await readFile(join(dir, file), "utf8"));
+    } catch {
+      region[key] = null;
+    }
+  }
+  if (!region.network && !region.congestion) return null;
+  return region;
+}
+const region = await loadRegion();
 const scenario = parseScenario(structuredClone(scenarioRaw));
 const table = JSON.parse(await readFile(join(REPO, "scenarios", "assumptions", "kr-payroll.json"), "utf8"));
 const net = householdMonthlyNet(scenario.money, scenario.household.members, table);
@@ -81,7 +98,8 @@ const homes = {};
 for (const h of scenario.homes) {
   const area = await loadArea(h.area);
   const router = new Router(area.graph);
-  const run = simulate(area, structuredClone(scenarioRaw), h.label);
+  const run = simulate(area, structuredClone(scenarioRaw), h.label,
+    region ? { region } : {});
   // Price reference: parcel+name match, name-only fallback (< 3 rows).
   const district = AREA_RTMS_DISTRICT[h.area];
   const rows = district ? await rtmsFor(district) : [];
@@ -164,6 +182,7 @@ for (const h of scenario.homes) {
     parcel_rows: parcelHits.length, name_rows: nameHits.length,
     reference, by_tenure: byTenure,
     qol_time: qol.time, qol_convenience: qol.convenience,
+    qol_fatigue: qol.fatigue,
     spending_events: spendTl.events,
   };
   console.log(JSON.stringify({ home: h.label, area_m2: areaM2, match: matchMethod,

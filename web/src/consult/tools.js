@@ -79,10 +79,10 @@ export const TOOL_DEFS = [
           description: 'Per-criterion value overrides, e.g. {"C-shop-dwell": {"dwell_min": 25}}. Only overridable numeric values; use list_criteria/explain_criterion to see them. Overridden values read as 고객 입력.' },
       } } } },
   { type: "function", function: { name: "list_criteria",
-    description: "The explicit simulation criteria (rules, values, sources). Filter by group: 이동, 일상, 판단, 측정, 돈.",
+    description: "The explicit simulation criteria (rules, values, sources). Filter by group: 이동, 일상, 판단, 측정, 피로도, 돈.",
     parameters: { type: "object", additionalProperties: false,
       properties: {
-        group: str("Optional group id: move, daily, judge, measure, money."),
+        group: str("Optional group id: move, daily, judge, measure, fatigue, money."),
       } } } },
   { type: "function", function: { name: "explain_criterion",
     description: "One criterion in full: the rule sentence, values with units, source, affected metrics, and whether the customer can change it.",
@@ -142,6 +142,22 @@ export const TOOL_DEFS = [
         run: str("Run id from run_simulation."),
         decision_id: str("Decision id, e.g. h1:d2:478:shop_choice:0."),
       }, required: ["run", "decision_id"] } } },
+  { type: "function", function: { name: "get_journey",
+    description: "One member's station rides on one day: lines, split minutes (the total is the customer's number), and congestion per leg with its source (서울교통공사 measured or 가정값).",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        run: str("Run id from run_simulation."),
+        day: { type: "integer", description: "1-based day number (1일차 = 1)." },
+        member: str("Agent key (h1), member id (m1) or label (구성원 1)."),
+      }, required: ["run", "day", "member"] } } },
+  { type: "function", function: { name: "get_fatigue",
+    description: "One member's fatigue index (the stated 가정 모델 — never health advice): 30-day summary plus, with day, the day's series and event values.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        run: str("Run id from run_simulation."),
+        member: str("Agent key (h1), member id (m1) or label (구성원 1)."),
+        day: { type: "integer", description: "Optional 1-based day number for the day's series." },
+      }, required: ["run", "member"] } } },
   { type: "function", function: { name: "set_view",
     description: "Show the customer what you explain: the UI moves the 3D view and shows a chip. Returns the chip text.",
     parameters: { type: "object", additionalProperties: false,
@@ -191,6 +207,7 @@ export function createSession(opts) {
     scenarioName: (opts.scenario && opts.scenario.name) || "scenario",
     cache: opts.cache || createRunCache(),
     loadArea: opts.loadArea,
+    loadRegion: opts.loadRegion || null,
     loadDecisions: opts.loadDecisions || null,
     judgeHome: opts.judgeHome || null,
     loadPayroll: opts.loadPayroll || null,
@@ -535,6 +552,11 @@ async function runOne(session, label, decisionsMode) {
   homeOf(scenario, label);
   const home = scenario.homes.find((h) => h.label === label);
   const area = await needArea(session, home.area);
+  let region = null;
+  if (session.loadRegion) {
+    region = await session.loadRegion().catch(() => null);
+  }
+  const simOpts = region ? { region } : {};
   const t0 = Date.now();
   let run;
   let note = "";
@@ -543,6 +565,7 @@ async function runOne(session, label, decisionsMode) {
     const judged = await session.judgeHome({
       area, scenarioRaw: clone(session.scenario), homeLabel: label,
       provider: session.provider, fetchImpl: session.fetchImpl,
+      region,
     });
     run = judged.run;
     note = `judged live (${session.provider}, ${judged.usage.calls} calls, $${(costUsd(session.provider, judged.usage) || 0).toFixed(3)})`;
@@ -552,14 +575,14 @@ async function runOne(session, label, decisionsMode) {
       doc = await session.loadDecisions(session.scenarioName, label).catch(() => null);
     }
     if (doc) {
-      run = simulate(area, clone(session.scenario), label, { decisions: doc });
+      run = simulate(area, clone(session.scenario), label, { ...simOpts, decisions: doc });
       note = `replayed committed decisions (${session.scenarioName}-${label})`;
     } else {
-      run = simulate(area, clone(session.scenario), label);
+      run = simulate(area, clone(session.scenario), label, simOpts);
       note = "no committed decisions found — ran with rules instead";
     }
   } else {
-    run = simulate(area, clone(session.scenario), label);
+    run = simulate(area, clone(session.scenario), label, simOpts);
   }
   return { run, ms: Date.now() - t0, note };
 }
@@ -747,10 +770,118 @@ function set_view(session, args) {
   return { ok: true, view: out, chip: bits.length > 0 ? `화면 이동: ${bits.join(" · ")}` : "화면 이동" };
 }
 
+function needMemberKey(run, ref) {
+  const key = agentKeyOf(run.agents, ref);
+  if (!key) {
+    const known = run.agents.filter((a) => a.household).map((a) => `${a.key}/${a.label}`).join(", ");
+    throw new Error(`unknown member ${JSON.stringify(ref)} (household: ${known})`);
+  }
+  return key;
+}
+
+function get_journey(session, args) {
+  let hit;
+  try {
+    hit = needRun(session, args.run);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const run = hit.run;
+  const day1 = args.day;
+  if (!Number.isInteger(day1) || day1 < 1 || day1 > run.meta.days) {
+    return fail(`day must be 1..${run.meta.days} (1-based: 1 = 1일차)`);
+  }
+  let key;
+  try {
+    key = needMemberKey(run, args.member);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const label = (run.agents.find((a) => a.key === key) || {}).label || key;
+  const rides = [];
+  for (const a of run.aways) {
+    if (a.agent !== key || a.day !== day1 - 1 || a.kind !== "work") continue;
+    const detail = a.detail || {};
+    if (detail.rides) {
+      const slim = (r) => ({
+        depart: hhmm(r.departMin),
+        minutes_total: r.minutesTotal,
+        legs: r.legs.map((l) => ({
+          line: l.lineName, from: l.from, to: l.to,
+          stops: [...l.stops], distance_km: l.distanceKm, minutes: l.minutes,
+          congestion_pct: l.congestion.valuePct,
+          congestion_source: l.congestion.source === "서울교통공사" ? "서울교통공사" : "가정값",
+          congestion_slot: l.congestion.slotLabel,
+          direction: l.congestion.direction,
+          fatigue_delta: l.fatigueDelta,
+        })),
+        transfers: r.transfers.map((t) => ({ station: t.station, minutes: t.minutes })),
+        transfer_minutes: r.transferMinutes,
+        fatigue_delta: r.fatigueDelta,
+        crowded_min: r.crowdedMin,
+      });
+      rides.push({ stay: a.label, out: slim(detail.rides.out), back: slim(detail.rides.back) });
+    } else if (detail.ride_minutes) {
+      rides.push({ stay: a.label,
+        note: detail.journey_note || "경로 없음 (승차 시간 숫자만)",
+        ride_minutes: detail.ride_minutes,
+        ride_minutes_source: detail.ride_minutes_source || "user_assumption",
+        fallback: detail.ride_fallback || null });
+    }
+  }
+  return { ok: true, run: hit.id, home: hit.home, day: day1, member: key, label,
+    journey_note: rides.length === 0 ? "이 날 통근 승차 없음" : undefined,
+    rides,
+    sources: { measured: "서울교통공사 지하철혼잡도정보 (2026-09-30 기준)",
+      fallback: "C-congestion fallback_pct (가정값)" } };
+}
+
+const FATIGUE_MODEL_NOTE = "피로도 지수 · 가정 모델이며 건강·의학적 판단이 아닙니다";
+
+function get_fatigue(session, args) {
+  let hit;
+  try {
+    hit = needRun(session, args.run);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const run = hit.run;
+  let key;
+  try {
+    key = needMemberKey(run, args.member);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const label = (run.agents.find((a) => a.key === key) || {}).label || key;
+  const summary = (run.totals.per_member[key] || {}).fatigue || null;
+  const out = { ok: true, run: hit.id, home: hit.home, member: key, label,
+    model_note: FATIGUE_MODEL_NOTE,
+    criteria: ["C-congestion", "C-fatigue-load", "C-fatigue-recovery"],
+    summary_30d: summary };
+  if (args.day !== undefined && args.day !== null) {
+    const day1 = args.day;
+    if (!Number.isInteger(day1) || day1 < 1 || day1 > run.meta.days) {
+      return fail(`day must be 1..${run.meta.days} (1-based: 1 = 1일차)`);
+    }
+    const entry = (run.daily || []).find((d) => d.agent === key);
+    const dayFat = entry && entry.days[day1 - 1] && entry.days[day1 - 1].fatigue;
+    if (!dayFat) return fail(`no fatigue series for ${key} on day ${day1}`);
+    out.day = day1;
+    out.day_fatigue = {
+      start: dayFat.start, end: dayFat.end, peak: dayFat.peak,
+      arrival_work: dayFat.arrival_work, after_home: dayFat.after_home,
+      crowded_min: dayFat.crowded_min,
+      series: dayFat.series.map((p) => ({ minute: hhmm(p.m), value: p.v,
+        marker: p.label || undefined })),
+    };
+  }
+  return out;
+}
+
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
-  list_criteria, explain_criterion,
+  list_criteria, explain_criterion, get_journey, get_fatigue,
   ...MONEY_HANDLERS,
 };
 

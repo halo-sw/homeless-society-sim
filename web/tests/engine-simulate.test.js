@@ -271,10 +271,13 @@ describe("engine simulate (fixture)", () => {
     assert.equal(cmp.home_b.complex, "베타");
     for (const m of cmp.metrics) {
       assert.ok(typeof m.key === "string" && typeof m.label === "string");
-      assert.ok(["minutes", "metres", "count"].includes(m.unit), m.unit);
+      assert.ok(["minutes", "metres", "count", "index"].includes(m.unit), m.unit);
       assert.ok(["graph", "scenario"].includes(m.source), m.source);
-      assert.ok(Number.isFinite(m.a) && Number.isFinite(m.b));
-      assert.equal(m.delta_b_minus_a, Math.round((m.b - m.a) * 10) / 10);
+      // Fatigue averages may be null (no commute days); otherwise finite.
+      assert.ok(m.a === null || Number.isFinite(m.a), m.key);
+      assert.ok(m.b === null || Number.isFinite(m.b), m.key);
+      if (m.a === null || m.b === null) assert.equal(m.delta_b_minus_a, null);
+      else assert.equal(m.delta_b_minus_a, Math.round((m.b - m.a) * 10) / 10);
     }
     // The commute split: walking legs [graph] differ by home, the
     // assumed ride [scenario] does not.

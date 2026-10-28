@@ -65,6 +65,15 @@ export function round1(n) {
 export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WALK_MINUTES, opts = {}) {
   const days = (run.meta && run.meta.days) || 30;
   const h = (run.totals && run.totals.household) || {};
+  const fatigue = {
+    arrival_work_avg: h.fatigue_arrival_work_avg ?? null,
+    after_home_avg: h.fatigue_after_home_avg ?? null,
+    avg_30d: h.fatigue_avg_30d ?? null,
+    crowded_min: h.fatigue_crowded_min ?? null,
+    unit: "index",
+    source: "scenario",
+    note: "피로도 지수 · 가정 모델이며 건강·의학적 판단이 아닙니다",
+  };
   const home = { label: run.meta.home, area: run.meta.area, complex: run.meta.complex };
   let resolved = null;
   try {
@@ -94,6 +103,7 @@ export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WAL
     },
     convenience: resolved ? convenienceCounts(area, router, resolved.nodeId, walkMinutes, opts)
       : { grocery: 0, park: 0, clinic: 0, station: 0, eatery: 0, source: "graph" },
+    fatigue,
     weights: money.weights || null, // "내 기준": the customer's own weighting, never ours
     no_score_note: "종합 점수는 매기지 않습니다. 세 축을 나란히 보고 고객이 직접 판단합니다.",
   };

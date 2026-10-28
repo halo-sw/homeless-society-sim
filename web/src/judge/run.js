@@ -178,6 +178,7 @@ export function entryToAnswer(entry) {
 export async function judgeHome({
   area, scenarioRaw, homeLabel, provider,
   fetchImpl = null, providerOpts = {}, judgeOne = null,
+  region = null,
 }) {
   providerConfig(provider); // unknown provider throws before any work
   const scenario = parseScenario(clone(scenarioRaw));
@@ -222,6 +223,7 @@ export async function judgeHome({
 
   // Final run: full background, household fixed, background by rule.
   const finalRun = simulate(area, clone(scenarioRaw), homeLabel, {
+    ...(region ? { region } : {}),
     decide: (shell) => {
       if (fixed.has(shell.id)) return entryToAnswer(fixed.get(shell.id));
       return { chosen_key: shell.default_key, chosen_by: "rule" };

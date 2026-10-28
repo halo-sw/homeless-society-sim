@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-from .areas import AREA_IDS, DEFAULT_BUILD_DIR, DEFAULT_RAW_PBF
+from .areas import AREA_IDS, DEFAULT_BUILD_DIR, DEFAULT_RAW_PBF, REPO_ROOT
 
 OSM_JSON_FILE = "osm.json"
 
@@ -139,6 +139,41 @@ def cmd_build(args) -> int:
     return 1 if failures else 0
 
 
+def cmd_congestion(args) -> int:
+    from .congestion import run_build
+
+    summary = run_build(xlsx=Path(args.xlsx) if args.xlsx else None,
+                        build_dir=Path(args.build_dir))
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
+def cmd_network(args) -> int:
+    from .network import run_build
+
+    summary = run_build(raw_pbf=Path(args.raw),
+                        build_dir=Path(args.build_dir),
+                        cache_dir=Path(args.cache_dir) if args.cache_dir else None,
+                        osmium_bin=args.osmium or "osmium",
+                        refresh=args.refresh)
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
+def cmd_corridor(args) -> int:
+    from .corridor import run_build
+
+    summary = run_build(from_station=args.from_station, to_station=args.to_station,
+                        raw_pbf=Path(args.raw),
+                        build_dir=Path(args.build_dir),
+                        register_dir=Path(args.register_dir) if args.register_dir else None,
+                        criteria_path=Path(args.criteria) if args.criteria
+                        else REPO_ROOT / "scenarios" / "criteria" / "kr-default.json",
+                        osmium_bin=args.osmium or "osmium")
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
 def cmd_areas(args) -> int:
     from .areas import resolve_all
 
@@ -195,6 +230,37 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
     a.add_argument("--osmium", default=None)
     a.set_defaults(func=cmd_areas)
+
+    n = sub.add_parser("congestion",
+                       help="build data/build/region/congestion.json from the Seoul Metro xlsx")
+    n.add_argument("--xlsx", default=None,
+                   help="congestion xlsx (default: data/raw/traffic/서울교통공사_지하철혼잡도정보_20260930.xlsx)")
+    n.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    n.set_defaults(func=cmd_congestion)
+
+    n = sub.add_parser("network",
+                       help="build data/build/region/network.json from OSM route relations")
+    n.add_argument("--raw", default=str(DEFAULT_RAW_PBF))
+    n.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    n.add_argument("--cache-dir", default=None,
+                   help="prefilter cache (default: data/build/_cache)")
+    n.add_argument("--osmium", default="osmium")
+    n.add_argument("--refresh", action="store_true",
+                   help="rebuild the cached prefilter even when fresh")
+    n.set_defaults(func=cmd_network)
+
+    n = sub.add_parser("corridor",
+                       help="build a low-detail corridor along a station-ride path")
+    n.add_argument("--from", dest="from_station", required=True,
+                   help="boarding station (e.g. 잠실)")
+    n.add_argument("--to", dest="to_station", required=True,
+                   help="alighting station (e.g. 판교)")
+    n.add_argument("--raw", default=str(DEFAULT_RAW_PBF))
+    n.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    n.add_argument("--register-dir", default=None)
+    n.add_argument("--criteria", default=None)
+    n.add_argument("--osmium", default="osmium")
+    n.set_defaults(func=cmd_corridor)
 
     r = sub.add_parser("register-fill",
                        help="fill inferred heights via the 건축HUB title API")

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { tinyArea, tinyScenario } from "./engine-fixture.js";
+import { tinyArea, tinyRegion, tinyScenario } from "./engine-fixture.js";
 import { runTurn, countMuseRuns } from "../src/consult/agent.js";
 import { createRunCache } from "../src/consult/tools.js";
 import { simulate } from "../src/engine/simulate.js";
@@ -89,6 +89,43 @@ describe("consult agent loop", () => {
     assert.match(out.reply, /분입니다/);
     // Browser-kept history: user + assistant/tool rounds + final text.
     assert.ok(out.messages.length >= 5);
+  });
+
+  it("answers journey + fatigue with a fake provider, citing sources", async () => {
+    const scen = scenario();
+    scen.household.members[0].work.destination_station = "직장역";
+    let journey = null;
+    const complete = scripted([
+      toolReply([{ id: "c1", name: "run_simulation", args: { home: "A" } }]),
+      async (history) => {
+        const r = toolResult(history, "c1");
+        return toolReply([{ id: "c2", name: "get_journey",
+          args: { run: r.run_ids.A, day: 1, member: "h1" } }])(history);
+      },
+      async (history) => {
+        journey = toolResult(history, "c2");
+        return toolReply([{ id: "c3", name: "get_fatigue",
+          args: { run: journey.run, member: "h1", day: 1 } }])(history);
+      },
+      async (history) => {
+        const f = toolResult(history, "c3");
+        assert.equal(journey.rides[0].out.legs.length, 2);
+        assert.ok(Number.isFinite(f.summary_30d.avg_30d));
+        return textReply(
+          `출근 ${journey.rides[0].out.legs[0].line} ${journey.rides[0].out.minutes_total}분` +
+          `(혼잡도 ${journey.rides[0].out.legs[0].congestion_source}), ` +
+          `피로도 평균 ${f.summary_30d.avg_30d}(C-fatigue-load, 가정 모델이며 건강·의학적 판단이 아닙니다).`)();
+      },
+    ]);
+    const out = await runTurn({ ...baseOpts(), scenario: scen,
+      loadRegion: async () => tinyRegion(),
+      messages: [{ role: "user", content: "출근길이랑 피로도 알려줘" }],
+      completeFn: complete });
+    assert.equal(out.ok, true);
+    assert.equal(out.fallback, false);
+    assert.deepEqual(out.toolCalls.map((t) => t.name),
+      ["run_simulation", "get_journey", "get_fatigue"]);
+    assert.match(out.reply, /가정 모델이며 건강·의학적 판단이 아닙니다/);
   });
 
   it("does what-if: patch a copy, re-run, report before/after", async () => {

@@ -51,6 +51,11 @@ export const INITIAL_STATE = {
   qualityHover: null, // {category} while hovering a convenience row, else null
   simTicks: [], // [{minute, kind, id}] for the followed member today
   judgeFlash: "", // pulsing decision id ("" when none)
+  // Stage 8: journey banner + view override + itinerary loading + region.
+  journey: null, // journeyBanner() payload + {hasDetailDest, detailNote, corridorLabel} | null
+  journeyView: "auto", // "auto" | "low" (거리 보기) | "high" (전체 경로)
+  journeyLoading: "", // "판교 지도 불러오는 중…" while preloading, else ""
+  region: null, // {network, congestion, corridors} presence flags | null
 };
 
 function clone(value) {

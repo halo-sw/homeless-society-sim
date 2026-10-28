@@ -7,6 +7,7 @@
 // are the display strings.
 
 export function fmtDistance(m) {
+  if (m === null || m === undefined) return "–";
   const v = Number(m);
   if (!Number.isFinite(v)) return "–";
   if (Math.abs(v) >= 1000) {
@@ -18,6 +19,7 @@ export function fmtDistance(m) {
 }
 
 export function fmtMinutes(min) {
+  if (min === null || min === undefined) return "–";
   const v = Number(min);
   if (!Number.isFinite(v)) return "–";
   const total = Math.round(v);
@@ -29,6 +31,7 @@ export function fmtMinutes(min) {
 
 // Compact table form keeps the raw minute count (brief: "or 2,123분 in tables").
 export function fmtMinutesTable(min) {
+  if (min === null || min === undefined) return "–";
   const v = Number(min);
   if (!Number.isFinite(v)) return "–";
   return `${Math.round(v).toLocaleString("ko-KR")}분`;
@@ -62,18 +65,29 @@ export function fmtWon(won, { monthly = false } = {}) {
 }
 
 export function fmtPct(ratio, digits = 1) {
+  if (ratio === null || ratio === undefined) return "–";
   const v = Number(ratio);
   if (!Number.isFinite(v)) return "–";
   return `${(v * 100).toFixed(digits)}%`;
 }
 
+// Fatigue index 0–100 (one decimal, no unit suffix — the label says 지수).
+export function fmtIndex(v) {
+  if (v === null || v === undefined) return "–";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "–";
+  return `${Math.round(n * 10) / 10}`;
+}
+
 export function fmtCount(n, unit = "회") {
+  if (n === null || n === undefined) return "–";
   const v = Number(n);
   if (!Number.isFinite(v)) return "–";
   return `${Math.round(v).toLocaleString("ko-KR")}${unit}`;
 }
 
 export function fmtArea(m2) {
+  if (m2 === null || m2 === undefined) return "–";
   const v = Number(m2);
   if (!Number.isFinite(v)) return "–";
   return `${Math.round(v * 100) / 100} ㎡`;

@@ -21,10 +21,11 @@
 // text} built where it was scheduled, so the UI can always say what is
 // happening and why (stage 7, Part A).
 
-import { nameForHome, weekdayOf, WEEKDAYS, dateOf } from "./scenario.js";
+import { destForHome, nameForHome, weekdayOf, WEEKDAYS, dateOf } from "./scenario.js";
 import { nearestRoundTrip, poisByName, stationsByName } from "./places.js";
 import { ruleDefault, WEEKEND_HOME } from "./decisions.js";
 import { criterionDefault, defaultFlat, resolveCriteria } from "./criteria.js";
+import { CAPACITY_PCT, buildRides, rideLegFatigue, walkFatigue } from "./journey.js";
 
 export const MORNING_ANCHOR = criterionDefault("C-commute-depart", "morning_anchor_min"); // 07:30 + jitter
 export const SCHOOL_ANCHOR = criterionDefault("C-commute-depart", "school_anchor_min"); // 08:00 + jitter
@@ -37,6 +38,7 @@ export const PARK_DWELL = criterionDefault("C-park-dwell", "dwell_min");
 export const EVENING_START = criterionDefault("C-measure-evening", "evening_start_min"); // 18:00
 export const DAY_END = criterionDefault("C-measure-evening", "day_end_min"); // 24:00
 export const STATION_ROUTE_TOLERANCE = criterionDefault("C-station-route", "tolerance_ratio"); // 2nd entrance within 20 %
+export const FATIGUE_CLAMP = criterionDefault("C-fatigue-recovery", "clamp_max"); // 0–100
 
 const DEFAULTS = defaultFlat();
 
@@ -90,6 +92,7 @@ function makeCause(type, criterion_ids, text, decision_id = null) {
 export function planAgent(agent, day, ctx) {
   const { scenario, homeLabel, home, router, places, decider, schedule, collect } = ctx;
   const F = (ctx && ctx.crit) || (scenario ? resolveCriteria(scenario).flat : DEFAULTS);
+  const region = (ctx && ctx.region) || null;
   const weekday = WEEKDAYS[weekdayOf(scenario.start_date, day)];
   const wk = WEEKDAY_KO[weekday] || weekday;
   const speed = agent.speed;
@@ -99,6 +102,40 @@ export function planAgent(agent, day, ctx) {
   let parkVisits = 0;
   let commuteWalk = 0; // graph minutes on commute/school legs
   let commuteRide = 0; // assumed ride minutes (station_ride only)
+  // Fatigue (stage 8, household only): the day opens at the overnight
+  // baseline; every load/recovery rounds to 0.1 so trip deltas and the
+  // series points always agree. Background neighbours carry no series.
+  let fat = agent.household ? F.fatigue_overnight_base : null;
+  let fatPeak = fat;
+  let fatCrowded = 0;
+  let fatArrivalWork = null;
+  let fatAfterHome = null;
+  const fatSeries = agent.household ? [{ m: 0, v: round1(fat), label: "시작" }] : [];
+  const fatPoint = (m, label = null) => {
+    if (fat !== null) fatSeries.push({ m, v: round1(fat), label });
+  };
+  const fatLoad = (x) => {
+    if (fat === null) return;
+    fat = Math.min(FATIGUE_CLAMP, round1(fat + x));
+    if (fat > fatPeak) fatPeak = fat;
+  };
+  const fatRecover = (mins, rate) => {
+    if (fat === null || !(mins > 0)) return;
+    fat = Math.max(0, round1(fat - mins * rate));
+  };
+  const homeGapTo = (depart) => {
+    const from = clock === null ? 0 : clock;
+    const gap = depart - from;
+    if (fat !== null && gap > 0 && fat > 0) {
+      // The value path is linear-then-flat: mark where it hits zero so
+      // the series never reads stale mid-gap (overnight especially).
+      const zeroIn = fat / F.fatigue_home_per_min;
+      if (zeroIn < gap) {
+        fatSeries.push({ m: Math.ceil(from + zeroIn), v: 0, label: null });
+      }
+    }
+    fatRecover(gap, F.fatigue_home_per_min);
+  };
   const trips = [];
   const aways = [];
   const weekendCats = WEEKEND_CATS.map((c) => ({
@@ -110,14 +147,21 @@ export function planAgent(agent, day, ctx) {
   const homeEnd = () => ({ kind: "home", id: "home", label: home.complex.name });
   const poiEnd = (place) => ({ kind: "poi", id: place.id, label: place.name });
 
-  function addTrip(depart, route, from, to, purpose, cause) {
+  function addTrip(depart, route, from, to, purpose, cause, labels = {}) {
+    homeGapTo(depart); // at-home recovery since the last activity
+    fatPoint(depart, labels.depart || null);
     const distance_m = round2(route.lengthM);
     const minutes = round1(route.lengthM / speed / 60);
     const arrive = depart + Math.max(1, Math.round(minutes));
+    const fatigueDelta = round1(walkFatigue(minutes, F));
+    fatLoad(fatigueDelta);
+    fatPoint(arrive, labels.arrive || null);
     const trip = {
       id: `t${String(collect.tripSeq++).padStart(6, "0")}`,
       agent: agent.key, day, depart_min: depart, arrive_min: arrive,
       from, to, purpose, distance_m, minutes, path: route.nodeIds,
+      congestion: null, // walk legs have no congestion reading
+      fatigue_delta: fatigueDelta,
       cause,
     };
     trips.push(trip);
@@ -127,7 +171,32 @@ export function planAgent(agent, day, ctx) {
     return trip;
   }
 
-  function addAway(start, end, kind, label, detail, cause) {
+  // Seated stays (work/school) recover; errand/clinic/park stays are
+  // neutral. Station-ride work aways replay the ride timeline inside:
+  // out-ride load, seated work hours, back-ride load — from the journey
+  // legs when a path was drawn, else from the fallback congestion.
+  function addAway(start, end, kind, label, detail, cause, labels = {}) {
+    const rides = detail && detail.rides;
+    const fallback = detail && detail.ride_fallback;
+    if ((kind === "work") && (rides || fallback)) {
+      const outD = rides ? rides.out.fatigueDelta : fallback.out_delta;
+      const backD = rides ? rides.back.fatigueDelta : fallback.back_delta;
+      const outLen = rides ? rides.out.minutesTotal : fallback.ride_minutes;
+      const backLen = rides ? rides.back.minutesTotal : fallback.ride_minutes;
+      fatPoint(start, "출근 승차");
+      fatLoad(outD);
+      fatArrivalWork = fat;
+      fatPoint(start + outLen, "근무 시작");
+      fatRecover((detail && detail.seated_minutes) || 0, F.fatigue_seated_per_min);
+      fatPoint(end - backLen, "근무 종료");
+      fatLoad(backD);
+      const crowded = rides ? rides.out.crowdedMin + rides.back.crowdedMin
+        : (fallback.congestion_pct > CAPACITY_PCT ? 2 * fallback.ride_minutes : 0);
+      fatCrowded = round1(fatCrowded + crowded);
+    } else if (kind === "work" || kind === "school") {
+      fatRecover((detail && detail.seated_minutes) || 0, F.fatigue_seated_per_min);
+    }
+    fatPoint(end, labels.end || null);
     const rec = { agent: agent.key, day, kind, start_min: start, end_min: end, label, cause };
     if (detail) rec.detail = detail;
     aways.push(rec);
@@ -189,7 +258,8 @@ export function planAgent(agent, day, ctx) {
         if (found === null) {
           unavailable("commute", "station", name);
         } else {
-          const ids = ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days", ...rideIds];
+          const ids = ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+            ...rideIds, "C-congestion", "C-fatigue-load", "C-fatigue-recovery"];
           if (found.decision) ids.push("C-station-route");
           const cause = makeCause("routine", ids,
             `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)}`,
@@ -197,11 +267,41 @@ export function planAgent(agent, day, ctx) {
           const out = addTrip(depart, found.dest.route, homeEnd(), poiEnd(found.dest.place), "commute", cause);
           commuteRide += work.ride_minutes * 2;
           const awayEnd = out.arrive_min + work.ride_minutes + F.workday_minutes + work.ride_minutes;
-          addAway(out.arrive_min, awayEnd, "work", `${found.dest.place.name} 방면 근무`, {
+          // The journey path (both directions) when the destination is
+          // known and the region network is loaded; else the ride stays
+          // numeric and fatigue uses the fallback congestion.
+          const destName = destForHome(work.destination_station, homeLabel);
+          let rides = null;
+          let journeyNote = null;
+          if (!destName) journeyNote = "목적지 역 없음";
+          else if (!region || !region.network) journeyNote = "노선도 없음";
+          else {
+            rides = buildRides({
+              network: region.network, congestion: region.congestion || null,
+              fromName: name, toName: destName, rideMinutes: work.ride_minutes,
+              departOut: out.arrive_min, departBack: awayEnd - work.ride_minutes,
+              weekday, crit: F,
+            });
+            if (!rides) journeyNote = "노선도에 없는 역";
+            else cause.criterion_ids.push("C-journey-path", "C-ride-split");
+          }
+          const detail = {
             ride_minutes: work.ride_minutes, workday_minutes: F.workday_minutes,
+            seated_minutes: F.workday_minutes,
             ride_minutes_source: work.ride_minutes_source || "user_assumption",
-          }, cause);
-          addTrip(awayEnd, found.dest.back, poiEnd(found.dest.place), homeEnd(), "commute", cause);
+            rides, journey_note: journeyNote,
+          };
+          if (!rides && work.ride_minutes > 0) {
+            const perRide = round1(rideLegFatigue(work.ride_minutes,
+              F.congestion_fallback_pct, F));
+            detail.ride_fallback = { out_delta: perRide, back_delta: perRide,
+              ride_minutes: work.ride_minutes,
+              congestion_pct: F.congestion_fallback_pct, source: "가정값" };
+          }
+          addAway(out.arrive_min, awayEnd, "work", `${found.dest.place.name} 방면 근무`, detail, cause);
+          addTrip(awayEnd, found.dest.back, poiEnd(found.dest.place), homeEnd(), "commute", cause,
+            { arrive: "귀가" });
+          fatAfterHome = fat;
         }
       }
     } else if (work.type === "local_poi") {
@@ -215,14 +315,18 @@ export function planAgent(agent, day, ctx) {
           unavailable("commute", "poi", name);
         } else {
           const cause = makeCause("routine",
-            ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days"],
+            ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+              "C-fatigue-load", "C-fatigue-recovery"],
             `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)}`);
           const out = addTrip(depart, cands[0].route, homeEnd(), poiEnd(cands[0].place), "commute", cause);
+          fatArrivalWork = fat;
           const awayEnd = out.arrive_min + F.workday_minutes;
           addAway(out.arrive_min, awayEnd, "work", `${cands[0].place.name} 근무`, {
-            workday_minutes: F.workday_minutes,
+            workday_minutes: F.workday_minutes, seated_minutes: F.workday_minutes,
           }, cause);
-          addTrip(awayEnd, cands[0].back, poiEnd(cands[0].place), homeEnd(), "commute", cause);
+          addTrip(awayEnd, cands[0].back, poiEnd(cands[0].place), homeEnd(), "commute", cause,
+            { arrive: "귀가" });
+          fatAfterHome = fat;
         }
       }
     } else if (work.type === "nearest_station") {
@@ -230,12 +334,13 @@ export function planAgent(agent, day, ctx) {
       const cands = nearestRoundTrip(router, agent.home_node, places.stations, 1);
       if (cands.length > 0) {
         const cause = makeCause("routine",
-          ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days", "C-neighbour"],
+          ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days", "C-neighbour",
+            "C-fatigue-load", "C-fatigue-recovery"],
           `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)}`);
         const out = addTrip(depart, cands[0].route, homeEnd(), poiEnd(cands[0].place), "commute", cause);
         const awayEnd = out.arrive_min + F.workday_minutes;
         addAway(out.arrive_min, awayEnd, "work", `${cands[0].place.name} 방면 근무`, {
-          workday_minutes: F.workday_minutes,
+          workday_minutes: F.workday_minutes, seated_minutes: F.workday_minutes,
         }, cause);
         addTrip(awayEnd, cands[0].back, poiEnd(cands[0].place), homeEnd(), "commute", cause);
       }
@@ -250,13 +355,14 @@ export function planAgent(agent, day, ctx) {
       unavailable("school", "school");
     } else {
       const cause = makeCause("routine",
-        ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days"],
+        ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+          "C-fatigue-load", "C-fatigue-recovery"],
         anchored ? `${wk} 등교일 · ${anchorText(F.school_anchor_min, depart)}`
           : `앞 일정 종료 후 ${F.after_gap_min}분 뒤 출발`);
       const out = addTrip(depart, cands[0].route, homeEnd(), poiEnd(cands[0].place), "school", cause);
       const awayEnd = out.arrive_min + F.schoolday_minutes;
       addAway(out.arrive_min, awayEnd, "school", `${cands[0].place.name} 등교`, {
-        schoolday_minutes: F.schoolday_minutes,
+        schoolday_minutes: F.schoolday_minutes, seated_minutes: F.schoolday_minutes,
       }, cause);
       addTrip(awayEnd, cands[0].back, poiEnd(cands[0].place), homeEnd(), "school", cause);
     }
@@ -290,10 +396,11 @@ export function planAgent(agent, day, ctx) {
     }
     const cause = decision
       ? makeCause("decision",
-        ["C-decide-kinds", "C-grocery-freq", "C-walk-speed", "C-walk-route", "C-shop-dwell"],
+        ["C-decide-kinds", "C-grocery-freq", "C-walk-speed", "C-walk-route", "C-shop-dwell",
+          "C-fatigue-load"],
         `장보기처 판단 → ${dest.place.name} 선택 (${schedNote})`, decision.id)
       : makeCause(agent.household ? "input" : "routine",
-        ["C-grocery-freq", "C-walk-speed", "C-walk-route", "C-shop-dwell"],
+        ["C-grocery-freq", "C-walk-speed", "C-walk-route", "C-shop-dwell", "C-fatigue-load"],
         agent.household
           ? `고객 입력: 주 ${freq}회 장보기 · 가장 가까운 ${SHOP_CAT_KO[cat]}`
           : `주간 일정: 주 ${freq}회 장보기 · 가장 가까운 ${SHOP_CAT_KO[cat]}`);
@@ -313,7 +420,7 @@ export function planAgent(agent, day, ctx) {
     } else {
       const freq = agent.clinic_visits_per_month;
       const cause = makeCause(agent.household ? "input" : "routine",
-        ["C-clinic-freq", "C-clinic-dwell", "C-walk-speed", "C-walk-route"],
+        ["C-clinic-freq", "C-clinic-dwell", "C-walk-speed", "C-walk-route", "C-fatigue-load"],
         agent.household ? `고객 입력: 월 ${freq}회 병원` : `월간 일정: 월 ${freq}회 병원`);
       const out = addTrip(depart, cands[0].route, homeEnd(), poiEnd(cands[0].place), "clinic", cause);
       addAway(out.arrive_min, out.arrive_min + F.clinic_dwell_min, "clinic", `${cands[0].place.name} 진료`, null, cause);
@@ -337,7 +444,8 @@ export function planAgent(agent, day, ctx) {
       if (rec.chosen_key === "park") {
         const freq = agent.park_walks_per_week;
         const cause = makeCause("decision",
-          ["C-decide-kinds", "C-park-habit", "C-walk-speed", "C-walk-route", "C-park-dwell", "C-daily-rhythm"],
+          ["C-decide-kinds", "C-park-habit", "C-walk-speed", "C-walk-route", "C-park-dwell",
+            "C-daily-rhythm", "C-fatigue-load"],
           agent.household
             ? `저녁 산책 판단 → ${cands[0].place.name} 선택 (고객 입력 주 ${freq}회 중)`
             : `저녁 산책 판단 → ${cands[0].place.name} 선택 (주 ${freq}회 일정 중)`,
@@ -376,7 +484,8 @@ export function planAgent(agent, day, ctx) {
         const dest = destByCat.get(key);
         const dwellId = key === "park" ? "C-park-dwell" : key === "clinic" ? "C-clinic-dwell" : "C-shop-dwell";
         const cause = makeCause("decision",
-          ["C-decide-kinds", "C-weekend-plan", "C-walk-speed", "C-walk-route", dwellId],
+          ["C-decide-kinds", "C-weekend-plan", "C-walk-speed", "C-walk-route", dwellId,
+            "C-fatigue-load"],
           `주말 계획(${rec.plan.length}곳) → ${dest.place.name} ${cat.stay}`, rec.id);
         const out = addTrip(depart, dest.route, homeEnd(), poiEnd(dest.place), cat.purpose, cause);
         addAway(out.arrive_min, out.arrive_min + cat.dwell, cat.away,
@@ -391,6 +500,9 @@ export function planAgent(agent, day, ctx) {
   }
 
   // --- per-day summary ---
+  // Home rest runs to midnight: the day's end is the 24:00 value.
+  homeGapTo(1440);
+  fatPoint(1440);
   let walkMinutes = 0;
   let awayEvening = 0;
   for (const t of trips) {
@@ -409,5 +521,27 @@ export function planAgent(agent, day, ctx) {
     park_visits: parkVisits,
     home_evening_minutes: Math.max(0, (F.day_end_min - F.evening_start_min) - awayEvening),
     trips: trips.length,
+    fatigue: fat === null ? null : {
+      start: F.fatigue_overnight_base,
+      end: round1(fat),
+      mean: round1(fatMean(fatSeries)),
+      peak: round1(fatPeak),
+      arrival_work: fatArrivalWork === null ? null : round1(fatArrivalWork),
+      after_home: fatAfterHome === null ? null : round1(fatAfterHome),
+      crowded_min: round1(fatCrowded),
+      series: fatSeries,
+    },
   };
+}
+
+// Time-weighted mean of a stepwise day series over 0..1440.
+function fatMean(series) {
+  if (!series || series.length === 0) return 0;
+  let acc = 0;
+  for (let i = 0; i < series.length; i++) {
+    const m0 = series[i].m;
+    const m1 = i + 1 < series.length ? series[i + 1].m : 1440;
+    acc += series[i].v * Math.max(0, m1 - m0);
+  }
+  return acc / 1440;
 }

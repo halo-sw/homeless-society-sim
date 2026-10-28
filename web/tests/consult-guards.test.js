@@ -4,7 +4,7 @@ import { findInventedNumbers, forbiddenTopic } from "../src/judge/guards.js";
 import {
   checkConsultReply, investmentAdvice, predictionClaim, toolResultNumbers,
   numbersOnlyAnswer, forecastQuestion, priceForecastReply, forecastClaim,
-  loanVerdict, buyVerdict, consultTopic,
+  loanVerdict, buyVerdict, consultTopic, withoutHealthNotes,
 } from "../src/consult/guards.js";
 
 const RESULTS = [
@@ -120,5 +120,37 @@ describe("consult guards", () => {
     assert.match(text, /슈퍼1: 3분\(251 m/);
     assert.match(numbersOnlyAnswer([]), /수치가 없습니다/);
     assert.ok(toolResultNumbers(null) instanceof Set);
+  });
+
+  it("lets the fatigue model note pass, still trips on health claims", () => {
+    assert.equal(consultTopic("건강에 좋은 동네입니다"), "건강");
+    assert.equal(
+      consultTopic(withoutHealthNotes(
+        "피로도 25.3입니다. 피로도 지수는 가정 모델이며 건강·의학적 판단이 아닙니다.")),
+      null);
+    assert.equal(
+      consultTopic(withoutHealthNotes("건강 조언은 하지 않습니다. 도보 시간을 비교해 드릴게요.")),
+      null);
+    assert.equal(
+      checkConsultReply("피로도 평균 25.3입니다(C-fatigue-load). 가정 모델이며 건강·의학적 판단이 아닙니다.",
+        [{ summary_30d: { avg_30d: 25.3 } }]).ok, true);
+    assert.equal(
+      checkConsultReply("건강에 좋은 집은 B입니다.", RESULTS).cause, "forbidden_topic");
+  });
+
+  it("falls back to journey + fatigue numbers", () => {
+    const text = numbersOnlyAnswer([
+      { rides: [{ stay: "중앙역 방면 근무",
+        out: { depart: "08:20", minutes_total: 20,
+          legs: [{ line: "A호선", from: "중앙역", to: "환승역", minutes: 5.3,
+            congestion_pct: 90, congestion_source: "서울교통공사" }],
+          transfers: [], transfer_minutes: 0, fatigue_delta: 5, crowded_min: 0 },
+        back: { depart: "18:20", minutes_total: 20, legs: [],
+          transfers: [], transfer_minutes: 0, fatigue_delta: 4, crowded_min: 0 } }] },
+      { summary_30d: { arrival_work_avg: 25.3, after_home_avg: 22.8, avg_30d: 11.3, crowded_min: 0 } },
+    ]);
+    assert.match(text, /A호선 중앙역→환승역/);
+    assert.match(text, /고객 입력/);
+    assert.match(text, /피로도 30일: 출근 도착 25.3/);
   });
 });

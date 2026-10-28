@@ -79,6 +79,57 @@ export function tinyArea() {
   };
 }
 
+// Fake region for journey/fatigue tests (hand-written toy numbers, never
+// copied from the real network or the congestion xlsx).
+export function tinyRegion() {
+  const stopsA = ["중앙역", "시청", "환승역"].map((name, i) => ({
+    id: `a:${name}`, name, key: name.replace(/역$/, ""),
+    lon: 127.0 + i * 0.01, lat: 37.5,
+  }));
+  const stopsB = ["환승역", "직장역"].map((name, i) => ({
+    id: `b:${name}`, name, key: name.replace(/역$/, ""),
+    lon: 127.02 + i * 0.02, lat: 37.5,
+  }));
+  const geomA = [[127.0, 37.5], [127.01, 37.5], [127.02, 37.5]];
+  const geomB = [[127.02, 37.5], [127.03, 37.5], [127.04, 37.5]];
+  const network = {
+    lines: [
+      { id: "a", name: "A호선", circle: false, stops: stopsA,
+        patterns: [
+          { id: "a:down:1", direction: "down", direction_label: "하선",
+            stops: stopsA.map((s) => s.id), chainage_km: [0, 1, 2],
+            geometry: geomA },
+          { id: "a:up:2", direction: "up", direction_label: "상선",
+            stops: stopsA.map((s) => s.id).reverse(), chainage_km: [0, 1, 2],
+            geometry: [...geomA].reverse() },
+        ] },
+      { id: "b", name: "B호선", circle: false, stops: stopsB,
+        patterns: [
+          { id: "b:down:3", direction: "down", direction_label: "하선",
+            stops: stopsB.map((s) => s.id), chainage_km: [0, 4],
+            geometry: geomB },
+          { id: "b:up:4", direction: "up", direction_label: "상선",
+            stops: stopsB.map((s) => s.id).reverse(), chainage_km: [0, 4],
+            geometry: [...geomB].reverse() },
+        ] },
+    ],
+    transfers: [{ station: "환승역", key: "환승", lines: ["a", "b"] }],
+  };
+  // 30-minute slots from 05:30: fake values with one >100 % column.
+  const slots = [330, 480, 510, 1080, 1110];
+  const congestion = {
+    slots,
+    slot_labels: ["05:30~06:00", "08:00~08:30", "08:30~09:00", "18:00~18:30", "18:30~19:00"],
+    days: {
+      weekday: { A호선: { 중앙역: { 하선: [10, 90, 120, 80, 70] } } },
+      saturday: { A호선: { 중앙역: { 하선: [10, 40, 45, 50, 40] } } },
+      sunday: { A호선: { 중앙역: { 하선: [10, 30, 35, 40, 30] } } },
+    },
+    station_numbers: { A호선: { 중앙역: 101 } },
+  };
+  return { network, congestion };
+}
+
 export function tinyScenario(over = {}) {
   return {
     name: "tiny",

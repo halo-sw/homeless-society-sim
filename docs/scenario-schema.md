@@ -51,6 +51,14 @@ Example: `scenarios/demo-two-homes.json`. Run it with
   `{homeLabel: name}` map when the station differs per home. The UI must
   label the ride **가정값**. `needs_user_input: true` flags a placeholder
   the user has not confirmed yet. Never a looked-up transit time.
+  Optional `destination_station` (string, `{homeLabel: name}` map, or
+  null when unknown): the alighting station. Only with it can the engine
+  draw the real journey path on the OSM station graph
+  (`data/build/region/network.json`, stage 8); without it — or when the
+  network is not loaded — the ride stays a minutes number and fatigue
+  uses the fallback congestion. Missing homes read null. **Never
+  invented**: an unknown destination keeps the ride numeric, it never
+  blocks the run (recorded as `detail.journey_note`).
 - `{type: "local_poi", name}` — walk to a real POI with the verbatim
   `name` (nearest by graph when several share it), work the assumed
   workday, walk back. `name` may also be a per-home map.

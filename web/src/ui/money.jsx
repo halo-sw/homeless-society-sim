@@ -12,7 +12,8 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
-import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, badgeFor } from "../money/format.js";
+import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
+import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { MONEY_CATEGORY_KO } from "../money/timeline.js";
 import { TENURE_DISCLAIMER, TRADE_TAX_NOTE } from "../money/tenure.js";
 import { ELIGIBILITY_NOTE } from "../money/housing.js";
@@ -254,6 +255,7 @@ function QolHome({ label, doc, tenure, active }) {
   const sel = h.by_tenure && h.by_tenure[tenure];
   const time = h.qol_time || {};
   const conv = h.qol_convenience || {};
+  const fat = h.qol_fatigue || null;
   return (
     <VStack gap={1}>
       <Heading level={4}>{`홈 ${label} · ${h.complex_name || ""}`}</Heading>
@@ -282,6 +284,34 @@ function QolHome({ label, doc, tenure, active }) {
               ? `${fmtPct(sel.burden_ratio)} / ${fmtWon(sel.remaining_won, { monthly: true })}` : "–"}
           </Text>
         </MetadataListItem>
+        {fat && (
+          <>
+            <MetadataListItem label="피로 · 출근 도착">
+              <HStack gap={1} vAlign="center">
+                <Text hasTabularNumbers>{fmtIndex(fat.arrival_work_avg)}</Text>
+                <SrcBadge source="scenario" />
+              </HStack>
+            </MetadataListItem>
+            <MetadataListItem label="피로 · 퇴근 후">
+              <HStack gap={1} vAlign="center">
+                <Text hasTabularNumbers>{fmtIndex(fat.after_home_avg)}</Text>
+                <SrcBadge source="scenario" />
+              </HStack>
+            </MetadataListItem>
+            <MetadataListItem label="피로 · 30일 평균">
+              <HStack gap={1} vAlign="center">
+                <Text hasTabularNumbers>{fmtIndex(fat.avg_30d)}</Text>
+                <SrcBadge source="scenario" />
+              </HStack>
+            </MetadataListItem>
+            <MetadataListItem label="피로 · 혼잡 100% 초과 탑승">
+              <HStack gap={1} vAlign="center">
+                <Text hasTabularNumbers>{fmtMinutes(fat.crowded_min)}</Text>
+                <SrcBadge source="scenario" />
+              </HStack>
+            </MetadataListItem>
+          </>
+        )}
         <MetadataListItem label="편의 · 10분 도보">
           <HStack gap={1} vAlign="center" wrap="wrap">
             {QOL_CATS.map(([k, ko]) => (
@@ -301,6 +331,7 @@ function QolHome({ label, doc, tenure, active }) {
           </HStack>
         </MetadataListItem>
       </MetadataList>
+      {fat && <Text type="supporting">{FATIGUE_MODEL_NOTE}</Text>}
     </VStack>
   );
 }

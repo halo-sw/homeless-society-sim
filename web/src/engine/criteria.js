@@ -25,6 +25,7 @@ export const CRITERIA_SOURCES = new Set([
   "고객 입력",
   "데이터: OSM",
   "데이터: 실거래가",
+  "데이터: 서울교통공사",
   "가정값",
 ]);
 
@@ -100,6 +101,22 @@ const FLAT_MAP = {
   },
   "C-work-hours": { workday_minutes: "workday_minutes", schoolday_minutes: "schoolday_minutes" },
   "C-station-route": { tolerance_ratio: "station_tolerance" },
+  "C-journey-path": { transfer_penalty_km: "journey_transfer_penalty_km" },
+  "C-ride-split": { transfer_walk_min: "ride_transfer_min" },
+  "C-congestion": { fallback_pct: "congestion_fallback_pct" },
+  "C-fatigue-load": {
+    walk_per_min: "fatigue_walk_per_min",
+    ride_seated_per_min: "fatigue_ride_seated_per_min",
+    ride_stand_per_min: "fatigue_ride_stand_per_min",
+    crowd_extra_per_min: "fatigue_crowd_extra_per_min",
+    per_transfer: "fatigue_per_transfer",
+    wait_per_min: "fatigue_wait_per_min",
+  },
+  "C-fatigue-recovery": {
+    home_per_min: "fatigue_home_per_min",
+    seated_stay_per_min: "fatigue_seated_per_min",
+    overnight_base: "fatigue_overnight_base",
+  },
   "C-shop-dwell": { dwell_min: "shop_dwell_min" },
   "C-park-dwell": { dwell_min: "park_dwell_min" },
   "C-clinic-dwell": { dwell_min: "clinic_dwell_min" },

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tinyArea, tinyScenario } from "./engine-fixture.js";
+import { tinyArea, tinyRegion, tinyScenario } from "./engine-fixture.js";
 import {
   TOOL_DEFS, TOOL_NAMES, CONSULT_AREAS, MAX_TOOL_ROUNDS,
   createSession, callTool,
@@ -58,16 +58,17 @@ async function demoScenario() {
 }
 
 describe("consult tools", () => {
-  it("exposes the nineteen documented tools", () => {
+  it("exposes the twenty-one documented tools", () => {
     assert.deepEqual([...TOOL_NAMES].sort(), [
-      "compare", "explain_decision", "find_places", "get_day", "get_scenario",
+      "compare", "explain_decision", "find_places", "get_day", "get_fatigue", "get_journey",
+      "get_scenario",
       "list_areas", "list_complexes", "list_stations", "run_simulation",
       "set_view", "update_scenario",
       "list_criteria", "explain_criterion",
       "set_money", "estimate_net_pay", "price_reference", "living_cost",
       "recommend_public_rental", "add_home_c",
     ].sort());
-    assert.equal(TOOL_DEFS.length, 19);
+    assert.equal(TOOL_DEFS.length, 21);
     assert.equal(MAX_TOOL_ROUNDS, 6);
     for (const t of TOOL_DEFS) {
       assert.equal(t.type, "function");
@@ -231,6 +232,42 @@ describe("consult tools", () => {
     const bad = await callTool(s, "compare", { run_a: "run999", run_b: both.run_ids.B });
     assert.equal(bad.ok, false);
     assert.match(bad.error, /unknown run/);
+  });
+
+  it("get_journey and get_fatigue read rides and fatigue", async () => {
+    const region = tinyRegion();
+    const s = fixtureSession({ loadRegion: async () => region });
+    s.scenario.household.members[0].work.destination_station = "직장역";
+    const one = await callTool(s, "run_simulation", { home: "A", decisions: "rules" });
+    assert.equal(one.ok, true);
+    const id = one.run_ids.A;
+    const j = await callTool(s, "get_journey", { run: id, day: 1, member: "h1" });
+    assert.equal(j.ok, true);
+    assert.equal(j.rides.length, 1);
+    assert.equal(j.rides[0].out.legs.length, 2);
+    assert.equal(j.rides[0].out.legs[0].congestion_source, "서울교통공사");
+    assert.equal(j.rides[0].out.legs[1].congestion_source, "가정값");
+    assert.equal(j.rides[0].out.minutes_total, 20);
+    const f = await callTool(s, "get_fatigue", { run: id, member: "구성원 1" });
+    assert.equal(f.ok, true);
+    assert.match(f.model_note, /건강·의학적 판단이 아닙니다/);
+    assert.deepEqual(f.criteria, ["C-congestion", "C-fatigue-load", "C-fatigue-recovery"]);
+    assert.ok(Number.isFinite(f.summary_30d.avg_30d));
+    const fd = await callTool(s, "get_fatigue", { run: id, member: "h1", day: 1 });
+    assert.equal(fd.ok, true);
+    assert.ok(fd.day_fatigue.series.length > 0);
+    assert.equal((await callTool(s, "get_journey", { run: id, day: 9, member: "h1" })).ok, false);
+    assert.equal((await callTool(s, "get_fatigue", { run: id, member: "nobody" })).ok, false);
+    assert.equal((await callTool(s, "get_fatigue", { run: "run999", member: "h1" })).ok, false);
+  });
+
+  it("get_journey reports numeric rides honestly without a destination", async () => {
+    const s = fixtureSession({ loadRegion: async () => tinyRegion() });
+    const one = await callTool(s, "run_simulation", { home: "A", decisions: "rules" });
+    const j = await callTool(s, "get_journey", { run: one.run_ids.A, day: 1, member: "h1" });
+    assert.equal(j.ok, true);
+    assert.equal(j.rides[0].out, undefined);
+    assert.match(j.rides[0].note, /목적지 역 없음/);
   });
 
   it("run_simulation rejects bad homes and modes", async () => {

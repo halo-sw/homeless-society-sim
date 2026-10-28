@@ -23,16 +23,31 @@ async function loadArea(areaId) {
   return area;
 }
 
+async function loadRegion() {
+  const region = {};
+  for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
+    try {
+      region[key] = await fetchJson(`/data/region/${file}`);
+    } catch {
+      region[key] = null;
+    }
+  }
+  if (!region.network && !region.congestion) return null;
+  return region;
+}
+
 self.onmessage = async (e) => {
   const { scenario: name, labels } = e.data || {};
   try {
     const scen = await fetchJson(`/scenarios/${name}.json`);
+    const region = await loadRegion();
     const runs = {};
     for (const label of labels) {
       const home = scen.homes.find((h) => h.label === label);
       if (!home) throw new Error(`unknown home ${label}`);
       const area = await loadArea(home.area);
-      runs[label] = simulate(area, structuredClone(scen), label);
+      runs[label] = simulate(area, structuredClone(scen), label,
+        region ? { region } : {});
     }
     self.postMessage({ ok: true, runs });
   } catch (err) {

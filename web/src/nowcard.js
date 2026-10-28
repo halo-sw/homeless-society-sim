@@ -9,10 +9,13 @@
 // without causes read "이유 기록 없음 (이전 실행)".
 
 import { chosenLabel, DECISION_KIND_KO, purposeLabel } from "./sim.js";
+import { legAt, rideStateFor } from "./journey.js";
+import { standShare } from "./engine/journey.js";
 import { fmtWon } from "./money/format.js";
 
 export const OLD_RUN_WHY = "이유 기록 없음 (이전 실행)";
 export const TICKER_LIMIT = 5;
+export const FATIGUE_MODEL_NOTE = "피로도 지수 · 가정 모델이며 건강·의학적 판단이 아닙니다";
 
 const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -106,7 +109,8 @@ export function nowCardFor({ run, indexed, agentKey, day, minute }) {
   const days = (run.meta && run.meta.days) || 30;
   const next = nextAfter(indexed, agentKey, day, days, minute);
   const base = { agentKey, label, next: nextLabel(next), oldRun: false,
-    decision: null, criterionIds: [], decisionId: null };
+    decision: null, criterionIds: [], decisionId: null,
+    fatigue: fatigueFor({ run, agentKey, day, minute }) };
 
   if (kind === "trip") {
     const remain = Math.max(0, trip.arrive_min - Math.floor(minute));
@@ -152,13 +156,88 @@ function awayKey(a) {
   return `${a.agent}:a${a.day}:${String(a.start_min).padStart(4, "0")}:${a.kind}`;
 }
 
+// Fatigue readout at (day, minute): the series value plus the current
+// leg's delta and its congestion context. Null without a series.
+export function fatigueFor({ run, agentKey, day, minute }) {
+  const entry = (run.daily || []).find((d) => d.agent === agentKey);
+  const dayFat = entry && entry.days[day] && entry.days[day].fatigue;
+  if (!dayFat || !Array.isArray(dayFat.series)) return null;
+  const m = Math.floor(minute);
+  let value = dayFat.series.length > 0 ? dayFat.series[0].v : dayFat.start;
+  for (const p of dayFat.series) {
+    if (p.m <= m) value = p.v;
+    else break;
+  }
+  const out = { value, delta: null, note: "", source: null,
+    criterionIds: [], series: dayFat.series,
+    arrivalWork: dayFat.arrival_work, afterHome: dayFat.after_home,
+    peak: dayFat.peak, end: dayFat.end };
+  const trip = (run.trips || []).find((t) => t.agent === agentKey && t.day === day
+    && m >= t.depart_min && m < t.arrive_min);
+  if (trip) {
+    out.delta = trip.fatigue_delta ?? null;
+    out.note = `도보 ${trip.minutes}분`;
+    out.criterionIds = ["C-fatigue-load"];
+    return out;
+  }
+  const away = (run.aways || []).find((a) => a.agent === agentKey && a.day === day
+    && m >= a.start_min && m < a.end_min);
+  if (!away) {
+    out.note = "집에서 회복 중";
+    out.criterionIds = ["C-fatigue-recovery"];
+    return out;
+  }
+  if (away.kind === "work" && away.detail && (away.detail.rides || away.detail.ride_fallback)) {
+    const ride = rideStateFor(away, m);
+    const detail = away.detail;
+    if (ride && (ride.dir === "out" || ride.dir === "back") && detail.rides) {
+      const leg = detail.rides[ride.dir].legs[legAt(detail.rides[ride.dir], ride.elapsed).legIndex];
+      const at = legAt(detail.rides[ride.dir], ride.elapsed);
+      const c = leg.congestion;
+      const posture = standShare(c.valuePct) >= 0.5 ? "서서 감" : "앉아서 감";
+      if (at.inTransfer) {
+        const legsSum = detail.rides[ride.dir].legs.reduce((a, l) => a + l.fatigueDelta, 0);
+        const n = detail.rides[ride.dir].transfers.length || 1;
+        out.delta = Math.round(((detail.rides[ride.dir].fatigueDelta - legsSum) / n) * 10) / 10;
+        out.note = `${detail.rides[ride.dir].transfers[at.transferIndex].station} 환승 중`;
+      } else {
+        out.delta = leg.fatigueDelta;
+        out.note = `${leg.lineName} ${leg.from}→${leg.to} 혼잡도 ${c.valuePct}%, ${posture}`;
+      }
+      out.source = c.source;
+      out.criterionIds = ["C-congestion", "C-fatigue-load"];
+      return out;
+    }
+    if (ride && (ride.dir === "out" || ride.dir === "back") && detail.ride_fallback) {
+      const fb = detail.ride_fallback;
+      out.delta = ride.dir === "out" ? fb.out_delta : fb.back_delta;
+      out.note = `혼잡도 자료 없음 · 가정값 ${fb.congestion_pct}%`;
+      out.source = "가정값";
+      out.criterionIds = ["C-congestion", "C-fatigue-load"];
+      return out;
+    }
+    out.note = "근무 중 · 앉아서 회복";
+    out.criterionIds = ["C-fatigue-recovery"];
+    return out;
+  }
+  if (away.kind === "work" || away.kind === "school") {
+    out.note = away.kind === "work" ? "근무 중 · 앉아서 회복" : "수업 중 · 앉아서 회복";
+    out.criterionIds = ["C-fatigue-recovery"];
+    return out;
+  }
+  out.note = "머무는 중";
+  out.criterionIds = [];
+  return out;
+}
+
 // Every household member in one row (free camera).
 export function householdNow({ run, indexed, day, minute }) {
   return (run.agents || [])
     .filter((a) => a.household)
     .map((a, i) => {
       const card = nowCardFor({ run, indexed, agentKey: a.key, day, minute });
-      return { memberIndex: i + 1, agentKey: a.key, label: a.label, line: card.now };
+      return { memberIndex: i + 1, agentKey: a.key, label: a.label, line: card.now,
+        fatigue: card.fatigue ? card.fatigue.value : null };
     });
 }
 

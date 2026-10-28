@@ -52,6 +52,23 @@ async function loadArea(areaId) {
   return area;
 }
 
+// Region data for journeys (stage 8): the OSM station network + the Seoul
+// Metro congestion table. Missing files keep rides numeric (never fatal);
+// the run records what it had in meta.region.
+async function loadRegion() {
+  const dir = join(REPO, "data", "build", "region");
+  const region = {};
+  for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
+    try {
+      region[key] = JSON.parse(await readFile(join(dir, file), "utf8"));
+    } catch {
+      region[key] = null;
+    }
+  }
+  if (!region.network && !region.congestion) return null;
+  return region;
+}
+
 const opts = args(process.argv.slice(2));
 const scenarioRaw = JSON.parse(await readFile(resolve(REPO, opts.scenario), "utf8"));
 const scenario = parseScenario(structuredClone(scenarioRaw));
@@ -64,12 +81,17 @@ if (opts.decisions) {
 const outDir = resolve(REPO, opts.out);
 await mkdir(outDir, { recursive: true });
 
+const region = await loadRegion();
+console.log(JSON.stringify({ region: region ? {
+  network: !!region.network, congestion: !!region.congestion,
+} : null }));
 const runs = {};
 for (const label of labels) {
   const home = homeOf(scenario, label);
   const area = await loadArea(home.area);
   const t0 = performance.now();
-  const run = simulate(area, structuredClone(scenarioRaw), label, decisions ? { decisions } : {});
+  const simOpts = { ...(decisions ? { decisions } : {}), ...(region ? { region } : {}) };
+  const run = simulate(area, structuredClone(scenarioRaw), label, simOpts);
   const ms = performance.now() - t0;
   const file = join(outDir, `${scenario.name}-${label}.json`);
   await writeFile(file, `${canon(run)}\n`, "utf8");

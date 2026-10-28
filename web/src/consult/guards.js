@@ -130,6 +130,23 @@ export function consultTopic(text) {
   return null;
 }
 
+// The fatigue model note and health-advice refusals name the topic only
+// to disclaim it ("가정 모델이며 건강·의학적 판단이 아닙니다",
+// "건강 조언은 하지 않습니다") — strip those sentences before the
+// topic check so the disclaimer never trips its own guard. Genuine
+// health claims ("건강에 좋은 동네입니다") still trip.
+const HEALTH_NOTE_RES = [
+  /피로도 지수[^.!?\n]*가정 모델이며 건강·의학적 판단이 아닙니다[^.!?\n]*[.!\n]/g,
+  /가정 모델이며 건강·의학적 판단이 아닙니다[^.!?\n]*[.!\n]/g,
+  /[^.!?\n]*건강 (조언|판단|상담)[^.!?\n]*(하지 않|아닙니다|드리지 않)[^.!?\n]*[.!\n]/g,
+];
+
+export function withoutHealthNotes(text) {
+  let s = String(text || "");
+  for (const re of HEALTH_NOTE_RES) s = s.replace(re, " ");
+  return s;
+}
+
 const REFUSAL_RES = [
   /[^.!?\n]*판단하지 않[^.!?\n]*[.!\n]/g,
   /[^.!?\n]*원문에서 확인[^.!?\n]*[.!\n]/g,
@@ -276,7 +293,7 @@ export function checkConsultReply(answer, toolResults) {
       detail: `number ${badNums[0]} appears in no tool result of this conversation`,
       offending: badNums };
   }
-  const badTopic = consultTopic(text);
+  const badTopic = consultTopic(withoutHealthNotes(text));
   if (badTopic !== null) {
     return { ok: false, cause: "forbidden_topic",
       detail: `mentions ${badTopic} — refuse and redirect instead`,
@@ -318,7 +335,8 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
     if (!r || typeof r !== "object") continue;
     if (r.compare && Array.isArray(r.compare.metrics)) {
       for (const m of r.compare.metrics) {
-        const fmt = m.unit === "minutes" ? fmtMinutes : m.unit === "metres" ? fmtDistance : (n) => `${n}회`;
+        const fmt = m.unit === "minutes" ? fmtMinutes : m.unit === "metres" ? fmtDistance
+          : m.unit === "index" ? ((n) => (n === null ? "–" : String(n))) : (n) => `${n}회`;
         const src = m.source === "graph" ? "그래프" : "가정값";
         lines.push(`- ${m.label}: A ${fmt(m.a)} / B ${fmt(m.b)} (Δ ${fmt(m.delta_b_minus_a)}, ${src})`);
       }
@@ -355,6 +373,25 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
     } else if (r.household_monthly_net_preview) {
       const p = r.household_monthly_net_preview;
       lines.push(`- 가구 실수령 합계: ${fmtWon(p.household_monthly_net_won, { monthly: true })}`);
+    } else if (Array.isArray(r.rides)) {
+      for (const ride of r.rides.slice(0, 2)) {
+        if (!ride.out) {
+          lines.push(`- ${ride.stay || "승차"}: ${ride.note || ""} (${ride.ride_minutes}분 가정값)`.trim());
+          continue;
+        }
+        for (const [dir, ride_] of [["출근", ride.out], ["퇴근", ride.back]]) {
+          const legs = (ride_.legs || []).map((l) =>
+            `${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} (혼잡도 ${l.congestion_pct}%, ${l.congestion_source})`).join(" · ");
+          lines.push(`- ${dir}: ${legs} (합계 ${fmtMinutes(ride_.minutes_total)} 고객 입력)`);
+        }
+      }
+    } else if (r.summary_30d) {
+      const s = r.summary_30d;
+      lines.push(`- 피로도 30일: 출근 도착 ${s.arrival_work_avg ?? "–"}, 퇴근 후 ${s.after_home_avg ?? "–"}, 평균 ${s.avg_30d ?? "–"}, 혼잡 초과 ${fmtMinutes(s.crowded_min)} (가정 모델)`);
+      if (r.day_fatigue) {
+        const d = r.day_fatigue;
+        lines.push(`- ${r.day}일차: 시작 ${d.start} → 끝 ${d.end}, 최고 ${d.peak} (가정 모델)`);
+      }
     }
   }
   if (lines.length === 1) {

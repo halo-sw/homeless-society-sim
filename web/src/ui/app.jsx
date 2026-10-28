@@ -19,7 +19,10 @@ import { store } from "./store.js";
 import { ConsultPanel } from "./consult.jsx";
 import { CriteriaTab } from "./criteria.jsx";
 import { MoneyTab, QualityTab } from "./money.jsx";
-import { fmtMinutes, fmtDistance, fmtCount, badgeFor } from "../money/format.js";
+import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
+import { BAND_LABEL, BAND_ORDER } from "../journey.js";
+import { congestionBand } from "../engine/journey.js";
+import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
 
 function useStore() {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -223,6 +226,135 @@ function JudgeLogCard({ state }) {
 
 const WHY_KIND_KO = { routine: "일상 규칙", decision: "판단", input: "고객 입력", none: "기록 없음" };
 
+const BAND_CSS = { calm: "#4a9b6b", normal: "#d9a83c", crowded: "#d96c3c", packed: "#c0392b" };
+
+// Fatigue line over the day: stepwise value 0–100 with event markers.
+function FatigueSpark({ series, nowMin }) {
+  const pts = (series || []).filter((p) => Number.isFinite(p.m) && Number.isFinite(p.v));
+  if (pts.length === 0) return null;
+  const W = 288;
+  const H = 44;
+  const X = (m) => Math.max(0, Math.min(W, (m / 1440) * W));
+  const Y = (v) => H - 4 - (Math.max(0, Math.min(100, v)) / 100) * (H - 8);
+  let d = `M ${X(pts[0].m)} ${Y(pts[0].v)}`;
+  for (const p of pts.slice(1)) d += ` L ${X(p.m)} ${Y(p.v)}`;
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="하루 피로도">
+      {[0, 50, 100].map((v) => (
+        <line key={v} x1={0} y1={Y(v)} x2={W} y2={Y(v)} stroke="#e5e0d5" strokeWidth={1} />
+      ))}
+      <path d={d} fill="none" stroke="#8a6d3b" strokeWidth={1.6} />
+      {pts.filter((p) => p.label).map((p, i) => (
+        <circle key={i} cx={X(p.m)} cy={Y(p.v)} r={2.4} fill="#8a6d3b">
+          <title>{`${p.label} (${p.v})`}</title>
+        </circle>
+      ))}
+      {Number.isFinite(nowMin) && (
+        <line x1={X(nowMin)} y1={0} x2={X(nowMin)} y2={H} stroke="#666" strokeWidth={1} strokeDasharray="2 2" />
+      )}
+    </svg>
+  );
+}
+
+function FatigueBar({ fatigue, nowMin }) {
+  const f = fatigue;
+  const width = `${Math.max(0, Math.min(100, f.value))}%`;
+  const deltaText = f.delta === null || f.delta === undefined
+    ? "" : ` (${f.delta > 0 ? "+" : ""}${Math.round(f.delta * 10) / 10})`;
+  return (
+    <VStack gap={1}>
+      <HStack gap={1} vAlign="center" wrap="wrap">
+        <Text>{`피로도 ${fmtIndex(f.value)}${deltaText}`}</Text>
+        {f.source && <Badge variant="neutral" label={f.source === "서울교통공사" ? "실측" : "가정값"} />}
+      </HStack>
+      <div className="ui-progress" role="progressbar" aria-label="피로도 지수"
+        aria-valuenow={Math.round(f.value)} aria-valuemin={0} aria-valuemax={100}>
+        <div className="ui-progress-fill" style={{ width }} />
+      </div>
+      {f.note && <Text type="supporting">{f.note}</Text>}
+      <FatigueSpark series={f.series} nowMin={nowMin} />
+      <Text type="supporting">{FATIGUE_MODEL_NOTE}</Text>
+      {f.criterionIds.length > 0 && (
+        <HStack gap={1} vAlign="center" wrap="wrap">
+          {f.criterionIds.map((id) => (
+            <Button key={id} size="sm" variant="ghost" label={id}
+              onClick={() => act("openCriterion", id)} />
+          ))}
+        </HStack>
+      )}
+    </VStack>
+  );
+}
+
+function JourneyCard({ state }) {
+  const journey = state.journey;
+  const loading = state.journeyLoading;
+  if (!journey && !loading) return null;
+  const legs = journey ? journey.legs || [] : [];
+  return (
+    <div className="ui-journey">
+      <Card>
+        <VStack gap={1}>
+          <HStack gap={1} vAlign="center">
+            <Heading level={4}>이동 중</Heading>
+            <HStack gap={1} vAlign="center">
+              {[["auto", "자동"], ["low", "거리 보기"], ["high", "전체 경로"]].map(([v, label]) => (
+                <Button key={v} size="sm" variant={state.journeyView === v ? "secondary" : "ghost"}
+                  label={label} onClick={() => act("setJourneyView", v)} />
+              ))}
+            </HStack>
+          </HStack>
+          {loading && <Text type="supporting">{loading}</Text>}
+          {journey && (
+            <>
+              <HStack gap={1} vAlign="center">
+                <Text>{journey.where}</Text>
+                {journey.totalMin > 0 && (
+                  <Text type="supporting" hasTabularNumbers>{`남은 ${journey.minutesLeft}분`}</Text>
+                )}
+              </HStack>
+              {journey.totalMin > 0 && (
+                <div className="ui-progress" role="progressbar" aria-label="승차 진행률"
+                  aria-valuenow={journey.elapsedMin} aria-valuemin={0} aria-valuemax={journey.totalMin}>
+                  <div className="ui-progress-fill"
+                    style={{ width: `${Math.min(100, (journey.elapsedMin / journey.totalMin) * 100)}%` }} />
+                </div>
+              )}
+              <VStack gap={0}>
+                {legs.map((l, i) => {
+                  const band = congestionBand(l.valuePct).key;
+                  return (
+                    <HStack key={i} gap={1} vAlign="center" wrap="wrap">
+                      <span style={{ width: 8, height: 8, borderRadius: 4,
+                        background: BAND_CSS[band], display: "inline-block" }} />
+                      <Text type="supporting" hasTabularNumbers>
+                        {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 혼잡도 ${l.valuePct}%`}
+                      </Text>
+                      <Badge variant="neutral" label={l.source === "서울교통공사" ? "실측" : "가정값"} />
+                    </HStack>
+                  );
+                })}
+              </VStack>
+              <HStack gap={1} vAlign="center" wrap="wrap">
+                {BAND_ORDER.map((b) => (
+                  <HStack key={b} gap={1} vAlign="center">
+                    <span style={{ width: 8, height: 8, borderRadius: 4,
+                      background: BAND_CSS[b], display: "inline-block" }} />
+                    <Text type="supporting">{BAND_LABEL[b]}</Text>
+                  </HStack>
+                ))}
+              </HStack>
+              <Text type="supporting">{journey.corridorLabel}</Text>
+              {journey.detailNote && <Text type="supporting">{journey.detailNote}</Text>}
+              <Text type="supporting">{`혼잡도: ${journey.congestionSource}`}</Text>
+            </>
+          )}
+        </VStack>
+      </Card>
+    </div>
+  );
+}
+
 function NowCard({ state }) {
   const n = state.now;
   if (!n) return null;
@@ -233,7 +365,9 @@ function NowCard({ state }) {
           <VStack gap={1}>
             <Heading level={4}>지금 가구 모습 (자유 시점)</Heading>
             {n.rows.map((r) => (
-              <Text key={r.agentKey}>{`${r.label} · ${r.line}`}</Text>
+              <Text key={r.agentKey} hasTabularNumbers>
+                {`${r.label} · ${r.line}${r.fatigue === null || r.fatigue === undefined ? "" : ` · 피로 ${fmtIndex(r.fatigue)}`}`}
+              </Text>
             ))}
           </VStack>
         </Card>
@@ -274,6 +408,7 @@ function NowCard({ state }) {
             </HStack>
           )}
           <Text type="supporting">{`다음 · ${n.next}`}</Text>
+          {n.fatigue && <FatigueBar fatigue={n.fatigue} nowMin={state.clock && state.clock.minute} />}
           {state.ticker.length > 0 && (
             <VStack gap={0}>
               {state.ticker.map((e, i) => (
@@ -330,7 +465,8 @@ function IntroCard({ state }) {
 }
 
 const fmtMetric = (unit, v) => (
-  unit === "minutes" ? fmtMinutes(v) : unit === "metres" ? fmtDistance(v) : fmtCount(v));
+  unit === "minutes" ? fmtMinutes(v) : unit === "metres" ? fmtDistance(v)
+    : unit === "index" ? fmtIndex(v) : fmtCount(v));
 
 function CompareTabBody({ state }) {
   const cmp = state.compare;
@@ -440,12 +576,14 @@ function LegendCard({ state }) {
 
 function AttrLine({ state }) {
   const money = state.compareTab === "money" || state.compareTab === "quality";
+  const congestion = state.region && state.region.congestion;
   return (
     <div className="ui-attr">
       <div className="overlay">
         <Text type="supporting">
           © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) · GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시
           {money && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 공공임대: LH·마이홈 (공공주택 데이터 API)"}
+          {congestion && " · 혼잡도: 서울교통공사 지하철혼잡도정보(2026-09-30 기준, 공공누리 3유형)"}
         </Text>
       </div>
     </div>
@@ -464,6 +602,7 @@ export function App() {
       {isSim && (
         <div className="ui-simleft overlay">
           <NowCard state={state} />
+          <JourneyCard state={state} />
           <JudgeLogCard state={state} />
         </div>
       )}

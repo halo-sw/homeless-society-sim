@@ -13,15 +13,30 @@
         "label": "구성원 1",
         "role": "adult",
         "preferences": "아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.",
-        "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "workdays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
         "work": {
           "type": "station_ride",
-          "station_name": {"A": "잠실", "B": "판교"},
+          "station_name": {
+            "A": "잠실",
+            "B": "판교"
+          },
           "ride_minutes": 30,
           "ride_minutes_source": "user_assumption",
-          "needs_user_input": true
+          "needs_user_input": true,
+          "destination_station": {
+            "A": "판교"
+          }
         },
-        "errands_per_week": {"supermarket": 1, "convenience": 2},
+        "errands_per_week": {
+          "supermarket": 1,
+          "convenience": 2
+        },
         "park_walks_per_week": 2,
         "clinic_visits_per_month": 1
       },
@@ -30,33 +45,66 @@
         "label": "구성원 2",
         "role": "adult",
         "preferences": "주말에는 가까운 공원에서 쉬는 것을 좋아하고, 장보기는 한 번에 끝내려 한다.",
-        "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "workdays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
         "work": {
           "type": "station_ride",
-          "station_name": {"A": "잠실", "B": "판교"},
+          "station_name": {
+            "A": "잠실",
+            "B": "판교"
+          },
           "ride_minutes": 30,
           "ride_minutes_source": "user_assumption",
-          "needs_user_input": true
+          "needs_user_input": true,
+          "destination_station": {
+            "A": "판교"
+          }
         },
-        "errands_per_week": {"supermarket": 1, "convenience": 1},
+        "errands_per_week": {
+          "supermarket": 1,
+          "convenience": 1
+        },
         "park_walks_per_week": 1,
         "clinic_visits_per_month": 0
       }
     ]
   },
   "homes": [
-    {"label": "A", "area": "songpa-jamsil", "complex_name": "레이크팰리스"},
-    {"label": "B", "area": "pangyo", "complex_name": "백현마을"}
+    {
+      "label": "A",
+      "area": "songpa-jamsil",
+      "complex_name": "레이크팰리스"
+    },
+    {
+      "label": "B",
+      "area": "pangyo",
+      "complex_name": "백현마을"
+    }
   ],
   "money": {
     "_note": "PLACEHOLDER inputs for the demo couple (not real customer data): m1 연봉 6,000만, m2 연봉 5,000만, 보유현금 2억, A 59.97㎡, B 84.82㎡, both 전세.",
     "members": {
-      "m1": {"annual_salary_won": 60000000},
-      "m2": {"annual_salary_won": 50000000}
+      "m1": {
+        "annual_salary_won": 60000000
+      },
+      "m2": {
+        "annual_salary_won": 50000000
+      }
     },
     "cash_won": 200000000,
-    "tenure": {"A": "전세", "B": "전세"},
-    "area_m2": {"A": 59.97, "B": 84.82},
+    "tenure": {
+      "A": "전세",
+      "B": "전세"
+    },
+    "area_m2": {
+      "A": 59.97,
+      "B": 84.82
+    },
     "assumptions": {
       "loan_rate_pct": 4.0,
       "loan_years": 30,

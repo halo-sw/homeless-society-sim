@@ -42,3 +42,16 @@ link to this file or the sources above.
   `data/raw/public_housing/snapshot_3districts.json` (fetched
   2026-10-28, not committed). Shown on screen as “LH·마이홈
   (공공주택 데이터 API, 스냅샷 시각 표시)”.
+* **서울교통공사 지하철혼잡도정보 (stage 8)** —
+  `서울교통공사_지하철혼잡도정보_20260930.xlsx`
+  (`data/raw/traffic/`, not committed): Seoul Metro lines 1–8, sheets
+  평일/토요일/일요일, per line / station number / station name /
+  direction, 30-minute slots 05:30…25:00 (average congestion %;
+  34 % ≈ all seats taken, 100 % = rated capacity). Licence:
+  공공누리 3유형 (출처표시+변경금지). Used for local computation and
+  display only — the xlsx and the derived
+  `data/build/region/congestion.json` are never committed or
+  redistributed. Shown on screen as “서울교통공사
+  지하철혼잡도정보(2026-09-30 기준)” with every congestion reading and
+  in the journey legend; lines without coverage (신분당선·수인분당선·9호선
+  등) show “혼잡도 자료 없음” and use the C-congestion 가정값.

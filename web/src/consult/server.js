@@ -48,6 +48,19 @@ async function loadAreaFs(dataDir, areaCache, areaId) {
   return area;
 }
 
+async function loadRegionFs(dataDir) {
+  const region = {};
+  for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
+    try {
+      region[key] = JSON.parse(await readFile(join(dataDir, "region", file), "utf8"));
+    } catch {
+      region[key] = null;
+    }
+  }
+  if (!region.network && !region.congestion) return null;
+  return region;
+}
+
 async function loadDecisionsFs(scenDir, scenarioName, label) {
   for (const provider of ["meta", "baseten"]) {
     try {
@@ -128,6 +141,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         cache,
         loadArea: (areaId) => loadAreaFs(dataDir, areaCache, areaId),
         loadDecisions: (name, label) => loadDecisionsFs(scenDir, name, label),
+        loadRegion: () => loadRegionFs(dataDir),
         judgeHome: (args) => judgeHome({ ...args, fetchImpl }),
         loadPayroll, loadRtms, loadHousing,
         fetchImpl,

@@ -31,6 +31,7 @@ export const SYSTEM_PROMPT = [
   "집값 전망 질문(예: '잠실 집값이 오를까?')에는 정중히 '이 앱은 집값 전망을 하지 않습니다'라고 답하고, 대신 해당 단지의 최근 12개월 실거래(price_reference)를 제안한다. 전망이나 상승/하락 단정은 절대 하지 않는다.",
   "대출 가능 여부(LTV·DSR)와 입주 자격은 판단하지 않는다. '사세요/사지 마세요' 같은 매매 판단도 하지 않는다. 수치 비교만 보여준다.",
   "투자 조언·안전/범죄·학군·건강/의료 질문은 정중히 거절하고 시뮬레이션으로 답할 수 있는 것(도보 시간·거리, 생활 패턴 비교, 생활비)으로 돌린다.",
+  "출퇴근 경로 질문에는 get_journey로 노선·소요 분할·혼잡도를 답한다(합계는 고객 입력, 혼잡도는 서울교통공사 실측 또는 가정값과 출처를 함께 밝힌다). 피로도 질문에는 get_fatigue로 답하고, 항상 '피로도 지수는 가정 모델이며 건강·의학적 판단이 아닙니다'라고 밝히고, 쓴 기준 id(C-congestion·C-fatigue-load·C-fatigue-recovery)와 자료 출처를 함께 밝힌다. 피로도로 건강 조언을 하지 않는다.",
   "오늘 고를 수 있는 지역은 판교·성수·송파구·잠실 4곳뿐이다. 다른 곳을 물으면 '전국 생성은 다음 단계'라고 안내한다.",
   "시뮬레이션은 현실 예측이 아니라 '가정한 조건의 시나리오'임을 분명히 한다. 현실을 예언하는 표현을 쓰지 않는다.",
   "decisions=muse 실행은 느리고 비용이 든다: 실행 전에 경고하고 고객 확인을 받는다. 한 대화에서 1회까지만.",
@@ -96,6 +97,10 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `기준 ${r.count}개`, ok: true };
     case "explain_criterion":
       return { summary: `${r.id} ${r.title || ""}`, ok: true };
+    case "get_journey":
+      return { summary: `${r.day}일차 ${(r.rides || []).length}건 승차`, ok: true };
+    case "get_fatigue":
+      return { summary: r.day ? `${r.day}일차 피로도` : "30일 피로도", ok: true };
     case "set_view":
       return { summary: r.chip || "화면 이동", ok: true };
     case "set_money":
@@ -137,6 +142,7 @@ export async function runTurn(opts) {
   const {
     provider = "meta", messages = [], scenario,
     cache, loadArea, loadDecisions = null, judgeHome = null,
+    loadRegion = null,
     loadPayroll = null, loadRtms = null, loadHousing = null,
     fetchImpl = null, completeFn = null,
   } = opts;
@@ -144,7 +150,7 @@ export async function runTurn(opts) {
   const cfg = providerConfig(provider);
   const complete = completeFn || ((args) => completeWithTools({ ...args, fetchImpl }));
   const session = createSession({
-    scenario, cache, loadArea, loadDecisions, judgeHome,
+    scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion,
     loadPayroll, loadRtms, loadHousing,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });

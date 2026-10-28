@@ -15,7 +15,7 @@ import { makeDecider } from "./decisions.js";
 import { homeOf, parseScenario, resolveHome } from "./scenario.js";
 import { planAgent, round1, round2 } from "./routines.js";
 
-export const ENGINE_VERSION = "sim-engine/5";
+export const ENGINE_VERSION = "sim-engine/6";
 
 export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const scenario = parseScenario(scenarioJson);
@@ -26,16 +26,19 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const crit = resolveCriteria(scenario);
   const agents = buildAgents(area, scenario, resolved, resolved.nodeId, router, crit.flat);
   const decider = makeDecider(opts);
+  const region = opts.region && typeof opts.region === "object" ? opts.region : null;
   const collect = { trips: [], aways: [], decisions: [], unavailable: [], tripSeq: 1 };
   const daily = [];
   const totals = {};
   for (const a of agents) {
     totals[a.key] = { walk_minutes: 0, walk_distance_m: 0, commute_walk_minutes: 0,
-      commute_ride_minutes: 0, errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
+      commute_ride_minutes: 0, errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0,
+      fatigue: null };
   }
   for (const agent of agents) {
     const schedule = planSchedule(agent, scenario, crit.flat);
-    const ctx = { scenario, homeLabel, home: resolved, router, places, decider, schedule, collect, crit: crit.flat };
+    const ctx = { scenario, homeLabel, home: resolved, router, places, decider, schedule, collect,
+      crit: crit.flat, region };
     const perDay = [];
     for (let day = 0; day < scenario.days; day++) {
       const summary = planAgent(agent, day, ctx);
@@ -60,6 +63,9 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
     t.walk_distance_m = round2(t.walk_distance_m);
     t.commute_walk_minutes = round1(t.commute_walk_minutes);
   }
+  for (const entry of daily) {
+    totals[entry.agent].fatigue = summarizeFatigue(entry.days);
+  }
   const householdKeys = new Set(agents.filter((a) => a.household).map((a) => a.key));
   const household = { walk_minutes: 0, walk_distance_m: 0, commute_walk_minutes: 0,
     commute_ride_minutes: 0, errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
@@ -77,6 +83,14 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   household.walk_minutes = round1(household.walk_minutes);
   household.walk_distance_m = round2(household.walk_distance_m);
   household.commute_walk_minutes = round1(household.commute_walk_minutes);
+  household.fatigue_avg_30d = meanOrNull(
+    [...householdKeys].map((k) => totals[k].fatigue && totals[k].fatigue.avg_30d));
+  household.fatigue_arrival_work_avg = meanOrNull(
+    [...householdKeys].map((k) => totals[k].fatigue && totals[k].fatigue.arrival_work_avg));
+  household.fatigue_after_home_avg = meanOrNull(
+    [...householdKeys].map((k) => totals[k].fatigue && totals[k].fatigue.after_home_avg));
+  household.fatigue_crowded_min = round1(
+    [...householdKeys].reduce((a, k) => a + ((totals[k].fatigue && totals[k].fatigue.crowded_min) || 0), 0));
   const byKind = {};
   for (const d of collect.decisions) byKind[d.kind] = (byKind[d.kind] || 0) + 1;
   const choiceModes = new Set(collect.decisions.map((d) => d.chosen_by));
@@ -100,6 +114,10 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
       dijkstra_sources: router.sourceCache.size,
       dijkstra_calls: router.dijkstraCalls,
       criteria: { doc: CRITERIA_DOC_NAME, version: CRITERIA_VERSION, overrides: crit.overridden },
+      region: {
+        network: !!(region && region.network),
+        congestion: !!(region && region.congestion),
+      },
     },
     agents: agents.map((a) => ({
       key: a.key, id: a.id, label: a.label, role: a.role,
@@ -113,6 +131,28 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
     daily,
     totals: { per_member: totals, household },
   };
+}
+
+// One member's 30-day fatigue roll-up (null for background neighbours,
+// who carry no series). Averages skip null days (no commute that day).
+// avg_30d is the mean of time-weighted daily means (midnight recovery
+// zeroes every daily end, so ends would average to nothing).
+export function summarizeFatigue(days) {
+  const rows = (days || []).map((d) => d && d.fatigue).filter(Boolean);
+  if (rows.length === 0) return null;
+  return {
+    avg_30d: meanOrNull(rows.map((r) => (r.mean ?? r.end))),
+    arrival_work_avg: meanOrNull(rows.map((r) => r.arrival_work)),
+    after_home_avg: meanOrNull(rows.map((r) => r.after_home)),
+    peak_max: rows.reduce((a, r) => Math.max(a, r.peak), 0),
+    crowded_min: round1(rows.reduce((a, r) => a + r.crowded_min, 0)),
+  };
+}
+
+export function meanOrNull(values) {
+  const nums = (values || []).filter((v) => Number.isFinite(v));
+  if (nums.length === 0) return null;
+  return round1(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
 // Household 30-day numbers with units and sources. Sources: "graph"
@@ -131,7 +171,12 @@ export function compare(runA, runB) {
     { key: "park_visits", label: "공원 산책 횟수", unit: "count", source: "scenario" },
     { key: "home_evening_minutes", label: "18–24시 재택 시간 합계", unit: "minutes", source: "scenario" },
     { key: "trips", label: "도보 이동 횟수", unit: "count", source: "graph" },
-  ].map((m) => ({ ...m, a: ha[m.key], b: hb[m.key], delta_b_minus_a: round1(hb[m.key] - ha[m.key]) }));
+    { key: "fatigue_arrival_work_avg", label: "출근 도착 피로도(가정 모델)", unit: "index", source: "scenario" },
+    { key: "fatigue_after_home_avg", label: "퇴근 후 피로도(가정 모델)", unit: "index", source: "scenario" },
+    { key: "fatigue_avg_30d", label: "피로도 30일 평균(가정 모델)", unit: "index", source: "scenario" },
+    { key: "fatigue_crowded_min", label: "혼잡 100% 초과 탑승 시간", unit: "minutes", source: "scenario" },
+  ].map((m) => ({ ...m, a: ha[m.key] ?? null, b: hb[m.key] ?? null,
+    delta_b_minus_a: deltaOrNull(hb[m.key], ha[m.key]) }));
   const members = Object.keys(runA.totals.per_member)
     .filter((k) => runA.agents.find((a) => a.key === k && a.household))
     .map((key) => {
@@ -145,6 +190,7 @@ export function compare(runA, runB) {
         commute_walk_minutes: { a: pa.commute_walk_minutes, b: pb.commute_walk_minutes },
         commute_ride_minutes: { a: pa.commute_ride_minutes, b: pb.commute_ride_minutes },
         home_evening_minutes: { a: pa.home_evening_minutes, b: pb.home_evening_minutes },
+        fatigue: { a: pa.fatigue || null, b: pb.fatigue || null },
       };
     });
   return {
@@ -178,6 +224,11 @@ function judgmentCounts(run) {
     out[d.chosen_by] = (out[d.chosen_by] || 0) + 1;
   }
   return out;
+}
+
+function deltaOrNull(b, a) {
+  if (!Number.isFinite(b) || !Number.isFinite(a)) return null;
+  return round1(b - a);
 }
 
 function countBy(list, field) {

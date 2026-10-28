@@ -10,9 +10,12 @@ import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
-import { CRITERIA_GROUPS, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
+import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
+import { corridorFor, journeyBanner, journeyPhase, rideStateFor, trainPosition } from "./journey.js";
+import { createJourneyLayer } from "./journey-scene.js";
+import { dayKindFor } from "./engine/journey.js";
 import { householdNow, nowCardFor, tickerFor } from "./nowcard.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
@@ -1120,6 +1123,7 @@ async function bootSim() {
 
   function paintNow() {
     const m = Math.floor(minute);
+    paintJourneyMinute();
     if (!follow) {
       store.set({ now: { free: true,
         rows: householdNow({ run, indexed, day, minute: m }) }, ticker: [] });
@@ -1312,6 +1316,18 @@ async function bootSim() {
       controls.enabled = true;
       return;
     }
+    // The journey camera owns follow mode while a station ride plays.
+    if (paintJourney(dt)) {
+      followPin.style.display = "none";
+      destPin.style.display = "none";
+      rideStub.visible = false;
+      if (forceCaption) {
+        paintNow();
+        const agent = household[follow - 1];
+        if (agent) paintJudgeCaption(agent.key);
+      }
+      return;
+    }
     const hit = followedSample();
     if (!hit) return;
     const [x, y] = lonLatToXY(hit.s.lon, hit.s.lat, origin);
@@ -1446,6 +1462,420 @@ async function bootSim() {
       };
     });
     store.set({ judgeLog: rows });
+  }
+
+  // --- journey view + corridor + itinerary areas (stage 8) ---
+  // The journey layer draws the travelled line (per-hop congestion
+  // colours), station dots, the train marker and the lazy corridor
+  // tiles. A second detailed area loads when the followed member's day
+  // touches one (itinerary-driven). All phasing derives from the sim
+  // minute, so ?t= captures are deterministic at any speed.
+  const journeyLayer = createJourneyLayer(scene, origin);
+  let regionNetwork = null;
+  let regionCongestion = null; // lazy: 1.2 MB, fetched on first journey
+  let corridorsIndex = null;
+  let journeyView = "auto"; // auto | low (거리 보기) | high (전체 경로)
+  let journeyRideKey = ""; // rebuilt path identity (agent+day+dir+depart)
+  let secondAreas = new Map(); // areaId -> {group, origin}
+  let areaBboxes = new Map(); // areaId -> bbox (for station containment)
+  const maxAniso2 = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const baseFog = { near: scene.fog.near, far: scene.fog.far };
+  const baseClip = { near: camera.near, far: camera.far };
+  // Regional base plane (the home plane only spans ~1.8 km).
+  const regionalBase = new THREE.Mesh(
+    new THREE.PlaneGeometry(120000, 120000),
+    new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 }));
+  regionalBase.rotation.x = -Math.PI / 2;
+  regionalBase.position.y = -0.4;
+  regionalBase.visible = false;
+  scene.add(regionalBase);
+
+  async function fetchJson(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url}: ${r.status}`);
+    return r.json();
+  }
+
+  async function ensureRegion() {
+    if (regionNetwork !== null || corridorsIndex !== null) return;
+    try {
+      regionNetwork = await fetchJson("/data/region/network.json");
+    } catch {
+      regionNetwork = null;
+    }
+    try {
+      corridorsIndex = await fetchJson("/data/region/corridors.json");
+    } catch {
+      corridorsIndex = null;
+    }
+    store.set({ region: {
+      network: !!regionNetwork,
+      congestion: run.meta.region ? !!run.meta.region.congestion : false,
+      corridors: (corridorsIndex && corridorsIndex.corridors.length) || 0,
+    } });
+  }
+
+  async function ensureCongestion() {
+    if (regionCongestion !== null) return regionCongestion;
+    try {
+      regionCongestion = await fetchJson("/data/region/congestion.json");
+    } catch {
+      regionCongestion = null;
+    }
+    return regionCongestion;
+  }
+
+  function networkStopCoords() {
+    const out = new Map();
+    for (const line of (regionNetwork && regionNetwork.lines) || []) {
+      for (const s of line.stops || []) out.set(s.id, [s.lon, s.lat]);
+    }
+    return out;
+  }
+
+  function ridesOf(agentKey, dayNum) {
+    const out = [];
+    for (const a of indexed.awaysByAgent.get(agentKey) || []) {
+      if (a.day === dayNum && a.kind === "work" && a.detail && a.detail.rides) {
+        out.push({ away: a, rides: a.detail.rides });
+      }
+    }
+    return out;
+  }
+
+  async function areaBbox(areaId) {
+    if (areaBboxes.has(areaId)) return areaBboxes.get(areaId);
+    try {
+      const doc = await fetchJson(`/data/${areaId}/area.json`);
+      areaBboxes.set(areaId, doc.bbox || null);
+      return doc.bbox || null;
+    } catch {
+      areaBboxes.set(areaId, null);
+      return null;
+    }
+  }
+
+  // Smallest built area containing the station (songpa contains jamsil —
+  // the smallest wins). Built areas only; null → corridor level + note.
+  async function areaForStation(lon, lat) {
+    let best = null;
+    let bestArea = Infinity;
+    for (const { id } of AREAS) {
+      const bbox = await areaBbox(id);
+      if (!bbox) continue;
+      const [x0, y0, x1, y1] = bboxToXY(bbox, origin);
+      const [x, y] = lonLatToXY(lon, lat, origin);
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      const size = (x1 - x0) * (y1 - y0);
+      if (size < bestArea) {
+        bestArea = size;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  // Lite second world: ground + buildings + water under an offset group
+  // (no trees/streetlife/lit — the journey camera never lingers there).
+  function buildAreaLite(areaData) {
+    const liteOrigin = originOf(areaData);
+    const g = new THREE.Group();
+    const byId = new Map((areaData.buildings || []).map((b) => [b.id, b]));
+    const gd = buildGround(areaData.roads, areaData.landuse, areaData.complexes, byId, liteOrigin);
+    const gm = new THREE.Mesh(toGeometry(gd), groundMaterial({ aniso: maxAniso2 }));
+    gm.receiveShadow = true;
+    g.add(gm);
+    if (gd.water.triangles > 0) {
+      g.add(new THREE.Mesh(toGeometry(gd.water), waterMaterial()));
+    }
+    const built = buildBuildings(areaData.buildings, areaData.complexes, liteOrigin);
+    for (const [cls, data] of Object.entries(built.detail.walls)) {
+      if (data.triangles === 0) continue;
+      const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso2 }));
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+    }
+    if (built.detail.podium.triangles > 0) {
+      const mesh = new THREE.Mesh(toGeometry(built.detail.podium),
+        facadeMaterial("podium", { aniso: maxAniso2 }));
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+    }
+    g.add(new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 })));
+    const [ox, oy] = lonLatToXY(liteOrigin.lon, liteOrigin.lat, origin);
+    g.position.set(ox, 0, -oy);
+    scene.add(g);
+    return { group: g, origin: liteOrigin };
+  }
+
+  async function ensureSecondArea(areaId) {
+    if (areaId === run.meta.area || secondAreas.has(areaId)) return secondAreas.get(areaId) || null;
+    if (secondAreas.size >= 2) {
+      const oldest = secondAreas.keys().next().value;
+      const slot = secondAreas.get(oldest);
+      if (slot) scene.remove(slot.group);
+      secondAreas.delete(oldest);
+    }
+    const label = (AREAS.find((a) => a.id === areaId) || {}).label || areaId;
+    store.set({ journeyLoading: `${label} 지도 불러오는 중…` });
+    try {
+      const data = await fetchArea(areaId);
+      const lite = buildAreaLite(data);
+      secondAreas.set(areaId, lite);
+      return lite;
+    } catch {
+      return null;
+    } finally {
+      store.set({ journeyLoading: "" });
+    }
+  }
+
+  // Itinerary preload for the followed member's day: work-area detail +
+  // the corridor manifest (tiles stay lazy around the train).
+  let itineraryKey = "";
+  async function ensureItinerary() {
+    await ensureRegion();
+    if (follow < 1 || !regionNetwork) return;
+    const key = `${follow}:${day}`;
+    if (key === itineraryKey) return;
+    itineraryKey = key;
+    const agent = household[follow - 1];
+    if (!agent) return;
+    const coords = networkStopCoords();
+    for (const { rides } of ridesOf(agent.key, day)) {
+      for (const ride of [rides.out, rides.back]) {
+        const lastLeg = ride.legs[ride.legs.length - 1];
+        const sid = lastLeg.stopIds[lastLeg.stopIds.length - 1];
+        const c = coords.get(sid);
+        if (!c) continue;
+        const areaId = await areaForStation(c[0], c[1]);
+        if (areaId && areaId !== run.meta.area) await ensureSecondArea(areaId);
+      }
+      const first = rides.out.legs[0];
+      const last = rides.out.legs[rides.out.legs.length - 1];
+      const corridor = corridorFor(corridorsIndex, first.from, last.to);
+      if (corridor) {
+        try {
+          journeyLayer.setManifest(
+            await fetchJson(`/data/region/corridor/${corridor.id}/manifest.json`));
+        } catch {
+          // The line still draws; tiles just stay empty.
+        }
+      }
+    }
+  }
+
+  function currentWorkAway(agentKey, dayNum, m) {
+    for (const a of indexed.awaysByAgent.get(agentKey) || []) {
+      if (a.day === dayNum && a.kind === "work" && a.detail && a.detail.ride_minutes > 0
+          && m >= a.start_min && m < a.end_min) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  function weekdayOfDay(dayNum) {
+    const entry = (run.daily || []).find((d) => d.agent === (household[0] && household[0].key));
+    return (entry && entry.days[dayNum] && entry.days[dayNum].weekday) || "Mon";
+  }
+
+  // The dest station's detailed scene is loaded (sync: cached bboxes
+  // from the itinerary preload; back-rides always return home).
+  function destDetailLoaded(destLonLat, backHome) {
+    if (backHome) return true;
+    if (!destLonLat) return false;
+    const [x, y] = lonLatToXY(destLonLat[0], destLonLat[1], origin);
+    for (const [id] of secondAreas) {
+      const bbox = areaBboxes.get(id);
+      if (!bbox) continue;
+      const [x0, y0, x1, y1] = bboxToXY(bbox, origin);
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return true;
+    }
+    return false;
+  }
+
+  // Full journey frame state (pure of wall time — minute only).
+  function journeyFrame() {
+    const idle = { phase: "idle", riding: null, away: null, ride: null,
+      dir: null, elapsed: 0, progress: 0, banner: null, hasDetailDest: false,
+      detailNote: "", destLonLat: null, boardLonLat: null };
+    if (follow < 1 || !regionNetwork) return idle;
+    const agent = household[follow - 1];
+    if (!agent) return idle;
+    const m = Math.floor(minute);
+    const away = currentWorkAway(agent.key, day, m);
+    if (!away || !away.detail.rides) return idle;
+    const riding = rideStateFor(away, m);
+    if (!riding) return idle;
+    const coords = networkStopCoords();
+    const stopPos = (sid) => coords.get(sid) || null;
+    if (riding.dir === "work") {
+      // Arrival hold: stay at the destination while they work.
+      const ride = away.detail.rides.out;
+      const lastLeg = ride.legs[ride.legs.length - 1];
+      const dest = stopPos(lastLeg.stopIds[lastLeg.stopIds.length - 1]);
+      const hasDetail = destDetailLoaded(dest, false);
+      return { ...idle, phase: "hold", riding, away, ride,
+        dir: "work", elapsed: 0, progress: 1,
+        hasDetailDest: hasDetail, destLonLat: dest,
+        detailNote: hasDetail ? "" : "상세 지도는 지역 생성 후",
+        banner: { where: `${lastLeg.to} 도착 · 근무 중`, legIndex: -1,
+          inTransfer: false, minutesLeft: 0,
+          legs: ride.legs.map((l) => ({ line: l.lineName, from: l.from,
+            to: l.to, minutes: l.minutes, valuePct: l.congestion.valuePct,
+            source: l.congestion.source })) } };
+    }
+    const ride = away.detail.rides[riding.dir];
+    const firstLeg = ride.legs[0];
+    const lastLeg = ride.legs[ride.legs.length - 1];
+    const board = stopPos(firstLeg.stopIds[0]);
+    const dest = stopPos(lastLeg.stopIds[lastLeg.stopIds.length - 1]);
+    const backHome = riding.dir === "back";
+    const hasDetail = destDetailLoaded(dest, backHome);
+    const phase = journeyPhase({ riding: { progress: riding.progress },
+      view: journeyView, hasDetailDest: hasDetail });
+    return { phase, riding, away, ride, dir: riding.dir,
+      elapsed: riding.elapsed, progress: riding.progress,
+      hasDetailDest: hasDetail,
+      detailNote: (!hasDetail && !backHome) ? "상세 지도는 지역 생성 후" : "",
+      destLonLat: dest, boardLonLat: board,
+      banner: journeyBanner({ ride, dir: riding.dir, elapsed: riding.elapsed,
+        rideMinutes: riding.rideMinutes }) };
+  }
+
+  function streetPose(lonLat) {
+    const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
+    const [ox, oy, oz] = tourOffset(stopDist);
+    return { pos: new THREE.Vector3(x + ox, oy, -y + oz),
+      look: new THREE.Vector3(x, 2, -y) };
+  }
+
+  function regionalPose() {
+    const box3 = journeyLayer.pathBounds();
+    if (!box3) return null;
+    const center = box3.getCenter(new THREE.Vector3());
+    const size = box3.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.z) / 2;
+    const dist = Math.max(4000, radius * 2.6);
+    const [ox, oy, oz] = tourOffset(dist);
+    return { pos: new THREE.Vector3(center.x + ox, oy, center.z + oz),
+      look: new THREE.Vector3(center.x, 0, center.z), dist };
+  }
+
+  const smooth = (t) => t * t * (3 - 2 * t);
+
+  // Journey camera: progress-driven (speed-independent). Returns true
+  // when it placed the camera (paintFollow skips its own follow then).
+  function paintJourney(dt) {
+    const jf = journeyFrame();
+    const active = jf.phase === "rising" || jf.phase === "cruise"
+      || jf.phase === "descending" || jf.phase === "hold" || jf.phase === "street";
+    regionalBase.visible = active && jf.phase !== "hold";
+    journeyLayer.setVisible(active);
+    if (!active) {
+      restoreClipFog(dt);
+      return false;
+    }
+    if (jf.phase === "hold") {
+      if (jf.destLonLat) {
+        const pose = streetPose(jf.destLonLat);
+        camera.position.copy(pose.pos);
+        controls.target.copy(pose.look);
+      }
+      controls.enabled = false;
+      restoreClipFog(dt);
+      return true;
+    }
+    if (jf.phase === "street") {
+      if (jf.boardLonLat) {
+        const pose = streetPose(jf.boardLonLat);
+        camera.position.copy(pose.pos);
+        controls.target.copy(pose.look);
+      }
+      controls.enabled = false;
+      restoreClipFog(dt);
+      return true;
+    }
+    const regional = regionalPose();
+    if (!regional || !jf.boardLonLat || !jf.destLonLat) return false;
+    const streetA = streetPose(jf.boardLonLat);
+    const streetB = streetPose(jf.destLonLat);
+    const p = jf.progress;
+    let pos;
+    let look;
+    if (jf.phase === "rising") {
+      const k = smooth(Math.min(1, p / 0.15));
+      pos = streetA.pos.clone().lerp(regional.pos, k);
+      look = streetA.look.clone().lerp(regional.look, k);
+    } else if (jf.phase === "descending") {
+      const k = smooth(Math.min(1, Math.max(0, (p - 0.85) / 0.15)));
+      pos = regional.pos.clone().lerp(streetB.pos, k);
+      look = regional.look.clone().lerp(streetB.look, k);
+    } else {
+      pos = regional.pos;
+      look = regional.look;
+    }
+    camera.position.copy(pos);
+    controls.target.copy(look);
+    controls.enabled = false;
+    // Regional depth range + fog (the street fit only spans ~1 km).
+    camera.near = Math.max(2, regional.dist / 200);
+    camera.far = Math.max(30000, regional.dist * 4);
+    camera.updateProjectionMatrix();
+    scene.fog.near += ((regional.dist * 1.1) - scene.fog.near) * Math.min(1, dt * 3);
+    scene.fog.far += ((regional.dist * 3.2) - scene.fog.far) * Math.min(1, dt * 3);
+    return true;
+  }
+
+  function restoreClipFog(dt) {
+    if (Math.abs(camera.far - baseClip.far) > 1) {
+      camera.near = baseClip.near;
+      camera.far = baseClip.far;
+      camera.updateProjectionMatrix();
+    }
+    const k = Math.min(1, dt * 3);
+    scene.fog.near += (baseFog.near - scene.fog.near) * k;
+    scene.fog.far += (baseFog.far - scene.fog.far) * k;
+  }
+
+  // Per-minute journey maintenance: path rebuilds, banner, tile pacing.
+  async function paintJourneyMinute() {
+    const jf = journeyFrame();
+    const active = jf.phase === "rising" || jf.phase === "cruise"
+      || jf.phase === "descending" || jf.phase === "hold" || jf.phase === "street";
+    if (!active || !jf.ride) {
+      if (store.getState().journey) store.set({ journey: null });
+      return;
+    }
+    const key = `${follow}:${day}:${jf.dir}:${jf.away.start_min}`;
+    if (key !== journeyRideKey) {
+      journeyRideKey = key;
+      const cong = await ensureCongestion();
+      journeyLayer.setPath({ ride: jf.ride, network: regionNetwork,
+        congestion: cong, dayKind: dayKindFor(weekdayOfDay(day)),
+        minute: jf.away.start_min + (jf.dir === "back"
+          ? (jf.away.end_min - jf.away.start_min - jf.riding.rideMinutes) : 0),
+        fallback: criterionDefault("C-congestion", "fallback_pct") });
+    }
+    store.set({ journey: { ...jf.banner, dir: jf.dir,
+      elapsedMin: Math.floor(jf.elapsed),
+      totalMin: jf.riding ? jf.riding.rideMinutes : 0,
+      hasDetailDest: jf.hasDetailDest, detailNote: jf.detailNote,
+      corridorLabel: "간략 지도 (건물 높이 추정)",
+      congestionSource: "서울교통공사 지하철혼잡도정보 (2026-09-30 기준)" } });
+    const pos = trainPosition(regionNetwork, jf.ride, jf.elapsed);
+    const focus = pos || (jf.phase === "hold" && jf.destLonLat
+      ? { lon: jf.destLonLat[0], lat: jf.destLonLat[1] } : null);
+    if (focus) {
+      const { loaded, pending } = await journeyLayer.updateTiles(focus, fetchJson);
+      if (pending > 0 || loaded > 0) {
+        console.log(`[journey] tiles loaded=${loaded} pending=${pending} ` +
+          `drawCalls=${renderer.info.render.calls}`);
+      }
+    }
   }
 
   // --- sim UI: A/B homes, speeds, day jump, compare ---
@@ -1641,6 +2071,7 @@ async function bootSim() {
       day = Math.min(days - 1, Math.max(0, next));
       paintClock();
       paintFollow(0.016, true);
+      ensureItinerary();
     },
     setMinute: (next) => {
       minute = Math.min(1439, Math.max(0, next));
@@ -1653,6 +2084,14 @@ async function bootSim() {
       store.set({ follow });
       applyFollowDim();
       paintFollow(0.016, true);
+      ensureItinerary();
+    },
+    setJourneyView: (next) => {
+      if (["auto", "low", "high"].includes(next)) {
+        journeyView = next;
+        store.set({ journeyView: next });
+        paintFollow(0.016, true);
+      }
     },
     setResOnly: (next) => {
       // Dimmed meshes stop casting (stage 7, Part C): no ghost shadows.
@@ -1728,6 +2167,8 @@ async function bootSim() {
   paintClock();
   paintFollow(0.016, true);
   store.set({ ready: true });
+  // Itinerary preload: the followed member's work-area detail + corridor.
+  ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
   // ?tab=money|quality|criteria opens the compare card on that tab.
@@ -1772,6 +2213,11 @@ async function bootSim() {
     updateLighting();
     paintFollow(dt, false);
     paintHighlightFrame();
+    const jfTrain = journeyFrame();
+    if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
+        || jfTrain.phase === "descending" || jfTrain.phase === "street")) {
+      journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed);
+    }
     controls.update();
     renderCtl.renderFrame({ bloom: simBloom }, dt);
     frames++;
