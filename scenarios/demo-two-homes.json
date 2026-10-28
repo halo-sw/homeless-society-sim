@@ -12,6 +12,7 @@
         "id": "m1",
         "label": "구성원 1",
         "role": "adult",
+        "preferences": "아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.",
         "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
         "work": {
           "type": "station_ride",
@@ -28,6 +29,7 @@
         "id": "m2",
         "label": "구성원 2",
         "role": "adult",
+        "preferences": "주말에는 가까운 공원에서 쉬는 것을 좋아하고, 장보기는 한 번에 끝내려 한다.",
         "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
         "work": {
           "type": "station_ride",

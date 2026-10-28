@@ -1,10 +1,12 @@
-// Daily routines: the rule defaults stage 4 will branch on (pure).
+// Daily routines: the rule defaults the judge layer branches on (pure).
 //
 // Every agent's day is an ordered, non-overlapping timeline on the
 // minute grid: morning commute and/or school, midday errands and clinic
-// visits, and an evening park-or-home branch. All randomness was drawn
-// up front (agents.planSchedule); this module only converts schedules +
-// graph routes into trips, away intervals, decisions and summaries.
+// visits, and an evening park-or-home branch. Household weekends run one
+// weekend_plan (up to 3 reachable activities, in order) instead of the
+// scheduled midday/evening branches. All randomness was drawn up front
+// (agents.planSchedule); this module only converts schedules + graph
+// routes into trips, away intervals, decisions and summaries.
 //
 // Sources: trip minutes/distances come from the walk graph; ride,
 // workday, schoolday and dwell durations are scenario assumptions.
@@ -14,7 +16,7 @@
 
 import { nameForHome, weekdayOf, WEEKDAYS, dateOf } from "./scenario.js";
 import { nearestRoundTrip, poisByName, stationsByName } from "./places.js";
-import { ruleDefault } from "./decisions.js";
+import { ruleDefault, WEEKEND_HOME } from "./decisions.js";
 
 export const MORNING_ANCHOR = 450; // 07:30 + jitter
 export const SCHOOL_ANCHOR = 480; // 08:00 + jitter
@@ -27,6 +29,28 @@ export const PARK_DWELL = 30;
 export const EVENING_START = 1080; // 18:00
 export const DAY_END = 1440; // 24:00
 export const STATION_ROUTE_TOLERANCE = 1.2; // 2nd entrance within 20 %
+
+// Weekend-plan activity categories: each maps to a places list, a
+// dwell, an away kind and the trip purpose/counter it feeds. Only
+// categories with a reachable round trip from home become options.
+export const WEEKEND_CATS = [
+  { key: "park", dwell: PARK_DWELL, away: "park", purpose: "park", stay: "산책" },
+  { key: "supermarket", dwell: SHOP_DWELL, away: "errand", purpose: "errand", stay: "장보기" },
+  { key: "convenience", dwell: SHOP_DWELL, away: "errand", purpose: "errand", stay: "장보기" },
+  { key: "clinic", dwell: CLINIC_DWELL, away: "clinic", purpose: "clinic", stay: "진료" },
+];
+
+export function weekendPlaces(places, key) {
+  if (key === "park") return places.parks;
+  if (key === "supermarket") return places.shops.supermarket;
+  if (key === "convenience") return places.shops.convenience;
+  if (key === "clinic") return places.clinics;
+  return [];
+}
+
+export function isWeekendDay(weekday) {
+  return weekday === "Sat" || weekday === "Sun";
+}
 
 export const round1 = (x) => Math.round(x * 10) / 10;
 export const round2 = (x) => Math.round(x * 100) / 100;
@@ -43,6 +67,8 @@ export function planAgent(agent, day, ctx) {
   let clock = null; // end minute of the last activity
   let errandsDone = 0;
   let parkVisits = 0;
+  let commuteWalk = 0; // graph minutes on commute/school legs
+  let commuteRide = 0; // assumed ride minutes (station_ride only)
   const trips = [];
   const aways = [];
 
@@ -61,6 +87,7 @@ export function planAgent(agent, day, ctx) {
     trips.push(trip);
     collect.trips.push(trip);
     clock = arrive;
+    if (purpose === "commute" || purpose === "school") commuteWalk += minutes;
     return trip;
   }
 
@@ -121,6 +148,7 @@ export function planAgent(agent, day, ctx) {
           unavailable("commute", "station", name);
         } else {
           const out = addTrip(depart, dest.route, homeEnd(), poiEnd(dest.place), "commute");
+          commuteRide += work.ride_minutes * 2;
           const awayEnd = out.arrive_min + work.ride_minutes + scenario.workday_minutes + work.ride_minutes;
           addAway(out.arrive_min, awayEnd, "work", `${dest.place.name} 방면 근무`, {
             ride_minutes: work.ride_minutes, workday_minutes: scenario.workday_minutes,
@@ -177,8 +205,12 @@ export function planAgent(agent, day, ctx) {
   }
 
   // --- midday: errands, then clinic ---
+  // Household weekends run one weekend_plan instead of the scheduled
+  // midday/evening branches; background neighbours keep the routine.
+  const householdWeekend = agent.household && isWeekendDay(weekday);
   const slotAfter = () => (clock === null ? MIDDAY_ANCHOR : clock + AFTER_GAP);
   for (const cat of ["supermarket", "convenience"]) {
+    if (householdWeekend) continue;
     if (!schedule.errands[cat].has(day)) continue;
     const depart = slotAfter();
     const cands = nearestRoundTrip(router, agent.home_node, places.shops[cat], 3);
@@ -203,7 +235,7 @@ export function planAgent(agent, day, ctx) {
     errandsDone++;
   }
 
-  if (schedule.clinicDays.has(day)) {
+  if (!householdWeekend && schedule.clinicDays.has(day)) {
     const depart = slotAfter();
     const cands = nearestRoundTrip(router, agent.home_node, places.clinics, 1);
     if (cands.length === 0) {
@@ -216,7 +248,7 @@ export function planAgent(agent, day, ctx) {
   }
 
   // --- evening: park walk or stay home (every day, uniform branch) ---
-  if (agent.park_walks_per_week > 0) {
+  if (!householdWeekend && agent.park_walks_per_week > 0) {
     const minute = clock === null ? EVENING_ANCHOR : clock + AFTER_GAP;
     const cands = nearestRoundTrip(router, agent.home_node, places.parks, 1);
     if (cands.length === 0) {
@@ -237,22 +269,57 @@ export function planAgent(agent, day, ctx) {
     }
   }
 
+  // --- household weekend: one plan, up to 3 activities in order ---
+  // Options are the categories with a reachable round trip from home
+  // (graph minutes); the plan executes home-based legs with real paths.
+  if (householdWeekend) {
+    const minute = slotAfter();
+    const destByCat = new Map();
+    const options = [];
+    for (const cat of WEEKEND_CATS) {
+      const cands = nearestRoundTrip(router, agent.home_node, weekendPlaces(places, cat.key), 1);
+      if (cands.length === 0) continue;
+      destByCat.set(cat.key, cands[0]);
+      options.push({
+        key: cat.key, label: cands[0].place.name, minutes: minutesFor(cands[0].lengthM),
+        distance_m: round2(cands[0].lengthM), poi_id: cands[0].place.id,
+      });
+    }
+    if (options.length > 0) {
+      options.push({ key: WEEKEND_HOME, label: "집에서 휴식", minutes: 0, distance_m: 0 });
+      const catsOnly = options.filter((o) => o.key !== WEEKEND_HOME);
+      const rec = decide("weekend_plan", minute, options, ruleDefault(catsOnly));
+      let depart = minute;
+      for (const key of rec.plan) {
+        const cat = WEEKEND_CATS.find((c) => c.key === key);
+        const dest = destByCat.get(key);
+        const out = addTrip(depart, dest.route, homeEnd(), poiEnd(dest.place), cat.purpose);
+        addAway(out.arrive_min, out.arrive_min + cat.dwell, cat.away,
+          `${dest.place.name} ${cat.stay}`,
+          cat.away === "errand" ? { shop_category: key } : null);
+        addTrip(out.arrive_min + cat.dwell, dest.back, poiEnd(dest.place), homeEnd(), cat.purpose);
+        if (cat.away === "errand") errandsDone++;
+        if (cat.away === "park") parkVisits++;
+        depart = clock + AFTER_GAP;
+      }
+    }
+  }
+
   // --- per-day summary ---
   let walkMinutes = 0;
-  let commuteAway = 0;
   let awayEvening = 0;
   for (const t of trips) {
     walkMinutes += t.minutes;
     awayEvening += overlap(t.depart_min, t.arrive_min, EVENING_START, DAY_END);
   }
   for (const a of aways) {
-    if (a.kind === "work" || a.kind === "school") commuteAway += a.end_min - a.start_min;
     awayEvening += overlap(a.start_min, a.end_min, EVENING_START, DAY_END);
   }
   return {
     day, date: dateOf(scenario.start_date, day), weekday,
     walk_minutes: round1(walkMinutes),
-    commute_away_minutes: commuteAway,
+    commute_walk_minutes: round1(commuteWalk),
+    commute_ride_minutes: commuteRide,
     errands_done: errandsDone,
     park_visits: parkVisits,
     home_evening_minutes: Math.max(0, (DAY_END - EVENING_START) - awayEvening),

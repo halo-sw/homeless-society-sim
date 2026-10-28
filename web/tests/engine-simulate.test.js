@@ -25,7 +25,7 @@ describe("engine simulate (fixture)", () => {
     assert.ok(run.trips.length > 50);
     assert.ok(run.decisions.length > 20);
     const kinds = new Set(run.decisions.map((d) => d.kind));
-    assert.deepEqual([...kinds].sort(), ["park_or_home", "shop_choice", "station_route"]);
+    assert.deepEqual([...kinds].sort(), ["park_or_home", "shop_choice", "station_route", "weekend_plan"]);
     // Background labels are never real names.
     for (const a of run.agents.filter((x) => !x.household)) {
       assert.match(a.label, /^주민 \d\d$/);
@@ -64,12 +64,25 @@ describe("engine simulate (fixture)", () => {
     const sc = run.decisions.find((d) => d.kind === "shop_choice" && d.agent === "h1");
     assert.equal(sc.options.length, 3);
     assert.deepEqual(sc.options.map((o) => o.key), ["s0", "s1", "s2"]);
-    // park_or_home: scheduled defaults (m1: 2 park days, m2: 1).
+    // park_or_home: household weekdays only (weekends run weekend_plan).
     const parks = (agent) => run.decisions.filter((d) => d.kind === "park_or_home" && d.agent === agent);
-    assert.equal(parks("h1").length, 7);
-    assert.equal(parks("h1").filter((d) => d.default_key === "park").length, 2);
-    assert.equal(parks("h2").filter((d) => d.default_key === "park").length, 1);
+    assert.equal(parks("h1").length, 5);
+    assert.ok(parks("h1").every((d) => d.day < 5));
     assert.deepEqual(parks("h1")[0].options.map((o) => o.key).sort(), ["home", "park"]);
+    // weekend_plan: one per household member per weekend day (Sat + Sun).
+    const wk = (agent) => run.decisions.filter((d) => d.kind === "weekend_plan" && d.agent === agent);
+    assert.equal(wk("h1").length, 2);
+    assert.equal(wk("h2").length, 2);
+    assert.deepEqual(wk("h1").map((d) => d.day), [5, 6]);
+    const w0 = wk("h1")[0];
+    assert.ok(w0.options.some((o) => o.key === "home"));
+    assert.ok(w0.options.length >= 2); // ≥ 1 reachable category + home
+    assert.ok(w0.default_key !== "home"); // rule default: fastest category
+    assert.deepEqual(w0.plan, [w0.default_key]);
+    assert.equal(w0.chosen_key, w0.default_key);
+    // Background neighbours keep the weekday routine on weekends too.
+    assert.equal(run.decisions.filter((d) => d.kind === "weekend_plan" && d.agent === "b01").length, 0);
+    assert.equal(run.decisions.filter((d) => d.kind === "park_or_home" && d.agent === "b01").length, 7);
   });
 
   it("summarises per-day per-member numbers", () => {
@@ -79,14 +92,21 @@ describe("engine simulate (fixture)", () => {
     assert.equal(h1.days[0].weekday, "Mon");
     assert.equal(h1.days[0].date, "2026-11-02");
     for (const s of h1.days) {
-      for (const k of ["walk_minutes", "commute_away_minutes", "errands_done", "home_evening_minutes", "trips"]) {
+      for (const k of ["walk_minutes", "commute_walk_minutes", "commute_ride_minutes",
+          "errands_done", "home_evening_minutes", "trips"]) {
         assert.ok(Number.isFinite(s[k]), `daily.${k}`);
       }
       assert.ok(s.home_evening_minutes >= 0 && s.home_evening_minutes <= 360);
     }
-    // A workday commute is away 20 + 540 + 20 minutes.
-    assert.equal(h1.days[0].commute_away_minutes, 580);
-    assert.equal(h1.days[5].commute_away_minutes, 0); // Saturday
+    // A workday commute: 2 × 1.3 min station legs on foot, 2 × 20 min ride.
+    assert.equal(h1.days[0].commute_walk_minutes, 2.6);
+    assert.equal(h1.days[0].commute_ride_minutes, 40);
+    assert.equal(h1.days[5].commute_walk_minutes, 0); // Saturday
+    assert.equal(h1.days[5].commute_ride_minutes, 0);
+    // The school run walks but never rides.
+    const h2 = run.daily.find((d) => d.agent === "h2");
+    assert.ok(h2.days[0].commute_walk_minutes > 0);
+    assert.equal(h2.days[0].commute_ride_minutes, 0);
     assert.ok(run.totals.household.walk_minutes > 0);
   });
 
@@ -148,6 +168,72 @@ describe("engine simulate (fixture)", () => {
     }), /not in the decisions file/);
   });
 
+  it("executes weekend plans with real paths", () => {
+    const run = simulate(tinyArea(), tinyScenario(), "A");
+    // Rule default from home a: park and 슈퍼1 tie at 100 m, "park" wins.
+    const wk = run.decisions.find((d) => d.kind === "weekend_plan" && d.agent === "h1" && d.day === 5);
+    assert.deepEqual(wk.plan, ["park"]);
+    const sat = run.trips.filter((t) => t.agent === "h1" && t.day === 5);
+    assert.equal(sat.length, 2);
+    assert.ok(sat.every((t) => t.purpose === "park"));
+    assert.equal(sat[0].to.id, "park1");
+    assert.equal(sat[1].from.id, "park1");
+    const h1 = run.daily.find((d) => d.agent === "h1");
+    assert.equal(h1.days[5].park_visits, 1);
+    assert.equal(h1.days[5].trips, 2);
+  });
+
+  it("accepts hook objects and weekend arrays with provenance", () => {
+    const run = simulate(tinyArea(), tinyScenario(), "A", {
+      decide: (shell) => {
+        if (shell.kind === "weekend_plan") return ["park", "supermarket"];
+        return {
+          chosen_key: shell.default_key, chosen_by: "model",
+          reason_ko: "가장 가까운 곳으로 결정", reason_en: "Chose the nearest option",
+          provider: "meta", model: "muse-spark-1.3",
+          usage: { prompt_tokens: 10, completion_tokens: 5 }, latency_ms: 12,
+        };
+      },
+    });
+    const wk = run.decisions.find((d) => d.kind === "weekend_plan" && d.agent === "h1" && d.day === 5);
+    assert.equal(wk.chosen_key, "park+supermarket");
+    assert.deepEqual(wk.plan, ["park", "supermarket"]);
+    assert.equal(wk.chosen_by, "hook");
+    const sat = run.trips.filter((t) => t.agent === "h1" && t.day === 5);
+    assert.equal(sat.length, 4); // two home-based round trips, in order
+    assert.equal(sat[0].to.id, "park1");
+    assert.equal(sat[2].to.id, "sup1");
+    const sc = run.decisions.find((d) => d.kind === "shop_choice");
+    assert.equal(sc.chosen_by, "model");
+    assert.equal(sc.provider, "meta");
+    assert.deepEqual(sc.usage, { prompt_tokens: 10, completion_tokens: 5 });
+    // Replay restores provenance (but hook marks become replay).
+    const run2 = simulate(tinyArea(), tinyScenario(), "A", { decisions: run.decisions });
+    const sc2 = run2.decisions.find((d) => d.id === sc.id);
+    assert.equal(sc2.chosen_by, "model");
+    assert.equal(sc2.reason_ko, "가장 가까운 곳으로 결정");
+    const wk2 = run2.decisions.find((d) => d.id === wk.id);
+    assert.equal(wk2.chosen_by, "replay");
+    assert.deepEqual(wk2.plan, ["park", "supermarket"]);
+    assert.deepEqual(run2.trips, run.trips);
+    assert.deepEqual(run2.aways, run.aways);
+  });
+
+  it("rejects bad weekend plans and bad replay entries", () => {
+    assert.throws(() => simulate(tinyArea(), tinyScenario(), "A", {
+      decide: (shell) => (shell.kind === "weekend_plan" ? ["park", "없는곳"] : shell.default_key),
+    }), /unknown key/);
+    assert.throws(() => simulate(tinyArea(), tinyScenario(), "A", {
+      decide: (shell) => (shell.kind === "weekend_plan" ? ["park", "supermarket", "convenience", "clinic"] : shell.default_key),
+    }), /at most 3/);
+    assert.throws(() => simulate(tinyArea(), tinyScenario(), "A", {
+      decide: (shell) => (shell.kind === "weekend_plan" ? ["park", "home"] : shell.default_key),
+    }), /cannot mix/);
+    assert.throws(() => simulate(tinyArea(), tinyScenario(), "A", {
+      decisions: [{ id: "h1:d0:0450:station_route:00", chosen_key: "nope" }],
+    }), /unknown key|not in the decisions file/);
+  });
+
   it("is byte-identical across runs (sha256 of canonical JSON)", () => {
     const a = simulate(tinyArea(), tinyScenario(), "A");
     const b = simulate(tinyArea(), tinyScenario(), "A");
@@ -190,6 +276,17 @@ describe("engine simulate (fixture)", () => {
       assert.ok(Number.isFinite(m.a) && Number.isFinite(m.b));
       assert.equal(m.delta_b_minus_a, Math.round((m.b - m.a) * 10) / 10);
     }
+    // The commute split: walking legs [graph] differ by home, the
+    // assumed ride [scenario] does not.
+    const byKey = new Map(cmp.metrics.map((m) => [m.key, m]));
+    assert.equal(byKey.get("commute_walk_minutes").source, "graph");
+    assert.equal(byKey.get("commute_ride_minutes").source, "scenario");
+    assert.ok(!byKey.has("commute_away_minutes"));
+    assert.notEqual(byKey.get("commute_walk_minutes").a, byKey.get("commute_walk_minutes").b);
+    // Judgment counts: household decisions by chosen_by per home.
+    assert.deepEqual(Object.keys(cmp.judgment).sort(), ["a", "b"]);
+    assert.ok(cmp.judgment.a.rule > 0);
+    assert.ok(cmp.judgment.b.rule > 0);
     // No forbidden keys anywhere (price, score, safety, rank).
     const bad = [];
     const walk = (v) => {

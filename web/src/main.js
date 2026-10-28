@@ -7,15 +7,16 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, distanceForWidth, footprintsOf, pickStopAzimuth, tourOffset } from "./camera.js";
+import { GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, distanceForWidth, footprintsOf, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { PAPER } from "./palette.js";
 import { solarPosition, sunDirection } from "./lighting.js";
 import { compare as compareRuns } from "./engine/simulate.js";
-import { SIM_TICK_S, SPEEDS, daylightFactor, followCaption, formatClock, homeOccupancy, indexRun, parseTParam, sampleAgent, simInstant } from "./sim.js";
+import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, daylightFactor, decisionBadge, duskFactor, followCaption, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 import { assignWalkers, sampleWalker } from "./walkers.js";
+import { WINDOW_H, WINDOW_W, litCounts, planWindows } from "./windows.js";
 
 const AREAS = [
   { id: "pangyo", label: "판교" },
@@ -167,13 +168,55 @@ function buildWorld(area) {
   return {
     origin, cx, cy, span, renderer, scene, camera, controls, sun, hemi,
     base, groundMesh, resMesh, nonMesh, resBaseColors,
-    resRanges: built.residential.ranges, trees, trunkMesh, canopyMesh, dummy,
+    resRanges: built.residential.ranges, nonRanges: built.nonResidential.ranges,
+    trees, trunkMesh, canopyMesh, dummy,
   };
+}
+
+// Occluder fade (tour mode): per-vertex alpha on the merged building
+// meshes so residual occluders — and the tall host tower of an embedded
+// POI stop — dim instead of hiding the stop. Patched once per mesh;
+// per-stop updates only rewrite the afade attribute.
+const OCCLUDE_FADE = 0.22;
+
+function makeFadeable(mesh) {
+  const count = mesh.geometry.attributes.position.count;
+  mesh.geometry.setAttribute("afade", new THREE.BufferAttribute(new Float32Array(count).fill(1), 1));
+  mesh.material.transparent = true;
+  mesh.material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float afade;\nvarying float vFade;")
+      .replace("#include <fog_vertex>", "#include <fog_vertex>\nvFade = afade;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vFade;")
+      .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.a *= vFade;");
+  };
+  mesh.material.customProgramCacheKey = () => "occluder-fade";
+  mesh.material.needsUpdate = true;
+}
+
+function applyStopFade(fadeMeshes, ids) {
+  for (const { mesh, ranges } of fadeMeshes) {
+    const attr = mesh.geometry.attributes.afade;
+    attr.array.fill(1);
+    for (const id of ids) {
+      const r = ranges.get(id);
+      if (r) attr.array.fill(OCCLUDE_FADE, r.start, r.start + r.count);
+    }
+    attr.needsUpdate = true;
+  }
 }
 
 async function bootTour() {
   const area = await fetchArea(areaId);
-  const { origin, renderer, scene, camera, controls, nonMesh, trees, dummy } = buildWorld(area);
+  const { origin, renderer, scene, camera, controls, resMesh, nonMesh,
+    resRanges, nonRanges, trees, dummy } = buildWorld(area);
+  makeFadeable(resMesh);
+  makeFadeable(nonMesh);
+  const fadeMeshes = [
+    { mesh: resMesh, ranges: new Map(resRanges.map((r) => [r.id, r])) },
+    { mesh: nonMesh, ranges: new Map(nonRanges.map((r) => [r.id, r])) },
+  ];
 
   // --- preview walkers (instanced capsules, simulated) ---
   const walkers = assignWalkers(area.buildings, area.graph);
@@ -202,22 +245,43 @@ async function bootTour() {
 
   // --- per-stop camera azimuth (tower occlusion, stage 3) ---
   // Same 2b framing (FOV/pitch/distance); only the azimuth varies per
-  // stop to look around towers between the camera and the target.
+  // stop to look around towers between the camera and the target. The
+  // test uses the actual building heights (same clamp as the renderer)
+  // and the settled camera pose (same offset/aspect/pitch as poseFor);
+  // when no azimuth is clear, the occluders fade instead (stage 4).
   const stopDist0 = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
   const footprints = footprintsOf(area.buildings, origin);
-  const stopAzimuths = plan.stops.map((s, i) => {
+  const stopTargets = plan.stops.map((s, i) => {
     const wp = legPaths[i].length > 1
       ? legPaths[i][legPaths[i].length - 1]
       : lonLatToWorld(s.lon, s.lat, origin, 2);
     // Clear the view toward both the named stop anchor and the settled
     // path end (the camera centres on the latter).
-    const anchor = lonLatToXY(s.lon, s.lat, origin);
-    const picked = pickStopAzimuth([anchor, [wp[0], -wp[2]]], footprints, stopDist0);
+    return { anchor: lonLatToXY(s.lon, s.lat, origin), end: [wp[0], -wp[2]] };
+  });
+  const stopAzimuths = plan.stops.map((s, i) => {
+    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0);
     const moved = picked.azimuth !== TOUR_AZIMUTH;
     console.log(`[occlusion] stop=${i} ${s.name} azimuth=[${picked.azimuth}] ` +
       `occluders=${picked.occluders}${moved ? " (moved)" : ""}`);
     return picked.azimuth;
   });
+  // Fade fallback: residual occluders at the picked azimuth, plus the
+  // tall host tower when a POI stop sits inside one.
+  const stopFades = plan.stops.map((s, i) => {
+    const targets = [stopTargets[i].anchor, stopTargets[i].end];
+    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i]));
+    if (s.kind === "poi") {
+      for (const id of hostTowerIds(stopTargets[i].anchor, footprints)) ids.add(id);
+    }
+    const list = [...ids].sort();
+    if (list.length > 0) {
+      console.log(`[occlusion] stop=${i} ${s.name} fade=${list.length} ${list.join(",")}`);
+    }
+    return list;
+  });
+  const applyFade = (i) => applyStopFade(fadeMeshes,
+    i >= 0 && i < stopFades.length ? stopFades[i] : []);
 
   buildUI(area, plan);
   buildModeSwitch("tour");
@@ -225,10 +289,12 @@ async function bootTour() {
   document.getElementById("fade").classList.add("clear");
 
   // --- tour playback ---
-  const player = createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths);
+  const player = createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths, applyFade);
+  if (plan.stops.length > 0) applyFade(0);
   const playBtn = document.getElementById("play");
   // Debug flags for deterministic captures: ?shot=<stopIndex> jumps to
-  // that stop and pauses; ?t=<seconds> jumps the tour clock.
+  // that stop and pauses; ?t=<seconds> jumps the tour clock and pauses
+  // unless ?play=1 opts into playing.
   const params = new URLSearchParams(location.search);
   const shot = params.get("shot");
   const tParam = params.get("t");
@@ -241,6 +307,10 @@ async function bootTour() {
   } else if (tParam !== null && plan.stops.length > 0) {
     const s = Number.parseFloat(tParam);
     if (Number.isFinite(s) && s >= 0) player.seekTime(s);
+    if (!shouldAutoplay(params) && player.playing) {
+      player.toggle();
+      playBtn.textContent = "재생";
+    }
   }
   playBtn.addEventListener("click", () => {
     player.toggle();
@@ -289,7 +359,8 @@ function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
 }
 
 // --- tour player: glide legs, 3 s dwell per stop, outro pull-back ---
-function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = []) {
+// onLeg(i) fires whenever the current leg view changes (fade updates).
+function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null) {
   const caption = document.getElementById("caption");
   const capName = document.getElementById("capName");
   const capMeta = document.getElementById("capMeta");
@@ -376,6 +447,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
       if (state.dwell <= 0) {
         state.leg++;
         state.legT = 0;
+        if (onLeg) onLeg(state.leg);
         if (state.leg >= stops.length) {
           state.outro = 0.001;
           caption.hidden = true;
@@ -406,6 +478,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     state.playing = false;
     showStop(i);
     snap(i, 1);
+    if (onLeg) onLeg(i);
     controls.enabled = true;
   }
 
@@ -418,6 +491,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
       state.outro = 0.001;
       state.done = false;
       caption.hidden = true;
+      if (onLeg) onLeg(-1);
       return;
     }
     state.leg = st.leg;
@@ -429,6 +503,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     else if (st.leg === 0) caption.hidden = true;
     else showStop(st.leg - 1);
     snap(st.leg, ease(Math.min(1, st.legT)));
+    if (onLeg) onLeg(st.leg);
   }
 
   return {
@@ -592,13 +667,40 @@ async function bootSim() {
   }
   console.log(`[sim] home=${homeLabel} source=${runSource} agents=${run.meta.agents} ` +
     `trips=${run.trips.length} decisions=${run.decisions.length}`);
+  // Committed decision file overlay (?provider=meta|baseten): extras apply
+  // only when the file's choice matches the run's (a rule fallback run
+  // may choose differently — its own provenance then stands).
+  const judgeProvider = PARAMS.get("provider") || "meta";
+  const judgeExtras = new Map();
+  try {
+    const r = await fetch(`/scenarios/decisions/${scenarioName}-${homeLabel}-${judgeProvider}.json`);
+    if (r.ok) {
+      const doc = await r.json();
+      for (const d of doc.decisions || []) judgeExtras.set(d.id, d);
+      console.log(`[sim] judge overlay: ${judgeExtras.size} records (${judgeProvider})`);
+    }
+  } catch {
+    // No committed decisions: the run's own provenance stands.
+  }
+  function judgedView(d) {
+    const e = judgeExtras.get(d.id);
+    if (e && e.chosen_key === d.chosen_key) {
+      return {
+        ...d,
+        chosen_by: e.chosen_by || d.chosen_by,
+        reason_ko: e.reason_ko, reason_en: e.reason_en,
+        provider: e.provider, model: e.model,
+      };
+    }
+    return d;
+  }
   const area = await fetchArea(run.meta.area);
   simAreaId = run.meta.area;
   const homes = scenario && Array.isArray(scenario.homes) && scenario.homes.length > 0
     ? scenario.homes
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, cx, cy, span, renderer, scene, camera, controls, sun, hemi,
-    resMesh, nonMesh, resBaseColors, resRanges } = buildWorld(area);
+    base, groundMesh, resMesh, nonMesh } = buildWorld(area);
 
   // --- run indexes ---
   const indexed = indexRun(run);
@@ -607,18 +709,52 @@ async function bootSim() {
   const homeLonLat = new Map(run.agents.map((a) => [a.key, nodeLonLat.get(a.home_node) || [origin.lon, origin.lat]]));
   const household = run.agents.filter((a) => a.household);
   const background = run.agents.filter((a) => !a.household);
-  const rangeById = new Map(resRanges.map((r) => [r.id, r]));
 
   // --- agent meshes: household large + highlighted, neighbours small ---
   const dummy = new THREE.Object3D();
   const hhMesh = new THREE.InstancedMesh(
-    new THREE.CapsuleGeometry(0.5, 1.4, 3, 10),
+    new THREE.CapsuleGeometry(0.9, 2.4, 3, 10),
     new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(household.length, 1));
   const hhColors = [0xc0392b, 0x2471a3, 0x1e8449, 0x8e44ad];
   household.forEach((a, i) => hhMesh.setColorAt(i, new THREE.Color(hhColors[i % hhColors.length])));
   hhMesh.count = household.length;
   hhMesh.castShadow = true;
   if (hhMesh.instanceColor) hhMesh.instanceColor.needsUpdate = true;
+  // Ground rings + name tags keep the household readable at miniature
+  // scale, including while they wait at home.
+  const ringMeshes = household.map((a, i) => {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.8, 2.6, 40),
+      new THREE.MeshBasicMaterial({ color: hhColors[i % hhColors.length],
+        transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.3;
+    scene.add(ring);
+    return ring;
+  });
+  const tagsLayer = document.getElementById("tags");
+  const tagEls = household.map((a) => {
+    const el = document.createElement("div");
+    el.className = "hhtag";
+    el.textContent = a.label;
+    tagsLayer.appendChild(el);
+    return el;
+  });
+  const tagV = new THREE.Vector3();
+  function paintTag(el, x, y, z, show) {
+    if (!show) {
+      el.style.display = "none";
+      return;
+    }
+    tagV.set(x, y, z).project(camera);
+    if (tagV.z > 1) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "block";
+    el.style.left = `${(tagV.x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.top = `${(-tagV.y * 0.5 + 0.5) * innerHeight}px`;
+  }
   const bgMesh = new THREE.InstancedMesh(
     new THREE.CapsuleGeometry(0.3, 0.9, 3, 8),
     new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(background.length, 1));
@@ -629,7 +765,7 @@ async function bootSim() {
   scene.add(hhMesh, bgMesh);
 
   function placeAgents(day, minute) {
-    for (const [mesh, list, height] of [[hhMesh, household, 1.35], [bgMesh, background, 1.0]]) {
+    for (const [mesh, list, height] of [[hhMesh, household, 2.2], [bgMesh, background, 1.0]]) {
       list.forEach((a, i) => {
         const s = sampleAgent(a.key, indexed, day, minute, nodeLonLat,
           homeLonLat.get(a.key), edgeLen);
@@ -642,35 +778,82 @@ async function bootSim() {
       });
       mesh.instanceMatrix.needsUpdate = true;
     }
+    // Rings + tags mark the household whenever they are out or at home
+    // (hidden only while away out of the area, e.g. at work).
+    household.forEach((a, i) => {
+      const s = sampleAgent(a.key, indexed, day, minute, nodeLonLat,
+        homeLonLat.get(a.key), edgeLen);
+      const [x, y] = lonLatToXY(s.lon, s.lat, origin);
+      const marked = s.visible || s.state === "home";
+      ringMeshes[i].position.set(x, 0.3, -y);
+      ringMeshes[i].visible = marked;
+      paintTag(tagEls[i], x, 6, -y, marked);
+    });
   }
 
   // --- sim clock ---
+  // ?t= pauses the clock at that time; ?play=1 opts into playing.
   const days = run.meta.days;
   let day = Math.min(days - 1, Math.max(0, (Number.parseInt(PARAMS.get("day") || "1", 10) || 1) - 1));
   let minute = parseTParam(PARAMS.get("t")) ?? 420;
-  let playing = true;
+  let playing = shouldAutoplay(PARAMS);
   let speed = 1;
   let follow = Math.min(household.length, Math.max(0, Number.parseInt(PARAMS.get("follow") || "0", 10) || 0));
   const clockEl = document.getElementById("simClock");
   const simPlayBtn = document.getElementById("simPlay");
+  simPlayBtn.textContent = playing ? "일시정지" : "재생";
   const caption = document.getElementById("caption");
   const capName = document.getElementById("capName");
   const capMeta = document.getElementById("capMeta");
   const capWalk = document.getElementById("capWalk");
   document.getElementById("dots").style.display = "none";
+  const judgeCap = document.getElementById("judgeCap");
+  const judgeBadge = document.getElementById("judgeBadge");
+  const judgeText = document.getElementById("judgeText");
+  const judgeAsk = document.getElementById("judgeAsk");
+  const judgeLive = document.getElementById("judgeLive");
+  const judgeLog = document.getElementById("judgeLog");
+  const judgeLogBody = document.getElementById("judgeLogBody");
+  const hhmmOf = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
   function paintClock() {
     clockEl.textContent = formatClock(run.meta.start_date, day, Math.floor(minute), days);
     document.getElementById("dayJump").value = String(day + 1);
+    paintJudgeLog();
   }
 
-  // --- sun/sky follow sim time; night window glow per building ---
+  // --- sun/sky follow sim time; night dims the miniature, windows glow ---
+  // Ground and buildings keep their hue at lower value overnight
+  // (material tints multiply the vertex colors); lit windows are warm
+  // quads on façades of buildings with residents at home (run counts).
   const daySky = new THREE.Color(PAPER);
-  const nightSky = new THREE.Color(0x141a26);
-  const warm = [1.0, 0.87, 0.64];
+  const nightSky = new THREE.Color(0x23264d); // deep blue-violet
+  const duskSky = new THREE.Color(0x8a5a50); // warm dusk
+  const dayTint = new THREE.Color(0xffffff);
+  const nightTint = new THREE.Color(0x6b7194);
+  const dayBase = new THREE.Color(PAPER);
+  const nightBase = new THREE.Color(0x2b2f4a);
+  const daySun = new THREE.Color(0xfff2dd);
+  const nightSun = new THREE.Color(0x93a0cc); // moonlight
+  const duskSun = new THREE.Color(0xffb377);
+  const skyTmp = new THREE.Color();
+  const tintTmp = new THREE.Color();
+  const winPlan = planWindows(area.buildings, origin);
+  const winFlat = [];
+  const winStart = new Map();
+  for (const b of winPlan) {
+    winStart.set(b.id, winFlat.length);
+    for (const s of b.slots) winFlat.push(s);
+  }
+  const winMesh = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(WINDOW_W, WINDOW_H),
+    new THREE.MeshBasicMaterial({ color: 0xffc37a, side: THREE.DoubleSide }),
+    Math.max(winFlat.length, 1));
+  winMesh.count = 0;
+  winMesh.frustumCulled = false;
+  scene.add(winMesh);
   let lastLightKey = "";
-  let lastGlowKey = "";
-  let glowDirty = false;
+  let lastWinKey = "";
 
   function updateLighting() {
     const m = Math.floor(minute);
@@ -680,41 +863,43 @@ async function bootSim() {
     const instant = simInstant(run.meta.start_date, day, m);
     const { altitude } = solarPosition(origin.lat, origin.lon, instant);
     const f = daylightFactor(altitude);
+    const nightF = 1 - f;
+    const duskF = duskFactor(m);
     const dir = sunDirection(origin.lat, origin.lon, instant);
     sun.position.set(cx + dir[0] * span, Math.max(dir[1], 0.06) * span, -cy + dir[2] * span);
     sun.intensity = 0.05 + 2.35 * f;
+    sun.color.lerpColors(nightSun, daySun, f).lerp(duskSun, duskF * 0.7);
     hemi.intensity = 0.45 + 0.65 * f;
-    scene.background.lerpColors(nightSky, daySky, f);
-    scene.fog.color.copy(scene.background);
-    updateGlow(m, 1 - f);
+    skyTmp.lerpColors(nightSky, daySky, f).lerp(duskSky, duskF * 0.55);
+    scene.background.copy(skyTmp);
+    scene.fog.color.copy(skyTmp);
+    tintTmp.lerpColors(nightTint, dayTint, f);
+    groundMesh.material.color.copy(tintTmp);
+    resMesh.material.color.copy(tintTmp);
+    nonMesh.material.color.copy(tintTmp);
+    base.material.color.lerpColors(nightBase, dayBase, f);
+    updateWindows(m, nightF);
   }
 
-  function updateGlow(m, nightF) {
+  function updateWindows(m, nightF) {
     const key = `${day}:${Math.floor(m / 30)}:${nightF.toFixed(2)}`;
-    if (key === lastGlowKey) return;
-    lastGlowKey = key;
-    const colors = resMesh.geometry.attributes.color;
-    if (nightF <= 0.01) {
-      if (!glowDirty) return;
-      colors.array.set(resBaseColors);
-      colors.needsUpdate = true;
-      glowDirty = false;
-      return;
-    }
-    const occ = homeOccupancy(run, indexed, day, m);
-    const arr = colors.array;
-    for (const [bid, slot] of occ) {
-      const range = rangeById.get(bid);
-      if (!range) continue;
-      const k = (slot.home / slot.total) * nightF * 0.85;
-      for (let v = range.start; v < range.start + range.count; v++) {
-        arr[v * 3] = resBaseColors[v * 3] + (warm[0] - resBaseColors[v * 3]) * k;
-        arr[v * 3 + 1] = resBaseColors[v * 3 + 1] + (warm[1] - resBaseColors[v * 3 + 1]) * k;
-        arr[v * 3 + 2] = resBaseColors[v * 3 + 2] + (warm[2] - resBaseColors[v * 3 + 2]) * k;
+    if (key === lastWinKey) return;
+    lastWinKey = key;
+    const lit = litCounts(winPlan, homeOccupancy(run, indexed, day, m), nightF);
+    let n = 0;
+    for (const [bid, count] of lit) {
+      const start = winStart.get(bid);
+      for (let k = 0; k < count; k++) {
+        const s = winFlat[start + k];
+        dummy.position.set(s.x, s.y, s.z);
+        dummy.rotation.set(0, s.rotY, 0);
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        winMesh.setMatrixAt(n++, dummy.matrix);
       }
     }
-    colors.needsUpdate = true;
-    glowDirty = true;
+    winMesh.count = n;
+    winMesh.instanceMatrix.needsUpdate = true;
   }
 
   // --- follow camera (2b miniature framing) ---
@@ -742,7 +927,9 @@ async function bootSim() {
     const [ox, oy, oz] = tourOffset(stopDist);
     const pos = new THREE.Vector3(x + ox, oy, -y + oz);
     const look = new THREE.Vector3(x, 2, -y);
-    if (snapFollow) {
+    // Snap when far (a fast clock would lag behind); otherwise glide,
+    // so the followed member stays in frame at any speed.
+    if (snapFollow || controls.target.distanceTo(look) > 60) {
       camera.position.copy(pos);
       controls.target.copy(look);
       snapFollow = false;
@@ -757,6 +944,125 @@ async function bootSim() {
       capName.textContent = `${hit.agent.label} 따라가기`;
       capMeta.textContent = "시뮬레이션 주민 · 생활 시뮬레이션";
       capWalk.textContent = followCaption(hit.s, hit.agent.label);
+      paintJudgeCaption(hit.agent.key);
+    }
+  }
+
+  // Branch caption: the followed member's latest decision — options with
+  // graph minutes, the chosen one, the Korean reason, and who decided.
+  function paintJudgeCaption(agentKey) {
+    const d = latestDecision(run, agentKey, day, Math.floor(minute));
+    judgeLive.hidden = true;
+    if (!d) {
+      judgeCap.hidden = true;
+      return;
+    }
+    const v = judgedView(d);
+    judgeCap.hidden = false;
+    const badge = decisionBadge(v);
+    judgeBadge.textContent = badge.text;
+    judgeBadge.className = `badge ${badge.cls}`;
+    judgeText.textContent =
+      `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
+      (v.reason_ko ? ` · “${v.reason_ko}”` : "");
+    judgeAsk.hidden = !import.meta.env.DEV;
+    judgeAsk.disabled = false;
+    judgeAsk.textContent = "Muse에게 묻기";
+    judgeAsk.onclick = () => askLive(v);
+  }
+
+  function liveRequestBody(v) {
+    const idx = Math.max(0, Number.parseInt(String(v.agent).slice(1), 10) - 1);
+    const member = (scenario && scenario.household && scenario.household.members[idx])
+      || { role: "adult", preferences: "" };
+    const tripsToday = run.trips
+      .filter((t) => t.agent === v.agent && t.day === v.day && t.depart_min < v.minute)
+      .map((t) => ({
+        depart_min: t.depart_min, arrive_min: t.arrive_min, purpose: t.purpose,
+        from_label: (t.from && (t.from.label || t.from.id)) || "",
+        to_label: (t.to && (t.to.label || t.to.id)) || "",
+        minutes: t.minutes, distance_m: t.distance_m,
+      }));
+    const mem = run.decisions
+      .filter((d) => d.agent === v.agent && (d.day < v.day || (d.day === v.day && d.minute < v.minute)))
+      .slice(-3)
+      .map((d) => {
+        const dv = judgedView(d);
+        return {
+          day: dv.day, minute: dv.minute, kind: dv.kind,
+          chosen: dv.kind === "weekend_plan"
+            ? (dv.plan && dv.plan.length > 0 ? dv.plan.join("+") : "home")
+            : dv.chosen_key,
+          reason_ko: dv.reason_ko || "",
+        };
+      });
+    const dayInfo = ((run.daily.find((dd) => dd.agent === v.agent) || {}).days || [])[v.day] || {};
+    return {
+      provider: judgeProvider,
+      shell: { kind: v.kind, options: v.options, default_key: v.default_key },
+      member: { role: member.role || "adult", preferences: member.preferences || "" },
+      agentLabel: agentLabelOf(run, v.agent),
+      date: dayInfo.date || run.meta.start_date, weekday: dayInfo.weekday || "Mon",
+      minute: v.minute, tripsToday, memory: mem,
+    };
+  }
+
+  // Dev-only live judgment: ask Muse about the captioned decision. The
+  // key stays on the dev server (/api/judge); production has no button.
+  async function askLive(v) {
+    judgeAsk.disabled = true;
+    judgeAsk.textContent = "묻는 중…";
+    try {
+      const r = await fetch("/api/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(liveRequestBody(v)),
+      });
+      const payload = await r.json();
+      if (!payload.ok) throw new Error(payload.error || `HTTP ${r.status}`);
+      const live = { ...v, ...payload.entry };
+      const badge = decisionBadge(live);
+      judgeBadge.textContent = badge.text;
+      judgeBadge.className = `badge ${badge.cls}`;
+      judgeText.textContent =
+        `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
+        (live.reason_ko ? ` · “${live.reason_ko}”` : "") +
+        ` (${live.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"})`;
+      judgeLive.hidden = false;
+    } catch (err) {
+      judgeText.textContent += ` (라이브 판단 불가: ${err.message})`;
+    }
+    judgeAsk.textContent = "Muse에게 묻기";
+    judgeAsk.disabled = false;
+  }
+
+  // Today's household decisions, latest first.
+  function paintJudgeLog() {
+    const rows = dayDecisions(run, day).slice(0, 12);
+    if (rows.length === 0) {
+      judgeLog.hidden = true;
+      return;
+    }
+    judgeLog.hidden = false;
+    judgeLogBody.innerHTML = "";
+    for (const d of rows) {
+      const v = judgedView(d);
+      const badge = decisionBadge(v);
+      const row = document.createElement("div");
+      row.className = "jrow";
+      const pill = document.createElement("span");
+      pill.className = `badge ${badge.cls}`;
+      pill.textContent = badge.text;
+      row.append(`${hhmmOf(v.minute)} ${agentLabelOf(run, v.agent)} · ` +
+        `${DECISION_KIND_KO[v.kind] || v.kind} → ${chosenLabel(v)} `);
+      row.appendChild(pill);
+      if (v.reason_ko) {
+        const why = document.createElement("div");
+        why.className = "jreason";
+        why.textContent = `“${v.reason_ko}”`;
+        row.appendChild(why);
+      }
+      judgeLogBody.appendChild(row);
     }
   }
 
@@ -904,6 +1210,17 @@ async function bootSim() {
     compareBody.innerHTML =
       `<table><tr><th>30일 지표 (${cmp.days}일)</th><th>${cmp.home_a.label} · ${cmp.home_a.complex}</th>` +
       `<th>${cmp.home_b.label} · ${cmp.home_b.complex}</th><th>Δ (B−A)</th></tr>${rows}</table>`;
+    if (cmp.judgment && (cmp.judgment.a || cmp.judgment.b)) {
+      const fmtJ = (side) => {
+        const s = (cmp.judgment && cmp.judgment[side]) || {};
+        const other = (s.rule || 0) + (s.replay || 0) + (s.hook || 0);
+        return `모델 ${s.model || 0} · 폴백 ${s.rule_fallback || 0} · 규칙 ${other}`;
+      };
+      const div = document.createElement("div");
+      div.className = "judge-counts";
+      div.textContent = `판단 주체 — A: ${fmtJ("a")} / B: ${fmtJ("b")}`;
+      compareBody.appendChild(div);
+    }
   }
 
   loading.remove();

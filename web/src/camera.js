@@ -22,11 +22,13 @@ export const GLIDE_FRAME_M = 500;
 // x-right/z-towards-viewer sense main.js uses), unnormalized.
 export const TOUR_AZIMUTH = [0.45, 0.75];
 // Per-stop candidates: the default first (stable tie-break prefers the
-// 2b framing), then 7 compass directions.
+// 2b framing), then compass directions plus half-winds.
 export const STOP_AZIMUTHS = [
   TOUR_AZIMUTH,
   [1, 0], [0, 1], [-1, 0], [0, -1],
-  [1, 1], [-1, 1], [-1, -1],
+  [1, 1], [-1, 1], [-1, -1], [1, -1],
+  [1, 0.5], [0.5, 1], [-0.5, 1], [-1, 0.5],
+  [-1, -0.5], [-0.5, -1], [0.5, -1], [1, -0.5],
 ];
 
 // Visible frame width (m) at the target for a perspective camera.
@@ -58,7 +60,8 @@ export function footprintsOf(buildings, origin) {
     if (!g) continue;
     const polys = g.type === "Polygon" ? [g.coordinates]
       : g.type === "MultiPolygon" ? g.coordinates : [];
-    const height = Math.max(2.5, b.height_m || 6); // same clamp as buildings.js
+    // Actual building heights with the renderer's clamp (buildings.js).
+    const height = Math.max(2.5, b.height_m || 6);
     for (const poly of polys) {
       const ring = (poly[0] || []).map(([lon, lat]) => lonLatToXY(lon, lat, origin));
       if (ring.length < 4) continue;
@@ -72,7 +75,7 @@ export function footprintsOf(buildings, origin) {
         if (x > maxX) maxX = x;
         if (y > maxY) maxY = y;
       }
-      out.push({ ring, minX, minY, maxX, maxY, height });
+      out.push({ id: b.id ?? null, ring, minX, minY, maxX, maxY, height });
     }
   }
   return out;
@@ -128,39 +131,88 @@ function ringOverlaps(p, q, fp) {
   return out;
 }
 
-// Occlusion score of one sight line: the camera→target segment passes
-// through a building prism when the sight height at the target-side end
-// of an overlap interval is below the building top. Returns
-// {occluders, overlapM} (deterministic).
+// Camera ground position (local XY) and height for a target, using the
+// same offset main.js applies to the real camera.
+function sightParams(targetXY, distance, azimuth, pitchDeg) {
+  const [ox, oy, oz] = tourOffset(distance, pitchDeg, azimuth);
+  // World offset (x east, z = -north) back to local XY (x east, y north).
+  return { cam: [targetXY[0] + ox, targetXY[1] - oz], camH: oy };
+}
+
+// Occluded metres of one sight line inside one footprint prism: the
+// camera→target segment passes through the prism when the sight height
+// at the target-side end of an overlap interval is below the building
+// top. 0 when clear (shared by the scorer and the fade fallback).
+function footprintHit(fp, cam, targetXY, camH, targetH) {
+  const segLen = Math.hypot(targetXY[0] - cam[0], targetXY[1] - cam[1]);
+  if (segLen < 1e-9) return 0;
+  if (fp.maxX < Math.min(cam[0], targetXY[0]) || fp.minX > Math.max(cam[0], targetXY[0])
+      || fp.maxY < Math.min(cam[1], targetXY[1]) || fp.minY > Math.max(cam[1], targetXY[1])) {
+    return 0;
+  }
+  // The stop's own tower never counts as an occluder.
+  if (pointInRing(targetXY[0], targetXY[1], fp.ring)) return 0;
+  for (const [a, b] of ringOverlaps(cam, targetXY, fp)) {
+    const sightH = camH + (targetH - camH) * b;
+    if (fp.height > sightH) return (b - a) * segLen; // one building counts once
+  }
+  return 0;
+}
+
+// Occlusion score of one sight line. Returns {occluders, overlapM}
+// (deterministic).
 export function sightOcclusion(targetXY, footprints, distance,
                                azimuth = TOUR_AZIMUTH,
                                pitchDeg = TOUR_PITCH_DEG,
                                targetH = 2) {
-  const [ox, oy, oz] = tourOffset(distance, pitchDeg, azimuth);
-  // World offset (x east, z = -north) back to local XY (x east, y north).
-  const cam = [targetXY[0] + ox, targetXY[1] - oz];
-  const segLen = Math.hypot(targetXY[0] - cam[0], targetXY[1] - cam[1]);
-  if (segLen < 1e-9) return { occluders: 0, overlapM: 0 };
-  const segMinX = Math.min(cam[0], targetXY[0]);
-  const segMaxX = Math.max(cam[0], targetXY[0]);
-  const segMinY = Math.min(cam[1], targetXY[1]);
-  const segMaxY = Math.max(cam[1], targetXY[1]);
+  const { cam, camH } = sightParams(targetXY, distance, azimuth, pitchDeg);
   let occluders = 0;
   let overlapM = 0;
   for (const fp of footprints) {
-    if (fp.maxX < segMinX || fp.minX > segMaxX || fp.maxY < segMinY || fp.minY > segMaxY) continue;
-    // The stop's own tower never counts as an occluder.
-    if (pointInRing(targetXY[0], targetXY[1], fp.ring)) continue;
-    for (const [a, b] of ringOverlaps(cam, targetXY, fp)) {
-      const sightH = oy + (targetH - oy) * b;
-      if (fp.height > sightH) {
-        occluders++;
-        overlapM += (b - a) * segLen;
-        break; // one building counts once
-      }
+    const hit = footprintHit(fp, cam, targetXY, camH, targetH);
+    if (hit > 0) {
+      occluders++;
+      overlapM += hit;
     }
   }
   return { occluders, overlapM };
+}
+
+// Building ids occluding the sight line(s) — the fade fallback dims
+// these when no azimuth is clear. `targetXY` is one [x, y] pair or an
+// array; ids deduplicate and sort (deterministic).
+export function occludingIds(targetXY, footprints, distance,
+                             azimuth = TOUR_AZIMUTH,
+                             pitchDeg = TOUR_PITCH_DEG,
+                             targetH = 2) {
+  const targets = Array.isArray(targetXY[0]) ? targetXY : [targetXY];
+  const ids = new Set();
+  for (const t of targets) {
+    const { cam, camH } = sightParams(t, distance, azimuth, pitchDeg);
+    for (const fp of footprints) {
+      if (fp.id !== null && fp.id !== undefined
+          && footprintHit(fp, cam, t, camH, targetH) > 0) {
+        ids.add(fp.id);
+      }
+    }
+  }
+  return [...ids].sort();
+}
+
+// Tall host buildings containing the target: a POI stop embedded in a
+// tower (e.g. 잠실 stop 2 inside a 149 m slab) scores "clear" — the
+// host is excluded as the stop's own building — yet the host face fills
+// the frame and hides the street-level subject. The fade fallback dims
+// these hosts (POI stops only; a complex stop's towers are the subject).
+export const HOST_FADE_MIN_M = 40;
+
+export function hostTowerIds(targetXY, footprints) {
+  const ids = new Set();
+  for (const fp of footprints) {
+    if (fp.id === null || fp.id === undefined || fp.height < HOST_FADE_MIN_M) continue;
+    if (pointInRing(targetXY[0], targetXY[1], fp.ring)) ids.add(fp.id);
+  }
+  return [...ids].sort();
 }
 
 // Pick the stop azimuth with the least occlusion (fewest occluders,

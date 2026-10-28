@@ -32,6 +32,13 @@ export function parseTParam(t) {
   return hh * 60 + mm;
 }
 
+// ?t= pauses the clock at that time (deterministic captures); ?play=1
+// opts back into playing. Without ?t= the scene plays as before.
+export function shouldAutoplay(params) {
+  if (params.get("play") === "1") return true;
+  return params.get("t") === null;
+}
+
 // Absolute instant of a sim minute (KST wall time -> UTC Date,
 // deterministic, no local timezone). lighting.js takes this.
 export function simInstant(startDate, day, minute) {
@@ -47,6 +54,18 @@ export function daylightFactor(altitudeDeg) {
   const t = (altitudeDeg + 6) / 18;
   const c = Math.min(1, Math.max(0, t));
   return c * c * (3 - 2 * c);
+}
+
+// Warm-dusk bump over the evening hours: 0 outside 17:00–20:00,
+// peaking 1 at 18:30. Time-based (the brief's 18–20 h dusk), layered
+// over the solar day/night mix.
+export function duskFactor(minute) {
+  const lo = 17 * 60;
+  const hi = 20 * 60;
+  if (minute < lo || minute > hi) return 0;
+  const t = (minute - lo) / (hi - lo);
+  const s = Math.sin(t * Math.PI);
+  return s * s;
 }
 
 // Per-agent indexes over a run (trips/aways arrive in day order).
@@ -160,6 +179,60 @@ const PURPOSE_KO = {
 
 export function purposeLabel(purpose) {
   return PURPOSE_KO[purpose] || purpose;
+}
+
+export const DECISION_KIND_KO = {
+  shop_choice: "장보기", park_or_home: "공원/귀가", station_route: "역 출구", weekend_plan: "주말 계획",
+};
+
+// Who made this call: model rows carry their provider, everything else
+// (rule, rule_fallback, hook, replay-of-rule) reads as 규칙.
+export function decisionBadge(d) {
+  if (d.chosen_by === "model" && d.provider === "baseten") {
+    return { text: "Muse Spark Open", cls: "open" };
+  }
+  if (d.chosen_by === "model") return { text: "Muse Spark 1.3", cls: "spark" };
+  return { text: "규칙", cls: "rule" };
+}
+
+// Display label of the chosen option(s): the option label, or the
+// weekend plan's places in order ("집에서 휴식" for an empty plan).
+export function chosenLabel(d) {
+  const byKey = new Map((d.options || []).map((o) => [o.key, o.label || o.key]));
+  if (d.kind === "weekend_plan") {
+    const plan = Array.isArray(d.plan) ? d.plan
+      : (d.chosen_key === "home" ? [] : String(d.chosen_key || "").split("+"));
+    if (plan.length === 0) return "집에서 휴식";
+    return plan.map((k) => byKey.get(k) || k).join(" → ");
+  }
+  return byKey.get(d.chosen_key) || d.chosen_key;
+}
+
+// One-line option list with graph minutes ("슈퍼1 3.2분 · 슈퍼2 5.1분").
+export function optionsLine(d) {
+  return (d.options || []).map((o) => `${o.label || o.key} ${o.minutes}분`).join(" · ");
+}
+
+// Latest decision of one agent at-or-before (day, minute), or null.
+export function latestDecision(run, agentKey, day, minute) {
+  let best = null;
+  for (const d of run.decisions) {
+    if (d.agent !== agentKey || d.day !== day || d.minute > minute) continue;
+    if (!best || d.minute > best.minute) best = d;
+  }
+  return best;
+}
+
+// One day's household decisions, latest first (the 판단 기록 panel).
+export function dayDecisions(run, day) {
+  const household = new Set(run.agents.filter((a) => a.household).map((a) => a.key));
+  return run.decisions
+    .filter((d) => d.day === day && household.has(d.agent))
+    .sort((a, b) => (b.minute - a.minute) || (a.agent < b.agent ? -1 : 1));
+}
+
+export function agentLabelOf(run, agentKey) {
+  return (run.agents.find((a) => a.key === agentKey) || {}).label || agentKey;
 }
 
 // Caption line for a followed agent: trip purpose + run numbers, or

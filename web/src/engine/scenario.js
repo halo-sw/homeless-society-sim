@@ -127,9 +127,14 @@ function parseMember(raw, index) {
   if (!["adult", "child", "senior"].includes(role)) fail(`${where} has unknown role ${JSON.stringify(role)}`);
   const school = raw.school === true
     || (raw.school && (raw.school.mode === "nearest" || raw.school === true));
+  if (raw.preferences !== undefined
+      && (typeof raw.preferences !== "string" || raw.preferences.length > 500)) {
+    fail(`${where}.preferences wants a short free-text string (≤ 500 chars, no personal or health data)`);
+  }
   return {
     id: typeof raw.id === "string" ? raw.id : `m${index + 1}`,
     label: typeof raw.label === "string" ? raw.label : `구성원 ${index + 1}`,
+    preferences: typeof raw.preferences === "string" ? raw.preferences : "",
     role,
     workdays: raw.workdays === undefined ? ["Mon", "Tue", "Wed", "Thu", "Fri"] : checkWeekdays(raw.workdays, where),
     schooldays: raw.schooldays === undefined ? ["Mon", "Tue", "Wed", "Thu", "Fri"] : checkWeekdays(raw.schooldays, `${where}.schooldays`),

@@ -14,7 +14,7 @@ import { makeDecider } from "./decisions.js";
 import { homeOf, parseScenario, resolveHome } from "./scenario.js";
 import { planAgent, round1, round2 } from "./routines.js";
 
-export const ENGINE_VERSION = "sim-engine/3";
+export const ENGINE_VERSION = "sim-engine/4";
 
 export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const scenario = parseScenario(scenarioJson);
@@ -28,8 +28,8 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const daily = [];
   const totals = {};
   for (const a of agents) {
-    totals[a.key] = { walk_minutes: 0, walk_distance_m: 0, commute_away_minutes: 0,
-      errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
+    totals[a.key] = { walk_minutes: 0, walk_distance_m: 0, commute_walk_minutes: 0,
+      commute_ride_minutes: 0, errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
   }
   for (const agent of agents) {
     const schedule = planSchedule(agent, scenario);
@@ -40,7 +40,8 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
       perDay.push(summary);
       const t = totals[agent.key];
       t.walk_minutes += summary.walk_minutes;
-      t.commute_away_minutes += summary.commute_away_minutes;
+      t.commute_walk_minutes += summary.commute_walk_minutes;
+      t.commute_ride_minutes += summary.commute_ride_minutes;
       t.errands_done += summary.errands_done;
       t.park_visits += summary.park_visits;
       t.home_evening_minutes += summary.home_evening_minutes;
@@ -55,15 +56,17 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   for (const t of Object.values(totals)) {
     t.walk_minutes = round1(t.walk_minutes);
     t.walk_distance_m = round2(t.walk_distance_m);
+    t.commute_walk_minutes = round1(t.commute_walk_minutes);
   }
   const householdKeys = new Set(agents.filter((a) => a.household).map((a) => a.key));
-  const household = { walk_minutes: 0, walk_distance_m: 0, commute_away_minutes: 0,
-    errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
+  const household = { walk_minutes: 0, walk_distance_m: 0, commute_walk_minutes: 0,
+    commute_ride_minutes: 0, errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
   for (const [key, t] of Object.entries(totals)) {
     if (!householdKeys.has(key)) continue;
     household.walk_minutes += t.walk_minutes;
     household.walk_distance_m += t.walk_distance_m;
-    household.commute_away_minutes += t.commute_away_minutes;
+    household.commute_walk_minutes += t.commute_walk_minutes;
+    household.commute_ride_minutes += t.commute_ride_minutes;
     household.errands_done += t.errands_done;
     household.park_visits += t.park_visits;
     household.home_evening_minutes += t.home_evening_minutes;
@@ -71,6 +74,7 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   }
   household.walk_minutes = round1(household.walk_minutes);
   household.walk_distance_m = round2(household.walk_distance_m);
+  household.commute_walk_minutes = round1(household.commute_walk_minutes);
   const byKind = {};
   for (const d of collect.decisions) byKind[d.kind] = (byKind[d.kind] || 0) + 1;
   const choiceModes = new Set(collect.decisions.map((d) => d.chosen_by));
@@ -118,7 +122,8 @@ export function compare(runA, runB) {
   const metrics = [
     { key: "walk_minutes", label: "도보 이동 시간 합계", unit: "minutes", source: "graph" },
     { key: "walk_distance_m", label: "도보 이동 거리 합계", unit: "metres", source: "graph" },
-    { key: "commute_away_minutes", label: "통근·통학 외출 시간 합계(이동 가정값 포함)", unit: "minutes", source: "scenario" },
+    { key: "commute_walk_minutes", label: "통근·통학 도보 시간 합계", unit: "minutes", source: "graph" },
+    { key: "commute_ride_minutes", label: "통근 승차 시간 합계(가정값)", unit: "minutes", source: "scenario" },
     { key: "errands_done", label: "장보기 완료 횟수", unit: "count", source: "scenario" },
     { key: "park_visits", label: "공원 산책 횟수", unit: "count", source: "scenario" },
     { key: "home_evening_minutes", label: "18–24시 재택 시간 합계", unit: "minutes", source: "scenario" },
@@ -134,7 +139,8 @@ export function compare(runA, runB) {
         member: key, label,
         walk_minutes: { a: pa.walk_minutes, b: pb.walk_minutes },
         walk_distance_m: { a: pa.walk_distance_m, b: pb.walk_distance_m },
-        commute_away_minutes: { a: pa.commute_away_minutes, b: pb.commute_away_minutes },
+        commute_walk_minutes: { a: pa.commute_walk_minutes, b: pb.commute_walk_minutes },
+        commute_ride_minutes: { a: pa.commute_ride_minutes, b: pb.commute_ride_minutes },
         home_evening_minutes: { a: pa.home_evening_minutes, b: pb.home_evening_minutes },
       };
     });
@@ -152,7 +158,23 @@ export function compare(runA, runB) {
       a_by_category: countBy(runA.unavailable, "category"),
       b_by_category: countBy(runB.unavailable, "category"),
     },
+    judgment: {
+      a: judgmentCounts(runA),
+      b: judgmentCounts(runB),
+    },
   };
+}
+
+// Household decisions by chosen_by (model vs rule_fallback vs rule):
+// who made each call the judge layer could have taken.
+function judgmentCounts(run) {
+  const household = new Set(run.agents.filter((a) => a.household).map((a) => a.key));
+  const out = {};
+  for (const d of run.decisions) {
+    if (!household.has(d.agent)) continue;
+    out[d.chosen_by] = (out[d.chosen_by] || 0) + 1;
+  }
+  return out;
 }
 
 function countBy(list, field) {

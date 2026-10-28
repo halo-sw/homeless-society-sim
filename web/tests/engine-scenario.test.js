@@ -17,6 +17,17 @@ describe("engine scenario", () => {
     assert.equal(s.schoolday_minutes, 360);
     assert.deepEqual(s.household.members[0].workdays, ["Mon", "Tue", "Wed", "Thu", "Fri"]);
     assert.deepEqual(s.household.members[0].work, { type: "none" });
+    assert.equal(s.household.members[0].preferences, "");
+  });
+
+  it("keeps member preferences short free text", () => {
+    const good = tinyScenario();
+    good.household.members[0].preferences = "주말에는 가까운 공원에서 쉬는 것을 좋아한다.";
+    assert.equal(parseScenario(good).household.members[0].preferences,
+      "주말에는 가까운 공원에서 쉬는 것을 좋아한다.");
+    const bad = tinyScenario();
+    bad.household.members[0].preferences = "x".repeat(501);
+    assert.throws(() => parseScenario(bad), /preferences/);
   });
 
   it("rejects bad shapes", () => {

@@ -8,6 +8,7 @@
   <body>
     <div id="app">
       <canvas id="scene"></canvas>
+      <div id="tags"></div>
       <div id="vignette"></div>
       <div id="fade"></div>
       <header id="topbar">
@@ -45,8 +46,18 @@
         <div id="capName"></div>
         <div id="capMeta"></div>
         <div id="capWalk"></div>
+        <div id="judgeCap" hidden>
+          <span id="judgeBadge" class="badge rule">규칙</span>
+          <span id="judgeText"></span>
+          <button id="judgeAsk" type="button" hidden>Muse에게 묻기</button>
+          <span id="judgeLive" class="badge live" hidden>live</span>
+        </div>
         <div id="dots"></div>
       </div>
+      <aside id="judgeLog" hidden>
+        <div class="legend-title">판단 기록</div>
+        <div id="judgeLogBody"></div>
+      </aside>
       <footer id="attr">
         © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) ·
         GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시

@@ -89,6 +89,41 @@ html, body {
 }
 #dots span.on { background: var(--accent); }
 
+#tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.hhtag {
+  position: absolute; transform: translate(-50%, -100%);
+  background: rgba(61, 50, 39, 0.88); color: #fbf7ee;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+  border-radius: 10px; padding: 2px 9px; margin-top: -6px;
+}
+
+#judgeCap { font-size: 12px; margin-top: 6px; line-height: 1.5; }
+.badge {
+  font-size: 10px; font-weight: 800; border-radius: 8px; padding: 1px 7px;
+  margin-right: 4px; white-space: nowrap; vertical-align: 1px;
+}
+.badge.rule { background: rgba(61, 50, 39, 0.14); color: var(--ink); }
+.badge.spark { background: #1f3a5f; color: #fff; }
+.badge.open { background: #5f3a1f; color: #fff; }
+.badge.live { background: var(--accent); color: #fff; margin-left: 4px; }
+#judgeAsk {
+  border: 1px solid rgba(61, 50, 39, 0.3); background: transparent;
+  border-radius: 10px; padding: 1px 9px; font-size: 11px; cursor: pointer;
+  color: var(--ink); margin-left: 6px;
+}
+#judgeAsk:disabled { opacity: 0.6; cursor: wait; }
+
+#judgeLog {
+  position: absolute; left: 12px; top: 60px;
+  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
+  border-radius: 10px; padding: 10px 12px; font-size: 12px;
+  max-width: 310px; max-height: 52vh; overflow: auto;
+}
+#judgeLog[hidden] { display: none; }
+#judgeLogBody .jrow { margin-top: 6px; line-height: 1.45; }
+#judgeLogBody .jreason { color: #6b5d4d; font-size: 11px; }
+#compare .judge-counts { margin-top: 8px; font-size: 11px; color: #6b5d4d; }
+
 #attr {
   position: absolute; left: 0; right: 0; bottom: 0;
   font-size: 11px; color: #6b5d4d; text-align: center;

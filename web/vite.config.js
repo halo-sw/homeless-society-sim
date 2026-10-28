@@ -1,6 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, normalize, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildPrompt } from "./src/judge/context.js";
+import { providerConfig } from "./src/judge/providers.js";
+import { emptyUsage, judgeSingle } from "./src/judge/run.js";
 
 // Serves the pipeline output (data/build/<area>/*.json) at /data/<area>/*
 // in dev. The data stays outside web/ (never copied); the production build
@@ -46,7 +49,96 @@ function areaDataPlugin() {
   };
 }
 
+const JUDGE_BODY_MAX = 262144; // 256 KB
+const JUDGE_KINDS = new Set(["shop_choice", "park_or_home", "station_route", "weekend_plan"]);
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > JUDGE_BODY_MAX) {
+        reject(new Error("body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+function checkShell(shell) {
+  if (!shell || typeof shell !== "object") throw new Error("shell must be an object");
+  if (!JUDGE_KINDS.has(shell.kind)) throw new Error("shell.kind unknown");
+  if (!Array.isArray(shell.options) || shell.options.length === 0) {
+    throw new Error("shell.options must be a non-empty array");
+  }
+  for (const o of shell.options) {
+    if (!o || typeof o.key !== "string" || !Number.isFinite(o.minutes) || !Number.isFinite(o.distance_m)) {
+      throw new Error("shell.options entries need {key, minutes, distance_m}");
+    }
+  }
+  if (typeof shell.default_key !== "string"
+      || !shell.options.some((o) => o.key === shell.default_key)) {
+    throw new Error("shell.default_key must be one of the options");
+  }
+}
+
+// Live demo path (vite dev only): POST /api/judge judges one decision
+// through the provider. The key stays server-side (env); the browser
+// only sends the decision context and shows the result. Never runs in
+// the production build (configureServer only), which uses committed
+// decision files instead.
+function judgeApiPlugin() {
+  return {
+    name: "judge-api",
+    configureServer(server) {
+      server.middlewares.use("/api/judge", async (req, res) => {
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.end("method not allowed");
+          return;
+        }
+        try {
+          const body = JSON.parse(await readBody(req));
+          const cfg = providerConfig(body.provider); // throws on unknown provider
+          checkShell(body.shell);
+          if (!process.env[cfg.keyEnv]) {
+            const err = new Error(`${cfg.keyEnv} is not set on the dev server`);
+            err.code = "missing_key";
+            throw err;
+          }
+          const prompt = buildPrompt({
+            member: body.member || { role: "adult", preferences: "" },
+            agentLabel: body.agentLabel || "구성원",
+            date: body.date || "2026-11-02",
+            weekday: body.weekday || "Mon",
+            minute: Number.isFinite(body.minute) ? body.minute : 600,
+            tripsToday: Array.isArray(body.tripsToday) ? body.tripsToday : [],
+            memory: Array.isArray(body.memory) ? body.memory : [],
+            shell: body.shell,
+          });
+          const usage = emptyUsage();
+          const entry = await judgeSingle({
+            provider: body.provider, prompt, shell: body.shell, usage,
+          });
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ok: true, entry, usage }));
+        } catch (err) {
+          const missing = err && err.code === "missing_key";
+          res.statusCode = missing ? 503 : /body too large|must be|unknown/.test(err.message) ? 400 : 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ok: false, error: String((err && err.message) || err).slice(0, 300) }));
+        }
+      });
+    },
+  };
+}
+
 export default {
-  plugins: [areaDataPlugin()],
+  plugins: [areaDataPlugin(), judgeApiPlugin()],
   server: { port: 5173 },
 };

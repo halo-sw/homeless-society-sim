@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { GLIDE_FRAME_M, STOP_AZIMUTHS, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, TOUR_PITCH_DEG, distanceForWidth, footprintsOf, frameWidthFor, pickStopAzimuth, sightOcclusion, tourOffset } from "../src/camera.js";
+import { GLIDE_FRAME_M, HOST_FADE_MIN_M, STOP_AZIMUTHS, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, TOUR_PITCH_DEG, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, sightOcclusion, tourOffset } from "../src/camera.js";
 
 describe("camera", () => {
   it("stays in the miniature brief ranges", () => {
@@ -93,13 +93,46 @@ describe("stop azimuth (tower occlusion)", () => {
   it("flattens building footprints with the renderer height clamp", () => {
     const origin = { lon: 127.0, lat: 37.5 };
     const buildings = [{
-      height_m: null,
+      id: "b1", height_m: null,
       geometry: { type: "Polygon", coordinates: [[[127.0, 37.5], [127.001, 37.5], [127.001, 37.501], [127.0, 37.5]]] },
     }];
     const fps = footprintsOf(buildings, origin);
     assert.equal(fps.length, 1);
     assert.equal(fps[0].height, 6);
+    assert.equal(fps[0].id, "b1");
     assert.ok(fps[0].maxX > fps[0].minX);
     assert.deepEqual(STOP_AZIMUTHS[0], TOUR_AZIMUTH);
+  });
+
+  it("names occluding buildings for the fade fallback", () => {
+    const { dist, target, tower } = towerScene();
+    const a = { ...tower, id: "tower-a" };
+    const clear = [500, 500];
+    assert.deepEqual(occludingIds(target, [a], dist, TOUR_AZIMUTH), ["tower-a"]);
+    assert.deepEqual(occludingIds(target, [a], dist, [-TOUR_AZIMUTH[0], -TOUR_AZIMUTH[1]]), []);
+    assert.deepEqual(occludingIds([target, clear], [{ ...a, id: "b" }, { ...a, id: "a" }], dist, TOUR_AZIMUTH),
+      ["a", "b"]); // deduped + sorted
+    // Counts agree with the scorer.
+    const score = sightOcclusion(target, [a], dist, TOUR_AZIMUTH);
+    assert.equal(score.occluders, occludingIds(target, [a], dist, TOUR_AZIMUTH).length);
+  });
+
+  it("names tall host towers containing the target", () => {
+    const { target } = towerScene();
+    const host = { id: "host", ring: [[-10, -10], [10, -10], [10, 10], [-10, 10], [-10, -10]],
+      minX: -10, minY: -10, maxX: 10, maxY: 10, height: 149 };
+    const low = { ...host, id: "low", height: HOST_FADE_MIN_M - 1 };
+    const away = { ...host, id: "away",
+      ring: [[90, 90], [110, 90], [110, 110], [90, 110], [90, 90]],
+      minX: 90, minY: 90, maxX: 110, maxY: 110 };
+    // The host is not an occluder (own building) but is named for fading.
+    assert.deepEqual(hostTowerIds(target, [host, low, away]), ["host"]);
+  });
+
+  it("covers all eight compass points plus half-winds", () => {
+    const dirs = STOP_AZIMUTHS.map(([x, y]) => `${Math.sign(x)},${Math.sign(y)}`);
+    for (const d of ["1,0", "0,1", "-1,0", "0,-1", "1,1", "-1,1", "-1,-1", "1,-1"]) {
+      assert.ok(dirs.includes(d), `candidate ${d}`);
+    }
   });
 });

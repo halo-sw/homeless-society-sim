@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { daylightFactor, followCaption, formatClock, homeOccupancy, indexRun, isAtHome, parseTParam, sampleAgent, simInstant, tripFractions } from "../src/sim.js";
+import { agentLabelOf, chosenLabel, dayDecisions, daylightFactor, decisionBadge, duskFactor, followCaption, formatClock, homeOccupancy, indexRun, isAtHome, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "../src/sim.js";
 import { simulate } from "../src/engine/simulate.js";
 import { tinyArea, tinyScenario } from "./engine-fixture.js";
 
@@ -74,6 +74,46 @@ describe("sim playback", () => {
       total += slot.total;
     }
     assert.equal(total, 7);
+  });
+
+  it("pauses on ?t= unless ?play=1", () => {
+    assert.equal(shouldAutoplay(new URLSearchParams("")), true);
+    assert.equal(shouldAutoplay(new URLSearchParams("?t=07:30")), false);
+    assert.equal(shouldAutoplay(new URLSearchParams("?t=07:30&play=1")), true);
+    assert.equal(shouldAutoplay(new URLSearchParams("?play=1")), true);
+  });
+
+  it("bumps warm dusk over 17:00–20:00, peaking 18:30", () => {
+    assert.equal(duskFactor(16 * 60), 0);
+    assert.equal(duskFactor(21 * 60), 0);
+    assert.equal(duskFactor(18 * 60 + 30), 1);
+    const early = duskFactor(17 * 60 + 30);
+    assert.ok(early > 0 && early < 1);
+    assert.ok(Math.abs(duskFactor(17 * 60 + 30) - duskFactor(19 * 60 + 30)) < 1e-9);
+  });
+
+  it("badges decisions by judge provenance", () => {
+    assert.deepEqual(decisionBadge({ chosen_by: "model", provider: "meta" }), { text: "Muse Spark 1.3", cls: "spark" });
+    assert.deepEqual(decisionBadge({ chosen_by: "model", provider: "baseten" }), { text: "Muse Spark Open", cls: "open" });
+    assert.deepEqual(decisionBadge({ chosen_by: "rule" }), { text: "규칙", cls: "rule" });
+    assert.deepEqual(decisionBadge({ chosen_by: "rule_fallback" }), { text: "규칙", cls: "rule" });
+    assert.deepEqual(decisionBadge({ chosen_by: "replay" }), { text: "규칙", cls: "rule" });
+  });
+
+  it("labels choices and options from run records", () => {
+    const run = simulate(tinyArea(), tinyScenario(), "A");
+    const sc = run.decisions.find((d) => d.kind === "shop_choice" && d.agent === "h1");
+    assert.equal(chosenLabel(sc), sc.options.find((o) => o.key === sc.chosen_key).label);
+    assert.ok(optionsLine(sc).includes("분"));
+    const wk = run.decisions.find((d) => d.kind === "weekend_plan" && d.agent === "h1" && d.day === 5);
+    assert.equal(chosenLabel(wk), "공원");
+    assert.deepEqual(dayDecisions(run, 5).filter((d) => d.kind === "weekend_plan").length, 2);
+    assert.equal(agentLabelOf(run, "h1"), "구성원 1");
+    const latest = latestDecision(run, "h1", 5, 1439);
+    assert.equal(latest.kind, "weekend_plan");
+    assert.equal(latestDecision(run, "h1", 5, 0), null);
+    // Household only: background branches never enter the log.
+    assert.ok(dayDecisions(run, 0).every((d) => d.agent === "h1" || d.agent === "h2"));
   });
 
   it("captions the followed agent with run numbers", () => {
