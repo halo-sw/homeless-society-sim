@@ -1,6 +1,6 @@
 data/raw/
 data/build/
-.venv/
+.venv
 node_modules/
 .env
 *.pbf
