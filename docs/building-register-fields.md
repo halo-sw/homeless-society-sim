@@ -45,6 +45,13 @@ Known data quirks: A16/A14–A18 are `0.0` (or NULL) when unknown rather than
 empty; A8–A11 can be empty together (~22% of records); A24/A25 are empty for
 most small houses.
 
+Stage-2 uses: A2 (PNU) keys the 건축HUB title-API fill
+(`pipeline/register_api.py`: 19 digits = sigungu 5 + bjdong 5 + land
+type 1 + bun 4 + ji 4; sampled PNU[10] ∈ {1, 2} in both regions);
+A24/A25 feed complex name stems (`pipeline/complexes.py`) and the API
+dong match. For apartment-typed records A24/A25 are present in roughly
+half (seoul sample) to three-quarters (gyeonggi sample) of cases.
+
 ## Sample rows (public buildings, mapped fields)
 
 1. 대치힐하우스 (공동주택, 강남구 대치동 987-2): A16 height 15.9 m, A26/A27

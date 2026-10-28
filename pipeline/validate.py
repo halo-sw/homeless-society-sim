@@ -8,6 +8,13 @@ Checks run against the deliverable itself (``area.json`` + part files):
 * for 1.2 km scene boxes (``kind == "bbox"``): inferred-height share
   <= 30 %, walk-graph largest-component share >= 95 %, >= 50 named POIs.
 
+Stage 2 notes: the walk-LCC threshold applies to the buffered share
+(``report.json`` → ``walk_lcc``, connectivity on the 300 m buffered
+graph), cross-checked by recomputing the raw clipped LCC from the
+deliverable itself against ``walk_lcc_clipped_raw``. The ``complexes``
+section (when present) must reference real building ids, and any
+``residential`` value present must be in the documented enum.
+
 Gu-sized boundary areas (``kind == "boundary"``) are exempt from the
 scene-box thresholds but must still be non-empty with streets and POIs.
 
@@ -29,6 +36,12 @@ POIS_MIN_SCENE = 50
 AREA_FILE = "area.json"
 REPORT_FILE = "report.json"
 
+RESIDENTIAL_VALUES = ("apartment", "house", "mixed", "none")
+COMPLEX_NAME_SOURCES = ("register", "osm_landuse")
+# Sections that may be absent (stage-1 areas predate them): validated when
+# present, silently defaulted when missing.
+OPTIONAL_SECTIONS = ("complexes",)
+
 
 def _resolve_sections(area_dir: Path, area: dict) -> tuple[dict, list[str]]:
     """Inline ``{"$ref": file}`` sections; returns (sections, errors)."""
@@ -39,6 +52,9 @@ def _resolve_sections(area_dir: Path, area: dict) -> tuple[dict, list[str]]:
     for name in SECTIONS:
         value = area.get(name, "MISSING")
         if value == "MISSING":
+            if name in OPTIONAL_SECTIONS:
+                sections[name] = []
+                continue
             errors.append(f"{area_dir.name}: area.json has no {name!r} section")
             continue
         if isinstance(value, dict) and set(value) == {"$ref"}:
@@ -93,12 +109,63 @@ def validate_area(area_dir: str | Path) -> list[str]:
     buildings = sections.get("buildings", [])
     roads = sections.get("roads", [])
     pois = sections.get("pois", [])
+    complexes = sections.get("complexes", [])
     if not isinstance(buildings, list) or not buildings:
         errors.append(f"{area_id}: area empty — no buildings in {AREA_FILE}")
     if not isinstance(roads, list) or not roads:
         errors.append(f"{area_id}: street set missing — no roads in {AREA_FILE}")
     if not isinstance(pois, list) or not pois:
         errors.append(f"{area_id}: POI set missing — no POIs in {AREA_FILE}")
+
+    # Stage-2 section checks (validated when present).
+    if isinstance(buildings, list):
+        bad_res = sorted({b.get("residential") for b in buildings
+                          if "residential" in b
+                          and b.get("residential") not in RESIDENTIAL_VALUES})
+        if bad_res:
+            errors.append(
+                f"{area_id}: buildings carry unknown residential values: "
+                f"{bad_res}")
+    if isinstance(complexes, list) and complexes:
+        building_ids = {b.get("id") for b in buildings
+                        if isinstance(b, dict)}
+        for comp in complexes:
+            if not isinstance(comp, dict):
+                errors.append(f"{area_id}: complex entry is not an object")
+                break
+            missing = {"id", "name", "name_source", "building_ids",
+                       "centroid", "households_hint",
+                       "max_floors"} - set(comp)
+            if missing:
+                errors.append(
+                    f"{area_id}: complex {comp.get('id')} misses keys: "
+                    f"{sorted(missing)}")
+                continue
+            unknown = [bid for bid in comp.get("building_ids", [])
+                       if bid not in building_ids]
+            if unknown:
+                errors.append(
+                    f"{area_id}: complex {comp.get('id')} references "
+                    f"unknown buildings: {unknown[:5]}")
+            name, source = comp.get("name"), comp.get("name_source")
+            if (name is None) != (source is None):
+                errors.append(
+                    f"{area_id}: complex {comp.get('id')} has "
+                    f"name={name!r} with name_source={source!r}")
+            elif source is not None and source not in COMPLEX_NAME_SOURCES:
+                errors.append(
+                    f"{area_id}: complex {comp.get('id')} has unknown "
+                    f"name_source={source!r}")
+
+    try:
+        report = json.loads(
+            (area_dir / REPORT_FILE).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        errors.append(f"{area_id}: {REPORT_FILE} is missing")
+        return errors
+    except json.JSONDecodeError as exc:
+        errors.append(f"{area_id}: {REPORT_FILE} does not parse: {exc}")
+        return errors
 
     if area_def.get("kind") == "bbox":
         n_pois = len(pois) if isinstance(pois, list) else 0
@@ -116,24 +183,35 @@ def validate_area(area_dir: str | Path) -> list[str]:
                     f"({inferred}/{len(buildings)}) exceeds "
                     f"{INFERRED_MAX_SHARE:.0%} per scene box")
         graph = sections.get("graph")
-        share = _walk_lcc_share(graph) if isinstance(graph, dict) else None
-        if share is None:
-            errors.append(f"{area_id}: walk graph missing, cannot check LCC")
-        elif share < WALK_LCC_MIN_SHARE:
-            errors.append(
-                f"{area_id}: walk-graph largest component {share:.1%} "
-                f"below {WALK_LCC_MIN_SHARE:.0%} per scene box")
+        raw = _walk_lcc_share(graph) if isinstance(graph, dict) else None
+        rep_lcc = report.get("walk_lcc") or {}
+        after = rep_lcc.get("share")
+        if after is None:
+            # Pre-stage-2 report: threshold on the recomputed share.
+            if raw is None:
+                errors.append(f"{area_id}: walk graph missing, cannot check LCC")
+            elif raw < WALK_LCC_MIN_SHARE:
+                errors.append(
+                    f"{area_id}: walk-graph largest component {raw:.1%} "
+                    f"below {WALK_LCC_MIN_SHARE:.0%} per scene box")
+        else:
+            rep_raw = (report.get("walk_lcc_clipped_raw") or {}).get("share")
+            if raw is None:
+                errors.append(f"{area_id}: walk graph missing, cannot check LCC")
+            elif rep_raw is not None and raw != rep_raw:
+                errors.append(
+                    f"{area_id}: {REPORT_FILE} walk_lcc_clipped_raw={rep_raw} "
+                    f"disagrees with {AREA_FILE} ({raw})")
+            box_share = (report.get("walk_lcc_box") or {}).get("share")
+            if after < WALK_LCC_MIN_SHARE:
+                detail = (f" (box-only {box_share:.1%})"
+                          if isinstance(box_share, float) else "")
+                errors.append(
+                    f"{area_id}: walk-graph largest component {after:.1%} "
+                    f"buffered{detail} below {WALK_LCC_MIN_SHARE:.0%} "
+                    f"per scene box")
 
     # Cross-check the report against the deliverable (catches stale reports).
-    try:
-        report = json.loads(
-            (area_dir / REPORT_FILE).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        errors.append(f"{area_id}: {REPORT_FILE} is missing")
-        return errors
-    except json.JSONDecodeError as exc:
-        errors.append(f"{area_id}: {REPORT_FILE} does not parse: {exc}")
-        return errors
     counts = report.get("counts", {})
     for name, section in (("buildings", buildings), ("roads", roads),
                           ("pois", pois)):
@@ -141,6 +219,11 @@ def validate_area(area_dir: str | Path) -> list[str]:
             errors.append(
                 f"{area_id}: {REPORT_FILE} counts[{name}]={counts.get(name)} "
                 f"disagrees with {AREA_FILE} ({len(section)})")
+    if (isinstance(complexes, list) and "complexes" in counts
+            and counts.get("complexes") != len(complexes)):
+        errors.append(
+            f"{area_id}: {REPORT_FILE} counts[complexes]={counts.get('complexes')} "
+            f"disagrees with {AREA_FILE} ({len(complexes)})")
     return errors
 
 

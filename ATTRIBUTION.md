@@ -16,6 +16,13 @@ attribution in later stages in sync.
   Source shapefiles (`data/raw/buildings/<region>/`, 기준일 2026-10-09)
   are labelled CC BY / 공공누리 제1유형 (attribution). VWorld:
   <https://www.vworld.kr>.
+* **건축물대장 표제부 API (building register title API, stage 2)** —
+  title records from 국토교통부 건축HUB via the public data portal
+  (`https://www.data.go.kr`, service `1613000/BldRgstHubService`),
+  fetched per parcel by `pipeline/register_api.py` (key from
+  `DATA_GO_KR_KEY`, raw responses cached under
+  `data/raw/register_api/`). Same register family as above; carries the
+  same 국토교통부 attribution.
 
 Derived files under `data/build/` mix these sources: OSM-derived geometry
 remains ODbL-covered, and register-derived building attributes require the

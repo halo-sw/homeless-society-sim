@@ -149,6 +149,31 @@ def cmd_areas(args) -> int:
     return 0
 
 
+def cmd_register_fill(args) -> int:
+    from .register_api import (DEFAULT_CACHE_DIR, RegisterApiError,
+                               fill_area)
+
+    build_dir = Path(args.build_dir)
+    area_dir = build_dir / args.area
+    if not (area_dir / "buildings.json").exists():
+        print(f"error: {area_dir}/buildings.json missing "
+              f"(build {args.area} first)", file=sys.stderr)
+        return 1
+    try:
+        summary = fill_area(
+            area_dir,
+            cache_dir=Path(args.cache_dir) if args.cache_dir
+            else DEFAULT_CACHE_DIR,
+            overwrite=args.overwrite, limit=args.limit,
+            dry_run=args.dry_run)
+    except (RegisterApiError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    # The summary never contains the API key (only counts + area id).
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pipeline",
                                      description="Area data pipeline")
@@ -170,6 +195,20 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
     a.add_argument("--osmium", default=None)
     a.set_defaults(func=cmd_areas)
+
+    r = sub.add_parser("register-fill",
+                       help="fill inferred heights via the 건축HUB title API")
+    r.add_argument("--area", choices=list(AREA_IDS), required=True)
+    r.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    r.add_argument("--cache-dir", default=None,
+                   help="raw-response cache (default: data/raw/register_api)")
+    r.add_argument("--limit", type=int, default=None,
+                   help="fill at most N parcels (debug)")
+    r.add_argument("--overwrite", action="store_true",
+                   help="refetch parcels that already have a cached response")
+    r.add_argument("--dry-run", action="store_true",
+                   help="print the planned request count without network")
+    r.set_defaults(func=cmd_register_fill)
     return parser
 
 

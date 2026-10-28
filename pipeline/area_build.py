@@ -27,7 +27,8 @@ AREA_FILE = "area.json"
 REPORT_FILE = "report.json"
 SECTION_SPLIT_BYTES = 2_000_000  # sections bigger than this become part files
 
-SECTIONS = ("buildings", "roads", "pois", "landuse", "trees", "graph")
+SECTIONS = ("buildings", "roads", "pois", "landuse", "trees", "graph",
+            "complexes")
 
 METERS_PER_DEG_LAT = 111_320.0
 COORD_NDIGITS = 7
@@ -92,19 +93,25 @@ def local_origin(area_def: dict, osm: dict) -> tuple[float, float]:
 def assemble_area(area_def: dict, osm: dict, buildings: dict,
                   graph: dict) -> tuple[dict, dict[str, object]]:
     """Return the area.json skeleton plus the (possibly split) sections."""
+    from .complexes import find_complexes
+
     area_id = area_def["id"]
     lon0, lat0 = local_origin(area_def, osm)
     bounds = feature_bounds(osm)
     bbox = list(area_def["bbox"]) if area_def.get("bbox") else (
         list(bounds) if bounds else None)
+    building_list = buildings.get("buildings", [])
+    complexes = find_complexes(building_list, osm.get("landuse", []),
+                               lon0, lat0)
     sections: dict[str, object] = {
-        "buildings": buildings.get("buildings", []),
+        "buildings": building_list,
         "roads": osm.get("roads", []),
         "pois": osm.get("pois", []),
         "landuse": osm.get("landuse", []),
         "trees": osm.get("trees", []),
         "graph": {"nodes": graph.get("nodes", {}),
                   "edges": graph.get("edges", {})},
+        "complexes": complexes,
     }
     edges = graph.get("edges", {})
     area = {
@@ -133,6 +140,7 @@ def assemble_area(area_def: dict, osm: dict, buildings: dict,
             "walk_edges": len(edges.get("walk", [])),
             "bike_edges": len(edges.get("bike", [])),
             "drive_edges": len(edges.get("drive", [])),
+            "complexes": len(sections["complexes"]),
         },
     }
     return area, sections
@@ -167,7 +175,8 @@ def write_area(area_dir: Path, area: dict,
 
 def build_report(area_def: dict, osm: dict, buildings: dict, graph: dict,
                  sizes: dict[str, int], parts: dict[str, str],
-                 timings: dict[str, float]) -> dict:
+                 timings: dict[str, float],
+                 complexes: list | None = None) -> dict:
     """Per-area build report (metrics + provenance, no wall-clock stamps)."""
     bmeta = buildings.get("meta", {})
     gmeta = graph.get("meta", {})
@@ -176,6 +185,12 @@ def build_report(area_def: dict, osm: dict, buildings: dict, graph: dict,
         cat = poi.get("category", "unknown")
         poi_cats[cat] = poi_cats.get(cat, 0) + 1
     edges = graph.get("edges", {})
+    complexes = complexes if complexes is not None else []
+    building_list = buildings.get("buildings", [])
+    residential_counts: dict[str, int] = {}
+    for b in building_list:
+        key = b.get("residential", "none")
+        residential_counts[key] = residential_counts.get(key, 0) + 1
     return {
         "area": area_def["id"],
         "label": area_def.get("label"),
@@ -187,7 +202,7 @@ def build_report(area_def: dict, osm: dict, buildings: dict, graph: dict,
         "register_coverage": bmeta.get("register_coverage"),
         "register_files": bmeta.get("register_files", []),
         "counts": {
-            "buildings": len(buildings.get("buildings", [])),
+            "buildings": len(building_list),
             "roads": len(osm.get("roads", [])),
             "pois": len(osm.get("pois", [])),
             "landuse": len(osm.get("landuse", [])),
@@ -196,12 +211,26 @@ def build_report(area_def: dict, osm: dict, buildings: dict, graph: dict,
             "walk_edges": len(edges.get("walk", [])),
             "bike_edges": len(edges.get("bike", [])),
             "drive_edges": len(edges.get("drive", [])),
+            "complexes": len(complexes),
         },
         "poi_counts": {"total": len(osm.get("pois", [])),
                        "by_category": poi_cats},
         "height_sources": bmeta.get("height_sources", {}),
         "inferred_share": bmeta.get("inferred_share"),
+        "residential_counts": residential_counts,
+        "complexes": {
+            "total": len(complexes),
+            "named": sum(1 for c in complexes if c.get("name")),
+            "largest": max((len(c.get("building_ids", [])) for c in complexes),
+                           default=0),
+        },
+        "graph_method": gmeta.get("method", "box"),
         "walk_lcc": gmeta.get("walk_lcc", {}),
+        "walk_lcc_box": gmeta.get("walk_lcc_box", gmeta.get("walk_lcc", {})),
+        "walk_lcc_buffered": gmeta.get("walk_lcc_buffered",
+                                       gmeta.get("walk_lcc", {})),
+        "walk_lcc_clipped_raw": gmeta.get("walk_lcc_clipped_raw",
+                                          gmeta.get("walk_lcc", {})),
         "split": any(v != "inline" for v in parts.values()),
         "parts": parts,
         "timings": timings,
@@ -233,7 +262,7 @@ def run_build(area_dir: str | Path) -> dict:
         sizes[name] = (area_dir / name).stat().st_size
     timings = {"area_build_seconds": 0.0, "phases": phases}
     report = build_report(area_def, osm, buildings, graph, sizes, parts,
-                          timings)
+                          timings, sections.get("complexes"))
     (area_dir / REPORT_FILE).write_bytes(_dumps(report))
     phases["write"] = round(time.perf_counter() - step, 2)
     timings["area_build_seconds"] = round(time.perf_counter() - started, 2)
@@ -244,10 +273,13 @@ def run_build(area_dir: str | Path) -> dict:
     return {
         "buildings": counts["buildings"],
         "pois": counts["pois"],
+        "complexes": counts["complexes"],
         "split": report["split"],
         "parts": parts,
         "register_coverage": report["register_coverage"],
         "inferred_share": report["inferred_share"],
+        "residential_counts": report["residential_counts"],
         "walk_lcc_share": report["walk_lcc"].get("share"),
+        "walk_lcc_box_share": report["walk_lcc_box"].get("share"),
         "bytes_total": sum(sizes.values()),
     }

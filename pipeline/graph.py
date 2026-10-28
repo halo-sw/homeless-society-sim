@@ -29,6 +29,18 @@ modes. Edge ``length_m`` is the haversine segment length in metres.
 Ways tagged ``area=yes`` (e.g. pedestrian plazas) are surfaces, not linear
 paths, so they are excluded from the graph in every mode; they stay in the
 roads list (with ``area: true``) for rendering.
+
+Stage 2 buffered method (scene boxes only): the walk/bike/drive graphs are
+built from an extract buffered by 300 m around the box
+(``extract.buffered.osm.pbf``), connectivity is computed on that buffered
+graph, and the shipped graph is clipped to the box keeping every edge
+whose segment intersects it (endpoints may lie just outside). The
+reported ``walk_lcc`` is the share of clipped-graph walk nodes that fall
+in the buffered walk largest component — i.e. paths that connect just
+outside the box count as connected. ``walk_lcc_box`` keeps the old
+box-only share (before), ``walk_lcc_clipped_raw`` the plain LCC of the
+shipped graph, and ``walk_lcc_buffered`` the LCC of the full buffered
+graph. Boundary areas skip buffering (before == after).
 """
 
 from __future__ import annotations
@@ -176,6 +188,7 @@ def build_area_graph(area_id: str, osm: dict) -> dict:
     walk_lcc = largest_component_share(graph["nodes"], graph["edges"]["walk"])
     graph["meta"] = {
         "area": area_id,
+        "method": "box",
         "counts": {
             "nodes": len(graph["nodes"]),
             "walk_edges": len(graph["edges"]["walk"]),
@@ -187,11 +200,187 @@ def build_area_graph(area_id: str, osm: dict) -> dict:
     return graph
 
 
+def _point_in_box(lon: float, lat: float,
+                  bbox: tuple[float, float, float, float]) -> bool:
+    minlon, minlat, maxlon, maxlat = bbox
+    return minlon <= lon <= maxlon and minlat <= lat <= maxlat
+
+
+def _segments_cross(p1: tuple[float, float], p2: tuple[float, float],
+                    p3: tuple[float, float], p4: tuple[float, float]) -> bool:
+    """True when segments p1-p2 and p3-p4 intersect (inclusive)."""
+
+    def orient(a, b, c) -> float:
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    def on_seg(a, b, c) -> bool:
+        return (min(a[0], c[0]) <= b[0] <= max(a[0], c[0])
+                and min(a[1], c[1]) <= b[1] <= max(a[1], c[1]))
+
+    o1, o2 = orient(p1, p2, p3), orient(p1, p2, p4)
+    o3, o4 = orient(p3, p4, p1), orient(p3, p4, p2)
+    if o1 == 0 and on_seg(p1, p3, p2):
+        return True
+    if o2 == 0 and on_seg(p1, p4, p2):
+        return True
+    if o3 == 0 and on_seg(p3, p1, p4):
+        return True
+    if o4 == 0 and on_seg(p3, p2, p4):
+        return True
+    return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0)
+
+
+def segment_intersects_box(p1: tuple[float, float], p2: tuple[float, float],
+                           bbox: tuple[float, float, float, float]) -> bool:
+    """True when the segment touches or crosses the bbox (edges inclusive)."""
+    if _point_in_box(*p1, bbox) or _point_in_box(*p2, bbox):
+        return True
+    minlon, minlat, maxlon, maxlat = bbox
+    corners = [(minlon, minlat), (maxlon, minlat),
+               (maxlon, maxlat), (minlon, maxlat)]
+    box_edges = [(corners[i], corners[(i + 1) % 4]) for i in range(4)]
+    return any(_segments_cross(p1, p2, a, b) for a, b in box_edges)
+
+
+def clip_graph_to_bbox(graph: dict,
+                       bbox: tuple[float, float, float, float]) -> dict:
+    """Keep edges whose segment intersects the box (buffered node ids kept).
+
+    Both endpoints of a kept edge stay in the node table even when one of
+    them lies outside the box, so stubs poking out of the box survive.
+    """
+    nodes: dict[str, list[float]] = graph.get("nodes", {})
+    coords = {nid: (pt[0], pt[1]) for nid, pt in nodes.items()}
+    clipped_edges: dict[str, list[dict]] = {}
+    kept: set[str] = set()
+    for mode, edges in graph.get("edges", {}).items():
+        kept_edges = []
+        for edge in edges:
+            p1 = coords.get(edge["from"])
+            p2 = coords.get(edge["to"])
+            if p1 is None or p2 is None:
+                continue
+            if segment_intersects_box(p1, p2, bbox):
+                kept_edges.append(edge)
+                kept.add(edge["from"])
+                kept.add(edge["to"])
+        clipped_edges[mode] = kept_edges
+    return {"nodes": {nid: nodes[nid] for nid in sorted(kept)},
+            "edges": clipped_edges}
+
+
+def _component_of(nodes: set[str], edges: list[dict]) -> dict[str, str]:
+    """Weakly-connected component root per edge-incident node (union-find)."""
+    parent = {n: n for n in nodes}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for edge in edges:
+        ra, rb = find(edge["from"]), find(edge["to"])
+        if ra != rb:
+            parent[ra] = rb
+    return {n: find(n) for n in nodes}
+
+
+def buffered_lcc_share(buffered_walk_edges: list[dict],
+                       clipped_walk_edges: list[dict]) -> dict:
+    """Share of clipped walk nodes lying in the buffered walk LCC.
+
+    Connectivity comes from the buffered graph; the node set from the
+    clipped (shipped) graph. Deterministic: ties between equal-sized
+    buffered components break by sorted root id.
+    """
+    incident: set[str] = set()
+    for edge in buffered_walk_edges:
+        incident.add(edge["from"])
+        incident.add(edge["to"])
+    if not incident:
+        return {"nodes": 0, "largest": 0, "share": 0.0}
+    comp = _component_of(incident, buffered_walk_edges)
+    sizes: dict[str, int] = {}
+    for node, root in comp.items():
+        sizes[root] = sizes.get(root, 0) + 1
+    best = max(sizes.values())
+    lcc_roots = sorted(r for r, s in sizes.items() if s == best)
+    lcc_root = lcc_roots[0]
+    clipped_nodes: set[str] = set()
+    for edge in clipped_walk_edges:
+        clipped_nodes.add(edge["from"])
+        clipped_nodes.add(edge["to"])
+    inside = sum(1 for n in clipped_nodes if comp.get(n) == lcc_root)
+    share = inside / len(clipped_nodes) if clipped_nodes else 0.0
+    return {"nodes": len(clipped_nodes), "largest": inside,
+            "share": round(share, 4)}
+
+
+def build_buffered_graph(area_id: str, box_osm: dict,
+                         buffered_osm: dict,
+                         bbox: tuple[float, float, float, float]) -> dict:
+    """Buffered method: box graph (before) + clipped buffered graph (after).
+
+    Returns the clipped graph with a meta block carrying all four LCC
+    numbers (``walk_lcc`` is the after-share used for thresholds).
+    """
+    box_graph = build_graph(box_osm.get("roads", []))
+    box_lcc = largest_component_share(box_graph["nodes"],
+                                      box_graph["edges"]["walk"])
+    buffered = build_graph(buffered_osm.get("roads", []))
+    buffered_lcc = largest_component_share(buffered["nodes"],
+                                           buffered["edges"]["walk"])
+    clipped = clip_graph_to_bbox(buffered, bbox)
+    raw_lcc = largest_component_share(clipped["nodes"], clipped["edges"]["walk"])
+    after = buffered_lcc_share(buffered["edges"]["walk"],
+                               clipped["edges"]["walk"])
+    clipped["meta"] = {
+        "area": area_id,
+        "method": "buffered-300m",
+        "counts": {
+            "nodes": len(clipped["nodes"]),
+            "walk_edges": len(clipped["edges"]["walk"]),
+            "bike_edges": len(clipped["edges"]["bike"]),
+            "drive_edges": len(clipped["edges"]["drive"]),
+        },
+        "buffered_counts": {
+            "nodes": len(buffered["nodes"]),
+            "walk_edges": len(buffered["edges"]["walk"]),
+            "bike_edges": len(buffered["edges"]["bike"]),
+            "drive_edges": len(buffered["edges"]["drive"]),
+        },
+        "walk_lcc": after,
+        "walk_lcc_box": box_lcc,
+        "walk_lcc_buffered": buffered_lcc,
+        "walk_lcc_clipped_raw": raw_lcc,
+    }
+    return clipped
+
+
 def run_build(area_dir: str | Path) -> dict:
     """CLI hook: read osm.json, write graph.json, return a summary."""
+    from . import extract as extract_mod
+    from . import osm_parse
+
     area_dir = Path(area_dir)
     osm = json.loads((area_dir / "osm.json").read_text(encoding="utf-8"))
-    graph = build_area_graph(area_dir.name, osm)
+    area_def = json.loads(
+        (area_dir / "area_def.json").read_text(encoding="utf-8"))
+    if area_def.get("kind") == "bbox" and area_def.get("bbox"):
+        bbox = tuple(area_def["bbox"])
+        buf = extract_mod.ensure_buffered_extract(area_dir.name,
+                                                  build_dir=area_dir.parent)
+        if not buf.get("buffered"):
+            raise RuntimeError(f"{area_dir.name}: buffered extract unavailable")
+        buffered_osm = osm_parse.parse_pbf(buf["extract"])
+        graph = build_buffered_graph(area_dir.name, osm, buffered_osm, bbox)
+    else:
+        graph = build_area_graph(area_dir.name, osm)
+        graph["meta"]["method"] = "boundary"
+        graph["meta"]["walk_lcc_box"] = graph["meta"]["walk_lcc"]
+        graph["meta"]["walk_lcc_buffered"] = graph["meta"]["walk_lcc"]
+        graph["meta"]["walk_lcc_clipped_raw"] = graph["meta"]["walk_lcc"]
     (area_dir / GRAPH_FILE).write_text(
         json.dumps(graph, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8")
@@ -201,4 +390,6 @@ def run_build(area_dir: str | Path) -> dict:
         "edges": {"walk": counts["walk_edges"], "bike": counts["bike_edges"],
                   "drive": counts["drive_edges"]},
         "walk_lcc_share": graph["meta"]["walk_lcc"]["share"],
+        "walk_lcc_box_share": graph["meta"]["walk_lcc_box"]["share"],
+        "method": graph["meta"]["method"],
     }

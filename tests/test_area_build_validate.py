@@ -94,6 +94,8 @@ def _passing_sections(n_pois: int = 55, n_buildings: int = 10,
         "landuse": [],
         "trees": [],
         "graph": _connected_graph(),
+        # Stage 2 adds the complexes section to the area contract.
+        "complexes": [],
     }
 
 
@@ -156,7 +158,8 @@ def test_assemble_carries_counts_and_crs() -> None:
     assert area["crs"]["local"]["origin"] == {"lon": LON0, "lat": LAT0}
     assert area["counts"]["buildings"] == 10
     assert area["counts"]["pois"] == 55
-    assert set(out) == {"buildings", "roads", "pois", "landuse", "trees", "graph"}
+    assert set(out) == {"buildings", "roads", "pois", "landuse", "trees",
+                          "graph", "complexes"}
 
 
 def test_run_build_round_trip_validates(tmp_path: Path) -> None:

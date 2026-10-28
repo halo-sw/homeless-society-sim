@@ -35,13 +35,14 @@ debugging but are not part of the stage-2 contract.
 | `station` | object \| null | `{name, lon, lat, osm_kind, osm_id}` station lookup used (null for `boundary`) |
 | `boundary` | object \| null | `{name, relation_id, admin_level}` admin lookup used (null for `bbox`) |
 | `crs` | object | `{geographic: "EPSG:4326", local: {type: "equirectangular", origin: {lon, lat}, units: "metre"}}` |
-| `counts` | object | section sizes: `buildings`, `roads`, `pois`, `landuse`, `trees`, `graph_nodes`, `walk_edges`, `bike_edges`, `drive_edges` |
+| `counts` | object | section sizes: `buildings`, `roads`, `pois`, `landuse`, `trees`, `graph_nodes`, `walk_edges`, `bike_edges`, `drive_edges`, `complexes` (stage 2) |
 | `buildings` | array \| `{"$ref": file}` | building list (see below) |
 | `roads` | array \| `{"$ref": file}` | road list (see below) |
 | `pois` | array \| `{"$ref": file}` | named-POI list (see below) |
 | `landuse` | array \| `{"$ref": file}` | landuse / park / water list (see below) |
 | `trees` | array \| `{"$ref": file}` | tree list (see below) |
 | `graph` | object \| `{"$ref": file}` | `{nodes, edges}` routing graph (see below) |
+| `complexes` | array | apartment complexes (stage 2, see below; usually inline) |
 
 ## Sections
 
@@ -55,13 +56,26 @@ match), `register` (OSM lacks it).
 | `building` | string | coarse type (`apartments`, `house`, `commercial`, …, `yes`) |
 | `name` | string \| null | building name (OSM or register A24 + A25) |
 | `height_m` | number | height in metres |
-| `height_source` | string | `osm_height` > `osm_levels` (×3.0 m) > `register_height` (A16) > `register_floors` (A26 ×3.0 m) > `inferred` (seeded type+area rule) |
+| `height_source` | string | `osm_height` > `osm_levels` (×3.0 m) > `register_height` (A16) > `register_floors` (A26 ×3.0 m) > `inferred` (seeded type+area rule); after a register-API fill also `api_height` (`heit`) and `api_floors` (`grndFlrCnt` ×3.0 m) |
 | `levels` | int \| null | floor count behind the height, when known |
 | `area_m2` | number | footprint area, m² |
-| `register` | object \| null | `{height, floors_above, floors_below, use, structure, approval_date, address, region}` register snapshot for joined/register buildings |
+| `residential` | string | stage 2: `apartment` \| `house` \| `mixed` \| `none` (rules below) |
+| `residential_source` | string | stage 2: `register:<use>` \| `register:<use>+name` (mixed) \| `osm:<tag>` \| `name` \| `none` |
+| `register` | object \| null | `{height, floors_above, floors_below, use, structure, approval_date, address, region, pnu, name, sub_name, api?}` register snapshot for joined/register buildings (`pnu` = A2 parcel id, `name` = A24, `sub_name` = A25, all verbatim; `api` = matched 건축HUB title fields when filled: `{bldNm, dongNm, use, approval_date, floors_below, mgm_key, households (hhldCnt 세대수)}`) |
 | `osm_kind` / `osm_id` | string/int \| null | OSM source (`way`/`relation`) for joined/osm buildings |
 | `register_id` | string \| null | `reg:<A1>` for joined/register buildings |
 | `geometry` | Polygon/MultiPolygon | footprint, WGS84 |
+
+**Residential rules** (stage 2, `pipeline/building_join.py`): register
+use wins when present — `공동주택`→apartment, `단독주택`→house, other
+uses→none except 근린생활시설 with a strict apartment name
+(아파트/연립주택/다세대주택/주상복합, excluding 상가/공장 wings such as
+상가동 and 아파트형공장)→mixed. Without a register use, the OSM tag
+decides: `apartments`→apartment, `house`/`detached`/`terrace`→house,
+`residential`→apartment when `levels ≥ 4` else house (the tag alone is
+unreliable), else an apartment name→apartment, else none.
+`register.use` is always verbatim. Officetels (업무시설) read as `none`:
+no household signal exists, so they are not guessed into `apartment`.
 
 **roads[]** — `id` (`w<osm>`), `highway` class, `name` (nullable), `oneway`
 (bool) + `oneway_reverse` (bool, `oneway=-1`), `access` (subset of OSM
@@ -87,7 +101,22 @@ they are stable across runs. Each edge: `{from, to, way (OSM way id),
 highway, name, length_m}`. Mode rules: walk excludes motorways and
 `foot=no`/denied access; bike additionally excludes steps unless
 `bicycle=yes`; drive covers drivable classes only. `oneway`/`oneway=-1`
-apply to all three modes.
+apply to all three modes. Stage 2 (scene boxes): the graph is built from
+a 300 m buffered extract and clipped to the box keeping every edge whose
+segment intersects it, so some nodes lie just outside the box;
+connectivity (`report.json` → `walk_lcc`) is measured on the buffered
+graph (see `pipeline/graph.py`).
+
+**complexes[]** (stage 2) — apartment buildings
+(`residential == "apartment"`) grouped into complexes (단지) by
+`pipeline/complexes.py`: same register name stem (A24, dong suffix in
+A25), else the containing named `landuse=residential` polygon, else
+spatial clustering (≤ 40 m gaps, unnamed clusters split past 150 m
+extent). `{id (cx000001…), name (never invented; null when unnamed),
+name_source (register | osm_landuse | null), building_ids (sorted),
+centroid ([lon, lat]), households_hint (always null — no 세대수 signal),
+max_floors (max member levels, null when unknown)}`. Register stems can
+be village-scale (e.g. `백현마을`) where the register names no 단지.
 
 ## Split files
 
@@ -110,6 +139,18 @@ def load_area(area_dir: str | Path) -> dict:
             area[key] = json.loads(part.read_text(encoding="utf-8"))
     return area
 ```
+
+## `report.json` (build metrics)
+
+Same directory as `area.json`. Stage-2 additions over stage 1:
+`residential_counts` (`{apartment, house, mixed, none}`),
+`complexes` (`{total, named, largest}` member count),
+`graph_method` (`buffered-300m` for scene boxes, `boundary` for
+gu-sized areas), and the walk-LCC family: `walk_lcc` (the thresholded
+share — buffered connectivity over clipped nodes), `walk_lcc_box`
+(box-only before-share), `walk_lcc_buffered` (full buffered graph),
+`walk_lcc_clipped_raw` (plain LCC of the shipped graph, recomputable
+from `area.json`). For boundary areas all four are equal.
 
 ## Determinism
 

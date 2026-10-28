@@ -60,6 +60,26 @@ Register-use to coarse type: 공동주택→apartments, 단독주택→house,
 제1/2종근린생활시설 + 근린생활시설→commercial, 업무시설→office,
 교육연구시설→school, 숙박시설→hotel, 공장→industrial, 창고시설→warehouse,
 anything else→yes.
+
+Residential classification (stage 2): every building gets ``residential``
+(``apartment`` | ``house`` | ``mixed`` | ``none``) plus
+``residential_source``. Precedence (see :func:`classify_residential`):
+
+1. Register use wins when present: ``공동주택``→apartment,
+   ``단독주택``→house; other uses→none, except 근린생활시설 with strict
+   residential-name evidence→mixed.
+2. Otherwise the OSM ``building`` tag: ``apartments``→apartment,
+   ``house``/``detached``/``terrace``→house, ``residential``→apartment
+   when ``levels >= 4`` else house (the tag is unreliable on its own:
+   pangyo carries 8-floor office blocks tagged ``residential``).
+3. Otherwise an apartment name (아파트/연립주택/다세대주택/주상복합,
+   excluding 상가/공장 wings such as 상가동 and 아파트형공장)→apartment.
+4. Otherwise none.
+
+``register.use`` is kept verbatim; the classification never rewrites it.
+Known gap: officetels (업무시설) and 주상복합 towers read as none/mixed
+at best — the register gives no household signal, so they are not
+guessed into apartment.
 """
 
 from __future__ import annotations
@@ -109,6 +129,49 @@ REGISTER_USE_TO_TYPE = {
     "공장": "industrial",
     "창고시설": "warehouse",
 }
+
+# Residential classification (stage 2; documented in the module docstring).
+RESIDENTIAL_VALUES = ("apartment", "house", "mixed", "none")
+GEUNRIN_USES = {"제1종근린생활시설", "제2종근린생활시설", "근린생활시설"}
+APARTMENT_NAME_KEYWORDS = ("아파트", "연립주택", "다세대주택", "주상복합")
+APARTMENT_NAME_EXCLUSIONS = ("상가", "공장")  # 상가동 wings, 아파트형공장
+RESIDENTIAL_OSM_HOUSE_TAGS = {"house", "detached", "terrace"}
+RESIDENTIAL_LEVELS_APARTMENT_MIN = 4  # OSM building=residential split
+
+
+def has_apartment_name(name: str | None) -> bool:
+    """Strict apartment-name evidence: keyword present, no 상가/공장 wing."""
+    if not name:
+        return False
+    if any(exc in name for exc in APARTMENT_NAME_EXCLUSIONS):
+        return False
+    return any(kw in name for kw in APARTMENT_NAME_KEYWORDS)
+
+
+def classify_residential(building_tag: str | None, name: str | None,
+                         reg_use: str | None,
+                         levels: int | None) -> tuple[str, str]:
+    """Return (residential, residential_source) per the documented rules."""
+    if reg_use:
+        if reg_use == "공동주택":
+            return ("apartment", f"register:{reg_use}")
+        if reg_use == "단독주택":
+            return ("house", f"register:{reg_use}")
+        if reg_use in GEUNRIN_USES and has_apartment_name(name):
+            return ("mixed", f"register:{reg_use}+name")
+        return ("none", f"register:{reg_use}")
+    if building_tag == "apartments":
+        return ("apartment", "osm:apartments")
+    if building_tag in RESIDENTIAL_OSM_HOUSE_TAGS:
+        return ("house", f"osm:{building_tag}")
+    if building_tag == "residential":
+        if (levels or 0) >= RESIDENTIAL_LEVELS_APARTMENT_MIN:
+            return ("apartment", "osm:residential")
+        return ("house", "osm:residential")
+    if has_apartment_name(name):
+        return ("apartment", "name")
+    return ("none", "none")
+
 
 INFER_FLOORS: dict[str, tuple[int, int]] = {
     "apartments": (3, 15),
@@ -317,10 +380,12 @@ def stream_register(
                 continue
             mgmt = _text(rec[1])
             reg_id = f"reg:{mgmt}" if mgmt else f"reg:{stem}:{idx}"
+            pnu = _text(rec[2])
             records.append({
                 "id": reg_id,
                 "region": region,
                 "shape_index": idx,
+                "pnu": pnu if pnu and len(pnu) == 19 else None,
                 "height": _num(rec[16]),
                 "floors_above": _int(rec[26]),
                 "floors_below": _int(rec[27]),
@@ -512,6 +577,10 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             height, floors = infer_height(osm_b.get("building"), area_m2,
                                           area_id, osm_b["id"])
             source, levels = "inferred", floors
+        bname = osm_b.get("name") or (reg["name"] if reg else None)
+        residential, residential_source = classify_residential(
+            osm_b.get("building"), bname,
+            reg["use"] if reg else None, levels)
         buildings.append({
             "id": osm_b["id"],
             "origin": "joined" if reg else "osm",
@@ -519,11 +588,13 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             "osm_id": osm_b.get("osm_id"),
             "register_id": reg["id"] if reg else None,
             "building": osm_b.get("building"),
-            "name": osm_b.get("name") or (reg["name"] if reg else None),
+            "name": bname,
             "height_m": height,
             "height_source": source,
             "levels": levels,
             "area_m2": area_m2,
+            "residential": residential,
+            "residential_source": residential_source,
             "register": _register_summary(reg) if reg else None,
             "geometry": osm_b["geometry"],
         })
@@ -550,6 +621,8 @@ def join_area(area_id: str, area_def: dict, osm: dict,
         name = reg["name"]
         if name and reg["sub_name"]:
             name = f"{name} {reg['sub_name']}"
+        residential, residential_source = classify_residential(
+            btype, name, reg["use"], levels)
         buildings.append({
             "id": reg["id"],
             "origin": "register",
@@ -562,6 +635,8 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             "height_source": source,
             "levels": levels,
             "area_m2": area_m2,
+            "residential": residential,
+            "residential_source": residential_source,
             "register": _register_summary(reg),
             "geometry": geojson,
         })
@@ -572,6 +647,10 @@ def join_area(area_id: str, area_def: dict, osm: dict,
         sources[b["height_source"]] = sources.get(b["height_source"], 0) + 1
     inferred_share = (sources.get("inferred", 0) / len(buildings)
                       if buildings else 0.0)
+    residential_counts: dict[str, int] = {}
+    for b in buildings:
+        key = b["residential"]
+        residential_counts[key] = residential_counts.get(key, 0) + 1
     return {
         "buildings": buildings,
         "meta": {
@@ -589,6 +668,7 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             },
             "height_sources": sources,
             "inferred_share": round(inferred_share, 4),
+            "residential_counts": residential_counts,
             "rules": {
                 "match_iou_min": MATCH_IOU_MIN,
                 "match_min_cover_min": MATCH_MIN_COVER_MIN,
@@ -609,6 +689,12 @@ def _register_summary(reg: dict) -> dict:
         "approval_date": reg["approval_date"],
         "address": reg["address"],
         "region": reg["region"],
+        # Stage 2 additions (verbatim register fields): parcel id (A2),
+        # building name (A24) and sub-unit/dong (A25). Needed for complex
+        # name stems, dong matching in the register-API fill, and PNU keys.
+        "pnu": reg.get("pnu"),
+        "name": reg.get("name"),
+        "sub_name": reg.get("sub_name"),
     }
 
 

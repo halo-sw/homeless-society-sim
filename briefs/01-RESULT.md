@@ -148,3 +148,28 @@ everything in this brief (80 passed, 50.6 s build, determinism hashes).
   in `report.json` → `poi_counts`.
 - Attribution (OSM ODbL, GIS건물통합정보 MOLIT/VWorld, Geofabrik) is in
   `ATTRIBUTION.md` and must appear on screen.
+
+## Addendum (stage 2, part A — 2026-10-28, measured by the same agent)
+
+Rebuilt all four areas with the stage-2 pipeline (buffered graphs,
+residential classification, complexes, register fields; the API fill ran
+as `--dry-run` only — no network in the sandbox). `pytest`: **114
+passed** (79 old unit + 1 integration + 34 new). `validate --all`:
+seongsu/songpa/songpa-jamsil PASS; pangyo still FAILs on inferred
+heights only (walk LCC now passes everywhere).
+
+| area | buildings | walk LCC box → buffered | inferred | residential apt/house/mixed/none | complexes total/named |
+|---|---|---|---|---|---|
+| pangyo | 1204 | 91.8% → **99.0%** ✓ | 66.7% FAIL | 257/3/0/944 | 16/9 |
+| seongsu | 5383 | 90.4% → **100%** ✓ | 23.5% | 305/1628/0/3450 | 133/74 |
+| songpa | 28088 | 98.1% (boundary, no buffer) | 16.5% | 9872/7461/6/10749 | 3055/2366 |
+| songpa-jamsil | 1506 | 98.9% → **100%** ✓ | 24.0% | 542/164/0/800 | 155/123 |
+
+Notes: songpa is back to 28088 buildings (the boundary clip was
+restored — see stage-2 brief §A1; an intermediate build without the
+cached boundary file had over-pulled 171k register records). Pangyo's
+inferred share is unchanged by design: 764 of the 803 inferred buildings
+carry a PNU, planned fill = 99 parcel requests (seongsu: 713 parcels /
+1236 buildings); the orchestrator runs
+`.venv/bin/python -m pipeline register-fill --area pangyo` outside the
+sandbox. Full detail: `briefs/02-RESULT.md`.
