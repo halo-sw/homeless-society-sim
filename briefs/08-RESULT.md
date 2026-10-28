@@ -126,6 +126,54 @@ counts are logged as `[journey]` lines — see below).
 - Git: only source files changed; `data/raw`, `data/build` ignored;
   bundle scanned — no congestion values, no keys.
 
+## 8b — sim-mode load crash (TDZ) + headless smoke check
+
+Found by the orchestrator on the real GPU at 446ddc5: every sim-mode
+URL stopped at "생활 시뮬레이션 불러오는 중…" with
+`Cannot access 'ROLE_KO' before initialization`. Tour mode was fine;
+Node tests passed because nothing imported the sim-load path.
+
+Cause: in `bootSim` (`web/src/main.js`), the initial `store.set()`
+called `buildSimMeta()` (line 1911) while `const ROLE_KO` — read by
+that function — was declared later in the same scope (line 1963):
+a temporal-dead-zone crash on every sim load.
+
+Fix (Muse):
+- `buildSimMeta` + `ROLE_KO` moved verbatim into the Now-card text
+  builder (`web/src/nowcard.js`, module scope) as exported
+  `simMetaFor({ household, scenario, run, homes })`; `main.js`
+  imports it. Same inputs, same payload shape for the intro card.
+- Same-family audit over all of `web/src` + `web/scripts` (binding-
+  accurate TDZ scan: hoisted functions, const-arrow closures with
+  transitive reads, direct references, block scoping; plus a
+  no-undef pass) found one more stage-8 crash: `paintFollow`'s
+  journey branch hid an undeclared `followPin` (never declared
+  anywhere — a `ReferenceError` on the first station ride in follow
+  mode). Removed; the `destPin` + `rideStub` hides already cover
+  that branch. No other use-before/undeclared-use found.
+
+New check — `web/tests/sim-smoke.test.js` (runs in `npm test`):
+boots the sim state machine headlessly (no WebGL/DOM) on the real
+`data/build` run through load → first frame (`?day=1&t=08:28`) →
+follow each member + free camera → journey out/work/back → day
+change → compare/money payloads, driving `indexRun`, `simMetaFor`
+(the crash site, incl. the null-scenario fallback), `sampleAgent`
+on the real graph, `nowCardFor`/`householdNow`/`tickerFor`/
+`fatigueFor`/`highlightFor`, `rideStateFor`/`journeyBanner`/
+`journeyPhase`/`trainPosition`/`corridorFor`, `compare()` and the
+UI store's exact sim-load keys. A tripwire test keeps sim-meta
+building in the tested module (fails if it drifts back into
+`main.js`). Skips with a clear message when `data/build` is
+absent. Proven: an injected `ROLE_KO` TDZ fails the suite with
+the original `ReferenceError`; restored, it passes.
+
+Test output: JS 384 passed (375 + 9 smoke), Python 163 passed,
+`vite build` passes; bundle contains the extracted sim-meta
+strings and no `followPin`. Stage-8 journey + fatigue UI payloads
+(journey banner legs with congestion sources, train sweep,
+corridor c1, fatigue load/recovery + series + summaries) are
+asserted against the real run in the smoke test.
+
 ## Needs the real GPU or live keys
 
 - Journey rendering itself (camera flights, corridor look, legibility),

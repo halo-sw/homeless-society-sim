@@ -16,7 +16,7 @@ import { highlightFor } from "./highlight.js";
 import { corridorFor, journeyBanner, journeyPhase, rideStateFor, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
-import { householdNow, nowCardFor, tickerFor } from "./nowcard.js";
+import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
@@ -1318,7 +1318,6 @@ async function bootSim() {
     }
     // The journey camera owns follow mode while a station ride plays.
     if (paintJourney(dt)) {
-      followPin.style.display = "none";
       destPin.style.display = "none";
       rideStub.visible = false;
       if (forceCaption) {
@@ -1908,7 +1907,7 @@ async function bootSim() {
       ...household.map((a, i) => ({ value: String(i + 1), label: a.label }))],
     playing,
     speed,
-    simMeta: buildSimMeta(),
+    simMeta: simMetaFor({ household, scenario, run, homes }),
     // The purpose card opens on arrival, but stays out of the way of
     // deterministic captures (?t= / ?day=) and ?intro=0.
     introOpen: !PARAMS.has("t") && !PARAMS.has("day") && PARAMS.get("intro") !== "0",
@@ -1958,42 +1957,6 @@ async function bootSim() {
     store.set({ moneyLoading: false, money: doc,
       moneyTenure: { ...(doc.default_tenure || {}), ...store.getState().moneyTenure } });
     refreshHighlight(); // QoL hover ids ride on the money doc
-  }
-
-  const ROLE_KO = { adult: "성인", child: "어린이", senior: "노인" };
-
-  function buildSimMeta() {
-    const members = household.map((a, i) => {
-      const raw = scenario && scenario.household && scenario.household.members[i];
-      const role = ROLE_KO[(raw && raw.role) || a.role] || a.role;
-      return `${a.label} (${role})`;
-    });
-    const assumptions = [];
-    if (scenario) {
-      if (scenario.workday_minutes) {
-        assumptions.push({ label: `근무 체류 ${scenario.workday_minutes}분`, source: "가정값" });
-      }
-      for (const m of scenario.household.members || []) {
-        if (m.work && m.work.type === "station_ride" && Number.isFinite(m.work.ride_minutes)) {
-          assumptions.push({ label: `${m.label} 승차 ${m.work.ride_minutes}분`,
-            source: m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값" });
-        }
-      }
-      const A = scenario.money && scenario.money.assumptions;
-      if (A) {
-        if (A.transit_fare_won) {
-          assumptions.push({ label: `통근 1회 ${A.transit_fare_won.toLocaleString()}원`, source: "가정값" });
-        }
-        if (A.basket_won) {
-          assumptions.push({ label: `장보기 1회 ${A.basket_won.toLocaleString()}원`, source: "가정값" });
-        }
-      }
-    }
-    return {
-      members, neighbours: run.meta.background, days: run.meta.days,
-      startDate: run.meta.start_date, homes: homes.map((h) => h.label),
-      assumptions: assumptions.slice(0, 8),
-    };
   }
 
   async function paintCriteria() {

@@ -293,6 +293,45 @@ export function tickerFor({ run, indexed, agentKey, day, minute, moneyEvents = [
   return events.slice(-limit);
 }
 
+// Intro-card facts: who is simulated, for how long, and the stated
+// assumptions behind the run. Pure (no DOM); the scene publishes the
+// result as `simMeta` at sim load.
+const ROLE_KO = { adult: "성인", child: "어린이", senior: "노인" };
+
+export function simMetaFor({ household, scenario, run, homes }) {
+  const members = household.map((a, i) => {
+    const raw = scenario && scenario.household && scenario.household.members[i];
+    const role = ROLE_KO[(raw && raw.role) || a.role] || a.role;
+    return `${a.label} (${role})`;
+  });
+  const assumptions = [];
+  if (scenario) {
+    if (scenario.workday_minutes) {
+      assumptions.push({ label: `근무 체류 ${scenario.workday_minutes}분`, source: "가정값" });
+    }
+    for (const m of scenario.household.members || []) {
+      if (m.work && m.work.type === "station_ride" && Number.isFinite(m.work.ride_minutes)) {
+        assumptions.push({ label: `${m.label} 승차 ${m.work.ride_minutes}분`,
+          source: m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값" });
+      }
+    }
+    const A = scenario.money && scenario.money.assumptions;
+    if (A) {
+      if (A.transit_fare_won) {
+        assumptions.push({ label: `통근 1회 ${A.transit_fare_won.toLocaleString()}원`, source: "가정값" });
+      }
+      if (A.basket_won) {
+        assumptions.push({ label: `장보기 1회 ${A.basket_won.toLocaleString()}원`, source: "가정값" });
+      }
+    }
+  }
+  return {
+    members, neighbours: run.meta.background, days: run.meta.days,
+    startDate: run.meta.start_date, homes: homes.map((h) => h.label),
+    assumptions: assumptions.slice(0, 8),
+  };
+}
+
 function kindOrder(kind) {
   return { money: 0, depart: 1, decision: 2, arrive: 3 }[kind] ?? 4;
 }
