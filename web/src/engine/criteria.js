@@ -150,6 +150,15 @@ const FLAT_MAP = {
     loan_years: "loan_years",
   },
   "C-burden-rule": { threshold_pct: "burden_threshold_pct" },
+  "C-jeonse-ratio-caution": { threshold_pct: "jeonse_caution_pct" },
+  "C-jeonse-ratio-warning": { threshold_pct: "jeonse_warning_pct" },
+  "C-mockloss": {
+    insured_recovery_months: "mockloss_insured_months",
+    insured_recovery_pct: "mockloss_insured_pct",
+    auction_recovery_months: "mockloss_auction_months",
+    auction_recovery_pct: "mockloss_auction_pct",
+    unrecovered_recovery_pct: "mockloss_unrecovered_pct",
+  },
 };
 
 function defaultValue(id, key) {

@@ -1,0 +1,68 @@
+{
+  "name": "kr-jeonse-checklist",
+  "as_of": null,
+  "note": "전세 안전 점검 탭의 체크리스트. URL은 정확한 페이지를 확정한 뒤에만 채운다. needs_confirmation이 true인 항목은 화면에 공식 확인 필요로 보인다.",
+  "context": {
+    "text": "전세사기 피해자의 약 75 %가 20·30대",
+    "source": "국토교통부 자료 인용 보도",
+    "date": "2025-03",
+    "needs_confirmation": true,
+    "note": "오케스트레이터가 원문을 확인한다."
+  },
+  "items": [
+    {
+      "id": "registry",
+      "what": "등기부등본 확인 (근저당·압류·신탁)",
+      "why": "빚·압류·신탁 여부를 등본에서 직접 확인한다.",
+      "where": "인터넷등기소",
+      "url": null,
+      "needs_confirmation": true
+    },
+    {
+      "id": "movein-date",
+      "what": "전입신고 + 확정일자",
+      "why": "대항력과 우선변제권을 갖추는 기본 절차다.",
+      "where": "정부24",
+      "url": null,
+      "needs_confirmation": true
+    },
+    {
+      "id": "guarantee-insurance",
+      "what": "전세보증보험 가입 가능 여부",
+      "why": "보증금을 돌려받지 못할 때를 대비하는 장치다.",
+      "where": "HUG / HF / SGI",
+      "url": null,
+      "needs_confirmation": true
+    },
+    {
+      "id": "tax-arrears",
+      "what": "임대인 국세·지방세 체납 열람",
+      "why": "밀린 세금은 보증금보다 먼저 변제될 수 있다.",
+      "where": "세무서·지자체 (열람 신청)",
+      "url": null,
+      "needs_confirmation": true
+    },
+    {
+      "id": "senior-deposits",
+      "what": "선순위 보증금 확인",
+      "why": "먼저 들어온 보증금이 많으면 돌려받을 몫이 줄어든다.",
+      "where": "등기부등본·임대인 확인서",
+      "url": null,
+      "needs_confirmation": true
+    },
+    {
+      "id": "safe-jeonse-app",
+      "what": "안심전세 앱 확인",
+      "why": "시세·등기 정보를 한곳에서 대조한다.",
+      "where": "국토교통부 안심전세 앱",
+      "url": null,
+      "needs_confirmation": true
+    }
+  ],
+  "support_center": {
+    "name": "전세피해지원센터",
+    "url": null,
+    "needs_confirmation": true
+  },
+  "disclaimer": "법률 자문이 아닙니다."
+}

@@ -16,6 +16,11 @@ import { referencePrice, rowsForComplex } from "../money/prices.js";
 import { estimateNetPay, memberMonthlyNet, householdMonthlyNet } from "../money/payroll.js";
 import { tenureCost, TENURES } from "../money/tenure.js";
 import { moneyTimeline } from "../money/timeline.js";
+import { worthItComparison, applyOwnershipCosts,
+  WORTHIT_HORIZONS, WORTHIT_DEFAULT_SCENARIOS } from "../money/worthit.js";
+import { jeonseRatio, registerSignals, JEONSE_SPARSE_NOTE } from "../money/jeonse.js";
+import { mockDepositLoss, MOCKLOSS_PATHS } from "../money/mockloss.js";
+import { compareAllSupport } from "../money/support.js";
 import {
   normalizeSnapshot, recommendPublicRental, noticesFor,
   ELIGIBILITY_NOTE,
@@ -57,6 +62,11 @@ async function needHousing(session) {
   if (!session.loadHousing) throw new Error("public-rental data is unavailable on this server");
   const snap = await session.loadHousing();
   return snap && snap.complexes ? snap : normalizeSnapshot(snap);
+}
+
+async function needAssumption(session, file) {
+  if (!session.loadAssumption) throw new Error("assumption tables are unavailable on this server");
+  return session.loadAssumption(file);
 }
 
 function pnuIndexFor(area) {
@@ -555,6 +565,269 @@ async function add_home_c(session, args) {
   };
 }
 
+// --- worth_it (stage 9b) ------------------------------------------------------------
+
+function compactWorthIt(w) {
+  const totals = {};
+  for (const [name, t] of Object.entries(w.tenures)) {
+    const last = name === "매매"
+      ? { cash_out_won: t.band[t.band.length - 1].cash_out_won }
+      : { cash_out_won: t.yearly[t.yearly.length - 1].cash_out_won };
+    totals[name] = {
+      ...last,
+      interest_won: t.total_interest_won,
+      locked_won: t.locked_won,
+      opportunity_won: t.opportunity_cum_won,
+    };
+    if (name === "매매") {
+      totals[name].equity_by_scenario = {};
+      totals[name].net_by_scenario = {};
+      for (const [g, rows] of Object.entries(t.yearly_by_scenario)) {
+        const end = rows[rows.length - 1];
+        totals[name].equity_by_scenario[g] = end.equity_won;
+        totals[name].net_by_scenario[g] = end.net_won;
+      }
+    } else {
+      totals[name].net_won = t.yearly[t.yearly.length - 1].net_won;
+    }
+  }
+  const series = [];
+  const horizon = w.horizon_years;
+  for (let y = 1; y <= horizon; y++) {
+    const row = { year: y };
+    for (const [name, t] of Object.entries(w.tenures)) {
+      if (name === "매매") {
+        row.buy_net_by_scenario = {};
+        for (const [g, rows] of Object.entries(t.yearly_by_scenario)) {
+          row.buy_net_by_scenario[g] = rows[y - 1].net_won;
+        }
+      } else {
+        row[`net_${name}`] = t.yearly[y - 1].net_won;
+      }
+    }
+    series.push(row);
+  }
+  return { totals, series };
+}
+
+async function worth_it(session, args) {
+  let hit;
+  try {
+    hit = needRun(session, args.run);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const horizon = Number(args.horizon_years);
+  if (!WORTHIT_HORIZONS.includes(horizon)) {
+    return fail(`horizon_years wants one of ${WORTHIT_HORIZONS.join("/")} (the customer picks)`);
+  }
+  const scenario = parseScenario(clone(session.scenario));
+  const A = moneyOptsFromCriteria(resolveCriteria(scenario));
+  const table = await needPayroll(session).catch((err) => ({ __error: err }));
+  if (table.__error) return fail(table.__error.message);
+  const net = householdMonthlyNet(scenario.money, scenario.household.members, table);
+  const homeRec = (scenario.homes || []).find((hh) => hh.label === hit.home);
+  if (!homeRec) return fail(`scenario has no home ${JSON.stringify(hit.home)}`);
+  const pref = await price_reference(session, {
+    area: homeRec.area, complex: homeRec.complex_name, area_m2: args.area_m2,
+  });
+  if (!pref.ok) return pref;
+  if (!pref.reference) return fail(`no reference price for ${hit.run.meta.complex} — pass explicit won args`);
+  const ref = pref.reference;
+  const buyPrice = args.price_won ?? ref.trade.median;
+  const jeonseDeposit = args.jeonse_won ?? ref.jeonse.deposit.median;
+  const wolseDeposit = args.deposit_won ?? ref.wolse.deposit.median;
+  const wolseMonthly = args.monthly_rent_won ?? ref.wolse.monthly.median;
+  let costs = null;
+  try {
+    costs = applyOwnershipCosts(await needAssumption(session, "kr-ownership-costs.json"), "KR");
+  } catch {
+    costs = null; // table unavailable: costs stay unmodelled, listed as such
+  }
+  const scenarios = Array.isArray(args.scenarios_pct) && args.scenarios_pct.length > 0
+    ? args.scenarios_pct.map(Number).filter(Number.isFinite)
+    : [...WORTHIT_DEFAULT_SCENARIOS];
+  let w;
+  try {
+    w = worthItComparison({
+      horizon_years: horizon,
+      cash_won: scenario.money.cash_won,
+      loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years,
+      opportunity_rate_pct: Number(args.opportunity_rate_pct) || 0,
+      scenarios_pct: scenarios,
+      buy: buyPrice > 0 ? { price_won: buyPrice } : null,
+      jeonse: jeonseDeposit > 0 ? { deposit_won: jeonseDeposit } : null,
+      wolse: wolseMonthly !== null && wolseMonthly !== undefined
+        ? { deposit_won: wolseDeposit || 0, monthly_won: wolseMonthly } : null,
+      public: Number.isFinite(Number(args.public_deposit_won)) && Number.isFinite(Number(args.public_monthly_won))
+        ? { deposit_won: Number(args.public_deposit_won), monthly_won: Number(args.public_monthly_won) } : null,
+      ownership_costs: costs,
+      annual_income_won: Number(args.annual_income_won) > 0
+        ? Number(args.annual_income_won) : net.household_monthly_net_won * 12,
+      other_debt_service_annual_won: Number(args.other_debt_service_annual_won) || 0,
+    });
+  } catch (err) {
+    return fail(err.message);
+  }
+  return {
+    ok: true, run: hit.id, home: hit.home, horizon_years: horizon,
+    inputs: {
+      buy_price_won: buyPrice, jeonse_won: jeonseDeposit,
+      wolse_deposit_won: wolseDeposit, wolse_monthly_won: wolseMonthly,
+      cash_won: scenario.money.cash_won,
+      loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years,
+      opportunity_rate_pct: Number(args.opportunity_rate_pct) || 0,
+      source: "rtms",
+      period: ref.period,
+    },
+    ...compactWorthIt(w),
+    loan_schedule: w.tenures["매매"] ? {
+      loan_won: w.tenures["매매"].loan_won,
+      rate_pct: w.tenures["매매"].schedule.rate_pct,
+      years: w.tenures["매매"].schedule.years,
+      monthly_won: w.tenures["매매"].schedule.monthly_won,
+      total_interest_won: w.tenures["매매"].schedule.total_interest_won,
+      yearly: w.tenures["매매"].schedule.yearly,
+    } : null,
+    breakeven_year: w.breakeven,
+    breakeven_none_label: w.breakeven_none_label,
+    scenario_label: w.scenario_label,
+    dsr: w.dsr,
+    rate_stress: w.rate_stress,
+    ownership_excluded: (w.ownership_excluded || []).map((e) => e.label),
+    ownership_included: w.ownership_included || [],
+    lender_note: w.lender_note,
+    note: "숫자 비교만 보여준다. 매매 판단·계약 판단은 하지 않는다.",
+  };
+}
+
+// --- jeonse_check (stage 9b) ----------------------------------------------------
+
+async function jeonse_check(session, args) {
+  const areaId = String(args.area || "");
+  const complexName = String(args.complex || "");
+  if (!areaId || !complexName) return fail("pass area (built area id) and complex (verbatim complex name)");
+  const district = AREA_RTMS_DISTRICT[areaId];
+  if (!district) return fail(`no RTMS district for area ${JSON.stringify(areaId)}`);
+  let area;
+  try {
+    area = await session.loadArea(areaId);
+  } catch (err) {
+    return fail(`cannot load area ${areaId}: ${String((err && err.message) || err).slice(0, 200)}`);
+  }
+  if (!(area.complexes || []).some((c) => c.name === complexName)) {
+    return fail(`no complex named ${JSON.stringify(complexName)} in ${areaId} — call list_complexes`);
+  }
+  const rows = await needRtms(session, district).catch((err) => ({ __error: err }));
+  if (rows.__error) return fail(rows.__error.message);
+  const { parcelHits, nameHits } = matchRowsToComplex(rows, area, complexName, pnuIndexFor(area));
+  const used = parcelHits.length >= 3 ? parcelHits : nameHits;
+  const matchMethod = parcelHits.length >= 3 ? "parcel+name" : "name-only";
+  let areaM2 = Number(args.area_m2);
+  if (!Number.isFinite(areaM2) || areaM2 <= 0) {
+    const areas = used.map((r) => r.area_m2).filter(Number.isFinite).sort((a, b) => a - b);
+    areaM2 = areas.length > 0 ? areas[Math.floor(areas.length / 2)] : null;
+  }
+  if (areaM2 === null) {
+    return { ok: true, area: areaId, complex: complexName, match_method: matchMethod,
+      ratio: null, sparse_note: JEONSE_SPARSE_NOTE,
+      note: "같은 단지 실거래가 없습니다. 면적을 바꿔 다시 물어보세요." };
+  }
+  const scenario = parseScenario(clone(session.scenario));
+  const flat = resolveCriteria(scenario).flat;
+  const ratio = jeonseRatio(used, { areaM2,
+    cautionPct: flat.jeonse_caution_pct, warningPct: flat.jeonse_warning_pct });
+  const complexRec = (area.complexes || []).find((c) => c.name === complexName);
+  const buildings = complexRec
+    ? (Array.isArray(area.buildings) ? area.buildings : [])
+      .filter((b) => (complexRec.building_ids || []).includes(b.id))
+    : [];
+  const register = registerSignals(buildings);
+  let checklist = null;
+  try {
+    checklist = await needAssumption(session, "kr-jeonse-checklist.json");
+  } catch {
+    checklist = null;
+  }
+  return {
+    ok: true, area: areaId, complex: complexName, area_m2: areaM2,
+    match_method: matchMethod,
+    parcel_rows: parcelHits.length, name_rows: nameHits.length,
+    ratio,
+    register,
+    checklist,
+    note: "신호·빠진 정보·체크리스트만 보여준다. 안전/위험 판정은 하지 않는다.",
+  };
+}
+
+// --- mock_deposit_loss (stage 9b) -------------------------------------------------
+
+async function mock_deposit_loss(session, args) {
+  if (!MOCKLOSS_PATHS.includes(args.path)) {
+    return fail(`path wants one of ${MOCKLOSS_PATHS.join("/")} (보증보험 가입 / 미가입+경매 / 미회수)`);
+  }
+  const deposit = Number(args.deposit_won);
+  if (!(deposit > 0)) return fail("deposit_won (> 0) is required — the customer's jeonse deposit");
+  const scenario = parseScenario(clone(session.scenario));
+  const flat = resolveCriteria(scenario).flat;
+  let out;
+  try {
+    out = mockDepositLoss({
+      depositWon: deposit,
+      monthlyNetWon: args.monthly_net_won ?? null,
+      monthlySpentWon: args.monthly_spent_won ?? null,
+      path: args.path,
+      assumptions: {
+        insured_months: flat.mockloss_insured_months,
+        insured_pct: flat.mockloss_insured_pct,
+        auction_months: flat.mockloss_auction_months,
+        auction_pct: flat.mockloss_auction_pct,
+        unrecovered_pct: flat.mockloss_unrecovered_pct,
+      },
+    });
+  } catch (err) {
+    return fail(err.message);
+  }
+  let center = null;
+  try {
+    const checklist = await needAssumption(session, "kr-jeonse-checklist.json");
+    center = (checklist && checklist.support_center) || null;
+  } catch { /* checklist unavailable: centre name still below */ }
+  return { ok: true, ...out, support_center: center || { name: "전세피해지원센터" } };
+}
+
+// --- support_programs (stage 9b) ----------------------------------------------------
+
+const SUPPORT_PROFILE_KEYS = ["age", "household_type", "married", "marriage_years",
+  "annual_income_won", "assets_won", "owns_home", "has_newborn",
+  "deposit_won", "price_won"];
+
+async function support_programs(session, args) {
+  const doc = await needAssumption(session, "kr-support-programs.json")
+    .catch((err) => ({ __error: err }));
+  if (doc.__error) return fail(doc.__error.message);
+  const profile = {};
+  for (const k of SUPPORT_PROFILE_KEYS) {
+    if (args[k] !== undefined && args[k] !== null && args[k] !== "") profile[k] = args[k];
+  }
+  const compared = compareAllSupport(doc, profile);
+  let rentals = null;
+  if (args.include_public_rental !== false) {
+    const rec = await recommend_public_rental(session, {
+      monthly_net_won: args.monthly_net_won,
+      target_area_m2: args.target_area_m2,
+      limit: 3,
+    });
+    rentals = rec.ok ? rec : { ok: false, error: rec.error };
+  }
+  return {
+    ok: true, profile,
+    programs: compared.programs,
+    public_rentals: rentals,
+    note: "조건을 한 줄씩 대조만 한다. 최종 판정(대상 여부)은 하지 않는다. 공고 원문에서 확인해 주세요.",
+  };
+}
+
 export const MONEY_TOOL_DEFS = [
   { type: "function", function: { name: "set_money",
     description: "Patch the scenario money block (per-member salary/net, cash_won, per-home tenure, assumptions, burden_threshold_pct). Income stays in this conversation only.",
@@ -600,11 +873,54 @@ export const MONEY_TOOL_DEFS = [
         complex_id: { type: "string" }, complex_source: { type: "string" },
         unit_type: { type: "string" },
       }, required: ["complex_id"] } } },
+  { type: "function", function: { name: "worth_it",
+    description: "Multi-year buy-vs-rent cost comparison for a stored run (horizon 5/10/20, customer picks): totals, interest, locked cash, opportunity cost, buy equity under customer-chosen price scenarios (default −2/0/+2 %/yr, 가정 시나리오), break-even years, DSR display. Numbers only — never a buy verdict.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        run: { type: "string" }, horizon_years: { type: "integer" },
+        area_m2: { type: "number" },
+        scenarios_pct: { type: "array", items: { type: "number" } },
+        opportunity_rate_pct: { type: "number" },
+        price_won: { type: "number" }, jeonse_won: { type: "number" },
+        deposit_won: { type: "number" }, monthly_rent_won: { type: "number" },
+        public_deposit_won: { type: "number" }, public_monthly_won: { type: "number" },
+        annual_income_won: { type: "number" },
+        other_debt_service_annual_won: { type: "number" },
+      }, required: ["run", "horizon_years"] } } },
+  { type: "function", function: { name: "jeonse_check",
+    description: "전세 signals for a complex: 전세가율 (median jeonse ÷ median trade, same bucket, last 12 months) with counts, building-register tenant fields, and the official checklist. Signals only — never a safe/unsafe verdict.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        area: { type: "string" }, complex: { type: "string" },
+        area_m2: { type: "number" },
+      }, required: ["area", "complex"] } } },
+  { type: "function", function: { name: "mock_deposit_loss",
+    description: "Mock scenario (모의): if the jeonse deposit is not returned at expiry — locked months, recovery and shortfall per path (insured / auction / unrecovered), shortfall in months of stated remainder. Not legal advice.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        path: { type: "string" }, deposit_won: { type: "number" },
+        monthly_net_won: { type: "number" }, monthly_spent_won: { type: "number" },
+      }, required: ["path", "deposit_won"] } } },
+  { type: "function", function: { name: "support_programs",
+    description: "Policy loans and youth/newly-wed benefits: condition-by-condition comparison of the customer profile with published conditions, plus public-rental candidates. Never a final eligibility verdict.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        age: { type: "number" }, household_type: { type: "string" },
+        married: { type: "boolean" }, marriage_years: { type: "number" },
+        annual_income_won: { type: "number" }, assets_won: { type: "number" },
+        owns_home: { type: "boolean" }, has_newborn: { type: "boolean" },
+        deposit_won: { type: "number" }, price_won: { type: "number" },
+        monthly_net_won: { type: "number" }, target_area_m2: { type: "number" },
+        include_public_rental: { type: "boolean" },
+      } } } },
 ];
+
+export { SUPPORT_PROFILE_KEYS };
 
 export const MONEY_HANDLERS = {
   set_money, estimate_net_pay, price_reference, living_cost,
   recommend_public_rental, add_home_c,
+  worth_it, jeonse_check, mock_deposit_loss, support_programs,
 };
 
 export { commuteIndex };

@@ -122,6 +122,19 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     housingCache = normalizeSnapshot({ fetched_at: new Date().toISOString(), complexes, notices });
     return housingCache;
   };
+  const assumptionCache = new Map();
+  const ASSUMPTION_ALLOWLIST = new Set([
+    "kr-payroll.json", "kr-ownership-costs.json", "kr-jeonse-checklist.json",
+    "kr-support-programs.json",
+  ]);
+  const loadAssumption = async (name) => {
+    if (!ASSUMPTION_ALLOWLIST.has(name)) throw new Error(`unknown assumption file ${JSON.stringify(name)}`);
+    if (!assumptionCache.has(name)) {
+      assumptionCache.set(name,
+        JSON.parse(await readFile(join(scenDir, "assumptions", name), "utf8")));
+    }
+    return assumptionCache.get(name);
+  };
   return async (req, res) => {
     if (req.method !== "POST") {
       res.statusCode = 405;
@@ -155,6 +168,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         loadPayroll, loadRtms, loadHousing,
         loadSafety: () => loadSafetyFs(dataDir),
         loadPersona: (id) => loadPersonaFs(scenDir, id),
+        loadAssumption,
         fetchImpl,
       });
       res.setHeader("Content-Type", "application/json");

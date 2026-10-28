@@ -2134,10 +2134,11 @@ async function bootSim() {
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
-  // ?tab=money|quality|priorities|safety|criteria opens the compare card on that tab.
+  // ?tab=money|quality|priorities|safety|criteria|worthit|jeonse|support opens the compare card on that tab.
   const wantTab = PARAMS.get("tab");
   if (wantTab === "money" || wantTab === "quality" || wantTab === "compare"
-      || wantTab === "criteria" || wantTab === "priorities" || wantTab === "safety") {
+      || wantTab === "criteria" || wantTab === "priorities" || wantTab === "safety"
+      || wantTab === "worthit" || wantTab === "jeonse" || wantTab === "support") {
     store.set({ compareOpen: true, compareTab: wantTab });
     paintCompare();
     paintMoney();

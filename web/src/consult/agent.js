@@ -31,6 +31,9 @@ export const SYSTEM_PROMPT = [
   "생활비 상담 흐름: set_money로 연봉·보유현금·점유형태(매매/전세/월세/공공임대)·가정값을 받고, estimate_net_pay로 추정 실수령액을 보여준 뒤(고객이 실제 값을 말하면 그 값을 쓴다), price_reference로 실거래 기준가를 조회하고, run_simulation 후 living_cost로 30일 생활비를 계산한다. 공공임대 후보는 recommend_public_rental로 고르고 add_home_c로 C에 추가한다.",
   "집값 전망 질문(예: '잠실 집값이 오를까?')에는 정중히 '이 앱은 집값 전망을 하지 않습니다'라고 답하고, 대신 해당 단지의 최근 12개월 실거래(price_reference)를 제안한다. 전망이나 상승/하락 단정은 절대 하지 않는다.",
   "대출 가능 여부(LTV·DSR)와 입주 자격은 판단하지 않는다. '사세요/사지 마세요' 같은 매매 판단도 하지 않는다. 수치 비교만 보여준다.",
+  "살 만한가 질문에는 worth_it로 기간(5/10/20년, 고객이 고름)과 집값 가정(기본 −2/0/+2 %/년)을 숫자로만 비교한다. 집값 가정은 항상 '가정 시나리오'라 부르고 전망처럼 말하지 않는다. DSR은 보여주기만 하고 '대출 가능 여부는 금융기관이 판단합니다'를 함께 밝힌다. 계약해도 된다/안 된다는 절대 말하지 않는다.",
+  "전세 질문에는 jeonse_check의 신호(전세가율·등기 신호·체크리스트)만 답하고, 모의 피해는 mock_deposit_loss로 '모의'임을 밝히며 답한다. '이 집은 안전/위험' 같은 판정은 절대 하지 않고, 항상 '법률 자문이 아닙니다'를 밝힌다.",
+  "지원 제도 질문에는 support_programs로 조건을 한 줄씩 대조만 한다. '대상입니다' 같은 최종 판정은 절대 하지 않고, 공고 원문 확인을 안내한다.",
   "치안 질문에는 get_safety의 공식 통계(발생 건수)만 답한다: 수치마다 출처·기간·단위·지역 단위를 함께 밝히고, '기록된 곳 기준 발생 건수이며 거주자의 위험도가 아니다'와 성남시 시 단위 한계를 밝힌다. 안전/위험 판정, 점수·순위·등급, '살기 좋다/나쁘다'는 절대 하지 않는다. 관할 단위가 다른 지역(구 vs 시)은 직접 비교하지 않는다.",
   "교육 질문에는 get_education의 접근 지표(학교·학원까지 도보 분, 개수)만 답한다. 학교의 질·성적·학군 순위 질문은 정중히 거절한다.",
   "투자 조언·학군(질)·건강/의료 질문은 정중히 거절하고 시뮬레이션으로 답할 수 있는 것(도보 시간·거리, 생활 패턴 비교, 생활비)으로 돌린다.",
@@ -131,6 +134,14 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `공공임대 후보 ${(r.candidates || []).length}곳`, ok: true };
     case "add_home_c":
       return { summary: "C 후보 추가", ok: true };
+    case "worth_it":
+      return { summary: `${r.home || ""} 살 만한가(${(r.horizon_years || "")}년)`, ok: true };
+    case "jeonse_check":
+      return { summary: `${r.complex || ""} 전세 신호`, ok: true };
+    case "mock_deposit_loss":
+      return { summary: `모의 보증금(${r.path_ko || ""})`, ok: true };
+    case "support_programs":
+      return { summary: `지원 제도 ${(r.programs || []).length}개 대조`, ok: true };
     case "get_scenario":
     case "list_areas":
       return { summary: "조회", ok: true };
@@ -160,7 +171,7 @@ export async function runTurn(opts) {
     cache, loadArea, loadDecisions = null, judgeHome = null,
     loadRegion = null,
     loadPayroll = null, loadRtms = null, loadHousing = null,
-    loadSafety = null, loadPersona = null,
+    loadSafety = null, loadPersona = null, loadAssumption = null,
     fetchImpl = null, completeFn = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
@@ -168,7 +179,7 @@ export async function runTurn(opts) {
   const complete = completeFn || ((args) => completeWithTools({ ...args, fetchImpl }));
   const session = createSession({
     scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion,
-    loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona,
+    loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];

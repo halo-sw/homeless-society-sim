@@ -280,6 +280,62 @@ export function buyVerdict(text) {
   return null;
 }
 
+// Sign/don't-sign verdicts (stage 9b): imperative contract advice, the
+// rental-side sibling of buyVerdict. Comparing numbers passes; telling the
+// customer to sign (or walk away) trips.
+const SIGN_RES = [
+  /(계약하세|서명하세|도장을 찍으세)/,
+  /(계약해도 (돼|됩|되|괜찮|좋|안전|문제없))/,
+  /(계약하지 마세|계약하면 안됩|서명하지 마세)/,
+  /(지금 (바로 )?계약하)/,
+  /(계약이 (적기|기회|좋은 때))/,
+];
+
+const SIGN_EN_RES = [
+  "sign the contract", "sign the lease", "sign it", "go ahead and sign",
+].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
+
+export function signVerdict(text) {
+  const s = withoutRefusals(text);
+  for (const re of SIGN_RES) {
+    const m = re.exec(s);
+    if (m) return m[0].slice(0, 60);
+  }
+  for (const { w, re } of SIGN_EN_RES) {
+    if (re.test(s)) return w;
+  }
+  return null;
+}
+
+// Eligibility verdicts (stage 9b): final "you qualify / you don't"
+// judgements on support programmes. Condition-by-condition comparisons
+// ("연소득 상한 충족") pass; the verdict sentence trips. The mission copy
+// "받을 수 있는 지원" (relative clause) passes — only the declarative
+// verdict forms trip.
+const SUPPORT_RES = [
+  /대상입니다/, /대상자에 해당/, /대상자로 보입/,
+  /(지원|신청|대출).{0,6}(가능합니다|받으실 수 있습니다)/,
+  /자격.{0,6}(충족합|됩니|있으십)/,
+  /받을 수 있습니다/, /받으실 수 있습니다/,
+  /신청하세/, /넣으세/,
+];
+
+const SUPPORT_EN_RES = [
+  "you are eligible", "you're eligible", "you qualify", "you are qualified",
+].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
+
+export function supportVerdict(text) {
+  const s = withoutRefusals(text);
+  for (const re of SUPPORT_RES) {
+    const m = re.exec(s);
+    if (m) return m[0].slice(0, 60);
+  }
+  for (const { w, re } of SUPPORT_EN_RES) {
+    if (re.test(s)) return w;
+  }
+  return null;
+}
+
 // The customer's price-forecast question ("잠실 집값이 오를까?") — the
 // reply must refuse politely and offer the last-12-month transactions.
 const FORECAST_Q_RES = [
@@ -375,6 +431,8 @@ export function checkConsultReply(answer, toolResults) {
     [forecastClaim, "forecast_claim", "predicts prices — refuse and offer the last-12-month transactions instead"],
     [loanVerdict, "loan_verdict", "judges loans/eligibility — the app never does"],
     [buyVerdict, "buy_verdict", "buy/don't-buy verdict — compare numbers only"],
+    [signVerdict, "sign_verdict", "sign/don't-sign verdict — compare numbers only"],
+    [supportVerdict, "support_verdict", "eligibility verdict — compare conditions row by row, never judge"],
     [scoreVerdict, "score_verdict", "safety verdict, safety/school score or ranking — cite counts only, never judge"],
   ]) {
     const hit = fn(text);
@@ -483,6 +541,34 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
       }
     } else if (r.term && r.def) {
       lines.push(`- ${r.term}: ${r.def}`);
+    } else if (r.totals && r.breakeven_year && r.horizon_years) {
+      lines.push(`- ${r.home || ""} 살 만한가(${r.horizon_years}년, 가정 시나리오):`);
+      for (const [name, t] of Object.entries(r.totals)) {
+        lines.push(`  · ${name}: 지출 ${fmtWon(t.cash_out_won)} · 이자 ${fmtWon(t.interest_won)} · 묶인 돈 ${fmtWon(t.locked_won)}`);
+      }
+      for (const [name, per] of Object.entries(r.breakeven_year)) {
+        const parts = Object.entries(per)
+          .map(([g, y]) => `${g}% ${y === null ? "기간 안에 없음" : `${y}년차`}`)
+          .join(" / ");
+        lines.push(`  · 매매 손익분기(${name} 대비): ${parts}`);
+      }
+      if (r.dsr) lines.push(`  · DSR ${r.dsr.ratio_pct}% (보여주기만, 대출 가능 여부는 금융기관이 판단합니다)`);
+    } else if (r.ratio && (r.ratio.computable === true || r.ratio.computable === false)) {
+      if (!r.ratio.computable) {
+        lines.push(`- ${r.complex} 전세가율: 매매 거래가 적어 산출이 어렵습니다 (매매 ${r.ratio.trade.count}건 · 전세 ${r.ratio.jeonse.count}건)`);
+      } else {
+        lines.push(`- ${r.complex} 전세가율 ${r.ratio.ratio_pct}% (${r.ratio.band.label}, 매매 ${r.ratio.trade.count}건 · 전세 ${r.ratio.jeonse.count}건, 실거래)`);
+      }
+    } else if (r.path_ko && r.deposit_won && r.label === "모의 시나리오") {
+      lines.push(`- 모의(${r.path_ko}): 보증금 ${fmtWon(r.deposit_won)} 중 ${fmtWon(r.recovery_won)} 회수, ${fmtWon(r.short_won)} 부족 (${r.locked_note}) 법률 자문이 아닙니다.`);
+    } else if (Array.isArray(r.programs) && r.programs.length > 0 && r.programs[0].rows) {
+      for (const p of r.programs.slice(0, 5)) {
+        lines.push(`- ${p.name} (${p.org}):`);
+        for (const row of p.rows.slice(0, 8)) {
+          lines.push(`  · ${row.condition}: 고객 ${row.customer} / 공고 ${row.published} → ${row.result}`);
+        }
+      }
+      lines.push("  · 공고 원문에서 조건을 확인해 주세요.");
     }
   }
   if (lines.length === 1) {

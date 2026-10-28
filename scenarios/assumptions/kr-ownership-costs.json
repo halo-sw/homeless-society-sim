@@ -1,0 +1,96 @@
+{
+  "name": "kr-ownership-costs",
+  "as_of": null,
+  "note": "매매 보유 비용 규칙표. 값이 들어오기 전까지는 모든 항목이 null이며, 살 만한가 계산은 해당 비용을 0원·미포함으로 두고 제외 목록에 밝힌다. 값을 채울 때는 항목마다 source·as_of를 함께 적는다.",
+  "locale": {
+    "country": "KR",
+    "currency": "KRW",
+    "note": "국가별 비용 항목이 다르다. KR은 아래 buy_costs를 쓰고, US 변형은 us_extension 스키마를 채운다(숫자는 지금 넣지 않는다)."
+  },
+  "buy_costs": {
+    "acquisition_tax": {
+      "label": "취득세",
+      "kind": "one_off",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "brokerage_fee": {
+      "label": "중개수수료",
+      "kind": "one_off",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "property_tax_annual": {
+      "label": "재산세(연)",
+      "kind": "annual",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "holding_tax_annual": {
+      "label": "보유세(연)",
+      "kind": "annual",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "moving_cost": {
+      "label": "이사비",
+      "kind": "one_off",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    }
+  },
+  "us_extension": {
+    "note": "스키마만 둔다. US 변형이 생기면 KR buy_costs 대신 이 항목들을 채운다. 지금은 숫자를 넣지 않는다.",
+    "property_tax_annual": {
+      "label": "property tax (annual)",
+      "kind": "annual",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "homeowners_insurance_annual": {
+      "label": "homeowners insurance (annual)",
+      "kind": "annual",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "hoa_monthly": {
+      "label": "HOA (monthly)",
+      "kind": "monthly",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    },
+    "pmi_monthly": {
+      "label": "PMI (monthly)",
+      "kind": "monthly",
+      "value": null,
+      "unit": null,
+      "source": null,
+      "as_of": null,
+      "needs_confirmation": true
+    }
+  }
+}

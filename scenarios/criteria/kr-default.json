@@ -422,6 +422,58 @@
       "source": "가정값",
       "affects": ["burden_ratio"],
       "editable": true
+    },
+    {
+      "id": "C-worthit-scenarios",
+      "group": "money",
+      "title": "살 만한가 집값 가정",
+      "rule": "매매 자산을 비교할 때 집값은 연 −2 / 0 / +2 %의 가정 시나리오로만 움직인다. 가정 시나리오, 전망 아님. 고객이 고른 집합이 기본값을 대신한다.",
+      "values": {
+        "scenarios_pct_year": { "value": [-2, 0, 2], "unit": "%/년", "overridable": false }
+      },
+      "source": "가정값",
+      "affects": ["worthit.equity", "worthit.break_even"],
+      "editable": false
+    },
+    {
+      "id": "C-jeonse-ratio-caution",
+      "group": "money",
+      "title": "전세가율 관심 참고선",
+      "rule": "전세가율(전세 중간값 ÷ 매매 중간값)이 70%를 넘으면 관심 구간으로 표시한다. 참고 기준(통상 언급되는 값), 법적 기준 아님. 안전·위험 판정이 아니다.",
+      "values": {
+        "threshold_pct": { "value": 70, "unit": "%", "overridable": true }
+      },
+      "source": "가정값",
+      "affects": ["jeonse.band"],
+      "editable": true
+    },
+    {
+      "id": "C-jeonse-ratio-warning",
+      "group": "money",
+      "title": "전세가율 높음 참고선",
+      "rule": "전세가율이 80%를 넘으면 높은 구간으로 표시한다. 참고 기준(통상 언급되는 값), 법적 기준 아님. 안전·위험 판정이 아니다.",
+      "values": {
+        "threshold_pct": { "value": 80, "unit": "%", "overridable": true }
+      },
+      "source": "가정값",
+      "affects": ["jeonse.band"],
+      "editable": true
+    },
+    {
+      "id": "C-mockloss",
+      "group": "money",
+      "title": "모의 보증금 회수 가정",
+      "rule": "모의 피해 시나리오의 회수 가정이다. 보증보험 가입이면 2개월 뒤 100%, 미가입+경매면 12개월 뒤 70%, 미회수면 0%를 돌려받는 것으로 둔다. 모의 가정값이며 법률 자문이 아니다.",
+      "values": {
+        "insured_recovery_months": { "value": 2, "unit": "개월", "overridable": true },
+        "insured_recovery_pct": { "value": 100, "unit": "%", "overridable": true },
+        "auction_recovery_months": { "value": 12, "unit": "개월", "overridable": true },
+        "auction_recovery_pct": { "value": 70, "unit": "%", "overridable": true },
+        "unrecovered_recovery_pct": { "value": 0, "unit": "%", "overridable": true }
+      },
+      "source": "가정값",
+      "affects": ["mockloss.recovery"],
+      "editable": true
     }
   ]
 }

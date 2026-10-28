@@ -29,6 +29,8 @@ import { buildPlaces } from "../src/engine/places.js";
 import { resolveHome } from "../src/engine/scenario.js";
 import { educationCounts, schoolRoute } from "../src/education.js";
 import { safetyView } from "../src/safety.js";
+import { jeonseRatio, registerSignals } from "../src/money/jeonse.js";
+import { recommendPublicRental, normalizeSnapshot } from "../src/money/housing.js";
 import { AREA_RTMS_DISTRICT } from "../src/consult/tools-money.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -93,7 +95,35 @@ try {
 }
 const scenario = parseScenario(structuredClone(scenarioRaw));
 const table = JSON.parse(await readFile(join(REPO, "scenarios", "assumptions", "kr-payroll.json"), "utf8"));
+// Stage 9b assumption files (committed, keyless) ride along for the UI.
+const assumptions9b = {};
+for (const file of ["kr-ownership-costs.json", "kr-jeonse-checklist.json", "kr-support-programs.json"]) {
+  try {
+    assumptions9b[file.replace(/^kr-|\.json$/g, "")] =
+      JSON.parse(await readFile(join(REPO, "scenarios", "assumptions", file), "utf8"));
+  } catch {
+    assumptions9b[file.replace(/^kr-|\.json$/g, "")] = null;
+  }
+}
+// supportRentals is filled after `net` below.
 const net = householdMonthlyNet(scenario.money, scenario.household.members, table);
+// Public-rental snapshot (dev-only, gitignored): candidates without
+// commute minutes (the consult tool adds the graph commute live).
+let supportRentals = null;
+try {
+  const snapRaw = JSON.parse(await readFile(
+    join(REPO, "data", "raw", "public_housing", "snapshot_3districts.json"), "utf8"));
+  supportRentals = recommendPublicRental(normalizeSnapshot(snapRaw), {
+    monthlyNetWon: net.household_monthly_net_won,
+    thresholdPct: scenario.money.burden_threshold_pct,
+    targetAreaM2: scenario.money.area_m2[scenario.homes[0].label] || null,
+    areaTolM2: 10,
+    commuteMinutes: null,
+    limit: 5,
+  });
+} catch {
+  supportRentals = null;
+}
 const backend = createCsvBackend({
   rawDir: join(REPO, "data", "raw", "rtms"),
   readFile: (p) => readFile(p),
@@ -203,11 +233,26 @@ for (const h of scenario.homes) {
     housing_monthly_won: 0,
     pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
   });
+  // Stage 9b: jeonse ratio over the same matched rows + register signals
+  // for the complex's buildings (thresholds resolve per scenario run).
+  const jeonse = areaM2 ? jeonseRatio(used, {
+    areaM2,
+    cautionPct: crit.flat.jeonse_caution_pct,
+    warningPct: crit.flat.jeonse_warning_pct,
+  }) : null;
+  const complexRec = (area.complexes || []).find((c) => c.name === h.complex_name);
+  const complexBuildings = complexRec
+    ? (Array.isArray(area.buildings) ? area.buildings : [])
+      .filter((b) => (complexRec.building_ids || []).includes(b.id))
+    : [];
+  const register = registerSignals(complexBuildings);
   homes[h.label] = {
     area: h.area, complex_name: h.complex_name, area_m2: areaM2,
     match_method: matchMethod,
     parcel_rows: parcelHits.length, name_rows: nameHits.length,
     reference, by_tenure: byTenure,
+    jeonse_check: jeonse ? { ...jeonse, match_method: matchMethod } : null,
+    register_signals: register,
     qol_time: qol.time, qol_convenience: qol.convenience,
     qol_fatigue: qol.fatigue,
     qol_education: qolEducation, school_routes: schoolRoutes,
@@ -236,6 +281,8 @@ const doc = {
   criteria: { doc: CRITERIA_DOC_NAME, version: CRITERIA_VERSION, overrides: crit.overridden },
   default_tenure: scenario.money.tenure,
   homes,
+  assumptions9b,
+  support_rentals: supportRentals,
 };
 const outDir = resolve(REPO, opts.out);
 await mkdir(outDir, { recursive: true });

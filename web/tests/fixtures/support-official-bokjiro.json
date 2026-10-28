@@ -1,0 +1,18 @@
+[
+  {
+    "title": "예시: 주거급여 (모의 행)",
+    "org": "복지로",
+    "min_age": null,
+    "max_age": null,
+    "summary": "연결점 모양 예시이며 공식 값이 아니다.",
+    "source_url": null
+  },
+  {
+    "title": "예시: 청년 주거급여 분리지급 (모의 행)",
+    "org": "복지로",
+    "min_age": 19,
+    "max_age": 29,
+    "summary": "연결점 모양 예시이며 공식 값이 아니다.",
+    "source_url": null
+  }
+]
