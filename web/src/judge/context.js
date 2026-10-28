@@ -29,11 +29,11 @@ export const DECISION_SCHEMA = {
     chosen_key: { type: "string", description: "Exactly one key from the options list." },
     reason_ko: {
       type: "string",
-      description: `Short Korean reason, at most ${REASON_KO_MAX} characters. Mention only numbers shown in the options.`,
+      description: `Short Korean reason, at most ${REASON_KO_MAX} characters. At most one number, copied exactly from the options, or none; never state the home option's distance.`,
     },
     reason_en: {
       type: "string",
-      description: `Short English reason, at most ${REASON_EN_MAX} characters. Mention only numbers shown in the options.`,
+      description: `Short English reason, at most ${REASON_EN_MAX} characters. At most one number, copied exactly from the options, or none; never state the home option's distance.`,
     },
   },
 };
@@ -51,11 +51,11 @@ export const WEEKEND_SCHEMA = {
     },
     reason_ko: {
       type: "string",
-      description: `Short Korean reason, at most ${REASON_KO_MAX} characters. Mention only numbers shown in the options.`,
+      description: `Short Korean reason, at most ${REASON_KO_MAX} characters. At most one number, copied exactly from the options, or none; never state the home option's distance.`,
     },
     reason_en: {
       type: "string",
-      description: `Short English reason, at most ${REASON_EN_MAX} characters. Mention only numbers shown in the options.`,
+      description: `Short English reason, at most ${REASON_EN_MAX} characters. At most one number, copied exactly from the options, or none; never state the home option's distance.`,
     },
   },
 };
@@ -72,7 +72,9 @@ const SYSTEM = [
   "The household is fictional; every place and number below is real simulation data.",
   "Rules:",
   `- Choose only keys from the options list (${REASON_KO_MAX}-char Korean reason, ${REASON_EN_MAX}-char English reason).`,
-  "- In reasons, mention only numbers that appear in the options. Never invent times, distances, prices or counts.",
+  "- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.",
+  "- Never state the home option's distance or walk time.",
+  "- Keep reasons about the person's routine and preferences.",
   "- Never mention price, cost, safety, danger, crime, school quality, or health topics.",
   "- Reply with a single JSON object matching the schema, nothing else.",
 ].join("\n");
@@ -90,7 +92,18 @@ function memoryLine(m) {
   return `- day ${m.day} ${hhmm(m.minute)} ${m.kind} chose ${chosen}: ${m.reason_ko || ""}`;
 }
 
+// The home/stay option carries no minutes — stating "0분 거리" reads
+// oddly and the model must never cite it (guards.js agrees: home
+// numbers are not citable). Both park_or_home and weekend_plan use the
+// "home" key (WEEKEND_HOME; kept literal — this module takes plain
+// data with no engine imports).
 function optionLine(o) {
+  if (o.key === "home") return `- ${o.key}: ${o.label} — stay home`;
+  if (!Number.isFinite(o.minutes)) {
+    return Number.isFinite(o.distance_m)
+      ? `- ${o.key}: ${o.label} — ${Math.round(o.distance_m)} m`
+      : `- ${o.key}: ${o.label}`;
+  }
   return `- ${o.key}: ${o.label} — ${o.minutes} min, ${Math.round(o.distance_m)} m`;
 }
 

@@ -204,6 +204,34 @@ truncated ×2 paths, reasoning usage, cause list); `vite build` ✓. Not
 committed. Follow-up: dry-run `COMPLETION_TOKENS_EST` (60) excludes
 reasoning (~350/call at low), so `--dry-run` $ understates live cost.
 
+## Stage 4c note — judgment guard tuning (2026-10-28)
+
+Live run (`--provider meta --effort low`): 198 calls, 0 errors, $0.94,
+but 109 fallbacks as `invented_number` (A 31/77, B 78/121 — B's 44
+`station_route` all fell back, likely integer-rounded "16분" for 16.3)
+and no audit of refused replies. Fixes in `web/src/judge/` (+ one
+engine field):
+1. **Audit.** Guard rejections store `rejected:
+   {chosen_key|plan, reason_ko, reason_en, offending}` (parsed fields
+   only, reasons within schema limits; never raw responses/headers).
+   Transport failures carry none (nothing parsed). New `rejected`
+   record field in `engine/decisions.js`, carried through
+   `entryToAnswer`, replay byte-identical.
+2. **Fair numbers.** Citable = context actually sent: option minutes
+   (exact/1-decimal/integer), metres (exact/10 m) or km (1–2 dec),
+   clock times + day numbers (current/trips/memory/date), label digits,
+   profile/preference verbatim. Trip legs and remembered reason text are
+   NOT citable; ordinals/list markers/Korean counters skipped; a 00
+   clock or day 0 never licenses a bare 0, and the home option sends no
+   minutes, so "0분 거리" now fails.
+3. **Prompt.** At most one number copied exactly from the options, or
+   none; never state the home option's distance; reasons about
+   routine/preference. Home renders as `- home: 집 — stay home`.
+Tests: `node --test` **146/146** (+6: roundings, home-0, times/days/
+profile, exemptions, rejected store + round-trip); `vite build` ✓. Not
+committed. Old decision files keep their rule-fallback reasons; re-run
+the judge to fill `rejected` going forward.
+
 ## Known gaps
 
 1. Weekend `clinic_days` landing on Sat/Sun are replaced by the

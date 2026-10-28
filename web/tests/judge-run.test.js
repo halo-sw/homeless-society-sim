@@ -4,8 +4,9 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canon } from "../src/engine/canonical.js";
+import { makeDecider } from "../src/engine/decisions.js";
 import { simulate } from "../src/engine/simulate.js";
-import { costUsd, decisionsFile, emptyUsage, judgeHome, judgeSingle, planCalls } from "../src/judge/run.js";
+import { costUsd, decisionsFile, emptyUsage, entryToAnswer, judgeHome, judgeSingle, planCalls } from "../src/judge/run.js";
 import { buildPrompt, estimateTokens } from "../src/judge/context.js";
 import { tinyArea, tinyScenario } from "./engine-fixture.js";
 
@@ -116,21 +117,54 @@ describe("judge run", () => {
         { key: "s1", label: "슈퍼2", minutes: 5.1, distance_m: 402.5 },
       ],
     };
-    const prompt = buildPrompt({
+    const ctx = {
       member: { role: "adult", preferences: "" }, agentLabel: "구성원 1",
       date: "2026-11-02", weekday: "Mon", minute: 600, tripsToday: [], memory: [], shell,
-    });
+    };
+    const prompt = buildPrompt(ctx);
+    const wantRejected = {
+      bad_key: { chosen_key: "nope", reason_ko: "r", reason_en: "r", offending: ["nope"] },
+      invented_number: { chosen_key: "s0", reason_ko: "7분 거리", reason_en: "r", offending: ["7"] },
+      forbidden_topic: { chosen_key: "s0", reason_ko: "가격이 저렴", reason_en: "r", offending: ["가격"] },
+    };
     for (const cause of ["bad_key", "invented_number", "forbidden_topic"]) {
       const usage = emptyUsage();
-      const entry = await judgeSingle({ provider: "meta", prompt, shell, usage, fetchImpl, providerOpts: { apiKey: "test-key" } });
+      const entry = await judgeSingle({ provider: "meta", prompt, shell, ctx, usage, fetchImpl, providerOpts: { apiKey: "test-key" } });
       assert.equal(entry.chosen_by, "rule_fallback");
       assert.equal(entry.chosen_key, "s0");
       assert.equal(entry.fallback_cause, cause);
+      assert.deepEqual(entry.rejected, wantRejected[cause]);
       assert.ok(entry.reason_ko.length > 0);
       assert.deepEqual(entry.usage, { prompt_tokens: 50, completion_tokens: 10 });
       assert.equal(usage.fallbacks, 1);
       assert.equal(usage.calls, 1);
     }
+  });
+
+  it("round-trips rejected through the decider and replay", () => {
+    const shell = {
+      agent: "h1", day: 0, minute: 600, kind: "shop_choice",
+      options: [
+        { key: "s0", label: "슈퍼1", minutes: 3.2, distance_m: 251 },
+        { key: "s1", label: "슈퍼2", minutes: 5.1, distance_m: 402.5 },
+      ],
+      default_key: "s0",
+    };
+    const entry = {
+      chosen_key: "s0", chosen_by: "rule_fallback",
+      reason_ko: "가장 가까운 곳으로 결정", reason_en: "Chose the nearest option",
+      fallback_cause: "invented_number",
+      rejected: { chosen_key: "s0", reason_ko: "7분 거리", reason_en: "r", offending: ["7"] },
+    };
+    assert.deepEqual(entryToAnswer(entry).rejected, entry.rejected);
+    const rec = makeDecider({ decide: () => entryToAnswer(entry) }).resolve(shell, 0);
+    assert.deepEqual(rec.rejected, entry.rejected);
+    const rec2 = makeDecider({ decisions: [rec] }).resolve(shell, 0);
+    assert.equal(canon(rec2), canon(rec));
+    assert.throws(
+      () => makeDecider({ decide: () => ({ chosen_key: "s0", rejected: { offending: [7] } }) }).resolve(shell, 0),
+      /rejected\.offending wants an array of strings/,
+    );
   });
 
   it("falls back without usage when the provider fails", async () => {
@@ -156,6 +190,7 @@ describe("judge run", () => {
     assert.deepEqual(entry.plan, ["park"]);
     assert.equal(entry.fallback_cause, "provider_error");
     assert.equal(entry.provider, undefined);
+    assert.equal(entry.rejected, undefined); // nothing parsed, nothing stored
     assert.equal(usage.errors, 1);
   });
 

@@ -14,7 +14,8 @@
 // Only household shells reach the provider; background branches resolve
 // by rule inside the same runs. Every fixed entry carries its
 // provenance (chosen_by model|rule_fallback, reasons, provider, model,
-// tokens, latency), so the judged run and its --decisions replay are
+// tokens, latency, and the refused reply as `rejected` on guard
+// fallbacks), so the judged run and its --decisions replay are
 // byte-identical.
 
 import { simulate, ENGINE_VERSION } from "../engine/simulate.js";
@@ -97,8 +98,10 @@ function shellContext({ scenario, run, shell, members, memory }) {
 }
 
 // Judge one shell through the provider (or fail soft to the rule).
-// Returns the replay-style entry to fix for this id.
-export async function judgeSingle({ provider, prompt, shell, usage, fetchImpl, providerOpts = {} }) {
+// Returns the replay-style entry to fix for this id. ctx is the prompt
+// context the guard checks cited numbers against; guard rejections
+// keep the refused reply as `rejected` (parsed fields only, never raw).
+export async function judgeSingle({ provider, prompt, shell, ctx = null, usage, fetchImpl, providerOpts = {} }) {
   const rule = ruleReason(shell);
   const fallback = (cause, extra = {}) => ({
     ...(shell.kind === "weekend_plan"
@@ -135,11 +138,12 @@ export async function judgeSingle({ provider, prompt, shell, usage, fetchImpl, p
   usage.calls++;
   addUsage(usage, res.usage);
   usage.latency_ms += res.latency_ms || 0;
-  const check = checkOutput(shell, res.json);
+  const check = checkOutput(shell, res.json, ctx);
   if (!check.ok) {
     usage.fallbacks++;
     return fallback(check.cause, {
       provider, model: res.model, usage: res.usage, latency_ms: res.latency_ms,
+      ...(check.rejected ? { rejected: check.rejected } : {}),
     });
   }
   return {
@@ -163,7 +167,7 @@ function defaultWeekend(shell) {
 export function entryToAnswer(entry) {
   const answer = { chosen_key: entry.chosen_key, chosen_by: entry.chosen_by };
   for (const k of ["plan", "reason_ko", "reason_en", "provider", "model",
-      "usage", "latency_ms", "fallback_cause"]) {
+      "usage", "latency_ms", "fallback_cause", "rejected"]) {
     if (entry[k] !== undefined) answer[k] = entry[k];
   }
   return answer;
@@ -204,7 +208,7 @@ export async function judgeHome({
     const shell = pending[0];
     const ctx = shellContext({ scenario, run, shell, members, memory });
     const prompt = buildPrompt(ctx);
-    const entry = await judge({ prompt, shell });
+    const entry = await judge({ prompt, shell, ctx });
     fixed.set(shell.id, entry);
     if (!memory.has(shell.agent)) memory.set(shell.agent, []);
     memory.get(shell.agent).push({

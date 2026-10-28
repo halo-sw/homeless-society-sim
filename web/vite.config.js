@@ -111,7 +111,7 @@ function judgeApiPlugin() {
             err.code = "missing_key";
             throw err;
           }
-          const prompt = buildPrompt({
+          const ctx = {
             member: body.member || { role: "adult", preferences: "" },
             agentLabel: body.agentLabel || "구성원",
             date: body.date || "2026-11-02",
@@ -120,10 +120,11 @@ function judgeApiPlugin() {
             tripsToday: Array.isArray(body.tripsToday) ? body.tripsToday : [],
             memory: Array.isArray(body.memory) ? body.memory : [],
             shell: body.shell,
-          });
+          };
+          const prompt = buildPrompt(ctx);
           const usage = emptyUsage();
           const entry = await judgeSingle({
-            provider: body.provider, prompt, shell: body.shell, usage,
+            provider: body.provider, prompt, shell: body.shell, ctx, usage,
           });
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify({ ok: true, entry, usage }));

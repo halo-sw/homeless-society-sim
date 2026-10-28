@@ -17,7 +17,7 @@
 // The hook may return a key string (single-choice kinds), an array of
 // keys (weekend_plan), or an object {chosen_key | plan, ...extras}
 // where extras carry judge provenance (reason_ko, reason_en,
-// provider, model, usage, latency_ms, fallback_cause) and an explicit
+// provider, model, usage, latency_ms, fallback_cause, rejected) and an explicit
 // chosen_by. Replay entries restore the stored provenance verbatim
 // (except "hook", which becomes "replay" — the replay made zero hook
 // calls), so a judged run and its replay are byte-identical.
@@ -32,7 +32,7 @@ export const KNOWN_CHOICE_MODES = new Set([
 // else is rejected (fail fast, keep replay byte-exact).
 const EXTRA_FIELDS = new Set([
   "reason_ko", "reason_en", "provider", "model", "usage",
-  "latency_ms", "fallback_cause",
+  "latency_ms", "fallback_cause", "rejected",
 ]);
 
 export function ruleDefault(options) {
@@ -110,6 +110,26 @@ function checkExtra(id, k, v) {
     if (!v || typeof v !== "object") throw new Error(`decision ${id}: usage wants an object`);
     for (const [uk, uv] of Object.entries(v)) {
       if (!Number.isFinite(uv)) throw new Error(`decision ${id}: usage.${uk} wants a number`);
+    }
+  } else if (k === "rejected") {
+    // Audit copy of the refused model reply: parsed fields only.
+    if (!v || typeof v !== "object" || Array.isArray(v)) {
+      throw new Error(`decision ${id}: rejected wants an object`);
+    }
+    if (v.chosen_key !== undefined && typeof v.chosen_key !== "string") {
+      throw new Error(`decision ${id}: rejected.chosen_key wants a string`);
+    }
+    if (v.plan !== undefined && (!Array.isArray(v.plan) || !v.plan.every((p) => typeof p === "string"))) {
+      throw new Error(`decision ${id}: rejected.plan wants an array of strings`);
+    }
+    for (const rk of ["reason_ko", "reason_en"]) {
+      if (v[rk] !== undefined && typeof v[rk] !== "string") {
+        throw new Error(`decision ${id}: rejected.${rk} wants a string`);
+      }
+    }
+    if (v.offending !== undefined
+        && (!Array.isArray(v.offending) || !v.offending.every((t) => typeof t === "string"))) {
+      throw new Error(`decision ${id}: rejected.offending wants an array of strings`);
     }
   }
 }
