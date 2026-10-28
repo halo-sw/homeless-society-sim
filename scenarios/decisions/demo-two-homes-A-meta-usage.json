@@ -1,0 +1,1 @@
+{"by_kind":{"park_or_home":44,"shop_choice":17,"weekend_plan":16},"cached_tokens":17337,"calls":77,"completion_tokens":82303,"effort":"low","engine":"sim-engine/4","errors":0,"est_usd":0.383,"fallbacks":31,"home":"A","latency_ms":462829,"max_tokens":2000,"model":"muse-spark-1.3","prompt_tokens":41856,"provider":"meta","reasoning_tokens":78070,"scenario":"demo-two-homes"}

@@ -159,6 +159,46 @@ describe("judge run", () => {
     assert.equal(usage.errors, 1);
   });
 
+  it("falls back as truncated with usage when the budget cuts the reply", async () => {
+    const fetchImpl = async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({
+        choices: [{ message: { content: null }, finish_reason: "length" }],
+        usage: {
+          prompt_tokens: 200, completion_tokens: 400,
+          completion_tokens_details: { reasoning_tokens: 398 },
+        },
+      }),
+    });
+    const shell = {
+      id: "h1:d0:0600:shop_choice:00", agent: "h1", day: 0, minute: 600,
+      kind: "shop_choice", default_key: "s0",
+      options: [
+        { key: "s0", label: "슈퍼1", minutes: 3.2, distance_m: 251 },
+        { key: "s1", label: "슈퍼2", minutes: 5.1, distance_m: 402.5 },
+      ],
+    };
+    const prompt = buildPrompt({
+      member: { role: "adult", preferences: "" }, agentLabel: "구성원 1",
+      date: "2026-11-02", weekday: "Mon", minute: 600, tripsToday: [], memory: [], shell,
+    });
+    const usage = emptyUsage();
+    assert.equal(usage.reasoning_tokens, 0);
+    const entry = await judgeSingle({ provider: "meta", prompt, shell, usage, fetchImpl, providerOpts: { apiKey: "test-key" } });
+    assert.equal(entry.chosen_by, "rule_fallback");
+    assert.equal(entry.chosen_key, "s0");
+    assert.equal(entry.fallback_cause, "truncated");
+    assert.equal(entry.provider, "meta");
+    assert.equal(entry.model, "muse-spark-1.3");
+    assert.deepEqual(entry.usage, { prompt_tokens: 200, completion_tokens: 400, reasoning_tokens: 398 });
+    assert.equal(usage.errors, 1);
+    assert.equal(usage.fallbacks, 1);
+    assert.equal(usage.calls, 0);
+    assert.equal(usage.prompt_tokens, 200);
+    assert.equal(usage.completion_tokens, 400);
+    assert.equal(usage.reasoning_tokens, 398);
+  });
+
   it("accepts a model weekend plan from available categories only", async () => {
     const fetchImpl = async () => ({
       ok: true, status: 200,
@@ -230,6 +270,11 @@ describe("judge run", () => {
     assert.equal(usd, 5.5);
     const cached = costUsd("meta", { prompt_tokens: 1e6, completion_tokens: 0, cached_tokens: 1e6 });
     assert.equal(cached, 0.15);
+    // reasoning_tokens ride inside completion_tokens: counted, never added.
+    const reasoned = costUsd("meta", {
+      prompt_tokens: 0, completion_tokens: 347, cached_tokens: 0, reasoning_tokens: 312,
+    });
+    assert.equal(reasoned, (347 * 4.25) / 1e6);
     assert.equal(costUsd("baseten", { prompt_tokens: 1, completion_tokens: 1 }), null);
   });
 

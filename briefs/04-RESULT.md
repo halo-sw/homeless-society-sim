@@ -187,6 +187,23 @@ stays gitignored as before.
 - `?mode=sim` first-load timing and fps with 62 agents + 19 k window
   instances (instanced, one draw call).
 
+## Stage 4b note — reasoning-model live-run fix (2026-10-28)
+
+Live run (`--home both --provider meta`) fell back 198/198 as
+`bad_json`: with `max_tokens: 400` the reasoning budget ate the whole
+reply (`finish_reason: "length"`, `content: null`). Fix in
+`web/src/judge/` + `web/scripts/judge.mjs`: `max_tokens` default 2000
+(`--max-tokens`), `reasoning_effort` meta-default `"low"` (`--effort`,
+baseten omits unless set); `finish_reason: "length"` or null content
+now throws/falls back as `truncated` (not `bad_json`) with the spent
+usage kept on the entry and counted in the totals; usage records
+`reasoning_tokens` when reported; `costUsd` unchanged (reasoning rides
+inside `completion_tokens`). Effort/max-tokens are logged in the usage
+file and console line. Tests: `node --test` 140/140 (+5: overrides,
+truncated ×2 paths, reasoning usage, cause list); `vite build` ✓. Not
+committed. Follow-up: dry-run `COMPLETION_TOKENS_EST` (60) excludes
+reasoning (~350/call at low), so `--dry-run` $ understates live cost.
+
 ## Known gaps
 
 1. Weekend `clinic_days` landing on Sat/Sun are replaced by the

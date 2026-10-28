@@ -37,6 +37,8 @@ describe("judge providers", () => {
     assert.equal(body.response_format.json_schema.name, "decision");
     assert.deepEqual(body.response_format.json_schema.schema, DECISION_SCHEMA);
     assert.equal(body.temperature, 0);
+    assert.equal(body.max_tokens, 2000);
+    assert.equal(body.reasoning_effort, "low");
     assert.deepEqual(res.json, { chosen_key: "s0", reason_ko: "가까운 곳", reason_en: "Nearest" });
     assert.deepEqual(res.usage, { prompt_tokens: 100, completion_tokens: 20 });
     assert.equal(res.provider, "meta");
@@ -70,6 +72,7 @@ describe("judge providers", () => {
     });
     assert.equal(bodies.length, 2);
     assert.ok(bodies[0].response_format);
+    assert.ok(!("reasoning_effort" in bodies[0])); // baseten omits it unless set
     assert.ok(!bodies[1].response_format);
     assert.ok(bodies[1].messages[1].content.includes("Reply with JSON only."));
     assert.equal(res.json.chosen_key, "park");
@@ -169,5 +172,80 @@ describe("judge providers", () => {
       apiKey: "k", fetchImpl: fake,
     });
     assert.deepEqual(res.usage, { prompt_tokens: 100, completion_tokens: 5, cached_tokens: 40 });
+  });
+
+  it("sends explicit effort/max-tokens overrides, omits effort unless set", async () => {
+    const seen = [];
+    const fake = async (url, init) => {
+      seen.push(JSON.parse(init.body));
+      return completion('{"chosen_key":"s0","reason_ko":"r","reason_en":"r"}');
+    };
+    await complete({
+      provider: "meta", system: "s", user: "u", schema: DECISION_SCHEMA,
+      apiKey: "k", fetchImpl: fake, reasoningEffort: "minimal", maxTokens: 1500,
+    });
+    assert.equal(seen[0].reasoning_effort, "minimal");
+    assert.equal(seen[0].max_tokens, 1500);
+    await complete({
+      provider: "baseten", system: "s", user: "u", schema: DECISION_SCHEMA,
+      apiKey: "k", fetchImpl: fake,
+    });
+    assert.ok(!("reasoning_effort" in seen[1]));
+    assert.equal(seen[1].max_tokens, 2000);
+    await complete({
+      provider: "baseten", system: "s", user: "u", schema: DECISION_SCHEMA,
+      apiKey: "k", fetchImpl: fake, reasoningEffort: "low",
+    });
+    assert.equal(seen[2].reasoning_effort, "low");
+    await complete({
+      provider: "meta", system: "s", user: "u", schema: DECISION_SCHEMA,
+      apiKey: "k", fetchImpl: fake, reasoningEffort: null,
+    });
+    assert.ok(!("reasoning_effort" in seen[3]));
+  });
+
+  it("reports budget cutoffs as truncated with the spent usage", async () => {
+    const mk = (choice) => async () => okJson({
+      choices: [choice],
+      usage: {
+        prompt_tokens: 200, completion_tokens: 400,
+        completion_tokens_details: { reasoning_tokens: 398 },
+      },
+    });
+    const run = (choice) => complete({
+      provider: "meta", system: "s", user: "u", schema: DECISION_SCHEMA,
+      apiKey: "k", fetchImpl: mk(choice),
+    }).then(() => null, (e) => e);
+    // The live failure: reasoning ate the budget, content null.
+    const cut = await run({ message: { content: null }, finish_reason: "length" });
+    assert.ok(cut);
+    assert.equal(cut.code, "truncated");
+    assert.deepEqual(cut.usage, { prompt_tokens: 200, completion_tokens: 400, reasoning_tokens: 398 });
+    // Null content alone is truncated even without finish_reason "length".
+    const nullish = await run({ message: { content: null }, finish_reason: "stop" });
+    assert.ok(nullish);
+    assert.equal(nullish.code, "truncated");
+    // "length" with partial content is still truncated, not bad_json.
+    const partial = await run({ message: { content: '{"chosen_key"' }, finish_reason: "length" });
+    assert.ok(partial);
+    assert.equal(partial.code, "truncated");
+  });
+
+  it("keeps reasoning-token usage when the provider reports it", async () => {
+    const fake = async () => okJson({
+      choices: [{
+        message: { content: '{"chosen_key":"s0","reason_ko":"r","reason_en":"r"}' },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 300, completion_tokens: 347,
+        completion_tokens_details: { reasoning_tokens: 312 },
+      },
+    });
+    const res = await complete({
+      provider: "meta", system: "s", user: "u", schema: DECISION_SCHEMA,
+      apiKey: "k", fetchImpl: fake,
+    });
+    assert.deepEqual(res.usage, { prompt_tokens: 300, completion_tokens: 347, reasoning_tokens: 312 });
   });
 });

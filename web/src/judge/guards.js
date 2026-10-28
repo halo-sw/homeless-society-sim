@@ -8,16 +8,17 @@
 //     ("invented_number"),
 //   - a reason mentions price, safety, crime, school quality or health
 //     ("forbidden_topic").
-// Malformed replies ("bad_json") and provider failures
-// ("provider_error") also fall back to the rule. Reasons are truncated
-// to the schema limits before validation, so the stored text is what
-// was checked.
+// Malformed replies ("bad_json"), token-budget cutoffs ("truncated":
+// finish_reason "length" or null content, usage kept) and provider
+// failures ("provider_error") also fall back to the rule. Reasons are
+// truncated to the schema limits before validation, so the stored text
+// is what was checked.
 
 import { WEEKEND_HOME } from "../engine/decisions.js";
 import { REASON_EN_MAX, REASON_KO_MAX } from "./context.js";
 
 export const FALLBACK_CAUSES = new Set([
-  "bad_key", "invented_number", "forbidden_topic", "bad_json", "provider_error",
+  "bad_key", "invented_number", "forbidden_topic", "bad_json", "truncated", "provider_error",
 ]);
 
 export function truncateReason(text, max) {

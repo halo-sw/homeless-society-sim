@@ -13,6 +13,14 @@
 // MAX_CONCURRENT requests run at once (the judge CLI calls
 // sequentially; the pool caps any parallel use).
 //
+// Reasoning models need headroom: max_tokens defaults to 2000 and meta
+// sends reasoning_effort "low" unless overridden (baseten omits the
+// field unless set). A reply cut off by the token budget
+// (finish_reason "length", or a null content with the tokens spent on
+// reasoning) throws code "truncated" with the usage attached — never
+// "bad_json". usage carries reasoning_tokens when reported; it is part
+// of completion_tokens, not on top of it.
+//
 // Keys come from the environment (never from code or logs): MODEL_API_KEY
 // for meta, BASETEN_API_KEY for baseten. Nothing in this module prints,
 // logs or returns a key; error messages carry status + a short body
@@ -23,6 +31,11 @@ export const DEFAULT_TIMEOUT_MS = 60000;
 export const DEFAULT_RETRIES = 3;
 export const DEFAULT_RETRY_BASE_MS = 1000;
 export const ERROR_BODY_SNIPPET = 300;
+// muse-spark-1.3 is a reasoning model: the old 400-token cap starved it
+// (reasoning ate the whole budget, finish_reason "length", content null).
+export const DEFAULT_MAX_TOKENS = 2000;
+export const META_DEFAULT_EFFORT = "low";
+export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 export const PROVIDERS = {
   meta: {
@@ -128,7 +141,7 @@ function responseFormat(schemaName, schema) {
   };
 }
 
-function requestBody({ model, system, user, schemaName, schema, withSchema }) {
+function requestBody({ model, system, user, schemaName, schema, withSchema, maxTokens, reasoningEffort }) {
   const body = {
     model,
     messages: [
@@ -136,8 +149,11 @@ function requestBody({ model, system, user, schemaName, schema, withSchema }) {
       { role: "user", content: user },
     ],
     temperature: 0,
-    max_tokens: 400,
+    max_tokens: maxTokens,
   };
+  // reasoning_effort is Meta-only by default; other providers omit it
+  // unless the caller sets it explicitly.
+  if (reasoningEffort != null) body.reasoning_effort = reasoningEffort;
   if (withSchema) body.response_format = responseFormat(schemaName, schema);
   return body;
 }
@@ -150,6 +166,8 @@ function takeUsage(payload) {
   };
   const cached = u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens;
   if (Number.isFinite(cached) && cached > 0) out.cached_tokens = cached;
+  const reasoning = u.completion_tokens_details && u.completion_tokens_details.reasoning_tokens;
+  if (Number.isFinite(reasoning)) out.reasoning_tokens = reasoning;
   return out;
 }
 
@@ -183,6 +201,7 @@ export async function complete({
   provider, system, user, schema, schemaName = "decision",
   apiKey = null, fetchImpl = null, timeoutMs = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES, retryBaseMs = DEFAULT_RETRY_BASE_MS,
+  maxTokens = DEFAULT_MAX_TOKENS, reasoningEffort = undefined,
   pool = sharedPool,
 } = {}) {
   const cfg = providerConfig(provider);
@@ -192,6 +211,12 @@ export async function complete({
   }
   const fetch = fetchImpl || globalThis.fetch;
   if (typeof fetch !== "function") fail("no_fetch", "judge: no fetch implementation available");
+  const maxTok = maxTokens ?? DEFAULT_MAX_TOKENS;
+  // undefined = provider default (meta "low", others omit); null omits;
+  // any string is sent as-is (the API rejects unknown values).
+  const effort = reasoningEffort === undefined
+    ? (provider === "meta" ? META_DEFAULT_EFFORT : undefined)
+    : reasoningEffort;
   const url = `${cfg.baseUrl}/chat/completions`;
   const started = Date.now();
   return pool.run(async () => {
@@ -200,7 +225,7 @@ export async function complete({
     for (let attempt = 0; ; attempt++) {
       const body = requestBody({
         model: cfg.model, system, user, schemaName, schema,
-        withSchema: useSchema,
+        withSchema: useSchema, maxTokens: maxTok, reasoningEffort: effort,
       });
       // Without json_schema the model needs the JSON-only instruction.
       if (!useSchema) body.messages[1].content += "\n\nReply with JSON only.";
@@ -222,8 +247,18 @@ export async function complete({
         } catch {
           fail("bad_json", `judge: provider returned invalid JSON: ${snippet(text)}`);
         }
-        const content = payload.choices && payload.choices[0]
-          && payload.choices[0].message && payload.choices[0].message.content;
+        const choice = payload.choices && payload.choices[0];
+        const content = choice && choice.message && choice.message.content;
+        const finish = choice && choice.finish_reason;
+        if (finish === "length" || content == null) {
+          // The reasoning budget ate the reply: no JSON to parse, but the
+          // tokens were spent — carry the usage on the error so the runner
+          // can count them instead of dropping them like a transport error.
+          const err = new Error(`judge: provider reply truncated (finish_reason=${JSON.stringify(finish)})`);
+          err.code = "truncated";
+          err.usage = takeUsage(payload);
+          throw err;
+        }
         return {
           json: extractJson(content || ""),
           usage: takeUsage(payload),

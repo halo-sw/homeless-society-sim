@@ -35,6 +35,7 @@ export function costUsd(provider, usage) {
   if (!p) return null;
   const prompt = usage.prompt_tokens || 0;
   const cached = usage.cached_tokens || 0;
+  // completion_tokens already include reasoning_tokens — never add both.
   const completion = usage.completion_tokens || 0;
   return ((prompt - cached) * p.input + cached * p.cached + completion * p.output) / 1e6;
 }
@@ -42,8 +43,15 @@ export function costUsd(provider, usage) {
 export function emptyUsage() {
   return {
     calls: 0, errors: 0, fallbacks: 0,
-    prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0, latency_ms: 0,
+    prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0, reasoning_tokens: 0, latency_ms: 0,
   };
+}
+
+function addUsage(usage, u) {
+  usage.prompt_tokens += u.prompt_tokens || 0;
+  usage.completion_tokens += u.completion_tokens || 0;
+  usage.cached_tokens += u.cached_tokens || 0;
+  usage.reasoning_tokens += u.reasoning_tokens || 0;
 }
 
 function clone(value) {
@@ -112,13 +120,20 @@ export async function judgeSingle({ provider, prompt, shell, usage, fetchImpl, p
   } catch (err) {
     usage.errors++;
     usage.fallbacks++;
-    const cause = err && err.code === "bad_json" ? "bad_json" : "provider_error";
+    const code = err && err.code;
+    const cause = code === "bad_json" ? "bad_json" : code === "truncated" ? "truncated" : "provider_error";
+    if (cause === "truncated" && err.usage) {
+      // The budget cut the reply, but the tokens (mostly reasoning) were
+      // spent and reported — count them and keep them on the entry.
+      addUsage(usage, err.usage);
+      return fallback(cause, {
+        provider, model: providerConfig(provider).model, usage: err.usage,
+      });
+    }
     return fallback(cause);
   }
   usage.calls++;
-  usage.prompt_tokens += res.usage.prompt_tokens || 0;
-  usage.completion_tokens += res.usage.completion_tokens || 0;
-  usage.cached_tokens += res.usage.cached_tokens || 0;
+  addUsage(usage, res.usage);
   usage.latency_ms += res.latency_ms || 0;
   const check = checkOutput(shell, res.json);
   if (!check.ok) {

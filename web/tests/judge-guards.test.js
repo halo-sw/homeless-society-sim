@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { checkOutput, forbiddenTopic, inventedNumber, optionNumbers, ruleReason, truncateReason } from "../src/judge/guards.js";
+import { FALLBACK_CAUSES, checkOutput, forbiddenTopic, inventedNumber, optionNumbers, ruleReason, truncateReason } from "../src/judge/guards.js";
 
 const SHOP = {
   kind: "shop_choice",
@@ -110,5 +110,12 @@ describe("judge guards", () => {
     const nums = optionNumbers(SHOP.options);
     assert.ok(nums.has(3.2) && nums.has(251) && nums.has(402.5));
     assert.ok(nums.has(1) && nums.has(2)); // label digits 슈퍼1/슈퍼2
+  });
+
+  it("lists every fallback cause, including truncated cutoffs", () => {
+    assert.deepEqual(
+      [...FALLBACK_CAUSES].sort(),
+      ["bad_json", "bad_key", "forbidden_topic", "invented_number", "provider_error", "truncated"],
+    );
   });
 });
