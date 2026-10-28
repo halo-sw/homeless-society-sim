@@ -1,0 +1,7 @@
+numpy==2.5.4
+openpyxl==3.1.5
+osmium==4.3.2
+pyproj==3.8.0
+pyshp==3.1.6
+pytest==9.2.0
+shapely==2.2.0
