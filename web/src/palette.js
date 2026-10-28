@@ -37,6 +37,13 @@ export const APARTMENT_FAMILIES = [
 export const GINKGO = [0xf2b234, 0xe8832a, 0xdd9a1e, 0x7ba05b, 0x6a8f4e];
 export const TRUNK = 0x7a5c42;
 
+// Stage 5b: lane markings, kerbs, pines, PBR water.
+export const LANE_WHITE = 0xf4f2ec;
+export const LANE_YELLOW = 0xe0b93c;
+export const KERB = 0xb9b2a4;
+export const PINE = [0x2f4f3e, 0x3a5f47, 0x2a4436];
+export const WATER_PBR = 0x5f87a3;
+
 export function hashString(text) {
   // FNV-1a 32-bit, deterministic across runs.
   let h = 0x811c9dc5;

@@ -17,12 +17,14 @@
 
 import * as THREE from "three";
 import { lonLatToXY } from "./frame.js";
-import { CROSSWALK, FOOTWAY, GRASS, GROUND_PLATE, PARK, ROAD, ROAD_MAJOR, WATER, WOOD } from "./palette.js";
+import { CROSSWALK, FOOTWAY, GRASS, GROUND_PLATE, KERB, LANE_WHITE, LANE_YELLOW, PARK, ROAD, ROAD_MAJOR, WATER, WOOD, hashString, hashUnit } from "./palette.js";
 
 export const Y_WATER = 0.05;
 export const Y_PLATE = 0.06;
 export const Y_GREEN = 0.08;
 export const Y_ROAD = 0.12;
+export const Y_KERB = 0.14;
+export const Y_MARK = 0.16;
 export const Y_CROSSWALK = 0.18;
 
 const ROAD_WIDTHS = {
@@ -80,10 +82,22 @@ function hexRgb(hex) {
   return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
 }
 
-function pushTriAt(positions, normals, colors, a, b, c, y, rgb) {
+function pushTriAt(positions, normals, colors, a, b, c, y, rgb, uvs = null) {
   for (const [x, yy] of [a, b, c]) positions.push(x, y, -yy);
   for (let i = 0; i < 3; i++) normals.push(0, 1, 0);
   for (let i = 0; i < 3; i++) colors.push(rgb[0], rgb[1], rgb[2]);
+  if (uvs) for (const [x, yy] of [a, b, c]) uvs.push(x, yy); // planar metres
+}
+
+// Seeded per-triangle brightness for grass (deterministic, no RNG state).
+function grassJitter(tri) {
+  const cx = Math.round((tri[0][0] + tri[1][0] + tri[2][0]) / 3);
+  const cy = Math.round((tri[0][1] + tri[1][1] + tri[2][1]) / 3);
+  return 0.94 + hashUnit(hashString(`${cx},${cy}`), 3) * 0.12;
+}
+
+function jitterRgb(rgb, f) {
+  return [Math.min(1, rgb[0] * f), Math.min(1, rgb[1] * f), Math.min(1, rgb[2] * f)];
 }
 
 // Ribbon along a polyline: per-vertex averaged perpendicular (bevel joins).
@@ -223,6 +237,70 @@ export function crosswalkTriangles(crossing) {
   return tris;
 }
 
+// Centre-line colour by road class: arterials read yellow (Korean
+// convention), local streets white. Foot-class ways get no markings.
+export function markingColor(highway) {
+  if (highway === "motorway" || highway === "trunk" || highway === "primary" ||
+      highway === "secondary") return LANE_YELLOW;
+  return LANE_WHITE;
+}
+
+// Lane paint for one road polyline: centre dashes (3 m on / 6 m off) on
+// streets wide enough for two lanes, solid edge lines on wide roads, and
+// kerb strips just outside the ribbon. Returns {tris, kerbs} triangle
+// lists in local metres (caller lifts them to Y_MARK / Y_KERB).
+export function laneMarkingTriangles(pointsXY, width, highway) {
+  const tris = [];
+  const kerbs = [];
+  if (!isDrivableClass(highway) || pointsXY.length < 2) return { tris, kerbs };
+  const hw = width / 2;
+  const paintDash = (cx, cy, nx, ny, along) => {
+    const w = 0.15; // dash half-width (0.3 m paint)
+    const p1 = [cx - along[0] * 1.5 - nx * w, cy - along[1] * 1.5 - ny * w];
+    const p2 = [cx + along[0] * 1.5 - nx * w, cy + along[1] * 1.5 - ny * w];
+    const p3 = [cx + along[0] * 1.5 + nx * w, cy + along[1] * 1.5 + ny * w];
+    const p4 = [cx - along[0] * 1.5 + nx * w, cy - along[1] * 1.5 + ny * w];
+    tris.push([p1, p2, p3], [p1, p3, p4]);
+  };
+  const paintStrip = (list, ax, ay, bx, by, off, stripW) => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const o1 = off - stripW / 2;
+    const o2 = off + stripW / 2;
+    const p1 = [ax + nx * o1, ay + ny * o1];
+    const p2 = [bx + nx * o1, by + ny * o1];
+    const p3 = [bx + nx * o2, by + ny * o2];
+    const p4 = [ax + nx * o2, ay + ny * o2];
+    list.push([p1, p2, p3], [p1, p3, p4]);
+  };
+  for (let i = 0; i < pointsXY.length - 1; i++) {
+    const [ax, ay] = pointsXY[i];
+    const [bx, by] = pointsXY[i + 1];
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 2) continue;
+    const dx = (bx - ax) / len;
+    const dy = (by - ay) / len;
+    if (width >= 5.5) {
+      // Centre dashes along the segment.
+      for (let d = 4.5; d + 1.5 <= len; d += 9) {
+        paintDash(ax + dx * d, ay + dy * d, -dy, dx, [dx, dy]);
+      }
+    }
+    if (width >= 8) {
+      paintStrip(tris, ax, ay, bx, by, hw - 0.7, 0.15);
+      paintStrip(tris, ax, ay, bx, by, -(hw - 0.7), 0.15);
+    }
+    if (width >= 6) {
+      paintStrip(kerbs, ax, ay, bx, by, hw + 0.25, 0.5);
+      paintStrip(kerbs, ax, ay, bx, by, -(hw + 0.25), 0.5);
+    }
+  }
+  return { tris, kerbs };
+}
+
 // Monotone-chain convex hull over [x, y] points.
 export function convexHull(points) {
   const pts = [...points].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
@@ -258,7 +336,12 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
   const positions = [];
   const normals = [];
   const colors = [];
-  const stats = { roads: 0, roadTris: 0, crossings: 0, green: 0, water: 0, plates: 0 };
+  const uvs = [];
+  // Stage 5b overlays: lane paint (+kerbs) and a reflective water skin.
+  const markings = { positions: [], normals: [], colors: [], uvs: [] };
+  const water = { positions: [], normals: [], colors: [], uvs: [] };
+  const stats = { roads: 0, roadTris: 0, crossings: 0, green: 0, water: 0, plates: 0,
+                  markingTris: 0, kerbTris: 0 };
 
   // Complex plates first (lowest painted layer above water).
   const plateRgb = hexRgb(GROUND_PLATE);
@@ -292,12 +375,13 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
       return [x + (dx / len) * 3, y + (dy / len) * 3];
     });
     for (let i = 1; i < padded.length - 1; i++) {
-      pushTriAt(positions, normals, colors, padded[0], padded[i], padded[i + 1], Y_PLATE, plateRgb);
+      pushTriAt(positions, normals, colors, padded[0], padded[i], padded[i + 1], Y_PLATE, plateRgb, uvs);
       stats.plates++;
     }
   }
 
   // Green + water polygons.
+  const waterRgb = hexRgb(WATER);
   for (const feat of landuse || []) {
     const color = landuseColor(feat.kind);
     if (color === null) continue;
@@ -305,6 +389,7 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
     const polys = feat.geometry.type === "Polygon" ? [feat.geometry.coordinates] : feat.geometry.coordinates;
     const rgb = hexRgb(color);
     const y = landuseHeight(feat.kind);
+    const isWater = color === WATER;
     for (const poly of polys) {
       const polyXY = poly.map((ring) => ring.map(([lon, lat]) => lonLatToXY(lon, lat, origin)));
       if (polyXY[0].length < 4) continue;
@@ -312,9 +397,15 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
       const pts = polyXY.flat();
       for (const [a, b, c] of faces) {
         if (!pts[a] || !pts[b] || !pts[c]) continue;
-        pushTriAt(positions, normals, colors, pts[a], pts[b], pts[c], y, rgb);
-        if (color === WATER) stats.water++;
-        else stats.green++;
+        // Subtle seeded variation on grass (water/roads stay flat).
+        const triRgb = isWater ? rgb : jitterRgb(rgb, grassJitter([pts[a], pts[b], pts[c]]));
+        pushTriAt(positions, normals, colors, pts[a], pts[b], pts[c], y, triRgb, uvs);
+        if (isWater) {
+          // Duplicated into the reflective overlay skin (same triangles).
+          pushTriAt(water.positions, water.normals, water.colors,
+            pts[a], pts[b], pts[c], y + 0.02, waterRgb, water.uvs);
+          stats.water++;
+        } else stats.green++;
       }
     }
   }
@@ -331,8 +422,22 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
     if (road.area) continue; // plaza surfaces: not ribbons (kept for future use)
     const rgb = hexRgb(roadColor(road.highway));
     for (const [a, b, c] of ribbonTriangles(points, roadWidth(road.highway))) {
-      pushTriAt(positions, normals, colors, a, b, c, Y_ROAD, rgb);
+      pushTriAt(positions, normals, colors, a, b, c, Y_ROAD, rgb, uvs);
       stats.roadTris++;
+    }
+    // Lane paint + kerbs by road class (own overlay mesh).
+    const { tris, kerbs } = laneMarkingTriangles(points, roadWidth(road.highway), road.highway);
+    const markRgb = hexRgb(markingColor(road.highway));
+    for (const [a, b, c] of tris) {
+      pushTriAt(markings.positions, markings.normals, markings.colors,
+        a, b, c, Y_MARK, markRgb, markings.uvs);
+      stats.markingTris++;
+    }
+    const kerbRgb = hexRgb(KERB);
+    for (const [a, b, c] of kerbs) {
+      pushTriAt(markings.positions, markings.normals, markings.colors,
+        a, b, c, Y_KERB, kerbRgb, markings.uvs);
+      stats.kerbTris++;
     }
     stats.roads++;
   }
@@ -341,10 +446,17 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
   const walkRgb = hexRgb(CROSSWALK);
   for (const crossing of findCrossings(projected)) {
     for (const [a, b, c] of crosswalkTriangles(crossing)) {
-      pushTriAt(positions, normals, colors, a, b, c, Y_CROSSWALK, walkRgb);
+      pushTriAt(positions, normals, colors, a, b, c, Y_CROSSWALK, walkRgb, uvs);
     }
     stats.crossings++;
   }
 
-  return { positions, normals, colors, triangles: positions.length / 9, stats };
+  const finishOverlay = (o) => ({
+    positions: o.positions, normals: o.normals, colors: o.colors, uvs: o.uvs,
+    triangles: o.positions.length / 9,
+  });
+  return {
+    positions, normals, colors, uvs, triangles: positions.length / 9, stats,
+    markings: finishOverlay(markings), water: finishOverlay(water),
+  };
 }

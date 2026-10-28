@@ -7,16 +7,21 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, distanceForWidth, footprintsOf, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
-import { PAPER } from "./palette.js";
-import { solarPosition, sunDirection } from "./lighting.js";
 import { compare as compareRuns } from "./engine/simulate.js";
-import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, daylightFactor, decisionBadge, duskFactor, followCaption, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant } from "./sim.js";
+import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, followCaption, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 import { assignWalkers, sampleWalker } from "./walkers.js";
-import { WINDOW_H, WINDOW_W, litCounts, planWindows } from "./windows.js";
+// Stage 5b realistic rendering: the main.js seam is createRenderer /
+// renderFrame plus the rig/material builders (5a merges around these).
+import { litFractionFor } from "./render/facades.js";
+import { createRenderer } from "./render/renderer.js";
+import { createSkyRig } from "./render/rig.js";
+import { placeStreetlife } from "./render/streetlife.js";
+import { buildStreetMeshes } from "./render/streetmeshes.js";
+import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
 
 const AREAS = [
   { id: "pangyo", label: "판교" },
@@ -34,17 +39,44 @@ const RES_SWATCH = { apartment: "#d9a878", house: "#f3ead9", mixed: "#e3d3b8", n
 const HEIGHT_SWATCH = { osm_height: "#7ba05b", osm_levels: "#a9bf8e", register_height: "#b25a33",
   register_floors: "#d9a878", inferred: "#cfc8bb", api_height: "#4a7ba7", api_floors: "#9fc4d8" };
 // Fixed autumn-afternoon sun (KST); the solar math itself is unit-tested.
+// ?time=HH:MM overrides the tour sun for day/golden/blue/night captures.
 const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
+const SUN_MINUTE = 15 * 60;
+const BASE_GROUND = 0xa9a79b; // unmapped fringe under the ground layer
+const FOG_DAY = 0xcfd8de;
 
 const PARAMS = new URLSearchParams(location.search);
 const areaId = PARAMS.get("area") || DEFAULT_AREA;
+
+// Tour sun from ?time=HH:MM (validated) or the fixed afternoon default.
+function tourSun() {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(PARAMS.get("time") || "");
+  if (m) {
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (hh <= 23 && mm <= 59) {
+      const stamp = `2026-10-15T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+09:00`;
+      const date = new Date(stamp);
+      if (!Number.isNaN(date.getTime())) return { date, minute: hh * 60 + mm };
+    }
+  }
+  return { date: SUN_DATE, minute: SUN_MINUTE };
+}
 
 function toGeometry(data) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(data.positions, 3));
   geo.setAttribute("normal", new THREE.Float32BufferAttribute(data.normals, 3));
   geo.setAttribute("color", new THREE.Float32BufferAttribute(data.colors, 3));
+  if (data.uvs) geo.setAttribute("uv", new THREE.Float32BufferAttribute(data.uvs, 2));
   return geo;
+}
+
+// Per-vertex night lit fraction for facade meshes (filled from run
+// occupancy; 0 = dark). The emissive shader patch reads this.
+function addLitAttr(mesh) {
+  const count = mesh.geometry.attributes.position.count;
+  mesh.geometry.setAttribute("aLit", new THREE.BufferAttribute(new Float32Array(count), 1));
 }
 
 async function fetchArea(wantId) {
@@ -70,16 +102,13 @@ function buildWorld(area) {
   const cy = (box.minY + box.maxY) / 2;
   const span = Math.max(box.maxX - box.minX, box.maxY - box.minY);
 
-  // --- renderer / scene / camera ---
+  // --- renderer / scene / camera (5b seam: createRenderer/renderFrame) ---
   const canvas = document.getElementById("scene");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const renderCtl = createRenderer({ canvas, params: PARAMS });
+  const renderer = renderCtl.renderer;
+  const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(PAPER);
-  scene.fog = new THREE.Fog(PAPER, span * 1.6, span * 3.2);
+  scene.fog = new THREE.Fog(FOG_DAY, span * 1.6, span * 3.2);
   const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, innerWidth / innerHeight, 1, span * 8);
   const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
   const [hox, hoy, hoz] = tourOffset(homeDist);
@@ -89,31 +118,21 @@ function buildWorld(area) {
   controls.maxPolarAngle = Math.PI * 0.49;
   controls.update();
 
-  // --- lights: directional sun + hemisphere fill ---
-  const sunDir = sunDirection(origin.lat, origin.lon, SUN_DATE);
-  const sun = new THREE.DirectionalLight(0xfff2dd, 2.4);
-  sun.position.set(cx + sunDir[0] * span, sunDir[1] * span, -cy + sunDir[2] * span);
-  sun.target.position.set(cx, 0, -cy);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const sc = sun.shadow.camera;
-  sc.left = -span * 0.75;
-  sc.right = span * 0.75;
-  sc.top = span * 0.75;
-  sc.bottom = -span * 0.75;
-  sc.near = span * 0.1;
-  sc.far = span * 4;
-  sc.updateProjectionMatrix();
-  sun.shadow.bias = -0.0004;
-  sun.shadow.intensity = 0.32; // soft light shadows, not dark slabs
-  scene.add(sun, sun.target);
-  const hemi = new THREE.HemisphereLight(0xfff8ec, 0xcbbfa8, 1.1);
-  scene.add(hemi);
+  // --- sky rig: sun + hemi + Sky dome + PMREM environment ---
+  const rig = createSkyRig(scene, renderer, { span });
+  rig.setShadowSize(renderCtl.level.shadowMapSize);
+  renderCtl.onQuality = (level) => {
+    const px = level === "low" ? 1024 : 2048;
+    rig.setShadowSize(px);
+  };
+  // The 2b paper vignette overlay would sit over the realistic grade;
+  // the post chain owns the vignette now (5a owns the overlay itself).
+  document.getElementById("vignette").style.display = "none";
 
-  // --- ground: paper base + merged ground layer ---
+  // --- ground: base plane + merged layer + paint + water skin ---
   const base = new THREE.Mesh(
     new THREE.PlaneGeometry(span * 1.5, span * 1.5),
-    new THREE.MeshLambertMaterial({ color: PAPER })
+    new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 })
   );
   base.rotation.x = -Math.PI / 2;
   base.position.set(cx, -0.05, -cy);
@@ -121,55 +140,122 @@ function buildWorld(area) {
   scene.add(base);
   const buildingsById = new Map(area.buildings.map((b) => [b.id, b]));
   const groundData = buildGround(area.roads, area.landuse, area.complexes, buildingsById, origin);
-  const groundMesh = new THREE.Mesh(toGeometry(groundData),
-    new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const groundMesh = new THREE.Mesh(toGeometry(groundData), groundMaterial({ aniso: maxAniso }));
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
+  let markMesh = null;
+  if (groundData.markings.triangles > 0) {
+    markMesh = new THREE.Mesh(toGeometry(groundData.markings), markingMaterial());
+    markMesh.receiveShadow = true;
+    scene.add(markMesh);
+  }
+  let waterMesh = null;
+  if (groundData.water.triangles > 0) {
+    waterMesh = new THREE.Mesh(toGeometry(groundData.water), waterMaterial());
+    scene.add(waterMesh);
+  }
 
-  // --- buildings: two merged meshes (residential / context) ---
+  // --- buildings: one PBR wall mesh per facade class + podium + roofs ---
   const built = buildBuildings(area.buildings, area.complexes, origin);
-  const resMesh = new THREE.Mesh(toGeometry(built.residential),
-    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-  const nonMesh = new THREE.Mesh(toGeometry(built.nonResidential),
-    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true }));
-  resMesh.castShadow = true;
-  resMesh.receiveShadow = true;
-  nonMesh.castShadow = true;
-  nonMesh.receiveShadow = true;
-  scene.add(resMesh, nonMesh);
-
-  // --- decorative trees (instanced trunk + canopy) ---
-  const { trees, trunkColor } = placeTrees(area, origin);
   const dummy = new THREE.Object3D();
+  const wallMeshes = {};
+  const litMeshes = []; // {mesh, ranges} for night occupancy + tour fade
+  const fadeMeshes = [];
+  const trackRanges = (mesh, data) => {
+    mesh.userData.ranges = data.ranges;
+    fadeMeshes.push({ mesh, ranges: new Map(data.ranges.map((r) => [r.id, r])) });
+  };
+  for (const [cls, data] of Object.entries(built.detail.walls)) {
+    if (data.triangles === 0) continue;
+    const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso }));
+    addLitAttr(mesh);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    wallMeshes[cls] = mesh;
+    trackRanges(mesh, data);
+    litMeshes.push({ mesh, ranges: new Map(data.ranges.map((r) => [r.id, r])) });
+  }
+  let podiumMesh = null;
+  if (built.detail.podium.triangles > 0) {
+    podiumMesh = new THREE.Mesh(toGeometry(built.detail.podium),
+      facadeMaterial("podium", { aniso: maxAniso }));
+    addLitAttr(podiumMesh);
+    podiumMesh.castShadow = true;
+    podiumMesh.receiveShadow = true;
+    scene.add(podiumMesh);
+    trackRanges(podiumMesh, built.detail.podium);
+    litMeshes.push({ mesh: podiumMesh,
+      ranges: new Map(built.detail.podium.ranges.map((r) => [r.id, r])) });
+  }
+  const roofMesh = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso }));
+  roofMesh.castShadow = true;
+  roofMesh.receiveShadow = true;
+  scene.add(roofMesh);
+  trackRanges(roofMesh, built.detail.roofs);
+  // "주거만 강조" dims the non-residential walls + podium.
+  const dimMeshes = [wallMeshes.none, podiumMesh].filter(Boolean);
+
+  // --- decorative trees: one trunk mesh + one canopy mesh per species ---
+  const { trees, trunkColor } = placeTrees(area, origin);
+  const bySpecies = { zelkova: [], ginkgo: [], pine: [] };
+  for (const t of trees) (bySpecies[t.species] || bySpecies.zelkova).push(t);
   const trunkMesh = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(TREE_TRUNK_R_TOP, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_H, 5),
-    new THREE.MeshLambertMaterial({ color: trunkColor }), Math.max(trees.length, 1));
-  const canopyMesh = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(TREE_CANOPY_R, 1),
-    new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(trees.length, 1));
+    trunkMaterial(trunkColor), Math.max(trees.length, 1));
   trees.forEach((t, i) => {
     dummy.position.set(t.x, (TREE_TRUNK_H / 2) * t.scale, -t.y);
     dummy.scale.setScalar(t.scale);
     dummy.rotation.set(0, t.phase, 0);
     dummy.updateMatrix();
     trunkMesh.setMatrixAt(i, dummy.matrix);
-    dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
-    dummy.scale.set(t.scale, t.scale * 1.05, t.scale);
-    dummy.updateMatrix();
-    canopyMesh.setMatrixAt(i, dummy.matrix);
-    canopyMesh.setColorAt(i, new THREE.Color(t.color));
   });
   trunkMesh.count = trees.length;
-  canopyMesh.count = trees.length;
-  canopyMesh.castShadow = true;
-  if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
-  scene.add(trunkMesh, canopyMesh);
-  const resBaseColors = new Float32Array(built.residential.colors);
+  scene.add(trunkMesh);
+  const canopyMaterial = vegetationMaterial();
+  const canopyMeshes = [];
+  const canopyGeo = {
+    // Zelkova: broad vase crown; ginkgo: narrower upright crown.
+    zelkova: new THREE.IcosahedronGeometry(TREE_CANOPY_R, 1),
+    ginkgo: new THREE.IcosahedronGeometry(TREE_CANOPY_R * 0.8, 1),
+    pine: new THREE.ConeGeometry(TREE_CANOPY_R * 0.85, TREE_CANOPY_R * 2.4, 7),
+  };
+  for (const [species, list] of Object.entries(bySpecies)) {
+    const mesh = new THREE.InstancedMesh(canopyGeo[species], canopyMaterial, Math.max(list.length, 1));
+    list.forEach((t, i) => {
+      if (species === "pine") {
+        dummy.position.set(t.x, (TREE_TRUNK_H + TREE_CANOPY_R * 1.1) * t.scale, -t.y);
+        dummy.scale.setScalar(t.scale);
+      } else if (species === "ginkgo") {
+        dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
+        dummy.scale.set(t.scale, t.scale * 1.25, t.scale);
+      } else {
+        dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
+        dummy.scale.set(t.scale * 1.15, t.scale * 1.0, t.scale * 1.15);
+      }
+      dummy.rotation.set(0, t.phase, 0);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, new THREE.Color(t.color));
+    });
+    mesh.count = list.length;
+    mesh.castShadow = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    scene.add(mesh);
+    canopyMeshes.push(mesh);
+  }
+
+  // --- decorative street life: parked/moving cars + lamps (see legend) ---
+  const streetMeshes = buildStreetMeshes(
+    placeStreetlife(area.roads, origin, { seed: area.area || areaId }));
+  scene.add(streetMeshes.group);
+
+  renderCtl.attach(scene, camera);
   return {
-    origin, cx, cy, span, renderer, scene, camera, controls, sun, hemi,
-    base, groundMesh, resMesh, nonMesh, resBaseColors,
-    resRanges: built.residential.ranges, nonRanges: built.nonResidential.ranges,
-    trees, trunkMesh, canopyMesh, dummy,
+    origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
+    base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
+    dimMeshes, litMeshes, fadeMeshes,
+    trees, trunkMesh, canopyMeshes, streetMeshes, dummy,
   };
 }
 
@@ -183,7 +269,11 @@ function makeFadeable(mesh) {
   const count = mesh.geometry.attributes.position.count;
   mesh.geometry.setAttribute("afade", new THREE.BufferAttribute(new Float32Array(count).fill(1), 1));
   mesh.material.transparent = true;
-  mesh.material.onBeforeCompile = (shader) => {
+  // Chain-safe: facade materials already carry the night-emissive patch.
+  const prevCompile = mesh.material.onBeforeCompile;
+  const prevKey = mesh.material.customProgramCacheKey;
+  mesh.material.onBeforeCompile = (shader, renderer) => {
+    if (prevCompile) prevCompile(shader, renderer);
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float afade;\nvarying float vFade;")
       .replace("#include <fog_vertex>", "#include <fog_vertex>\nvFade = afade;");
@@ -191,7 +281,8 @@ function makeFadeable(mesh) {
       .replace("#include <common>", "#include <common>\nvarying float vFade;")
       .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.a *= vFade;");
   };
-  mesh.material.customProgramCacheKey = () => "occluder-fade";
+  mesh.material.customProgramCacheKey = () =>
+    `${prevKey ? prevKey() : "std"}:occluder-fade`;
   mesh.material.needsUpdate = true;
 }
 
@@ -209,20 +300,15 @@ function applyStopFade(fadeMeshes, ids) {
 
 async function bootTour() {
   const area = await fetchArea(areaId);
-  const { origin, renderer, scene, camera, controls, resMesh, nonMesh,
-    resRanges, nonRanges, trees, dummy } = buildWorld(area);
-  makeFadeable(resMesh);
-  makeFadeable(nonMesh);
-  const fadeMeshes = [
-    { mesh: resMesh, ranges: new Map(resRanges.map((r) => [r.id, r])) },
-    { mesh: nonMesh, ranges: new Map(nonRanges.map((r) => [r.id, r])) },
-  ];
+  const { origin, renderer, renderCtl, rig, scene, camera, controls,
+    dimMeshes, fadeMeshes, streetMeshes, trees, dummy } = buildWorld(area);
+  for (const { mesh } of fadeMeshes) makeFadeable(mesh);
 
   // --- preview walkers (instanced capsules, simulated) ---
   const walkers = assignWalkers(area.buildings, area.graph);
   const walkerMesh = new THREE.InstancedMesh(
     new THREE.CapsuleGeometry(0.32, 1.0, 3, 8),
-    new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(walkers.length, 1));
+    agentMaterial(), Math.max(walkers.length, 1));
   const coatColors = [0x5a6e8c, 0x8c5a5a, 0x5a8c6e, 0x777788, 0xb25a33, 0x3d5a5a];
   walkers.forEach((w, i) => walkerMesh.setColorAt(i, new THREE.Color(coatColors[i % coatColors.length])));
   walkerMesh.count = walkers.length;
@@ -288,8 +374,39 @@ async function bootTour() {
   document.getElementById("loading").remove();
   document.getElementById("fade").classList.add("clear");
 
+  // --- tour sun/sky (?time=HH:MM override; static through the tour) ---
+  const { date: tourDate, minute: tourMinute } = tourSun();
+  let tourBloom = 0;
+  function updateTourSky() {
+    const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
+      minute: tourMinute, target: { x: controls.target.x, z: controls.target.z },
+      shadowSpan: 240, envKey: "tour" });
+    tourBloom = p.bloom;
+    setGlobalNight(p.emissive);
+    streetMeshes.setLampGlow(p.emissive);
+  }
+  updateTourSky();
+
+  // --- architectural lens (?lens=arch): level sensor + shifted crop ---
+  const archLens = PARAMS.get("lens") === "arch";
+  function applyArchLens() {
+    const pose = archLensPose(); // crop fractions are pure angles
+    const db = renderer.getDrawingBufferSize(new THREE.Vector2());
+    camera.fov = ARCH_FOV_DEG;
+    camera.updateProjectionMatrix();
+    const fullH = db.y / pose.viewH;
+    camera.setViewOffset(db.x, fullH, 0, pose.yFrac * fullH, db.x, db.y);
+  }
+  function levelCamera() {
+    const dx = controls.target.x - camera.position.x;
+    const dz = controls.target.z - camera.position.z;
+    camera.lookAt(camera.position.x + dx, camera.position.y, camera.position.z + dz);
+  }
+  if (archLens) applyArchLens();
+
   // --- tour playback ---
-  const player = createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths, applyFade);
+  const player = createPlayer(plan, legPaths, camera, controls, origin,
+    stopAzimuths, applyFade, archLens);
   if (plan.stops.length > 0) applyFade(0);
   const playBtn = document.getElementById("play");
   // Debug flags for deterministic captures: ?shot=<stopIndex> jumps to
@@ -317,7 +434,7 @@ async function bootTour() {
     playBtn.textContent = player.playing ? "일시정지" : "재생";
   });
   document.getElementById("resOnly").addEventListener("change", (e) => {
-    nonMesh.material.opacity = e.target.checked ? 0.3 : 1.0;
+    for (const m of dimMeshes) m.material.opacity = e.target.checked ? 0.3 : 1.0;
   });
 
   // --- loop ---
@@ -328,20 +445,24 @@ async function bootTour() {
     const t = clock.elapsedTime;
     player.update(dt);
     updateWalkers(walkerMesh, walkers, area.graph.nodes, origin, t, dummy);
+    streetMeshes.updateMovers(t);
+    updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
-    renderer.render(scene, camera);
+    if (archLens) levelCamera();
+    renderCtl.renderFrame({ bloom: tourBloom }, dt);
     frames++;
     if (frames === 30) {
-      const info = renderer.info.render;
-      console.log(`[scene] area=${areaId} drawCalls=${info.calls} triangles=${info.triangles} ` +
-        `buildings=${area.buildings.length} trees=${trees.length} walkers=${walkers.length}`);
+      console.log(`[scene] area=${areaId} buildings=${area.buildings.length} ` +
+        `trees=${trees.length} walkers=${walkers.length} cars=${streetMeshes.parked}+${streetMeshes.moverCount} ` +
+        `lamps=${streetMeshes.lampCount} arch=${archLens}`);
     }
   });
 
   addEventListener("resize", () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    renderCtl.setSize(innerWidth, innerHeight);
+    if (archLens) applyArchLens();
   });
 }
 
@@ -360,7 +481,8 @@ function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
 
 // --- tour player: glide legs, 3 s dwell per stop, outro pull-back ---
 // onLeg(i) fires whenever the current leg view changes (fade updates).
-function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null) {
+// archLens composes level-sensor poses (the loop re-levels each frame).
+function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null, archLens = false) {
   const caption = document.getElementById("caption");
   const capName = document.getElementById("capName");
   const capMeta = document.getElementById("capMeta");
@@ -384,7 +506,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   // Camera pose along leg i at eased progress t: the frame widens during
   // the glide and settles on the stop, target centred. The per-stop
   // azimuth (tower occlusion) applies at the settled end; mid-glide the
-  // default azimuth keeps the move readable.
+  // default azimuth keeps the move readable. With the architectural lens
+  // the pose is a level-sensor two-point frame at the same widths.
   function poseFor(i, t) {
     const path = legPaths[i].length > 1 ? legPaths[i] : [stopPoint(i)];
     const fi = t * (path.length - 1);
@@ -393,6 +516,12 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     const f = fi - i0;
     const wp = [0, 1, 2].map((k) => path[i0][k] + (path[i1][k] - path[i0][k]) * f);
     const ahead = path[Math.min(path.length - 1, i1 + 2)];
+    if (archLens) {
+      const frameW = STOP_FRAME_M + (GLIDE_FRAME_M - STOP_FRAME_M) * (1 - t);
+      const ap = archLensPose(frameW, camera.aspect, stopAzimuths[i] || TOUR_AZIMUTH);
+      return { pos: new THREE.Vector3(wp[0] + ap.dirX * ap.horiz, wp[1] + ap.vert, wp[2] + ap.dirZ * ap.horiz),
+               look: new THREE.Vector3(wp[0], 2, wp[2]) };
+    }
     const dist = stopDist + (glideDist - stopDist) * (1 - t);
     const [dox, doy, doz] = tourOffset(dist, undefined, TOUR_AZIMUTH);
     const [sox, soy, soz] = tourOffset(dist, undefined, stopAzimuths[i] || TOUR_AZIMUTH);
@@ -699,8 +828,8 @@ async function bootSim() {
   const homes = scenario && Array.isArray(scenario.homes) && scenario.homes.length > 0
     ? scenario.homes
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
-  const { origin, cx, cy, span, renderer, scene, camera, controls, sun, hemi,
-    base, groundMesh, resMesh, nonMesh } = buildWorld(area);
+  const { origin, renderer, renderCtl, rig, scene, camera, controls,
+    dimMeshes, litMeshes, streetMeshes } = buildWorld(area);
 
   // --- run indexes ---
   const indexed = indexRun(run);
@@ -714,7 +843,7 @@ async function bootSim() {
   const dummy = new THREE.Object3D();
   const hhMesh = new THREE.InstancedMesh(
     new THREE.CapsuleGeometry(0.9, 2.4, 3, 10),
-    new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(household.length, 1));
+    agentMaterial(), Math.max(household.length, 1));
   const hhColors = [0xc0392b, 0x2471a3, 0x1e8449, 0x8e44ad];
   household.forEach((a, i) => hhMesh.setColorAt(i, new THREE.Color(hhColors[i % hhColors.length])));
   hhMesh.count = household.length;
@@ -757,7 +886,7 @@ async function bootSim() {
   }
   const bgMesh = new THREE.InstancedMesh(
     new THREE.CapsuleGeometry(0.3, 0.9, 3, 8),
-    new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(background.length, 1));
+    agentMaterial(), Math.max(background.length, 1));
   const coatColors = [0x5a6e8c, 0x8c5a5a, 0x5a8c6e, 0x777788, 0x3d5a5a];
   background.forEach((a, i) => bgMesh.setColorAt(i, new THREE.Color(coatColors[i % coatColors.length])));
   bgMesh.count = background.length;
@@ -822,84 +951,42 @@ async function bootSim() {
     paintJudgeLog();
   }
 
-  // --- sun/sky follow sim time; night dims the miniature, windows glow ---
-  // Ground and buildings keep their hue at lower value overnight
-  // (material tints multiply the vertex colors); lit windows are warm
-  // quads on façades of buildings with residents at home (run counts).
-  const daySky = new THREE.Color(PAPER);
-  const nightSky = new THREE.Color(0x23264d); // deep blue-violet
-  const duskSky = new THREE.Color(0x8a5a50); // warm dusk
-  const dayTint = new THREE.Color(0xffffff);
-  const nightTint = new THREE.Color(0x6b7194);
-  const dayBase = new THREE.Color(PAPER);
-  const nightBase = new THREE.Color(0x2b2f4a);
-  const daySun = new THREE.Color(0xfff2dd);
-  const nightSun = new THREE.Color(0x93a0cc); // moonlight
-  const duskSun = new THREE.Color(0xffb377);
-  const skyTmp = new THREE.Color();
-  const tintTmp = new THREE.Color();
-  const winPlan = planWindows(area.buildings, origin);
-  const winFlat = [];
-  const winStart = new Map();
-  for (const b of winPlan) {
-    winStart.set(b.id, winFlat.length);
-    for (const s of b.slots) winFlat.push(s);
-  }
-  const winMesh = new THREE.InstancedMesh(
-    new THREE.PlaneGeometry(WINDOW_W, WINDOW_H),
-    new THREE.MeshBasicMaterial({ color: 0xffc37a, side: THREE.DoubleSide }),
-    Math.max(winFlat.length, 1));
-  winMesh.count = 0;
-  winMesh.frustumCulled = false;
-  scene.add(winMesh);
+  // --- sun/sky follow sim time; facades glow from run occupancy ---
+  // The rig owns sun/hemi/Sky/environment; per-building lit fractions
+  // (at-home residents / agents housed there — the same stage-3 data the
+  // old glow quads used) fill the aLit vertex attributes at 30-minute
+  // granularity. Daytime emissive is off (uNight = 0).
+  let simBloom = 0;
   let lastLightKey = "";
-  let lastWinKey = "";
+  let lastLitKey = "";
 
   function updateLighting() {
     const m = Math.floor(minute);
+    const instant = simInstant(run.meta.start_date, day, m);
+    const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
+      minute: m, target: { x: controls.target.x, z: controls.target.z },
+      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}` });
+    simBloom = p.bloom;
     const key = `${day}:${m}`;
     if (key === lastLightKey) return;
     lastLightKey = key;
-    const instant = simInstant(run.meta.start_date, day, m);
-    const { altitude } = solarPosition(origin.lat, origin.lon, instant);
-    const f = daylightFactor(altitude);
-    const nightF = 1 - f;
-    const duskF = duskFactor(m);
-    const dir = sunDirection(origin.lat, origin.lon, instant);
-    sun.position.set(cx + dir[0] * span, Math.max(dir[1], 0.06) * span, -cy + dir[2] * span);
-    sun.intensity = 0.05 + 2.35 * f;
-    sun.color.lerpColors(nightSun, daySun, f).lerp(duskSun, duskF * 0.7);
-    hemi.intensity = 0.45 + 0.65 * f;
-    skyTmp.lerpColors(nightSky, daySky, f).lerp(duskSky, duskF * 0.55);
-    scene.background.copy(skyTmp);
-    scene.fog.color.copy(skyTmp);
-    tintTmp.lerpColors(nightTint, dayTint, f);
-    groundMesh.material.color.copy(tintTmp);
-    resMesh.material.color.copy(tintTmp);
-    nonMesh.material.color.copy(tintTmp);
-    base.material.color.lerpColors(nightBase, dayBase, f);
-    updateWindows(m, nightF);
+    setGlobalNight(p.emissive);
+    streetMeshes.setLampGlow(p.emissive);
+    updateLit(m);
   }
 
-  function updateWindows(m, nightF) {
-    const key = `${day}:${Math.floor(m / 30)}:${nightF.toFixed(2)}`;
-    if (key === lastWinKey) return;
-    lastWinKey = key;
-    const lit = litCounts(winPlan, homeOccupancy(run, indexed, day, m), nightF);
-    let n = 0;
-    for (const [bid, count] of lit) {
-      const start = winStart.get(bid);
-      for (let k = 0; k < count; k++) {
-        const s = winFlat[start + k];
-        dummy.position.set(s.x, s.y, s.z);
-        dummy.rotation.set(0, s.rotY, 0);
-        dummy.scale.setScalar(1);
-        dummy.updateMatrix();
-        winMesh.setMatrixAt(n++, dummy.matrix);
+  function updateLit(m) {
+    const key = `${day}:${Math.floor(m / 30)}`;
+    if (key === lastLitKey) return;
+    lastLitKey = key;
+    const occ = homeOccupancy(run, indexed, day, m);
+    for (const { mesh, ranges } of litMeshes) {
+      const attr = mesh.geometry.attributes.aLit;
+      for (const [bid, r] of ranges) {
+        attr.array.fill(litFractionFor(occ.get(bid)), r.start, r.start + r.count);
       }
+      attr.needsUpdate = true;
     }
-    winMesh.count = n;
-    winMesh.instanceMatrix.needsUpdate = true;
   }
 
   // --- follow camera (2b miniature framing) ---
@@ -1164,7 +1251,7 @@ async function bootSim() {
     paintClock();
   });
   document.getElementById("resOnly").addEventListener("change", (e) => {
-    nonMesh.material.opacity = e.target.checked ? 0.3 : 1.0;
+    for (const m of dimMeshes) m.material.opacity = e.target.checked ? 0.3 : 1.0;
   });
   paintFollowBtns();
 
@@ -1229,11 +1316,13 @@ async function bootSim() {
   paintFollow(0.016, true);
 
   // --- loop ---
+  updateLighting();
   const clock = new THREE.Clock();
   let frames = 0;
   let lastMinuteShown = -1;
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.5);
+    const t = clock.elapsedTime;
     if (playing) {
       minute += (dt / SIM_TICK_S) * speed;
       if (minute >= 1440) {
@@ -1254,22 +1343,22 @@ async function bootSim() {
       }
     }
     placeAgents(day, minute);
+    streetMeshes.updateMovers(t);
     updateLighting();
     paintFollow(dt, false);
     controls.update();
-    renderer.render(scene, camera);
+    renderCtl.renderFrame({ bloom: simBloom }, dt);
     frames++;
     if (frames === 30) {
-      const info = renderer.info.render;
-      console.log(`[sim] area=${run.meta.area} drawCalls=${info.calls} triangles=${info.triangles} ` +
-        `agents=${run.meta.agents} day=${day + 1} t=${Math.floor(minute)}`);
+      console.log(`[sim] area=${run.meta.area} agents=${run.meta.agents} ` +
+        `day=${day + 1} t=${Math.floor(minute)}`);
     }
   });
 
   addEventListener("resize", () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    renderCtl.setSize(innerWidth, innerHeight);
   });
 }
 

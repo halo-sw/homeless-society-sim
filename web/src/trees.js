@@ -11,7 +11,7 @@
 
 import { lonLatToXY } from "./frame.js";
 import { roadWidth } from "./ground.js";
-import { GINKGO, TRUNK, hashString, hashUnit } from "./palette.js";
+import { GINKGO, PINE, TRUNK, hashString, hashUnit } from "./palette.js";
 import { mulberry32 } from "./walkers.js";
 
 export const TREE_SPACING_M = 14;
@@ -38,6 +38,23 @@ export function treeColor(rngValue) {
     if (rngValue < acc) return GINKGO[i];
   }
   return GINKGO[0];
+}
+
+// Stage 5b species (zelkova / ginkgo / pine), derived from the tree's
+// existing rotation phase — no new RNG draws, so placement, scale and
+// colour sequences are unchanged. Pines keep a dark evergreen colour.
+export const TREE_SPECIES = ["zelkova", "ginkgo", "pine"];
+
+export function speciesFor(phase) {
+  const k = ((phase % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
+  if (k < 0.45) return "zelkova";
+  if (k < 0.8) return "ginkgo";
+  return "pine";
+}
+
+export function pineColor(phase) {
+  const k = Math.abs(Math.sin(phase * 12.9898)) % 1;
+  return PINE[Math.floor(k * PINE.length) % PINE.length];
 }
 
 function pointInRing(x, y, ring) {
@@ -221,11 +238,15 @@ export function placeTrees(area, origin, opts = {}) {
     if (trees.length >= maxTrees) break;
     if (index.inside(x, y)) continue;
     if (nearRoad(x, y)) continue;
+    // Draw order matches the pre-5b sequence exactly (scale, colour,
+    // phase); pines only override the drawn autumn colour.
+    const scale = TREE_SCALE_MIN + rng() * (TREE_SCALE_MAX - TREE_SCALE_MIN);
+    const autumn = treeColor(rng());
+    const phase = rng() * Math.PI * 2;
+    const species = speciesFor(phase);
     trees.push({
-      x, y,
-      scale: TREE_SCALE_MIN + rng() * (TREE_SCALE_MAX - TREE_SCALE_MIN),
-      color: treeColor(rng()),
-      phase: rng() * Math.PI * 2,
+      x, y, scale, phase, species,
+      color: species === "pine" ? pineColor(phase) : autumn,
     });
   }
   return { trees, trunkColor: TRUNK };
