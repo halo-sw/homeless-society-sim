@@ -1,12 +1,14 @@
-# Homeless Society Sim — live in a home for 30 days before you choose it
+# Homeless Society Sim — live in a home for 30 days before you sign
 
 [한국어 README](README.ko.md)
 
 **Meta Global AI Developer Hackathon · Indie Developer track · "Build for Your World"**
 
-We are a couple in Seoul trying to decide where to live: an apartment in **Jamsil**, or one in **Pangyo**, near work. Listings tell you the price and the floor area. They don't tell you what a month of your life would look like there: how long the walk to the station takes, how packed the 08:00 train is, how tired you are when you get home, or how much money is left after rent.
+**Democratising housing knowledge for Gen-Z.** For a first-job worker, a couple about to marry, or a young family in Korea, a home is the biggest and riskiest decision they will make, and most of them make it with a listing, a price and advice from friends. A listing doesn't tell you what a month of your life would look like there: how long the walk to the station takes, how packed the 08:00 train is, how tired you are when you get home, how close the schools are, or how much money is left after housing costs. It also doesn't tell you whether a mortgage is really worth it compared with renting, whether a 전세 (lump-sum deposit lease) shows warning signs, or which public rentals and government support you could get at your salary.
 
-So we built a simulator that answers that question with real data. **The same household lives in home A and in home B for 30 days**, side by side, in a 3D model of the real neighbourhood. Then the app compares time, money and daily convenience, and explains every number.
+Deposit fraud (전세사기) has hit young renters hardest: about 75 % of the victims are in their 20s and 30s (press report of March 2025 citing Ministry of Land data). We think people should be able to **live in a home as a simulation, run the numbers, check the warning signs and see the support they can get, before they sign**.
+
+So we built a simulator that answers these questions with real public data. **One or two simulated people (or a family) live in home A and in home B for 30 days**, side by side, in a 3D model of the real neighbourhood. The app then compares time, money, daily convenience, education access and official safety statistics, weighted only by **the customer's own priorities**, and explains every number. It shows, explains and lets you decide. It never decides for you.
 
 > Status: work in progress (hackathon period 2026-10-27 → 11-04). The first commit is 2026-10-28; nothing here predates the hackathon. See [Known issues](#known-issues).
 
@@ -20,11 +22,12 @@ So we built a simulator that answers that question with real data. **The same ho
 - **Living costs that fit your salary.** Enter your salary and your cash. The app estimates take-home pay (or you type in the real figure), then computes monthly housing cost for 매매 (buying), 전세 (lump-sum deposit lease), 월세 (monthly rent) and public rental housing. Prices come from **real transactions** of the same complex and floor area over the last 12 months, with cancelled deals excluded. Spending in the 30-day simulation is tied to what the household actually does: a fare for each subway trip, a basket for each grocery run.
 - **Recommends similar public rental housing.** It uses the public-housing API (LH · MyHome) and filters by housing-cost ratio, floor area and commute. Each candidate links to its official notice. One click adds it as home C and simulates it too.
 - **A consult agent.** A Muse agent with 19 tools sets up the scenario through conversation, runs the simulation, compares the results, explains decisions and criteria, and moves the 3D view to the moment it is talking about.
+- **Next (stages 9a–9b, in the queue):** personas (1인 사회초년생, 예비·신혼부부, a working couple with a school-age child); the customer's own priority weights (education · our life · safety · money · convenience); official crime statistics and OSM-based education access; a multi-year **"is it worth it?" simulation** of buying vs 전세 vs 월세 vs public rental (loan schedule, rate stress, customer-chosen price scenarios, never forecasts); a **전세 safety check** (전세-to-sale ratio from real transactions, register signals, an official checklist, and mock deposit-loss scenarios); and **support programmes at a glance** (public rental, policy loans, youth and newly-wed benefits, shown as condition-by-condition comparisons with official links, never as eligibility verdicts).
 - **In progress (stage 8):** a journey view that follows the person across the region when they ride the subway, using real line geometry and a lightweight corridor map. It also adds a congestion-based **fatigue index** built from Seoul Metro's real congestion data. The index is a stated model, not a medical judgement.
 
 ### What it deliberately does not do
 
-No price forecasts, no buy-or-don't-buy advice, no judgement on loan eligibility (LTV/DSR) or public-housing eligibility, no safety scores, no single composite "best home" score, and no straight-line commute claims. When a value is assumed, the app says so.
+No price forecasts (price paths appear only as customer-chosen scenarios labelled as assumptions), no buy-or-don't-buy or sign-or-don't-sign advice, no eligibility verdicts for loans or support programmes, no "safe / unsafe" verdict on a specific property or landlord, no composite safety or school-quality score, no demographic profiling, no default "best home" ranking, and no straight-line commute claims. Safety and education figures are official statistics with source, period and geographic level. When a value is assumed, the app says so. Nothing here is legal or financial advice.
 
 ## Example output (demo couple; inputs are placeholders)
 
@@ -94,4 +97,4 @@ OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장
 
 ## Roadmap (until 11-04)
 
-Stage 8 (journey view and fatigue) → one polished demo flow → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
+Stage 8 (journey view and fatigue) → 9a (personas, priorities, safety and education) → 9b (worth-it finance, 전세 safety check, support programmes) → one polished demo flow → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
