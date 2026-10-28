@@ -9,7 +9,8 @@
 //
 // Massing rules:
 // - apartments with >= 6 floors ("slab"): stacked one-quad-per-floor walls
-//   alternating wall/band shades (floor banding), flat roof, rooftop box.
+//   alternating wall/band shades (subtle floor banding), short-end faces in
+//   a slightly darker side tone, flat roof, rooftop box.
 // - houses with <= 3 floors and a roughly rectangular footprint: pitched
 //   roof — gable when the footprint aspect >= 1.25, else hip.
 // - everything else: flat roof, muted colors.
@@ -143,7 +144,7 @@ function faceNormal(a, b, c) {
   return [n[0] / len, n[1] / len, n[2] / len];
 }
 
-function buildWalls(bucket, ring, y0, y1, rgb) {
+function buildWalls(bucket, ring, y0, y1, frontRgb, sideRgb = frontRgb) {
   let cx = 0;
   let cy = 0;
   for (const [x, y] of ring) {
@@ -152,6 +153,11 @@ function buildWalls(bucket, ring, y0, y1, rgb) {
   }
   cx /= ring.length;
   cy /= ring.length;
+  // Short-end side faces (edges across the dominant axis) take the
+  // slightly darker side tone; long faces take the front tone.
+  const theta = dominantAngle(ring);
+  const ux = Math.cos(theta);
+  const uy = Math.sin(theta);
   for (let i = 0; i < ring.length - 1; i++) {
     const [x1, y1m] = ring[i];
     const [x2, y2m] = ring[i + 1];
@@ -159,6 +165,7 @@ function buildWalls(bucket, ring, y0, y1, rgb) {
     const ey = y2m - y1m;
     const len = Math.hypot(ex, ey);
     if (len < 1e-6) continue;
+    const parallel = Math.abs((ex * ux + ey * uy) / len) > 0.7;
     // Outward normal: perpendicular of the edge, pointing away from centroid.
     let nx = ey / len;
     let ny = -ex / len;
@@ -169,14 +176,15 @@ function buildWalls(bucket, ring, y0, y1, rgb) {
       ny = -ny;
     }
     pushQuad(bucket, [x1, y0, y1m], [x2, y0, y2m], [x2, y1, y2m], [x1, y1, y1m],
-             [nx, 0, -ny], rgb);
+             [nx, 0, -ny], parallel ? frontRgb : sideRgb);
   }
 }
 
-function buildBandedWalls(bucket, ring, y0, height, floors, wallRgb, bandRgb) {
+function buildBandedWalls(bucket, ring, y0, height, floors, wallRgb, bandRgb, sideRgb) {
   const fh = height / floors;
   for (let f = 0; f < floors; f++) {
-    buildWalls(bucket, ring, y0 + f * fh, y0 + (f + 1) * fh, f % 2 === 0 ? wallRgb : bandRgb);
+    buildWalls(bucket, ring, y0 + f * fh, y0 + (f + 1) * fh,
+               f % 2 === 0 ? wallRgb : bandRgb, sideRgb);
   }
 }
 
@@ -355,6 +363,7 @@ export function buildBuildings(buildings, complexes, origin) {
     const colors = residentialColors(b, complexOf.get(b.id) || null);
     const wallRgb = hexRgb(colors.wall);
     const bandRgb = hexRgb(colors.band);
+    const sideRgb = hexRgb(colors.side);
     const roofRgb = hexRgb(colors.roof);
     const height = Math.max(2.5, b.height_m || 6);
     const floors = floorsOf(b);
@@ -363,11 +372,11 @@ export function buildBuildings(buildings, complexes, origin) {
       const ring = polyXY[0];
       if (ring.length < 4) continue;
       if (slab) {
-        buildBandedWalls(bucket, ring, 0, height, floors, wallRgb, bandRgb);
+        buildBandedWalls(bucket, ring, 0, height, floors, wallRgb, bandRgb, sideRgb);
         buildFlatRoof(bucket, [polyXY], height, roofRgb);
         buildRooftopBox(bucket, ring, height, bandRgb);
       } else {
-        buildWalls(bucket, ring, 0, height, wallRgb);
+        buildWalls(bucket, ring, 0, height, wallRgb, sideRgb);
         const kind = roofKind(b, ring);
         if (kind === "gable") buildGableRoof(bucket, ring, height, roofRgb);
         else if (kind === "hip") buildHipRoof(bucket, ring, height, roofRgb);

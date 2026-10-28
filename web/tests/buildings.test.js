@@ -75,6 +75,19 @@ describe("buildings", () => {
     assert.ok(bands.size >= 2, `expected wall+band shades, got ${bands.size}`);
   });
 
+  it("shades slab short ends darker (three face tones)", () => {
+    // Long 2:1 slab so the dominant-axis split is unambiguous.
+    const slab = building("w2", { geometry: rectPoly(127.0, 37.5, 0.0004, 0.0002) });
+    const out = buildBuildings([slab], [], ORIGIN);
+    const { positions, colors } = out.residential;
+    const tones = new Set();
+    for (let i = 0; i < positions.length; i += 9) {
+      const h = positions[i + 1];
+      if (h > 0.1 && h < 44.9) tones.add(colors[i].toFixed(3));
+    }
+    assert.ok(tones.size >= 3, `expected wall+band+side tones, got ${tones.size}`);
+  });
+
   it("builds pitched roofs for rectangular houses", () => {
     const house = building("h1", { residential: "house", levels: 2, height_m: 6,
       geometry: rectPoly(127.001, 37.501, 0.00015, 0.00008) });

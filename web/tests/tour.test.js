@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { WALK_MPS, dijkstra, minutesFor, rankComplexes, selectTourStops, shortestPath } from "../src/tour.js";
+import { DWELL_S, INTRO_GLIDE_S, WALK_MPS, dijkstra, legGlideDuration, minutesFor, rankComplexes, seekState, selectTourStops, shortestPath, tourSchedule } from "../src/tour.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -78,6 +78,35 @@ describe("tour (synthetic)", () => {
       assert.ok(Math.abs(s.legMinutes - minutesFor(s.legLengthM)) < 1e-9);
     }
     assert.ok(names.includes("푸르지오"));
+  });
+
+  it("clamps glide durations and fixes the intro glide", () => {
+    assert.equal(legGlideDuration({ legLengthM: 0 }, 0), INTRO_GLIDE_S);
+    assert.equal(legGlideDuration({ legLengthM: 600 }, 1), 10);
+    assert.equal(legGlideDuration({ legLengthM: 60 }, 1), 4);
+    assert.equal(legGlideDuration({ legLengthM: 6000 }, 1), 12);
+  });
+
+  it("maps the tour clock to glide/dwell/outro states", () => {
+    const plan = selectTourStops(tinyArea());
+    const sched = tourSchedule(plan);
+    assert.equal(sched.segments.length, plan.stops.length * 2);
+    assert.equal(sched.total, sched.segments.reduce((a, s) => a + s.dur, 0));
+    assert.deepEqual(seekState(sched, 0), { leg: 0, legT: 0, dwellLeft: 0, phase: "glide" });
+    assert.deepEqual(seekState(sched, -5), { leg: 0, legT: 0, dwellLeft: 0, phase: "glide" });
+    const intoGlide = seekState(sched, INTRO_GLIDE_S / 2);
+    assert.equal(intoGlide.phase, "glide");
+    assert.ok(Math.abs(intoGlide.legT - 0.5) < 1e-9);
+    const dwell0 = seekState(sched, INTRO_GLIDE_S);
+    assert.deepEqual(dwell0, { leg: 0, legT: 1, dwellLeft: DWELL_S, phase: "dwell" });
+    const midDwell = seekState(sched, INTRO_GLIDE_S + 1);
+    assert.deepEqual(midDwell, { leg: 0, legT: 1, dwellLeft: DWELL_S - 1, phase: "dwell" });
+    const last = plan.stops.length - 1;
+    const endDwell = seekState(sched, sched.total - 0.01);
+    assert.deepEqual([endDwell.leg, endDwell.phase], [last, "dwell"]);
+    const outro = seekState(sched, sched.total);
+    assert.deepEqual([outro.leg, outro.phase], [plan.stops.length, "outro"]);
+    assert.deepEqual(seekState(sched, sched.total + 99).phase, "outro");
   });
 });
 

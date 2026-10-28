@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { placeTrees } from "../src/trees.js";
+import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_SCALE_MAX, TREE_SCALE_MIN, placeTrees } from "../src/trees.js";
 
 const ORIGIN = { lon: 127.0, lat: 37.5 };
 
@@ -43,6 +43,25 @@ describe("trees", () => {
   it("respects the tree cap", () => {
     const { trees } = placeTrees(tinyArea(), ORIGIN, { seed: 7, maxTrees: 3 });
     assert.ok(trees.length <= 3);
+  });
+
+  it("keeps real scale: 6-10 m tall, crown radius 2-3.5 m, trunk visible", () => {
+    // Worst cases over the seeded ±20 % scale band (canopy is squashed
+    // 1.05 vertically in main.js).
+    for (const s of [TREE_SCALE_MIN, TREE_SCALE_MAX]) {
+      const height = TREE_CANOPY_Y * s + TREE_CANOPY_R * s * 1.05;
+      assert.ok(height >= 6 && height <= 10, `height ${height} at scale ${s}`);
+      const crown = TREE_CANOPY_R * s;
+      assert.ok(crown >= 2 && crown <= 3.5, `crown ${crown} at scale ${s}`);
+      const trunkVisible = TREE_CANOPY_Y * s - TREE_CANOPY_R * s * 1.05;
+      assert.ok(trunkVisible > 1.0, `trunk visible ${trunkVisible} at scale ${s}`);
+    }
+    for (const seed of [7, 8, 9]) {
+      for (const t of placeTrees(tinyArea(), ORIGIN, { seed }).trees) {
+        assert.ok(t.scale >= TREE_SCALE_MIN && t.scale <= TREE_SCALE_MAX,
+          `scale ${t.scale}`);
+      }
+    }
   });
 
   it("plants inside named complexes", () => {

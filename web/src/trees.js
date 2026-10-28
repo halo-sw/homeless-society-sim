@@ -17,6 +17,16 @@ import { mulberry32 } from "./walkers.js";
 export const TREE_SPACING_M = 14;
 export const TREE_ROAD_CLEAR_M = 1.2;
 export const MAX_TREES = 2200;
+// Real-scale street trees: 6-10 m tall overall, crown radius 2-3.5 m,
+// trunk visible below the canopy. main.js builds the instanced meshes
+// from these; per-tree scale is ±20 %, seeded.
+export const TREE_TRUNK_H = 3.0;
+export const TREE_TRUNK_R_TOP = 0.18;
+export const TREE_TRUNK_R_BOTTOM = 0.28;
+export const TREE_CANOPY_R = 2.6;
+export const TREE_CANOPY_Y = 4.8;
+export const TREE_SCALE_MIN = 0.8;
+export const TREE_SCALE_MAX = 1.2;
 
 // Ginkgo-heavy autumn mix: yellow/orange mostly, some green.
 const COLOR_WEIGHTS = [0.34, 0.3, 0.16, 0.12, 0.08];
@@ -213,7 +223,7 @@ export function placeTrees(area, origin, opts = {}) {
     if (nearRoad(x, y)) continue;
     trees.push({
       x, y,
-      scale: 0.8 + rng() * 0.7,
+      scale: TREE_SCALE_MIN + rng() * (TREE_SCALE_MAX - TREE_SCALE_MIN),
       color: treeColor(rng()),
       phase: rng() * Math.PI * 2,
     });

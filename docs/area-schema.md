@@ -117,6 +117,11 @@ name_source (register | osm_landuse | null), building_ids (sorted),
 centroid ([lon, lat]), households_hint (always null — no 세대수 signal),
 max_floors (max member levels, null when unknown)}`. Register stems can
 be village-scale (e.g. `백현마을`) where the register names no 단지.
+After `register-fill` (stage 2b), complexes with fetched parcel recaps
+additionally carry `households` (Σ recap `hhldCnt` 세대수),
+`main_bld_cnt` (Σ recap `mainBldCnt`), `households_source:
+"register_recap"` and `households_pnus` (contributing parcels; partial
+when a complex spans parcels outside the fill).
 
 ## Split files
 

@@ -36,4 +36,16 @@ describe("palette", () => {
     const b = apartmentColors("solo-w1", null);
     assert.deepEqual(a, b);
   });
+
+  it("derives subtle band and darker side tones from the wall", () => {
+    const lum = (hex) => 0.299 * ((hex >> 16) & 255) + 0.587 * ((hex >> 8) & 255) + 0.114 * (hex & 255);
+    for (const cx of ["cx1", "cx2", "cx3"]) {
+      const c = residentialColors({ id: "a", residential: "apartment" }, cx);
+      assert.ok(lum(c.side) < lum(c.band) && lum(c.band) < lum(c.wall),
+        `side < band < wall for ${cx}`);
+      assert.ok(lum(c.band) / lum(c.wall) > 0.94, "banding stays subtle");
+    }
+    const non = residentialColors({ id: "n", residential: "none" }, null);
+    assert.ok(typeof non.side === "number");
+  });
 });

@@ -14,6 +14,41 @@ import { haversineM } from "./frame.js";
 export const WALK_MPS = 1.3;
 export const MIN_STOPS = 4;
 export const MAX_STOPS = 6;
+export const DWELL_S = 3.0;
+export const INTRO_GLIDE_S = 2.5;
+
+// Cinematic glide duration for one leg (not walking pace).
+export function legGlideDuration(stop, index) {
+  if (index === 0) return INTRO_GLIDE_S;
+  const len = stop.legLengthM || 50;
+  return Math.min(12, Math.max(4, len / 60));
+}
+
+// Playback schedule: glide + dwell per stop, in tour-clock seconds.
+export function tourSchedule(plan) {
+  const segments = [];
+  plan.stops.forEach((stop, i) => {
+    segments.push({ type: "glide", leg: i, dur: legGlideDuration(stop, i) });
+    segments.push({ type: "dwell", leg: i, dur: DWELL_S });
+  });
+  return { segments, total: segments.reduce((a, s) => a + s.dur, 0) };
+}
+
+// Player state at tour-clock time s: {leg, legT, dwellLeft, phase}.
+// phase is "glide" | "dwell" | "outro" (past the last dwell).
+export function seekState(schedule, s) {
+  let t = Math.max(0, s);
+  for (const seg of schedule.segments) {
+    if (t < seg.dur) {
+      if (seg.type === "glide") {
+        return { leg: seg.leg, legT: t / seg.dur, dwellLeft: 0, phase: "glide" };
+      }
+      return { leg: seg.leg, legT: 1, dwellLeft: seg.dur - t, phase: "dwell" };
+    }
+    t -= seg.dur;
+  }
+  return { leg: schedule.segments.length / 2, legT: 1, dwellLeft: 0, phase: "outro" };
+}
 
 // Daily-life POI categories (data category values) -> [label, kinds].
 export const DAILY_CATEGORIES = [

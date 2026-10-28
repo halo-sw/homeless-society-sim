@@ -6,28 +6,32 @@
 // yellow/orange with some green. All colors are 0xRRGGBB ints.
 
 export const PAPER = 0xfbf7ee;
-export const GROUND_PLATE = 0xf3ecdc;
-export const ROAD = 0xd9d4c9;
-export const ROAD_MAJOR = 0xcfc9bc;
-export const FOOTWAY = 0xe8e3d6;
+export const GROUND_PLATE = 0xeadfc4;
+export const ROAD = 0xdcd6cc;
+export const ROAD_MAJOR = 0xd0c8b8;
+export const FOOTWAY = 0xe9e3d5;
 export const CROSSWALK = 0xffffff;
-export const WATER = 0x9fc4d8;
-export const PARK = 0xa9bf8e;
+export const WATER = 0x93bcd6;
+export const PARK = 0xafc493;
 export const GRASS = 0xbccb9c;
 export const WOOD = 0x8fae7c;
 
 export const HOUSE_WALL = 0xf3ead9;
 export const HOUSE_ROOF = 0x8c4a32;
-export const NON_RESIDENTIAL = 0xcfc8bb;
+export const NON_RESIDENTIAL = 0xd8d2c4;
 export const NON_RESIDENTIAL_ROOF = 0xbfb8a8;
-export const MIXED_WALL = 0xe3d3b8;
+export const MIXED_WALL = 0xe6d6bc;
 
-// Apartment families: [wall, band, roof] per family. Per-complex variation
+// Apartment families: [wall, roof] per family. Per-complex variation
 // picks a family by hash(complex id) and jitters lightness deterministically.
+// Floor banding (band) and the short-end side faces (side) derive from the
+// wall so the three face tones always stay in the same family.
+export const BAND_FACTOR = 0.965; // subtle banding, not stripes
+export const SIDE_FACTOR = 0.93; // slightly darker side faces
 export const APARTMENT_FAMILIES = [
-  { wall: 0xf5e6c4, band: 0xe8d3a8, roof: 0xc9a06a }, // warm cream
-  { wall: 0xe8c39a, band: 0xd9a878, roof: 0xa86a42 }, // terracotta
-  { wall: 0xd99a78, band: 0xc47f5c, roof: 0x8c4a32 }, // brick
+  { wall: 0xf6ecd8, roof: 0xcfc0a4 }, // cream
+  { wall: 0xfaf3e6, roof: 0xd6c9b2 }, // warm white
+  { wall: 0xe9c9a2, roof: 0xc7a67e }, // pale terracotta
 ];
 
 export const GINKGO = [0xf2b234, 0xe8832a, 0xdd9a1e, 0x7ba05b, 0x6a8f4e];
@@ -64,9 +68,11 @@ export function apartmentColors(buildingId, complexId) {
   const seed = hashString(complexId || `solo:${buildingId}`);
   const family = APARTMENT_FAMILIES[seed % APARTMENT_FAMILIES.length];
   const jitter = 0.96 + hashUnit(seed, 7) * 0.08; // ±4 % lightness
+  const wall = shade(family.wall, jitter);
   return {
-    wall: shade(family.wall, jitter),
-    band: shade(family.band, jitter),
+    wall,
+    band: shade(wall, BAND_FACTOR),
+    side: shade(wall, SIDE_FACTOR),
     roof: shade(family.roof, jitter),
   };
 }
@@ -75,12 +81,14 @@ export function apartmentColors(buildingId, complexId) {
 export function residentialColors(building, complexId) {
   const res = building.residential || "none";
   if (res === "apartment") {
-    const c = apartmentColors(building.id, complexId);
-    return { wall: c.wall, band: c.band, roof: c.roof };
+    return apartmentColors(building.id, complexId);
   }
-  if (res === "house") return { wall: HOUSE_WALL, band: HOUSE_WALL, roof: HOUSE_ROOF };
-  if (res === "mixed") return { wall: MIXED_WALL, band: MIXED_WALL, roof: HOUSE_ROOF };
-  return { wall: NON_RESIDENTIAL, band: NON_RESIDENTIAL, roof: NON_RESIDENTIAL_ROOF };
+  if (res === "house") return { wall: HOUSE_WALL, band: shade(HOUSE_WALL, BAND_FACTOR),
+    side: shade(HOUSE_WALL, SIDE_FACTOR), roof: HOUSE_ROOF };
+  if (res === "mixed") return { wall: MIXED_WALL, band: shade(MIXED_WALL, BAND_FACTOR),
+    side: shade(MIXED_WALL, SIDE_FACTOR), roof: HOUSE_ROOF };
+  return { wall: NON_RESIDENTIAL, band: shade(NON_RESIDENTIAL, BAND_FACTOR),
+    side: shade(NON_RESIDENTIAL, SIDE_FACTOR), roof: NON_RESIDENTIAL_ROOF };
 }
 
 export function css(hex) {

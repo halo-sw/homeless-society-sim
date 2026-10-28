@@ -7,11 +7,12 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
+import { GLIDE_FRAME_M, STOP_FRAME_M, TOUR_FOV_DEG, distanceForWidth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
-import { PAPER, css } from "./palette.js";
+import { PAPER } from "./palette.js";
 import { sunDirection } from "./lighting.js";
-import { pathWaypoints, selectTourStops } from "./tour.js";
-import { placeTrees } from "./trees.js";
+import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
+import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 import { assignWalkers, sampleWalker } from "./walkers.js";
 
 const AREAS = [
@@ -71,10 +72,10 @@ async function boot() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(PAPER);
   scene.fog = new THREE.Fog(PAPER, span * 1.6, span * 3.2);
-  const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 1, span * 8);
-  const homeDist = span * 0.75;
-  const homeHeight = span * 0.62; // ~40° pitch
-  camera.position.set(cx + homeDist * 0.55, homeHeight, -cy + homeDist * 0.75);
+  const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, innerWidth / innerHeight, 1, span * 8);
+  const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
+  const [hox, hoy, hoz] = tourOffset(homeDist);
+  camera.position.set(cx + hox, hoy, -cy + hoz);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(cx, 0, -cy);
   controls.maxPolarAngle = Math.PI * 0.49;
@@ -82,7 +83,7 @@ async function boot() {
 
   // --- lights: directional sun + hemisphere fill ---
   const sunDir = sunDirection(origin.lat, origin.lon, SUN_DATE);
-  const sun = new THREE.DirectionalLight(0xfff2dd, 2.6);
+  const sun = new THREE.DirectionalLight(0xfff2dd, 2.4);
   sun.position.set(cx + sunDir[0] * span, sunDir[1] * span, -cy + sunDir[2] * span);
   sun.target.position.set(cx, 0, -cy);
   sun.castShadow = true;
@@ -96,8 +97,9 @@ async function boot() {
   sc.far = span * 4;
   sc.updateProjectionMatrix();
   sun.shadow.bias = -0.0004;
+  sun.shadow.intensity = 0.32; // soft light shadows, not dark slabs
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0xfff8ec, 0xcbbfa8, 0.85));
+  scene.add(new THREE.HemisphereLight(0xfff8ec, 0xcbbfa8, 1.1));
 
   // --- ground: paper base + merged ground layer ---
   const base = new THREE.Mesh(
@@ -131,18 +133,18 @@ async function boot() {
   const { trees, trunkColor } = placeTrees(area, origin);
   const dummy = new THREE.Object3D();
   const trunkMesh = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.22, 0.32, 2.6, 5),
+    new THREE.CylinderGeometry(TREE_TRUNK_R_TOP, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_H, 5),
     new THREE.MeshLambertMaterial({ color: trunkColor }), Math.max(trees.length, 1));
   const canopyMesh = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(2.3, 1),
+    new THREE.IcosahedronGeometry(TREE_CANOPY_R, 1),
     new THREE.MeshLambertMaterial({ color: 0xffffff }), Math.max(trees.length, 1));
   trees.forEach((t, i) => {
-    dummy.position.set(t.x, 1.3 * t.scale, -t.y);
+    dummy.position.set(t.x, (TREE_TRUNK_H / 2) * t.scale, -t.y);
     dummy.scale.setScalar(t.scale);
     dummy.rotation.set(0, t.phase, 0);
     dummy.updateMatrix();
     trunkMesh.setMatrixAt(i, dummy.matrix);
-    dummy.position.set(t.x, (2.6 + 1.4) * t.scale, -t.y);
+    dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
     dummy.scale.set(t.scale, t.scale * 1.05, t.scale);
     dummy.updateMatrix();
     canopyMesh.setMatrixAt(i, dummy.matrix);
@@ -186,6 +188,21 @@ async function boot() {
   // --- tour playback ---
   const player = createPlayer(plan, legPaths, camera, controls, origin);
   const playBtn = document.getElementById("play");
+  // Debug flags for deterministic captures: ?shot=<stopIndex> jumps to
+  // that stop and pauses; ?t=<seconds> jumps the tour clock.
+  const params = new URLSearchParams(location.search);
+  const shot = params.get("shot");
+  const tParam = params.get("t");
+  if (shot !== null && plan.stops.length > 0) {
+    const k = Number.parseInt(shot, 10);
+    if (Number.isInteger(k) && k >= 0 && k < plan.stops.length) {
+      player.seekStop(k);
+      playBtn.textContent = "재생";
+    }
+  } else if (tParam !== null && plan.stops.length > 0) {
+    const s = Number.parseFloat(tParam);
+    if (Number.isFinite(s) && s >= 0) player.seekTime(s);
+  }
   playBtn.addEventListener("click", () => {
     player.toggle();
     playBtn.textContent = player.playing ? "일시정지" : "재생";
@@ -243,15 +260,31 @@ function createPlayer(plan, legPaths, camera, controls, origin) {
   dots.innerHTML = stops.map(() => "<span></span>").join("");
   const dotEls = [...dots.children];
 
-  const PITCH_DIST = 120;
-  const PITCH_H = 100; // ~40°
+  const schedule = tourSchedule(plan);
+  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const glideDist = distanceForWidth(GLIDE_FRAME_M, TOUR_FOV_DEG, camera.aspect);
   const state = { playing: stops.length > 0, leg: 0, legT: 0, dwell: 0, outro: 0, done: false };
   controls.enabled = !state.playing;
 
-  function camPose(waypoint, lookAhead) {
-    const pos = new THREE.Vector3(waypoint[0] + PITCH_DIST * 0.45, waypoint[1] + PITCH_H,
-      waypoint[2] + PITCH_DIST * 0.75);
-    return { pos, look: new THREE.Vector3(lookAhead[0], 2, lookAhead[2]) };
+  function stopPoint(i) {
+    if (legPaths[i].length > 1) return legPaths[i][legPaths[i].length - 1];
+    return lonLatToWorld(stops[i].lon, stops[i].lat, origin, 2);
+  }
+
+  // Camera pose along leg i at eased progress t: the frame widens during
+  // the glide and settles on the stop, target centred.
+  function poseFor(i, t) {
+    const path = legPaths[i].length > 1 ? legPaths[i] : [stopPoint(i)];
+    const fi = t * (path.length - 1);
+    const i0 = Math.floor(fi);
+    const i1 = Math.min(path.length - 1, i0 + 1);
+    const f = fi - i0;
+    const wp = [0, 1, 2].map((k) => path[i0][k] + (path[i1][k] - path[i0][k]) * f);
+    const ahead = path[Math.min(path.length - 1, i1 + 2)];
+    const dist = stopDist + (glideDist - stopDist) * (1 - t);
+    const [ox, oy, oz] = tourOffset(dist);
+    return { pos: new THREE.Vector3(wp[0] + ox, wp[1] + oy, wp[2] + oz),
+             look: new THREE.Vector3(ahead[0], 2, ahead[2]) };
   }
 
   function showStop(i) {
@@ -259,16 +292,21 @@ function createPlayer(plan, legPaths, camera, controls, origin) {
     caption.hidden = false;
     capName.textContent = s.name;
     capMeta.textContent = `${s.label} · ${s.category} · ${Math.abs(s.lat).toFixed(4)}° N ${Math.abs(s.lon).toFixed(4)}° E`;
-    capWalk.textContent = i === 0 ? "투어 시작점" : `이전 정류장에서 도보 ${s.legMinutes.toFixed(1)}분 (${Math.round(s.legLengthM)} m)`;
+    capWalk.textContent = i === 0 ? "출발" : `이전 정류장에서 도보 ${s.legMinutes.toFixed(1)}분 (${Math.round(s.legLengthM)} m)`;
     dotEls.forEach((d, j) => d.classList.toggle("on", j === i));
   }
 
   function legDuration(i) {
-    const len = stops[i].legLengthM || 50;
-    return Math.min(12, Math.max(4, len / 60)); // cinematic glide, not walking pace
+    return legGlideDuration(stops[i], i); // cinematic glide, not walking pace
   }
 
   const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2);
+
+  function snap(i, t) {
+    const { pos, look } = poseFor(i, t);
+    camera.position.copy(pos);
+    controls.target.copy(look);
+  }
 
   function update(dt) {
     if (!state.playing || state.done || stops.length === 0) return;
@@ -300,24 +338,51 @@ function createPlayer(plan, legPaths, camera, controls, origin) {
       } else return;
     }
     const i = state.leg;
-    const dur = i === 0 ? 2.5 : legDuration(i);
+    const dur = legDuration(i);
     state.legT += dt / dur;
-    const path = legPaths[i].length > 1 ? legPaths[i]
-      : [lonLatToWorld(stops[i].lon, stops[i].lat, origin, 2)];
     const t = ease(Math.min(1, state.legT));
-    const fi = t * (path.length - 1);
-    const i0 = Math.floor(fi);
-    const i1 = Math.min(path.length - 1, i0 + 1);
-    const f = fi - i0;
-    const wp = [0, 1, 2].map((k) => path[i0][k] + (path[i1][k] - path[i0][k]) * f);
-    const ahead = path[Math.min(path.length - 1, i1 + 2)];
-    const { pos, look } = camPose(wp, ahead);
+    const { pos, look } = poseFor(i, t);
     camera.position.lerp(pos, 1 - Math.pow(0.001, dt));
     controls.target.lerp(look, 1 - Math.pow(0.001, dt));
     if (state.legT >= 1) {
       showStop(i);
-      state.dwell = 3.0;
+      state.dwell = DWELL_S;
     }
+  }
+
+  function seekStop(k) {
+    const i = Math.max(0, Math.min(stops.length - 1, k));
+    state.leg = i;
+    state.legT = 1;
+    state.dwell = DWELL_S;
+    state.outro = 0;
+    state.done = false;
+    state.playing = false;
+    showStop(i);
+    snap(i, 1);
+    controls.enabled = true;
+  }
+
+  function seekTime(s) {
+    const st = seekState(schedule, s);
+    if (st.phase === "outro") {
+      state.leg = stops.length;
+      state.legT = 1;
+      state.dwell = 0;
+      state.outro = 0.001;
+      state.done = false;
+      caption.hidden = true;
+      return;
+    }
+    state.leg = st.leg;
+    state.legT = st.legT;
+    state.dwell = st.dwellLeft;
+    state.outro = 0;
+    state.done = false;
+    if (st.phase === "dwell") showStop(st.leg);
+    else if (st.leg === 0) caption.hidden = true;
+    else showStop(st.leg - 1);
+    snap(st.leg, ease(Math.min(1, st.legT)));
   }
 
   return {
@@ -340,6 +405,9 @@ function createPlayer(plan, legPaths, camera, controls, origin) {
       if (!state.playing) caption.hidden = false;
     },
     update,
+    seekStop,
+    seekTime,
+    schedule,
   };
 }
 
