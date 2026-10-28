@@ -17,6 +17,7 @@ from pipeline import register_api
 from pipeline.register_api import (
     RateLimiter,
     RegisterApiError,
+    apply_cached_titles,
     apply_item,
     assign_parcel,
     attach_complex_recaps,
@@ -33,6 +34,7 @@ from pipeline.register_api import (
     pick_title,
     recap_parcels,
     recap_summary,
+    reapply_cached_recaps,
     split_pnu,
     title_height,
     title_summary,
@@ -237,6 +239,10 @@ def test_fill_applies_cache_and_rewrites_area(tmp_path: Path,
     stored = json.loads((area_dir / "buildings.json").read_text(
         encoding="utf-8"))
     assert stored["buildings"][0]["height_source"] == "api_height"
+    # Stage 3: the fill refreshes the source mix in meta (no stale shares).
+    assert stored["meta"]["height_sources"] == {"api_height": 1}
+    assert stored["meta"]["inferred_share"] == 0.0
+    assert stored["meta"]["residential_inferred_share"] == 0.0
     # area.json + report.json were refreshed from the filled buildings.
     area = json.loads((area_dir / "area.json").read_text(encoding="utf-8"))
     assert area["buildings"][0]["height_source"] == "api_height"
@@ -600,3 +606,104 @@ def test_real_sample_main_filter_read_only() -> None:
     names = [i["dongNm"] for i in mains]
     assert "상가동" in names
     assert not [n for n in names if "경비실" in n or "주차장" in n]
+
+
+def _cached_building(bid: str, pnu: str | None,
+                     source: str = "inferred") -> dict:
+    return {
+        "id": bid, "height_m": 9.0, "height_source": source, "levels": 3,
+        "building": "apartments", "name": None, "residential": "apartment",
+        "register": ({"pnu": pnu, "use": None, "sub_name": None}
+                     if pnu else None),
+        "geometry": _square(0.0002, LON0, LAT0),
+    }
+
+
+def test_apply_cached_titles_offline_no_key(tmp_path: Path,
+                                            monkeypatch) -> None:
+    # Stage 3: the build re-applies cached titles with no network and no
+    # key. Non-inferred and PNU-less buildings are untouched.
+    monkeypatch.delenv("DATA_GO_KR_KEY", raising=False)
+    pnu = "4113510700105420001"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / f"{pnu}.json").write_bytes(_body("single.json"))
+    buildings = [
+        _cached_building("b1", pnu),
+        _cached_building("b2", pnu),
+        _cached_building("b3", pnu, "register_height"),
+        _cached_building("b4", None),
+    ]
+    counts = apply_cached_titles(buildings, cache_dir=cache_dir)
+    assert counts == {"cache_pnus": 1, "cache_filled": 2,
+                      "cache_ambiguous": 0, "cache_no_data": 0,
+                      "cache_failed": 0}
+    by_id = {b["id"]: b for b in buildings}
+    assert by_id["b1"]["height_source"] == "api_height"
+    assert by_id["b2"]["height_source"] == "api_height"
+    assert by_id["b1"]["register"]["api"]["dongNm"] == "203동"
+    assert by_id["b3"]["height_source"] == "register_height"
+    assert "api" not in (by_id["b3"]["register"] or {})
+    assert by_id["b4"]["height_source"] == "inferred"
+
+
+def test_apply_cached_titles_missing_cache_is_noop(tmp_path: Path) -> None:
+    buildings = [_cached_building("b1", "4113510700105420001")]
+    before = json.dumps(buildings, sort_keys=True)
+    counts = apply_cached_titles(buildings,
+                                 cache_dir=tmp_path / "no-such-dir")
+    assert counts["cache_filled"] == 0
+    assert json.dumps(buildings, sort_keys=True) == before
+
+
+def test_apply_cached_titles_twice_is_byte_identical(
+        tmp_path: Path) -> None:
+    import copy
+
+    pnu = "4113510700105420001"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / f"{pnu}.json").write_bytes(_body("multi.json"))
+    first = [_cached_building("b1", pnu), _cached_building("b2", pnu)]
+    second = copy.deepcopy(first)
+    apply_cached_titles(first, cache_dir=cache_dir)
+    apply_cached_titles(second, cache_dir=cache_dir)
+    dump = lambda bs: json.dumps(bs, indent=2, sort_keys=True,
+                                 ensure_ascii=False) + "\n"
+    assert dump(first) == dump(second)
+
+
+def test_reapply_cached_recaps_offline(tmp_path: Path) -> None:
+    # Stage 3: the build re-attaches cached recap households with no
+    # network and no key; a second pass is byte-identical.
+    area_dir = tmp_path / "pangyo"
+    area_dir.mkdir()
+    pnu = "4113510700105420001"
+    (area_dir / "buildings.json").write_text(json.dumps({
+        "buildings": [_cached_building("b1", pnu),
+                      _cached_building("b2", pnu)],
+        "meta": {},
+    }), encoding="utf-8")
+    (area_dir / "area.json").write_text(json.dumps({
+        "area": "pangyo",
+        "complexes": [{"id": "cx000001", "name": "백현마을",
+                       "name_source": "register",
+                       "building_ids": ["b1", "b2"],
+                       "centroid": [127.0, 37.5], "households_hint": None,
+                       "max_floors": 15}],
+    }), encoding="utf-8")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / f"{pnu}.recap.json").write_bytes(_body("recap.json"))
+    counts = reapply_cached_recaps(area_dir, cache_dir=cache_dir)
+    assert counts == {"recap_cached": 1, "recap_failed": 0,
+                      "recap_complexes": 1}
+    first = (area_dir / "area.json").read_bytes()
+    complex = json.loads(first)["complexes"][0]
+    assert complex["households"] == 1520
+    assert complex["main_bld_cnt"] == 8
+    assert complex["households_source"] == "register_recap"
+    assert complex["households_pnus"] == [pnu]
+    counts2 = reapply_cached_recaps(area_dir, cache_dir=cache_dir)
+    assert counts2["recap_complexes"] == 1
+    assert (area_dir / "area.json").read_bytes() == first

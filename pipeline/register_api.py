@@ -55,6 +55,12 @@ Rules (documented):
   ``register.api`` (incl. per-building ``households`` from title
   ``hhldCnt`` when present); ``register.use`` keeps the shapefile value.
 * ``--dry-run`` prints the planned request count without any network.
+* Reproducibility (stage 3): ``python -m pipeline build`` re-applies the
+  cached responses offline (no network, no key) — titles in
+  :mod:`pipeline.building_join`, recaps in :mod:`pipeline.area_build` —
+  so a rebuild after ``register-fill`` keeps ``api_height`` etc.
+  Re-application is a deterministic function of (buildings, cache);
+  consecutive rebuilds stay byte-identical.
 """
 
 from __future__ import annotations
@@ -577,6 +583,89 @@ def attach_complex_recaps(area_dir: str | Path,
     return patched
 
 
+def apply_cached_titles(buildings: list[dict],
+                        cache_dir: str | Path | None = None) -> dict:
+    """Re-apply cached title responses to inferred buildings (offline).
+
+    No network, no API key: for every eligible PNU group (inferred height
+    + PNU, sorted) that has a cached ``<pnu>.json`` body, parse it and run
+    the same :func:`assign_parcel` + :func:`apply_item` path as
+    :func:`fill_area`. PNUs without a cache file — or with an unparsable
+    one — are skipped (buildings stay inferred). Mutates ``buildings`` in
+    place and returns per-outcome counts. Deterministic: same inputs give
+    the same buildings, byte for byte.
+    """
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    counts = {"cache_pnus": 0, "cache_filled": 0, "cache_ambiguous": 0,
+              "cache_no_data": 0, "cache_failed": 0}
+    if not cache_dir.exists():
+        return counts
+    for pnu, members in eligible_buildings(buildings).items():
+        body = load_cached(cache_dir, pnu)
+        if body is None:
+            continue
+        counts["cache_pnus"] += 1
+        try:
+            items = parse_title_response(body)
+        except (RegisterApiError, ValueError):
+            counts["cache_failed"] += 1
+            continue
+        assigned = assign_parcel(members, items)
+        for building in members:
+            picked = assigned.get(building["id"])
+            if picked is None:
+                if len(items) > 1:
+                    counts["cache_ambiguous"] += 1
+                else:
+                    counts["cache_no_data"] += 1
+                continue
+            if apply_item(building, picked):
+                counts["cache_filled"] += 1
+            else:
+                counts["cache_no_data"] += 1
+    return counts
+
+
+def reapply_cached_recaps(area_dir: str | Path,
+                           cache_dir: str | Path | None = None) -> dict:
+    """Re-apply cached recap responses onto complexes (offline).
+
+    Reads every cached ``<pnu>.recap.json`` body (sorted), parses the
+    household summaries, and sums them onto complexes via the same
+    aggregation as :func:`fill_area`. Returns counts plus the patched
+    complex count. No-op when the cache dir (or ``area.json`` inputs)
+    are missing. Deterministic for the same inputs.
+    """
+    area_dir = Path(area_dir)
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    counts = {"recap_cached": 0, "recap_failed": 0, "recap_complexes": 0}
+    if not cache_dir.exists():
+        return counts
+    buildings_path = area_dir / "buildings.json"
+    area_path = area_dir / "area.json"
+    if not buildings_path.exists() or not area_path.exists():
+        return counts
+    recaps: dict[str, dict] = {}
+    for path in sorted(cache_dir.glob("*.recap.json")):
+        try:
+            item = parse_recap_response(path.read_bytes())
+        except (RegisterApiError, ValueError, OSError):
+            counts["recap_failed"] += 1
+            continue
+        if item is None:
+            continue
+        summary = recap_summary(item)
+        if summary:
+            recaps[path.name[: -len(".recap.json")]] = summary
+    if not recaps:
+        return counts
+    counts["recap_cached"] = len(recaps)
+    buildings = json.loads(
+        buildings_path.read_text(encoding="utf-8")).get("buildings", [])
+    counts["recap_complexes"] = _attach_recaps(area_dir, buildings, recaps)
+    return counts
+
+
 def fill_area(area_dir: str | Path, cache_dir: str | Path | None = None,
               api_key: str | None = None, overwrite: bool = False,
               limit: int | None = None, dry_run: bool = False,
@@ -659,6 +748,17 @@ def fill_area(area_dir: str | Path, cache_dir: str | Path | None = None,
     if real_mode:
         counts["block_retries"] = sum(1 for p in plats if p == "2")
 
+    # Stage 3: refresh the source mix in meta (same helpers as the build,
+    # so fill-then-build and plain-build agree byte for byte).
+    from .building_join import (all_inferred_share, height_sources,
+                                residential_inferred_share)
+
+    payload["meta"]["height_sources"] = height_sources(buildings)
+    payload["meta"]["inferred_share"] = round(
+        all_inferred_share(buildings), 4)
+    res_share = residential_inferred_share(buildings)
+    payload["meta"]["residential_inferred_share"] = (
+        round(res_share, 4) if res_share is not None else None)
     buildings_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8")

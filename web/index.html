@@ -13,11 +13,27 @@
       <header id="topbar">
         <div class="title">주거 시뮬레이터 <span class="style">미니어처</span></div>
         <nav id="areas" aria-label="지역 선택"></nav>
+        <nav id="modeBtns" aria-label="모드 선택"></nav>
         <div class="controls">
           <button id="play" type="button">일시정지</button>
           <label class="toggle"><input id="resOnly" type="checkbox" /> 주거만 강조</label>
         </div>
       </header>
+      <div id="simbar" hidden>
+        <span id="simClock">–</span>
+        <button id="simPlay" type="button">일시정지</button>
+        <span id="simSpeed" role="group" aria-label="재생 속도"></span>
+        <button id="dayPrev" type="button" title="이전 날">◀</button>
+        <button id="dayNext" type="button" title="다음 날">▶</button>
+        <label class="jump">일차 <input id="dayJump" type="number" min="1" value="1" /> <button id="dayGo" type="button">이동</button></label>
+        <span id="followBtns" role="group" aria-label="따라가기"></span>
+        <button id="compareBtn" type="button">A·B 비교</button>
+      </div>
+      <aside id="compare" hidden>
+        <div class="legend-title">30일 생활 비교 <button id="compareClose" type="button">닫기</button></div>
+        <div id="compareBody"></div>
+        <div class="legend-note">그래프 = 도보 그래프 실측 · 가정 = 시나리오 가정값</div>
+      </aside>
       <aside id="legend">
         <div class="legend-title">범례</div>
         <div id="legendRes"></div>

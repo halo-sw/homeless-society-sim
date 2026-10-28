@@ -3,9 +3,10 @@
 //
 // buildBuildings(buildings, complexes, origin) returns two merged triangle
 // soups (residential vs non-residential, for the "주거만 강조" fade) as
-// {positions, normals, colors} plain arrays in three.js world space
+// {positions, normals, colors, ranges} plain arrays in three.js world space
 // (x = east, y = up, z = -north), plus stats. main.js wraps them in
 // BufferGeometry (one mesh per bucket => two draw calls for all buildings).
+// ranges lists per-building vertex spans for the night window glow.
 //
 // Massing rules:
 // - apartments with >= 6 floors ("slab"): stacked one-quad-per-floor walls
@@ -117,7 +118,7 @@ function hexRgb(hex) {
 }
 
 function makeBucket() {
-  return { positions: [], normals: [], colors: [] };
+  return { positions: [], normals: [], colors: [], ranges: [] };
 }
 
 function pushTri(bucket, a, b, c, normal, rgb) {
@@ -360,6 +361,7 @@ export function buildBuildings(buildings, complexes, origin) {
     }
     const residential = b.residential || "none";
     const bucket = residential === "none" ? nonres : res;
+    const vertStart = bucket.positions.length / 3;
     const colors = residentialColors(b, complexOf.get(b.id) || null);
     const wallRgb = hexRgb(colors.wall);
     const bandRgb = hexRgb(colors.band);
@@ -383,6 +385,8 @@ export function buildBuildings(buildings, complexes, origin) {
         else buildFlatRoof(bucket, [polyXY], height, roofRgb);
       }
     }
+    const vertCount = bucket.positions.length / 3 - vertStart;
+    if (vertCount > 0) bucket.ranges.push({ id: b.id, start: vertStart, count: vertCount });
     stats.buildings++;
     if (slab) stats.slab++;
     else {
@@ -395,6 +399,7 @@ export function buildBuildings(buildings, complexes, origin) {
     normals: bucket.normals,
     colors: bucket.colors,
     triangles: bucket.positions.length / 9,
+    ranges: bucket.ranges, // per-building vertex ranges (stage 3: night glow)
   });
   return { residential: finish(res), nonResidential: finish(nonres), stats };
 }

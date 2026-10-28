@@ -24,12 +24,14 @@ from pipeline.validate import validate_area
 LON0, LAT0 = 127.111, 37.394
 
 
-def _building(i: int, source: str = "register_height") -> dict:
+def _building(i: int, source: str = "register_height",
+              residential: str = "apartment") -> dict:
     return {
         "id": f"b{i:03d}",
         "origin": "joined",
         "height_m": 12.0,
         "height_source": source,
+        "residential": residential,
         "levels": 4,
         "area_m2": 120.0,
         "geometry": {
@@ -187,7 +189,8 @@ def test_run_build_round_trip_validates(tmp_path: Path) -> None:
     report = json.loads((area_dir / "report.json").read_text(encoding="utf-8"))
     assert report["register_coverage"] == "full"
     assert report["inferred_share"] == 0.2
-    assert report["walk_lcc"]["share"] == 1.0
+    assert report["residential_inferred_share"] == 0.2
+    assert report["residential_counts"] == {"apartment": 10}
     assert report["poi_counts"]["total"] == 55
     assert "area_build_seconds" in report["timings"]
     assert validate_area(area_dir) == []
@@ -268,6 +271,69 @@ def test_validate_high_inferred_share_fails(tmp_path: Path) -> None:
     _write_valid_area(area_dir, n_buildings=10, inferred=10)
     errors = validate_area(area_dir)
     assert any("inferred-height" in e for e in errors)
+
+
+def test_validate_gate_is_residential_not_all_buildings(
+        tmp_path: Path) -> None:
+    # All-buildings inferred is 80 % but every home has a real height:
+    # the stage-3 gate passes (all-share stays a reported number).
+    area_dir = tmp_path / "testbox"
+    sections = _passing_sections(n_buildings=0)
+    sections["buildings"] = (
+        [_building(i, "register_height", "apartment") for i in range(4)]
+        + [_building(100 + i, "inferred", "none") for i in range(16)])
+    _write(area_dir, "area_def.json", _area_def())
+    area = {"area": "testbox", "counts": {}}
+    area.update(sections)
+    _write(area_dir, "area.json", area)
+    _write(area_dir, "report.json", {
+        "area": "testbox",
+        "counts": {"buildings": 20, "roads": len(sections["roads"]),
+                   "pois": len(sections["pois"])},
+    })
+    assert validate_area(area_dir) == []
+
+
+def test_validate_high_residential_inferred_fails(tmp_path: Path) -> None:
+    # Residential inferred is 40 % (all-buildings only 20 %): the gate
+    # fails and the message cites both shares.
+    area_dir = tmp_path / "testbox"
+    sections = _passing_sections(n_buildings=0)
+    sections["buildings"] = (
+        [_building(i, "inferred", "apartment") for i in range(4)]
+        + [_building(100 + i, "register_height", "apartment")
+            for i in range(6)]
+        + [_building(200 + i, "register_height", "none") for i in range(10)])
+    _write(area_dir, "area_def.json", _area_def())
+    area = {"area": "testbox", "counts": {}}
+    area.update(sections)
+    _write(area_dir, "area.json", area)
+    _write(area_dir, "report.json", {
+        "area": "testbox",
+        "counts": {"buildings": 20, "roads": len(sections["roads"]),
+                   "pois": len(sections["pois"])},
+    })
+    errors = validate_area(area_dir)
+    assert any("residential inferred-height" in e and "4/10" in e
+               and "all-buildings 20.0%" in e for e in errors)
+
+
+def test_validate_no_homes_passes_height_gate_vacuously(
+        tmp_path: Path) -> None:
+    area_dir = tmp_path / "testbox"
+    sections = _passing_sections(n_buildings=0)
+    sections["buildings"] = [_building(i, "inferred", "none")
+                             for i in range(5)]
+    _write(area_dir, "area_def.json", _area_def())
+    area = {"area": "testbox", "counts": {}}
+    area.update(sections)
+    _write(area_dir, "area.json", area)
+    _write(area_dir, "report.json", {
+        "area": "testbox",
+        "counts": {"buildings": 5, "roads": len(sections["roads"]),
+                   "pois": len(sections["pois"])},
+    })
+    assert validate_area(area_dir) == []
 
 
 def test_validate_low_walk_lcc_fails(tmp_path: Path) -> None:

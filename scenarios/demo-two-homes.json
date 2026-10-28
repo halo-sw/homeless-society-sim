@@ -1,0 +1,49 @@
+{
+  "name": "demo-two-homes",
+  "start_date": "2026-11-02",
+  "days": 30,
+  "seed": 20261102,
+  "background": 60,
+  "workday_minutes": 540,
+  "schoolday_minutes": 360,
+  "household": {
+    "members": [
+      {
+        "id": "m1",
+        "label": "구성원 1",
+        "role": "adult",
+        "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "work": {
+          "type": "station_ride",
+          "station_name": {"A": "잠실", "B": "판교"},
+          "ride_minutes": 30,
+          "ride_minutes_source": "user_assumption",
+          "needs_user_input": true
+        },
+        "errands_per_week": {"supermarket": 1, "convenience": 2},
+        "park_walks_per_week": 2,
+        "clinic_visits_per_month": 1
+      },
+      {
+        "id": "m2",
+        "label": "구성원 2",
+        "role": "adult",
+        "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "work": {
+          "type": "station_ride",
+          "station_name": {"A": "잠실", "B": "판교"},
+          "ride_minutes": 30,
+          "ride_minutes_source": "user_assumption",
+          "needs_user_input": true
+        },
+        "errands_per_week": {"supermarket": 1, "convenience": 1},
+        "park_walks_per_week": 1,
+        "clinic_visits_per_month": 0
+      }
+    ]
+  },
+  "homes": [
+    {"label": "A", "area": "songpa-jamsil", "complex_name": "레이크팰리스"},
+    {"label": "B", "area": "pangyo", "complex_name": "백현마을"}
+  ]
+}

@@ -191,6 +191,12 @@ def build_report(area_def: dict, osm: dict, buildings: dict, graph: dict,
     for b in building_list:
         key = b.get("residential", "none")
         residential_counts[key] = residential_counts.get(key, 0) + 1
+    homes = [b for b in building_list
+             if b.get("residential") in ("apartment", "house", "mixed")]
+    residential_inferred_share = (
+        round(sum(1 for b in homes
+                  if b.get("height_source") == "inferred") / len(homes), 4)
+        if homes else None)
     return {
         "area": area_def["id"],
         "label": area_def.get("label"),
@@ -217,6 +223,7 @@ def build_report(area_def: dict, osm: dict, buildings: dict, graph: dict,
                        "by_category": poi_cats},
         "height_sources": bmeta.get("height_sources", {}),
         "inferred_share": bmeta.get("inferred_share"),
+        "residential_inferred_share": residential_inferred_share,
         "residential_counts": residential_counts,
         "complexes": {
             "total": len(complexes),
@@ -257,6 +264,17 @@ def run_build(area_dir: str | Path) -> dict:
 
     step = time.perf_counter()
     sizes, parts = write_area(area_dir, area, sections)
+    # Stage 3: re-apply cached recap households offline (no network, no
+    # key), so a rebuild after register-fill keeps complex households.
+    from .register_api import reapply_cached_recaps
+
+    recap_counts = reapply_cached_recaps(area_dir)
+    if recap_counts["recap_complexes"]:
+        # Recap attach rewrites area.json (or its complexes part file).
+        sizes[AREA_FILE] = (area_dir / AREA_FILE).stat().st_size
+        if parts.get("complexes") != "inline":
+            fname = parts["complexes"]
+            sizes[fname] = (area_dir / fname).stat().st_size
     # Input sizes for scale reporting (songpa peak output size).
     for name in ("osm.json", "buildings.json", "graph.json"):
         sizes[name] = (area_dir / name).stat().st_size
@@ -274,10 +292,12 @@ def run_build(area_dir: str | Path) -> dict:
         "buildings": counts["buildings"],
         "pois": counts["pois"],
         "complexes": counts["complexes"],
+        "register_recaps": recap_counts,
         "split": report["split"],
         "parts": parts,
         "register_coverage": report["register_coverage"],
         "inferred_share": report["inferred_share"],
+        "residential_inferred_share": report["residential_inferred_share"],
         "residential_counts": report["residential_counts"],
         "walk_lcc_share": report["walk_lcc"].get("share"),
         "walk_lcc_box_share": report["walk_lcc_box"].get("share"),

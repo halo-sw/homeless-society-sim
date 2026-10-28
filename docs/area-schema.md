@@ -155,7 +155,12 @@ gu-sized areas), and the walk-LCC family: `walk_lcc` (the thresholded
 share — buffered connectivity over clipped nodes), `walk_lcc_box`
 (box-only before-share), `walk_lcc_buffered` (full buffered graph),
 `walk_lcc_clipped_raw` (plain LCC of the shipped graph, recomputable
-from `area.json`). For boundary areas all four are equal.
+from `area.json`). For boundary areas all four are equal. Stage-3
+addition: `residential_inferred_share` (inferred-height share among
+`apartment` + `house` + `mixed` — the pass gate; the all-buildings
+`inferred_share` stays a reported number). `buildings.json` → `meta`
+carries the same share plus `register_cache` (offline re-applied
+register titles, stage 3).
 
 ## Determinism
 

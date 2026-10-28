@@ -39,6 +39,8 @@ def test_full_build_songpa_jamsil(tmp_path) -> None:
     report = json.loads((area_dir / "report.json").read_text(encoding="utf-8"))
     assert report["register_coverage"] == "full"
     assert report["inferred_share"] <= 0.30
+    # Stage-3 gate: residential inferred share (reported + thresholded).
+    assert report["residential_inferred_share"] <= 0.30
     assert report["walk_lcc"]["share"] >= 0.95
     assert report["poi_counts"]["total"] >= 50
     assert stages["validate"]["failed"] is False

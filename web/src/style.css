@@ -46,12 +46,13 @@ html, body {
 }
 
 #areas { display: flex; gap: 6px; flex-wrap: wrap; }
-#areas button {
+#areas button, #modeBtns button {
   border: 1px solid rgba(61, 50, 39, 0.25); background: transparent;
   border-radius: 14px; padding: 4px 12px; font-size: 13px; cursor: pointer;
   color: var(--ink);
 }
-#areas button.active { background: var(--ink); color: var(--paper); }
+#areas button.active, #modeBtns button.active { background: var(--ink); color: var(--paper); }
+#modeBtns { display: flex; gap: 6px; }
 
 .controls { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 #play {
@@ -101,3 +102,46 @@ html, body {
   background: var(--card); padding: 12px 24px; border-radius: 12px;
   border: 1px solid rgba(61, 50, 39, 0.15); font-size: 14px;
 }
+
+/* --- sim mode --- */
+#simbar {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
+  border-radius: 12px; padding: 8px 14px; font-size: 13px;
+  max-width: 96vw;
+}
+#simbar[hidden] { display: none; }
+#simClock { font-weight: 800; white-space: nowrap; }
+#simbar button {
+  border: 1px solid rgba(61, 50, 39, 0.25); background: transparent;
+  border-radius: 12px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+  color: var(--ink);
+}
+#simbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+#simSpeed { display: flex; gap: 4px; }
+#followBtns { display: flex; gap: 4px; }
+#simbar .jump { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+#dayJump { width: 52px; font-size: 12px; padding: 2px 4px; }
+body.sim #caption { bottom: 96px; }
+body.sim #legend { bottom: 96px; }
+
+#compare {
+  position: absolute; right: 12px; top: 60px;
+  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
+  border-radius: 10px; padding: 10px 12px; font-size: 12px;
+  max-width: 330px; max-height: 70vh; overflow: auto;
+}
+#compare[hidden] { display: none; }
+#compare .legend-title button {
+  float: right; border: 1px solid rgba(61, 50, 39, 0.25); background: transparent;
+  border-radius: 10px; padding: 1px 8px; font-size: 11px; cursor: pointer; color: var(--ink);
+}
+#compare table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+#compare td, #compare th { padding: 2px 6px; text-align: right; white-space: nowrap; }
+#compare td:first-child, #compare th:first-child { text-align: left; white-space: normal; }
+#compare .src {
+  font-size: 10px; border-radius: 8px; padding: 0 6px; margin-left: 4px;
+  background: rgba(61, 50, 39, 0.12); white-space: nowrap;
+}
+#compare .src.assumption { background: rgba(178, 90, 51, 0.18); color: #8a4426; }

@@ -642,11 +642,9 @@ def join_area(area_id: str, area_def: dict, osm: dict,
         })
 
     buildings.sort(key=lambda b: b["id"])
-    sources: dict[str, int] = {}
-    for b in buildings:
-        sources[b["height_source"]] = sources.get(b["height_source"], 0) + 1
-    inferred_share = (sources.get("inferred", 0) / len(buildings)
-                      if buildings else 0.0)
+    sources = height_sources(buildings)
+    inferred_share = all_inferred_share(buildings)
+    residential_inferred = residential_inferred_share(buildings)
     residential_counts: dict[str, int] = {}
     for b in buildings:
         key = b["residential"]
@@ -668,6 +666,9 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             },
             "height_sources": sources,
             "inferred_share": round(inferred_share, 4),
+            "residential_inferred_share": (
+                round(residential_inferred, 4)
+                if residential_inferred is not None else None),
             "residential_counts": residential_counts,
             "rules": {
                 "match_iou_min": MATCH_IOU_MIN,
@@ -677,6 +678,36 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             },
         },
     }
+
+
+def height_sources(buildings: list[dict]) -> dict[str, int]:
+    """Count buildings per ``height_source`` (deterministic key order)."""
+    sources: dict[str, int] = {}
+    for b in buildings:
+        sources[b["height_source"]] = sources.get(b["height_source"], 0) + 1
+    return sources
+
+
+def all_inferred_share(buildings: list[dict]) -> float:
+    """Inferred-height share over all buildings (reported, not a gate)."""
+    if not buildings:
+        return 0.0
+    return (sum(1 for b in buildings
+                if b.get("height_source") == "inferred") / len(buildings))
+
+
+def residential_inferred_share(buildings: list[dict]) -> float | None:
+    """Inferred-height share among homes (the stage-3 pass gate).
+
+    Homes are buildings with ``residential`` in apartment/house/mixed.
+    None when the area has no homes (gate passes vacuously).
+    """
+    homes = [b for b in buildings
+             if b.get("residential") in ("apartment", "house", "mixed")]
+    if not homes:
+        return None
+    return (sum(1 for b in homes
+                if b.get("height_source") == "inferred") / len(homes))
 
 
 def _register_summary(reg: dict) -> dict:
@@ -699,13 +730,32 @@ def _register_summary(reg: dict) -> dict:
 
 
 def run_build(area_dir: str | Path) -> dict:
-    """CLI hook: read osm.json, write buildings.json, return a summary."""
+    """CLI hook: read osm.json, write buildings.json, return a summary.
+
+    Stage 3: cached register-API titles (``data/raw/register_api/``) are
+    re-applied offline after the join, so a rebuild after
+    ``register-fill`` keeps ``api_height`` etc. (no network, no key).
+    """
+    from .register_api import apply_cached_titles
+
     area_dir = Path(area_dir)
     area_id = area_dir.name
     area_def = json.loads((area_dir / "area_def.json").read_text(encoding="utf-8"))
     osm = json.loads((area_dir / "osm.json").read_text(encoding="utf-8"))
     shp_files = discover_register_files()
     payload = join_area(area_id, area_def, osm, shp_files, area_dir)
+    cache_counts = apply_cached_titles(payload["buildings"])
+    if cache_counts["cache_filled"]:
+        # Recompute the source mix after the offline fill (same helpers
+        # as join_area, so consecutive rebuilds stay byte-identical).
+        payload["meta"]["height_sources"] = height_sources(
+            payload["buildings"])
+        payload["meta"]["inferred_share"] = round(
+            all_inferred_share(payload["buildings"]), 4)
+        res_share = residential_inferred_share(payload["buildings"])
+        payload["meta"]["residential_inferred_share"] = (
+            round(res_share, 4) if res_share is not None else None)
+    payload["meta"]["register_cache"] = cache_counts
     (area_dir / BUILDINGS_FILE).write_text(
         json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8")
@@ -718,4 +768,6 @@ def run_build(area_dir: str | Path) -> dict:
         "register_coverage": meta["register_coverage"],
         "height_sources": meta["height_sources"],
         "inferred_share": meta["inferred_share"],
+        "residential_inferred_share": meta["residential_inferred_share"],
+        "register_cache": cache_counts,
     }
