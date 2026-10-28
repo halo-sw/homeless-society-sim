@@ -76,3 +76,54 @@ body.sim .ui-legend { bottom: 218px; }
 
 /* "내 기준" weight inputs. */
 .ui-weight { width: 58px; }
+
+/* Stage 7: the sim left stack (Now card over the judgment log). */
+.ui-simleft {
+  position: absolute; left: 12px; top: 76px;
+  width: 330px; max-width: 84vw; max-height: calc(100vh - 320px);
+  display: flex; flex-direction: column; gap: 8px; overflow: auto;
+}
+.ui-simleft .ui-judgelog {
+  position: static; width: auto; max-width: none; max-height: none; overflow: visible;
+}
+.ui-nowcard { flex: none; }
+
+/* Now-card progress bar (neutral track/fill, same ink family as the timeline). */
+.ui-progress {
+  height: 6px; border-radius: 3px; overflow: hidden;
+  background: rgba(61, 50, 39, 0.15);
+}
+.ui-progress-fill { height: 100%; background: rgba(61, 50, 39, 0.6); }
+
+/* Intro / purpose card: centred, dismissable. */
+.ui-intro {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 520px; max-width: 92vw; max-height: 82vh; overflow: auto;
+}
+
+/* Decision/departure ticks under the sim sliders (buttons, calm dots). */
+.ui-ticks { position: relative; height: 12px; margin: 0 4px; }
+.ui-tick {
+  position: absolute; top: 2px; width: 8px; height: 8px; margin-left: -4px;
+  border: none; border-radius: 50%; padding: 0; cursor: pointer;
+  background: rgba(61, 50, 39, 0.4);
+}
+.ui-tick-decision { background: rgba(178, 90, 51, 0.85); }
+.ui-tick-depart { background: rgba(74, 123, 167, 0.85); }
+
+/* Flashing judgment row (calm: static dot + badge, no animation). */
+.ui-timeline-row.ui-flash .ui-timeline-dot { background: rgba(178, 90, 51, 0.9); }
+
+/* Focused criterion row in the 기준 tab. */
+.ui-criterion-focus { outline: 2px solid rgba(178, 90, 51, 0.5); border-radius: 6px; }
+
+/* Hoverable convenience categories (3D highlight). */
+.ui-qolcat { cursor: default; border-radius: 4px; padding: 0 2px; }
+.ui-qolcat:hover { background: rgba(61, 50, 39, 0.1); }
+
+/* 3D destination pin (in #tags, positioned by the scene). */
+.hopin {
+  position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
+  font-size: 12px; line-height: 1.4; padding: 1px 7px; border-radius: 9px;
+  background: rgba(30, 26, 22, 0.82); color: #f5efe4; pointer-events: none;
+}

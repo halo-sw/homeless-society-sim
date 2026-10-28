@@ -14,6 +14,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canon } from "../src/engine/canonical.js";
+import { CRITERIA_DOC_NAME, CRITERIA_VERSION, moneyOptsFromCriteria, resolveCriteria } from "../src/engine/criteria.js";
 import { parseScenario } from "../src/engine/scenario.js";
 import { simulate } from "../src/engine/simulate.js";
 import { Router } from "../src/engine/graph.js";
@@ -74,7 +75,8 @@ async function rtmsFor(district) {
   return rtmsCache.get(district);
 }
 
-const A = scenario.money.assumptions;
+const crit = resolveCriteria(scenario);
+const A = moneyOptsFromCriteria(crit);
 const homes = {};
 for (const h of scenario.homes) {
   const area = await loadArea(h.area);
@@ -145,13 +147,24 @@ for (const h of scenario.homes) {
     };
   }
   // QoL time + convenience axes (money merges client-side per tenure).
-  const qol = qualityCard(run, area, router, {});
+  // POI ids ship alongside the counts for the 3D hover highlight.
+  const qol = qualityCard(run, area, router, {}, crit.flat.convenience_minutes, { includeIds: true });
+  // Tenure-independent spending events for the Now-card ticker (transit,
+  // grocery, salary, fixed — housing is monthly and lives in its tab).
+  const spendTl = moneyTimeline(run, scenario, {
+    transit_fare_won: A.transit_fare_won, basket_won: A.basket_won,
+    maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
+    household_monthly_net_won: net.household_monthly_net_won,
+    housing_monthly_won: 0,
+    pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+  });
   homes[h.label] = {
     area: h.area, complex_name: h.complex_name, area_m2: areaM2,
     match_method: matchMethod,
     parcel_rows: parcelHits.length, name_rows: nameHits.length,
     reference, by_tenure: byTenure,
     qol_time: qol.time, qol_convenience: qol.convenience,
+    spending_events: spendTl.events,
   };
   console.log(JSON.stringify({ home: h.label, area_m2: areaM2, match: matchMethod,
     parcel: parcelHits.length, name: nameHits.length,
@@ -166,8 +179,13 @@ const doc = {
   household_monthly_net_won: net.household_monthly_net_won,
   per_member_net: net.per_member,
   cash_won: scenario.money.cash_won,
-  assumptions: scenario.money.assumptions,
-  burden_threshold_pct: scenario.money.burden_threshold_pct,
+  assumptions: { ...scenario.money.assumptions,
+    transit_fare_won: A.transit_fare_won, basket_won: A.basket_won,
+    maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
+    pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+    loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years },
+  burden_threshold_pct: crit.flat.burden_threshold_pct,
+  criteria: { doc: CRITERIA_DOC_NAME, version: CRITERIA_VERSION, overrides: crit.overridden },
   default_tenure: scenario.money.tenure,
   homes,
 };

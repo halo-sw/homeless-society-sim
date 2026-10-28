@@ -7,6 +7,7 @@
 // judgement, no buy/don't-buy) live in consult/guards.js + the prompt.
 
 import { parseScenario, resolveHome, nameForHome } from "../engine/scenario.js";
+import { moneyOptsFromCriteria, resolveCriteria } from "../engine/criteria.js";
 import { Router } from "../engine/graph.js";
 import { buildPlaces, stationsByName } from "../engine/places.js";
 import { ADULT_MPS } from "../engine/agents.js";
@@ -86,6 +87,9 @@ async function set_money(session, args) {
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err).slice(0, 400) };
   }
+  // Customer-set money numbers read as 고객 입력 in the criteria badges.
+  for (const k of Object.keys((patch.assumptions) || {})) parsed._explicit[`money_${k}`] = true;
+  if (patch.burden_threshold_pct !== undefined) parsed._explicit.money_burden_threshold_pct = true;
   session.scenario = parsed;
   let net = null;
   try {
@@ -203,7 +207,9 @@ async function living_cost(session, args) {
   const table = await needPayroll(session).catch((err) => ({ __error: err }));
   if (table.__error) return fail(table.__error.message);
   const net = householdMonthlyNet(scenario.money, scenario.household.members, table);
-  const A = scenario.money.assumptions;
+  // Criteria-resolved money values (criteria_overrides apply), so consult
+  // and money.mjs timelines agree for the same scenario.
+  const A = moneyOptsFromCriteria(resolveCriteria(scenario));
 
   // Price inputs: explicit won args win (the model's cited medians), else
   // the RTMS median for this home's complex at the requested area.

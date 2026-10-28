@@ -8,13 +8,20 @@
 // so household streams never shift with the background count.
 
 import { intBelow, shuffled, streamFor } from "./prng.js";
+import { criterionDefault, defaultFlat, resolveCriteria } from "./criteria.js";
 
-export const ADULT_MPS = 1.3;
-export const SLOW_MPS = 1.1; // children and seniors
-export const MAX_HOME_ANCHOR_M = 150;
+// Defaults alias the criteria file (C-walk-speed, C-neighbour); per-run
+// code uses the resolved flat values threaded through buildAgents and
+// planSchedule so criteria_overrides apply.
+export const ADULT_MPS = criterionDefault("C-walk-speed", "adult_mps");
+export const SLOW_MPS = criterionDefault("C-walk-speed", "slow_mps"); // children and seniors
+export const MAX_HOME_ANCHOR_M = criterionDefault("C-neighbour", "anchor_max_m");
 
-export function speedOf(role) {
-  return role === "adult" ? ADULT_MPS : SLOW_MPS;
+const DEFAULTS = defaultFlat();
+
+export function speedOf(role, flat = null) {
+  const f = flat || DEFAULTS;
+  return role === "adult" ? f.adult_mps : f.slow_mps;
 }
 
 function buildingAnchorLonLat(building) {
@@ -42,14 +49,14 @@ export function homeWeight(building) {
   return Math.max(1, Math.round(floorsOf(building) * (building.area_m2 || 50)));
 }
 
-function anchorableHomes(area, router) {
+function anchorableHomes(area, router, flat) {
   const out = [];
   for (const b of area.buildings || []) {
     if (!["apartment", "house", "mixed"].includes(b.residential)) continue;
     if (!b.geometry) continue;
     const [lon, lat] = buildingAnchorLonLat(b);
     const n = router.nearestNode(lon, lat);
-    if (n.id === null || n.distM > MAX_HOME_ANCHOR_M) continue;
+    if (n.id === null || n.distM > flat.anchor_max_m) continue;
     out.push({ building: b, buildingId: b.id, nodeId: n.id, weight: homeWeight(b) });
   }
   out.sort((a, b) => (a.buildingId < b.buildingId ? -1 : 1));
@@ -69,10 +76,10 @@ function weightedDraw(rng, homes, total) {
   return homes[lo];
 }
 
-function backgroundRoutine(rng) {
-  const commuter = rng() < 0.7;
+function backgroundRoutine(rng, flat) {
+  const commuter = rng() < flat.commuter_p;
   const r = rng();
-  const role = r < 0.8 ? "adult" : r < 0.9 ? "senior" : "child";
+  const role = r < flat.bg_adult_p ? "adult" : r < flat.bg_senior_p ? "senior" : "child";
   return {
     role,
     commuter: role === "child" ? false : commuter,
@@ -80,15 +87,17 @@ function backgroundRoutine(rng) {
     workdays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
     schooldays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
     errands_per_week: {
-      supermarket: 1 + intBelow(rng, 2), // 1..2
-      convenience: intBelow(rng, 3), // 0..2
+      supermarket: flat.bg_supermarket_min
+        + intBelow(rng, flat.bg_supermarket_max - flat.bg_supermarket_min + 1),
+      convenience: intBelow(rng, flat.bg_convenience_max + 1),
     },
-    park_walks_per_week: intBelow(rng, 3), // 0..2
-    clinic_visits_per_month: intBelow(rng, 2), // 0..1
+    park_walks_per_week: intBelow(rng, flat.bg_park_max + 1),
+    clinic_visits_per_month: intBelow(rng, flat.bg_clinic_max + 1),
   };
 }
 
-export function buildAgents(area, scenario, home, homeNode, router) {
+export function buildAgents(area, scenario, home, homeNode, router, flat = null) {
+  const F = flat || resolveCriteria(scenario).flat;
   const agents = [];
   scenario.household.members.forEach((m, i) => {
     agents.push({
@@ -106,12 +115,12 @@ export function buildAgents(area, scenario, home, homeNode, router) {
       errands_per_week: m.errands_per_week,
       park_walks_per_week: m.park_walks_per_week,
       clinic_visits_per_month: m.clinic_visits_per_month,
-      speed: speedOf(m.role),
+      speed: speedOf(m.role, F),
     });
   });
   const n = scenario.background;
   if (n > 0) {
-    const homes = anchorableHomes(area, router);
+    const homes = anchorableHomes(area, router, F);
     if (homes.length === 0) throw new Error(`area ${area.area}: no anchorable residential building for background agents`);
     let total = 0;
     for (const h of homes) {
@@ -122,7 +131,7 @@ export function buildAgents(area, scenario, home, homeNode, router) {
     const width = Math.max(2, String(n).length);
     for (let i = 0; i < n; i++) {
       const pick = weightedDraw(rng, homes, total);
-      const routine = backgroundRoutine(rng);
+      const routine = backgroundRoutine(rng, F);
       agents.push({
         key: `b${String(i + 1).padStart(width, "0")}`,
         id: `b${String(i + 1).padStart(width, "0")}`,
@@ -138,7 +147,7 @@ export function buildAgents(area, scenario, home, homeNode, router) {
         errands_per_week: routine.errands_per_week,
         park_walks_per_week: routine.park_walks_per_week,
         clinic_visits_per_month: routine.clinic_visits_per_month,
-        speed: speedOf(routine.role),
+        speed: speedOf(routine.role, F),
       });
     }
   }
@@ -149,7 +158,8 @@ export function buildAgents(area, scenario, home, homeNode, router) {
 // front from the agent's own stream (fixed order, never shifted by
 // hook choices). Returns {errands: {cat: Set(days)},
 // parkDays: Set, clinicDays: Set, departJitter: [mins], ...}.
-export function planSchedule(agent, scenario) {
+export function planSchedule(agent, scenario, flat = null) {
+  const F = flat || resolveCriteria(scenario).flat;
   const rng = streamFor(scenario.seed, agent.key);
   const days = scenario.days;
   const errands = { supermarket: new Set(), convenience: new Set() };
@@ -175,7 +185,8 @@ export function planSchedule(agent, scenario) {
   for (const d of shuffled(rng, allDays).slice(0, kc)) clinicDays.add(d);
   // Morning departure jitter per day (0..59 min past the 07:30/08:00
   // anchors), drawn in day order.
-  const departJitter = Array.from({ length: days }, () => intBelow(rng, 60));
+  const span = F.jitter_max - F.jitter_min + 1;
+  const departJitter = Array.from({ length: days }, () => F.jitter_min + intBelow(rng, span));
   return { errands, parkDays, clinicDays, departJitter };
 }
 

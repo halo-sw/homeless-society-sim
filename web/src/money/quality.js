@@ -8,13 +8,14 @@
 // customer's own explicit input and is shown as such.
 
 import { ADULT_MPS } from "../engine/agents.js";
+import { criterionDefault } from "../engine/criteria.js";
 import { buildPlaces } from "../engine/places.js";
 import { resolveHome } from "../engine/scenario.js";
 
-export const QOL_WALK_MINUTES = 10;
+export const QOL_WALK_MINUTES = criterionDefault("C-convenience-radius", "walk_minutes");
 export const QOL_SPEED_MPS = ADULT_MPS;
 
-export function convenienceCounts(area, router, homeNodeId, walkMinutes = QOL_WALK_MINUTES) {
+export function convenienceCounts(area, router, homeNodeId, walkMinutes = QOL_WALK_MINUTES, opts = {}) {
   const places = buildPlaces(area, router);
   const { dist } = router.distFrom(homeNodeId);
   const maxM = walkMinutes * 60 * QOL_SPEED_MPS;
@@ -22,20 +23,35 @@ export function convenienceCounts(area, router, homeNodeId, walkMinutes = QOL_WA
     const d = dist.get(p.nodeId);
     return d !== undefined && d <= maxM;
   });
-  const grocery = within(places.shops.supermarket).length + within(places.shops.convenience).length;
-  const park = within(places.parks).length;
-  const clinic = within(places.clinics).length;
-  const stationNames = new Set(within(places.stations).map((p) => p.name));
-  const eatery = within(places.eateries).length;
-  return {
-    grocery, park, clinic,
+  const groceryList = [...within(places.shops.supermarket), ...within(places.shops.convenience)];
+  const parkList = within(places.parks);
+  const clinicList = within(places.clinics);
+  const stationList = within(places.stations);
+  const eateryList = within(places.eateries);
+  const stationNames = new Set(stationList.map((p) => p.name));
+  const out = {
+    grocery: groceryList.length,
+    park: parkList.length,
+    clinic: clinicList.length,
     station: stationNames.size,
-    station_pois: within(places.stations).length,
-    eatery,
+    station_pois: stationList.length,
+    eatery: eateryList.length,
     walk_minutes: walkMinutes,
     speed_mps: QOL_SPEED_MPS,
     source: "graph",
   };
+  // The 3D scene highlights the counted POIs on hover (stage 7, Part B):
+  // money.mjs ships their ids alongside the counts.
+  if (opts.includeIds) {
+    out.poi_ids = {
+      grocery: groceryList.map((p) => p.id),
+      park: parkList.map((p) => p.id),
+      clinic: clinicList.map((p) => p.id),
+      station: stationList.map((p) => p.id),
+      eatery: eateryList.map((p) => p.id),
+    };
+  }
+  return out;
 }
 
 export function round1(n) {
@@ -44,7 +60,9 @@ export function round1(n) {
 
 // money: {monthly_housing_won, burden_ratio, remaining_won,
 //         monthly_net_won, source} from the money timeline + tenure cost.
-export function qualityCard(run, area, router, money = {}) {
+// walkMinutes / includeIds flow the resolved convenience criterion into
+// the counts (money.mjs passes them; tests use the defaults).
+export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WALK_MINUTES, opts = {}) {
   const days = (run.meta && run.meta.days) || 30;
   const h = (run.totals && run.totals.household) || {};
   const home = { label: run.meta.home, area: run.meta.area, complex: run.meta.complex };
@@ -74,7 +92,7 @@ export function qualityCard(run, area, router, money = {}) {
       tenure: money.tenure || null,
       source: money.source || "rtms",
     },
-    convenience: resolved ? convenienceCounts(area, router, resolved.nodeId)
+    convenience: resolved ? convenienceCounts(area, router, resolved.nodeId, walkMinutes, opts)
       : { grocery: 0, park: 0, clinic: 0, station: 0, eatery: 0, source: "graph" },
     weights: money.weights || null, // "내 기준": the customer's own weighting, never ours
     no_score_note: "종합 점수는 매기지 않습니다. 세 축을 나란히 보고 고객이 직접 판단합니다.",

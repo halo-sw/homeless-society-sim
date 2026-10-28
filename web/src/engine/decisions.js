@@ -14,6 +14,11 @@
 // agent's scheduled park days (see routines.js), and weekend_plan,
 // whose default is the fastest available category as a single plan.
 //
+// The weekend-plan activity cap comes from the criteria file
+// (C-weekend-plan); it is a contract, not an overridable value.
+
+import { criterionDefault } from "./criteria.js";
+//
 // The hook may return a key string (single-choice kinds), an array of
 // keys (weekend_plan), or an object {chosen_key | plan, ...extras}
 // where extras carry judge provenance (reason_ko, reason_en,
@@ -23,6 +28,7 @@
 // calls), so a judged run and its replay are byte-identical.
 
 export const WEEKEND_HOME = "home";
+export const WEEKEND_MAX = criterionDefault("C-weekend-plan", "max_activities");
 
 export const KNOWN_CHOICE_MODES = new Set([
   "rule", "hook", "model", "rule_fallback", "replay",
@@ -61,8 +67,8 @@ export function normalizeWeekendChoice(options, choice) {
   if (plan.length === 0 || (plan.length === 1 && plan[0] === WEEKEND_HOME)) {
     return { chosen_key: WEEKEND_HOME, plan: [] };
   }
-  if (plan.length > 3) {
-    throw new Error(`weekend_plan: at most 3 activities, got ${plan.length}`);
+  if (plan.length > WEEKEND_MAX) {
+    throw new Error(`weekend_plan: at most ${WEEKEND_MAX} activities, got ${plan.length}`);
   }
   const seen = new Set();
   for (const key of plan) {

@@ -40,6 +40,17 @@ export const INITIAL_STATE = {
   consultOpen: false,
   askError: "",
   scenarioName: "demo-two-homes",
+  // Stage 7: Now card + ticker + intro + criteria + highlight state.
+  now: null, // nowCardFor() payload, or {free: true, rows} for the free camera
+  ticker: [], // tickerFor() rows for the followed member
+  introOpen: false,
+  simMeta: null, // intro card facts {members, neighbours, days, startDate, homes, assumptions}
+  criteria: null, // resolved criteria {groups, items, overrides} or {error}
+  criteriaLoading: false,
+  criteriaFocus: "", // criterion id to scroll to in the 기준 tab
+  qualityHover: null, // {category} while hovering a convenience row, else null
+  simTicks: [], // [{minute, kind, id}] for the followed member today
+  judgeFlash: "", // pulsing decision id ("" when none)
 };
 
 function clone(value) {

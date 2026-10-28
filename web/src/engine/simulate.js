@@ -10,11 +10,12 @@
 import { Router } from "./graph.js";
 import { buildPlaces } from "./places.js";
 import { buildAgents, planSchedule } from "./agents.js";
+import { CRITERIA_DOC_NAME, CRITERIA_VERSION, resolveCriteria } from "./criteria.js";
 import { makeDecider } from "./decisions.js";
 import { homeOf, parseScenario, resolveHome } from "./scenario.js";
 import { planAgent, round1, round2 } from "./routines.js";
 
-export const ENGINE_VERSION = "sim-engine/4";
+export const ENGINE_VERSION = "sim-engine/5";
 
 export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const scenario = parseScenario(scenarioJson);
@@ -22,7 +23,8 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const router = new Router(area.graph);
   const places = buildPlaces(area, router);
   const resolved = resolveHome(area, home, router);
-  const agents = buildAgents(area, scenario, resolved, resolved.nodeId, router);
+  const crit = resolveCriteria(scenario);
+  const agents = buildAgents(area, scenario, resolved, resolved.nodeId, router, crit.flat);
   const decider = makeDecider(opts);
   const collect = { trips: [], aways: [], decisions: [], unavailable: [], tripSeq: 1 };
   const daily = [];
@@ -32,8 +34,8 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
       commute_ride_minutes: 0, errands_done: 0, park_visits: 0, home_evening_minutes: 0, trips: 0 };
   }
   for (const agent of agents) {
-    const schedule = planSchedule(agent, scenario);
-    const ctx = { scenario, homeLabel, home: resolved, router, places, decider, schedule, collect };
+    const schedule = planSchedule(agent, scenario, crit.flat);
+    const ctx = { scenario, homeLabel, home: resolved, router, places, decider, schedule, collect, crit: crit.flat };
     const perDay = [];
     for (let day = 0; day < scenario.days; day++) {
       const summary = planAgent(agent, day, ctx);
@@ -97,6 +99,7 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
         : choiceModes.size === 0 ? "rule" : "mixed",
       dijkstra_sources: router.sourceCache.size,
       dijkstra_calls: router.dijkstraCalls,
+      criteria: { doc: CRITERIA_DOC_NAME, version: CRITERIA_VERSION, overrides: crit.overridden },
     },
     agents: agents.map((a) => ({
       key: a.key, id: a.id, label: a.label, role: a.role,

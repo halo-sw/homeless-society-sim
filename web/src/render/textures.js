@@ -132,6 +132,10 @@ export function facadeMaterial(facadeClass, opts = {}) {
     vertexColors: true,
     side: THREE.DoubleSide,
     transparent: true, // occlusion fade + 주거만 강조 need alpha
+    // Depth renders single-sided back faces (stage 7, Part C): the
+    // DoubleSide default wrote both faces into the shadow map, one of
+    // the acne sources behind the torn bands.
+    shadowSide: THREE.BackSide,
   });
   return patchLitMaterial(mat);
 }
@@ -146,6 +150,7 @@ export function roofMaterial(opts = {}) {
     vertexColors: true,
     side: THREE.DoubleSide,
     transparent: true, // occlusion fade needs alpha
+    shadowSide: THREE.BackSide, // see facadeMaterial (stage 7, Part C)
   });
 }
 

@@ -17,6 +17,7 @@ import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useState } from "react";
 import { store } from "./store.js";
 import { ConsultPanel } from "./consult.jsx";
+import { CriteriaTab } from "./criteria.jsx";
 import { MoneyTab, QualityTab } from "./money.jsx";
 import { fmtMinutes, fmtDistance, fmtCount, badgeFor } from "../money/format.js";
 
@@ -67,6 +68,10 @@ function TopBar({ state }) {
                 <Button size="sm" label={state.tourPlaying ? "일시정지" : "재생"}
                   onClick={() => act("toggleTourPlay")} />
               )}
+              {isSim && (
+                <Button size="sm" variant="ghost" label="이 시뮬레이션은?"
+                  onClick={() => act("setIntroOpen", true)} />
+              )}
               <ToggleButton size="sm" label="주거만 강조" isPressed={state.resOnly}
                 onPressedChange={(next) => act("setResOnly", next)} />
               <ToggleButton size="sm" label="상담" isPressed={state.consultOpen}
@@ -108,6 +113,18 @@ function SimBar({ state }) {
           <SegControl label="따라가기" value={String(state.follow)}
             onChange={(v) => act("setFollow", Number(v))}
             items={state.followOptions} />
+          {state.simTicks.length > 0 && (
+            <div className="ui-ticks" role="group" aria-label="판단·출발 순간 (누르면 이동)">
+              {state.simTicks.map((t, i) => (
+                <button key={`${t.kind}-${t.minute}-${i}`}
+                  className={`ui-tick ui-tick-${t.kind}`}
+                  style={{ left: `${(t.minute / 1439 * 100).toFixed(2)}%` }}
+                  title={`${hhmm(t.minute)} ${t.kind === "decision" ? "판단" : "출발"}`}
+                  aria-label={`${hhmm(t.minute)} ${t.kind === "decision" ? "판단" : "출발"}로 이동`}
+                  onClick={() => act("setMinute", t.minute)} />
+              ))}
+            </div>
+          )}
         </VStack>
       </Card>
     </div>
@@ -167,22 +184,145 @@ function JudgeLogCard({ state }) {
     <div className="ui-judgelog overlay">
       <Card>
         <VStack gap={2}>
-          <Heading level={4}>판단 기록</Heading>
+          <HStack gap={2} vAlign="center">
+            <Heading level={4}>판단 기록</Heading>
+            <span className="ui-panel-spacer" />
+            {state.judge && state.judge.canAsk && (
+              <Button size="sm" variant="ghost" label="Muse에게 묻기"
+                isLoading={state.judgeAskState === "asking"}
+                onClick={() => act("askLive")} />
+            )}
+          </HStack>
+          {state.askError && (
+            <Banner status="warning" title="라이브 판단을 불러오지 못했습니다"
+              description={state.askError} isDismissable
+              onDismiss={() => store.set({ askError: "" })} />
+          )}
           <ol className="ui-timeline">
             {state.judgeLog.map((row, i) => (
-              <li key={i} className="ui-timeline-row">
+              <li key={row.id || i}
+                className={state.judgeFlash === row.id ? "ui-timeline-row ui-flash" : "ui-timeline-row"}>
                 <span className="ui-timeline-dot" aria-hidden="true" />
                 <VStack gap={0}>
                   <HStack gap={1} vAlign="center" wrap="wrap">
                     <Text type="supporting" hasTabularNumbers>{row.minute}</Text>
                     <Text type="supporting">{`${row.agent} · ${row.kind} → ${row.choice}`}</Text>
                     <Badge variant={JUDGE_BADGE[row.badgeCls] || "neutral"} label={row.badgeText} />
+                    {state.judgeFlash === row.id && <Badge variant="orange" label="지금" />}
                   </HStack>
                   {row.reason && <Text type="supporting">“{row.reason}”</Text>}
                 </VStack>
               </li>
             ))}
           </ol>
+        </VStack>
+      </Card>
+    </div>
+  );
+}
+
+const WHY_KIND_KO = { routine: "일상 규칙", decision: "판단", input: "고객 입력", none: "기록 없음" };
+
+function NowCard({ state }) {
+  const n = state.now;
+  if (!n) return null;
+  if (n.free) {
+    return (
+      <div className="ui-nowcard">
+        <Card>
+          <VStack gap={1}>
+            <Heading level={4}>지금 가구 모습 (자유 시점)</Heading>
+            {n.rows.map((r) => (
+              <Text key={r.agentKey}>{`${r.label} · ${r.line}`}</Text>
+            ))}
+          </VStack>
+        </Card>
+      </div>
+    );
+  }
+  const d = n.decision;
+  return (
+    <div className="ui-nowcard">
+      <Card>
+        <VStack gap={1}>
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            <Heading level={4}>{`${n.label} · 지금`}</Heading>
+            <Badge variant="neutral" label={WHY_KIND_KO[n.whyKind] || n.whyKind} />
+          </HStack>
+          <Text>{n.now}</Text>
+          {n.progress !== null && n.progress !== undefined && (
+            <div className="ui-progress" role="progressbar" aria-label="현재 일정 진행률"
+              aria-valuenow={Math.round(n.progress * 100)} aria-valuemin={0} aria-valuemax={100}>
+              <div className="ui-progress-fill" style={{ width: `${Math.round(n.progress * 100)}%` }} />
+            </div>
+          )}
+          <Text type="supporting">{`왜 · ${n.why}`}</Text>
+          {d && d.chosen_by === "model" && (
+            <HStack gap={1} vAlign="center" wrap="wrap">
+              <Badge variant={d.provider === "baseten" ? "purple" : "blue"}
+                label={d.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"} />
+              {d.reason_ko && <Text type="supporting">“{d.reason_ko}”</Text>}
+            </HStack>
+          )}
+          {n.criterionIds.length > 0 && (
+            <HStack gap={1} vAlign="center" wrap="wrap">
+              <Text type="supporting">기준</Text>
+              {n.criterionIds.map((id) => (
+                <Button key={id} size="sm" variant="ghost" label={id}
+                  onClick={() => act("openCriterion", id)} />
+              ))}
+            </HStack>
+          )}
+          <Text type="supporting">{`다음 · ${n.next}`}</Text>
+          {state.ticker.length > 0 && (
+            <VStack gap={0}>
+              {state.ticker.map((e, i) => (
+                <Text key={i} type="supporting" hasTabularNumbers>{e.text}</Text>
+              ))}
+            </VStack>
+          )}
+        </VStack>
+      </Card>
+    </div>
+  );
+}
+
+function IntroCard({ state }) {
+  const m = state.simMeta;
+  if (!state.introOpen || !m) return null;
+  return (
+    <div className="ui-intro overlay">
+      <Card>
+        <VStack gap={2}>
+          <HStack gap={2} vAlign="center">
+            <Heading level={4}>이 시뮬레이션은?</Heading>
+            <span className="ui-panel-spacer" />
+            <Button size="sm" variant="ghost" label="닫기" onClick={() => act("setIntroOpen", false)} />
+          </HStack>
+          <Text>{`같은 가구가 ${m.homes.join("와 ")}에 살면 ${m.days}일 동안 시간·돈·생활이 어떻게 다른가 — 그 질문에 답하는 시나리오입니다.`}</Text>
+          <MetadataList>
+            <MetadataListItem label="누가">
+              <Text type="supporting">{`${m.members.join(" · ")} + 시뮬레이션 이웃 ${m.neighbours}명`}</Text>
+            </MetadataListItem>
+            <MetadataListItem label="언제">
+              <Text type="supporting">{`${m.startDate}부터 ${m.days}일 (KST, 1분 단위)`}</Text>
+            </MetadataListItem>
+            <MetadataListItem label="무엇을 재나">
+              <Text type="supporting">도보 시간·거리(그래프 실측), 장보기·산책 횟수, 저녁 재택, 생활비</Text>
+            </MetadataListItem>
+          </MetadataList>
+          {m.assumptions.length > 0 && (
+            <VStack gap={1}>
+              <Text>가정한 것</Text>
+              {m.assumptions.map((a, i) => (
+                <HStack gap={1} vAlign="center" key={i}>
+                  <Text type="supporting">{a.label}</Text>
+                  <Badge variant="orange" label={a.source || "가정값"} />
+                </HStack>
+              ))}
+            </VStack>
+          )}
+          <Text type="supporting">판단하지 않는 것: 집값 전망, 대출 가능 여부, 입주 자격, 매매 판단.</Text>
         </VStack>
       </Card>
     </div>
@@ -226,6 +366,7 @@ const COMPARE_TABS = [
   { value: "compare", label: "A·B 비교" },
   { value: "money", label: "생활비" },
   { value: "quality", label: "삶의 질" },
+  { value: "criteria", label: "기준" },
 ];
 
 function CompareCard({ state }) {
@@ -244,6 +385,7 @@ function CompareCard({ state }) {
           {state.compareTab === "compare" && <CompareTabBody state={state} />}
           {state.compareTab === "money" && <MoneyTab state={state} />}
           {state.compareTab === "quality" && <QualityTab state={state} />}
+          {state.compareTab === "criteria" && <CriteriaTab state={state} />}
         </VStack>
       </Card>
     </div>
@@ -318,8 +460,14 @@ export function App() {
     <>
       <TopBar state={state} />
       {isSim && <SimBar state={state} />}
-      <CaptionCard state={state} />
-      {isSim && <JudgeLogCard state={state} />}
+      {!isSim && <CaptionCard state={state} />}
+      {isSim && (
+        <div className="ui-simleft overlay">
+          <NowCard state={state} />
+          <JudgeLogCard state={state} />
+        </div>
+      )}
+      {isSim && <IntroCard state={state} />}
       {isSim && <CompareCard state={state} />}
       <LegendCard state={state} />
       <AttrLine state={state} />

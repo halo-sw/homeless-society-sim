@@ -2,6 +2,11 @@
 // meshes so residual occluders — and the tall host tower of an embedded
 // POI stop — dim instead of hiding the stop. Patched once per mesh;
 // per-stop updates only rewrite the afade attribute.
+//
+// The shadow pass gets the same treatment: without a matching depth
+// material, faded buildings cast full-strength ghost shadows with no
+// visible building above them (the stage-7 torn-shadow report), so the
+// depth material discards faded fragments (stage 7, Part C).
 import * as THREE from "three";
 
 export const OCCLUDE_FADE = 0.22;
@@ -10,6 +15,17 @@ export function makeFadeable(mesh) {
   const count = mesh.geometry.attributes.position.count;
   mesh.geometry.setAttribute("afade", new THREE.BufferAttribute(new Float32Array(count).fill(1), 1));
   mesh.material.transparent = true;
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  depth.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float afade;\nvarying float vFade;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFade = afade;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vFade;")
+      .replace("#include <map_fragment>", "#include <map_fragment>\nif (vFade < 0.5) discard;");
+  };
+  depth.customProgramCacheKey = () => "occluder-fade-depth";
+  mesh.customDepthMaterial = depth;
   // Chain-safe: facade materials already carry the night-emissive patch.
   const prevCompile = mesh.material.onBeforeCompile;
   const prevKey = mesh.material.customProgramCacheKey;

@@ -4,14 +4,21 @@
 // the household, the two candidate homes (verbatim complex names), the
 // 30-day window, the seed, and the assumed durations (ride, workday).
 // Full schema: docs/scenario-schema.md.
+//
+// All defaults come from the criteria file (criteria.js) — never
+// literals. criteria_overrides lets a scenario re-set per-criterion
+// values (validated there); _explicit records which native fields the
+// customer set, so resolved criterion sources read 고객 입력 honestly.
+
+import { criterionDefault, validateOverrides } from "./criteria.js";
 
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-export const DEFAULT_START_DATE = "2026-11-02"; // a Monday
-export const DEFAULT_DAYS = 30;
-export const DEFAULT_SEED = 20261102;
-export const DEFAULT_BACKGROUND = 60;
-export const DEFAULT_WORKDAY_MINUTES = 540; // 9 h, scenario assumption
-export const DEFAULT_SCHOOLDAY_MINUTES = 360; // 6 h, scenario assumption
+export const DEFAULT_START_DATE = criterionDefault("C-sim-window", "start_default"); // a Monday
+export const DEFAULT_DAYS = criterionDefault("C-sim-window", "days_default");
+export const DEFAULT_SEED = criterionDefault("C-sim-window", "seed_default");
+export const DEFAULT_BACKGROUND = criterionDefault("C-neighbour", "count_default");
+export const DEFAULT_WORKDAY_MINUTES = criterionDefault("C-work-hours", "workday_minutes"); // 9 h
+export const DEFAULT_SCHOOLDAY_MINUTES = criterionDefault("C-work-hours", "schoolday_minutes"); // 6 h
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -177,6 +184,20 @@ export function parseScenario(raw) {
     }
   }
   const homesOut = homes.map((h) => ({ label: h.label, area: h.area, complex_name: h.complex_name }));
+  if (raw.workday_minutes !== undefined
+      && (!Number.isFinite(raw.workday_minutes) || raw.workday_minutes < 0)) {
+    fail("workday_minutes wants a number >= 0");
+  }
+  if (raw.schoolday_minutes !== undefined
+      && (!Number.isFinite(raw.schoolday_minutes) || raw.schoolday_minutes < 0)) {
+    fail("schoolday_minutes wants a number >= 0");
+  }
+  let criteriaOverrides = {};
+  try {
+    criteriaOverrides = validateOverrides(raw.criteria_overrides);
+  } catch (err) {
+    fail(String((err && err.message) || err).replace(/^criteria: /, "criteria_overrides: "));
+  }
   return {
     name: typeof raw.name === "string" ? raw.name : "scenario",
     start_date: raw.start_date === undefined ? DEFAULT_START_DATE : raw.start_date,
@@ -188,23 +209,50 @@ export function parseScenario(raw) {
     household: { members },
     homes: homesOut,
     money: parseMoney(raw.money, members, homesOut),
+    criteria_overrides: criteriaOverrides,
+    _explicit: readExplicit(raw),
   };
+}
+
+// Which native fields the customer set (for criterion source badges).
+// Fresh files: field presence. Re-parses (consult turns): the incoming
+// _explicit is reused as-is — writers (update_scenario, set_money) mark
+// their own patches, since a parsed scenario carries every field.
+export function readExplicit(raw) {
+  const out = {};
+  if (raw && raw._explicit && typeof raw._explicit === "object" && !Array.isArray(raw._explicit)) {
+    for (const [k, v] of Object.entries(raw._explicit)) {
+      if (v === true) out[k] = true;
+    }
+    return out;
+  }
+  if (!raw || typeof raw !== "object") return out;
+  for (const k of ["workday_minutes", "schoolday_minutes", "days", "seed", "background", "start_date"]) {
+    if (raw[k] !== undefined) out[k] = true;
+  }
+  if (raw.money && typeof raw.money === "object") {
+    for (const k of Object.keys(DEFAULT_MONEY_ASSUMPTIONS)) {
+      if (raw.money.assumptions && raw.money.assumptions[k] !== undefined) out[`money_${k}`] = true;
+    }
+    if (raw.money.burden_threshold_pct !== undefined) out.money_burden_threshold_pct = true;
+  }
+  return out;
 }
 
 export const TENURE_KINDS = ["매매", "전세", "월세", "공공임대"];
 
 export const DEFAULT_MONEY_ASSUMPTIONS = {
-  loan_rate_pct: 4.0,
-  loan_years: 30,
-  maintenance_won_month: 150000,
-  transit_fare_won: 1500,
-  basket_won: 30000,
-  other_fixed_won_month: 0,
-  pay_day_of_month: 25,
-  fixed_due_day_1based: 1,
+  loan_rate_pct: criterionDefault("C-money-fixed", "loan_rate_pct"),
+  loan_years: criterionDefault("C-money-fixed", "loan_years"),
+  maintenance_won_month: criterionDefault("C-money-fixed", "maintenance_won"),
+  transit_fare_won: criterionDefault("C-money-fare", "fare_won"),
+  basket_won: criterionDefault("C-money-basket", "basket_won"),
+  other_fixed_won_month: criterionDefault("C-money-fixed", "other_fixed_won"),
+  pay_day_of_month: criterionDefault("C-money-fixed", "pay_day"),
+  fixed_due_day_1based: criterionDefault("C-money-fixed", "due_day_1based"),
 };
 
-export const DEFAULT_BURDEN_THRESHOLD_PCT = 30;
+export const DEFAULT_BURDEN_THRESHOLD_PCT = criterionDefault("C-burden-rule", "threshold_pct");
 
 // Optional `money` block (stage 6): salary inputs, own funds, per-home
 // tenure and spending assumptions. Everything without a measured source

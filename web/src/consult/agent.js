@@ -25,6 +25,7 @@ export const SYSTEM_PROMPT = [
   "역할: 시나리오 조건을 정하고(run_simulation), 결과를 설명하고, '만약에' 질문에는 조건을 바꿔 다시 실행해 전/후를 비교한다.",
   "첫 대화에서는 한 번에 하나씩 묻는다: 누구와 사는지, 근무일, 출근역, 승차 시간(앱은 대중교통 시간을 알 수 없으니 고객이 말한 숫자를 그대로 쓰고 가정값이라 밝힌다), 장보기·산책·병원 이용. 그 뒤 실행을 제안한다.",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
+  "왜 그런지 물을 때(무엇을·왜)는 get_day의 cause와 list_criteria/explain_criterion을 근거로 답하고, 쓴 기준 id(C-로 시작)를 함께 밝힌다.",
   "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위와 출처(그래프/실거래/공공임대/가정값/추정)를 항상 함께 밝힌다.",
   "생활비 상담 흐름: set_money로 연봉·보유현금·점유형태(매매/전세/월세/공공임대)·가정값을 받고, estimate_net_pay로 추정 실수령액을 보여준 뒤(고객이 실제 값을 말하면 그 값을 쓴다), price_reference로 실거래 기준가를 조회하고, run_simulation 후 living_cost로 30일 생활비를 계산한다. 공공임대 후보는 recommend_public_rental로 고르고 add_home_c로 C에 추가한다.",
   "집값 전망 질문(예: '잠실 집값이 오를까?')에는 정중히 '이 앱은 집값 전망을 하지 않습니다'라고 답하고, 대신 해당 단지의 최근 12개월 실거래(price_reference)를 제안한다. 전망이나 상승/하락 단정은 절대 하지 않는다.",
@@ -91,6 +92,10 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `${r.day}일차 ${(r.trips || []).length}회 이동`, ok: true };
     case "explain_decision":
       return { summary: `${r.kind_ko} → ${r.chosen_key}(${r.badge})`, ok: true };
+    case "list_criteria":
+      return { summary: `기준 ${r.count}개`, ok: true };
+    case "explain_criterion":
+      return { summary: `${r.id} ${r.title || ""}`, ok: true };
     case "set_view":
       return { summary: r.chip || "화면 이동", ok: true };
     case "set_money":

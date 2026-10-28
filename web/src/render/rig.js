@@ -12,6 +12,7 @@ import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { sunDirection } from "../lighting.js";
 import { skyParams, fogRangeFor } from "./sky.js";
+import { SHADOW_BIAS, shadowFit, shadowHalfExtent, snapTargetToTexel } from "./shadows.js";
 
 // Fixed moon direction when the sun is down (unit-ish, y-up world).
 const MOON_DIR = (() => {
@@ -23,8 +24,8 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
   const sun = new THREE.DirectionalLight(0xfff2dd, 3.0);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 1.5;
+  sun.shadow.bias = SHADOW_BIAS;
+  sun.shadow.normalBias = 0.3; // per-frame fit below overwrites this
   sun.shadow.intensity = 1.0;
   scene.add(sun, sun.target);
   const hemi = new THREE.HemisphereLight(0xbfd6e8, 0x9a8f7a, 1.0);
@@ -55,7 +56,7 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     u.sunPosition.value.copy(dir);
   }
 
-  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null }) {
+  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null, maxHeightM = 250 }) {
     const p = skyParams(lat, lon, date, minute);
     // Sun above the horizon; moonlight below it.
     if (p.altitude > -1) {
@@ -64,18 +65,31 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     } else {
       sunDir.copy(MOON_DIR);
     }
+    // Shadow frustum fit (stage 7, Part C): the ortho extent follows
+    // the framed area, near/far hug the scene depth along the light,
+    // and the target snaps to the texel grid — no more torn bands from
+    // a 1..2200 m depth range or a swimming map.
     const dist = Math.max(800, span * 1.2);
-    sun.position.set(target.x + sunDir.x * dist, sunDir.y * dist, target.z + sunDir.z * dist);
-    sun.target.position.set(target.x, 0, target.z);
+    const half = shadowHalfExtent({ framedWidthM: framedWidth === null ? span : framedWidth,
+      spanMaxM: shadowSpan });
+    const fit = shadowFit({ halfM: half, distM: dist, maxHeightM,
+      mapSize: sun.shadow.mapSize.x });
+    const snapped = snapTargetToTexel({ x: target.x, z: target.z,
+      sunDir: [sunDir.x, sunDir.y, sunDir.z], texelM: fit.texelM });
+    sun.position.set(snapped.x + sunDir.x * dist, snapped.y + sunDir.y * dist,
+      snapped.z + sunDir.z * dist);
+    sun.target.position.set(snapped.x, snapped.y, snapped.z);
     sun.color.setHex(p.sunColor);
     sun.intensity = p.sunIntensity;
+    sun.shadow.bias = fit.bias;
+    sun.shadow.normalBias = fit.normalBias;
     const sc = sun.shadow.camera;
-    sc.left = -shadowSpan;
-    sc.right = shadowSpan;
-    sc.top = shadowSpan;
-    sc.bottom = -shadowSpan;
-    sc.near = 1;
-    sc.far = dist * 2 + 600;
+    sc.left = -fit.half;
+    sc.right = fit.half;
+    sc.top = fit.half;
+    sc.bottom = -fit.half;
+    sc.near = fit.near;
+    sc.far = fit.far;
     sc.updateProjectionMatrix();
 
     hemi.color.setHex(p.hemiSky);

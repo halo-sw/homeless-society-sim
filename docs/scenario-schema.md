@@ -23,6 +23,7 @@ Example: `scenarios/demo-two-homes.json`. Run it with
 | `household.members[]` | array (≥ 1) | — | household members (below) |
 | `homes[]` | array (≥ 1) | — | `{label, area, complex_name}`; labels unique |
 | `money` | object | defaults below | salary/living-cost inputs (stage 6, below) — optional |
+| `criteria_overrides` | object | `{}` | per-criterion value overrides, e.g. `{"C-shop-dwell": {"dwell_min": 25}}` (stage 7, below) — optional |
 
 ## Household members
 
@@ -257,3 +258,23 @@ Precompute the UI payload with
 `node web/scripts/money.mjs --scenario scenarios/<name>.json --out data/build/sim/`
 (writes `<name>-money.json`: net pay, per-home price references, per
 tenure timelines, QoL time/convenience axes).
+
+## Criteria overrides (stage 7, optional)
+
+Every rule the engine uses lives in `scenarios/criteria/kr-default.json`
+(`docs/criteria.md` renders it). A scenario may re-set numeric values per
+criterion:
+
+```json
+"criteria_overrides": {
+  "C-shop-dwell": { "dwell_min": 25 },
+  "C-money-fare": { "fare_won": 2000 }
+}
+```
+
+Only `overridable` values accept overrides (unknown ids, unknown keys and
+non-numbers throw); the run records them in `meta.criteria.overrides` and
+the UI reads them as 고객 입력. Precedence: overrides > the scenario's own
+native field (`workday_minutes`, `money.assumptions`, …) > the file default.
+The parsed scenario also carries `_explicit` (which native fields the file
+set) so criterion source badges stay honest across consult re-parses.

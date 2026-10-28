@@ -10,7 +10,11 @@ import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
-import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, followCaption, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant } from "./sim.js";
+import { CRITERIA_GROUPS, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
+import { parseScenario } from "./engine/scenario.js";
+import { highlightFor } from "./highlight.js";
+import { householdNow, nowCardFor, tickerFor } from "./nowcard.js";
+import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 import { assignWalkers, sampleWalker } from "./walkers.js";
@@ -286,11 +290,19 @@ function buildWorld(area) {
     householdsById.set(b.id, Number(hh) || 0);
   }
 
+  // Tallest building top (from data) for the shadow-frustum fit.
+  let maxH = 0;
+  for (const b of area.buildings || []) {
+    const h = Number(b.height_m) || (Number(b.levels) || 0) * 3 || 0;
+    if (h > maxH) maxH = h;
+  }
+  const maxHeightM = maxH > 0 ? Math.min(600, maxH) : 250;
+
   renderCtl.attach(scene, camera, document.getElementById("scene-wrap"));
   return {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
-    dimMeshes, litMeshes, fadeMeshes, householdsById,
+    dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
     trees, trunkMesh, canopyMeshes, streetMeshes, dummy,
   };
 }
@@ -308,7 +320,7 @@ function refitToWrap(camera, renderCtl) {
 async function bootTour() {
   const area = await fetchArea(areaId);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
-    dimMeshes, fadeMeshes, litMeshes, householdsById,
+    dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
     streetMeshes, trees, dummy } = buildWorld(area);
   for (const { mesh } of fadeMeshes) makeFadeable(mesh);
 
@@ -394,7 +406,7 @@ async function bootTour() {
       camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute, target: { x: controls.target.x, z: controls.target.z },
-      shadowSpan: 240, envKey: "tour", framedWidth });
+      shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM });
     tourBloom = p.bloom;
     setGlobalNight(p.emissive);
     streetMeshes.setLampGlow(p.emissive);
@@ -435,7 +447,12 @@ async function bootTour() {
       store.set({ tourPlaying: player.playing });
     },
     setResOnly: (next) => {
-      for (const m of dimMeshes) m.material.opacity = next ? 0.3 : 1.0;
+      // Dimmed meshes stop casting: a faded mesh with a full-strength
+      // shadow reads as a floating ghost shadow (stage 7, Part C).
+      for (const m of dimMeshes) {
+        m.material.opacity = next ? 0.3 : 1.0;
+        m.castShadow = !next;
+      }
       store.set({ resOnly: next });
     },
     applyView: (view) => {
@@ -841,8 +858,13 @@ async function bootSim() {
     ? scenario.homes
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
-    dimMeshes, litMeshes, householdsById, streetMeshes } = buildWorld(area);
+    dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
+    wallMeshes, podiumMesh, roofMesh } = buildWorld(area);
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
+  // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
+  // pulse animation when the OS asks for reduced motion.
+  const REDUCED = typeof matchMedia === "function"
+    && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // --- run indexes ---
   const indexed = indexRun(run);
@@ -906,6 +928,131 @@ async function bootSim() {
   if (bgMesh.instanceColor) bgMesh.instanceColor.needsUpdate = true;
   scene.add(hhMesh, bgMesh);
 
+  // --- highlight furniture (stage 7, Part B) ---
+  // Route: one bright line ahead of the followed resident, one faded
+  // line behind. Destination: a pin label + a small ground marker. The
+  // ride stub is a dashed line for off-area station rides.
+  const routeAhead = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95, depthTest: false }));
+  const routeDone = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x8a8a8a, transparent: true, opacity: 0.3 }));
+  routeAhead.renderOrder = 998;
+  routeAhead.frustumCulled = false;
+  routeDone.frustumCulled = false;
+  routeAhead.visible = false;
+  routeDone.visible = false;
+  scene.add(routeAhead, routeDone);
+  const destPin = document.createElement("div");
+  destPin.className = "hopin";
+  destPin.style.display = "none";
+  tagsLayer.appendChild(destPin);
+  const destMark = new THREE.Mesh(
+    new THREE.ConeGeometry(2.2, 5, 12),
+    new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0.9 }));
+  destMark.renderOrder = 998;
+  destMark.visible = false;
+  scene.add(destMark);
+  const rideStub = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 4, gapSize: 3,
+      transparent: true, opacity: 0.9, depthTest: false }));
+  rideStub.renderOrder = 998;
+  rideStub.frustumCulled = false;
+  rideStub.visible = false;
+  scene.add(rideStub);
+  const qolGroup = new THREE.Group();
+  scene.add(qolGroup);
+  const poiById = new Map((area.pois || []).map((p) => [p.id, p]));
+
+  // Per-building tint over the merged meshes (home + destination):
+  // lerp the vertex colours toward the tint, restore the exact
+  // originals on change. Ranges come from buildBuildings.
+  const tintMeshes = [...Object.values(wallMeshes), podiumMesh, roofMesh].filter(Boolean);
+  const tintState = { home: null, dest: null }; // slot -> {id, hex} | null
+  function setTint(buildingId, slot, hex) {
+    const cur = tintState[slot];
+    if ((cur && cur.id) === buildingId && (!buildingId || (cur && cur.hex) === hex)) return;
+    tintState[slot] = buildingId ? { id: buildingId, hex } : null;
+    for (const mesh of tintMeshes) {
+      const attr = mesh.geometry.attributes.color;
+      if (!attr) continue;
+      if (!mesh.userData.origColors) mesh.userData.origColors = attr.array.slice();
+      const orig = mesh.userData.origColors;
+      const ranges = mesh.userData.ranges || [];
+      const apply = (slotState) => {
+        if (!slotState) return;
+        const tint = new THREE.Color(slotState.hex);
+        const k = 0.45;
+        for (const r of ranges) {
+          if (r.id !== slotState.id) continue;
+          for (let v = r.start; v < r.start + r.count; v++) {
+            const o = v * 3;
+            attr.array[o] = orig[o] * (1 - k) + tint.r * k;
+            attr.array[o + 1] = orig[o + 1] * (1 - k) + tint.g * k;
+            attr.array[o + 2] = orig[o + 2] * (1 - k) + tint.b * k;
+          }
+        }
+      };
+      const clear = (id) => {
+        if (!id) return;
+        for (const r of ranges) {
+          if (r.id !== id) continue;
+          for (let v = r.start; v < r.start + r.count; v++) {
+            const o = v * 3;
+            attr.array[o] = orig[o];
+            attr.array[o + 1] = orig[o + 1];
+            attr.array[o + 2] = orig[o + 2];
+          }
+        }
+      };
+      // Rebuild from the originals: clear the previous id when it is no
+      // longer tinted by either slot, then apply both slots (each slot
+      // keeps its own colour; home and destination may coincide).
+      if (cur && cur.id !== (tintState.home && tintState.home.id)
+          && cur.id !== (tintState.dest && tintState.dest.id)) {
+        clear(cur.id);
+      }
+      apply(tintState.home);
+      apply(tintState.dest);
+      attr.needsUpdate = true;
+    }
+  }
+
+  function paintTagPin(el, x, y, z, text) {
+    if (!text) {
+      el.style.display = "none";
+      return;
+    }
+    el.textContent = text;
+    paintTag(el, x, y, z, true);
+  }
+
+  function nodeWorld(nodeId, lift = 1.5) {
+    const p = nodeLonLat.get(nodeId);
+    if (!p) return null;
+    const [x, y] = lonLatToXY(p[0], p[1], origin);
+    return new THREE.Vector3(x, lift, -y);
+  }
+
+  // Split a trip path at the travelled fraction into behind/ahead
+  // polylines (world space), sharing the interpolated current point.
+  function splitRoute(trip, frac) {
+    const fracs = tripFractions(trip, edgeLen);
+    const pts = trip.path.map((id) => nodeWorld(id)).filter(Boolean);
+    if (pts.length === 0) return { behind: [], ahead: [] };
+    const f = Math.min(1, Math.max(0, frac));
+    let i = 0;
+    while (i < fracs.length - 2 && fracs[i + 1] < f) i++;
+    const span = fracs[i + 1] - fracs[i] || 1;
+    const k = Math.min(1, Math.max(0, (f - fracs[i]) / span));
+    const cur = pts[i].clone().lerp(pts[Math.min(pts.length - 1, i + 1)], k);
+    return { behind: [...pts.slice(0, i + 1), cur], ahead: [cur, ...pts.slice(i + 1)] };
+  }
+
+  function setLine(line, pts) {
+    line.geometry.setFromPoints(pts.length > 0 ? pts : [new THREE.Vector3(0, -100, 0)]);
+    if (line.computeLineDistances) line.computeLineDistances();
+  }
+
   function placeAgents(day, minute) {
     for (const [mesh, list, height] of [[hhMesh, household, 2.2], [bgMesh, background, 1.0]]) {
       list.forEach((a, i) => {
@@ -952,6 +1099,163 @@ async function bootSim() {
     paintJudgeLog();
   }
 
+  // --- Now card + highlight state (stage 7, Parts A/B) ---
+  // paintNow publishes the Now card, ticker, ticks and flash (minute
+  // granularity); the per-frame loop only moves the route split, pins
+  // and the pulse from the cached hiState.
+  const tripById = new Map(run.trips.map((t) => [t.id, t]));
+  let hiState = null;
+  let pulse = null; // {ring, t0} active decision pulse or null
+  let lastPulseId = "";
+  let lastRouteKey = "";
+  const qolGeo = new THREE.SphereGeometry(2.2, 10, 8);
+  const qolMat = new THREE.MeshBasicMaterial({ color: 0x7fd4ff,
+    depthTest: false, transparent: true, opacity: 0.9 });
+
+  function spendingEvents() {
+    const money = store.getState().money;
+    const home = money && !money.error && money.homes && money.homes[homeLabel];
+    return (home && home.spending_events) || [];
+  }
+
+  function paintNow() {
+    const m = Math.floor(minute);
+    if (!follow) {
+      store.set({ now: { free: true,
+        rows: householdNow({ run, indexed, day, minute: m }) }, ticker: [] });
+    } else {
+      const agent = household[follow - 1];
+      store.set({
+        now: nowCardFor({ run, indexed, agentKey: agent.key, day, minute: m }),
+        ticker: tickerFor({ run, indexed, agentKey: agent.key, day, minute: m,
+          moneyEvents: spendingEvents() }),
+      });
+    }
+    refreshHighlight();
+  }
+
+  let lastQolKey = "";
+  function rebuildQolMarkers(ids) {
+    const key = (ids || []).join(",");
+    if (key === lastQolKey) return;
+    lastQolKey = key;
+    while (qolGroup.children.length > 0) qolGroup.remove(qolGroup.children[0]);
+    for (const id of (ids || []).slice(0, 250)) {
+      const p = poiById.get(id);
+      const c = p && p.geometry && p.geometry.coordinates;
+      if (!c) continue;
+      const [x, y] = lonLatToXY(c[0], c[1], origin);
+      const s = new THREE.Mesh(qolGeo, qolMat);
+      s.position.set(x, 4, -y);
+      s.renderOrder = 997;
+      qolGroup.add(s);
+    }
+  }
+
+  function refreshHighlight() {
+    const m = Math.floor(minute);
+    hiState = highlightFor({ run, indexed, follow, day, minute: m,
+      qualityHover: store.getState().qualityHover,
+      moneyDoc: store.getState().money, area, homeLabel });
+    store.set({ simTicks: hiState.ticks, judgeFlash: hiState.pulseDecisionId || "" });
+    setTint(hiState.homeBuildingId, "home", 0xffc978);
+    const memberHex = follow > 0 ? hhColors[(follow - 1) % hhColors.length] : 0xffffff;
+    setTint(hiState.destBuildingId, "dest", memberHex);
+    rebuildQolMarkers(hiState.qualityPoiIds);
+    if (!REDUCED && hiState.pulseDecisionId && hiState.pulseDecisionId !== lastPulseId && follow > 0) {
+      pulse = { ring: ringMeshes[follow - 1], t0: performance.now() };
+    }
+    lastPulseId = hiState.pulseDecisionId || "";
+    return hiState;
+  }
+
+  function applyFollowDim() {
+    const tmp = new THREE.Color();
+    const grey = new THREE.Color(0x555555);
+    household.forEach((a, i) => {
+      const on = follow === 0 || follow === i + 1;
+      tmp.setHex(hhColors[i % hhColors.length]);
+      if (!on) tmp.lerp(grey, 0.6);
+      hhMesh.setColorAt(i, tmp);
+      const ring = ringMeshes[i];
+      if (follow === i + 1) {
+        ring.material.opacity = 0.95;
+        ring.material.depthTest = false;
+        ring.renderOrder = 999;
+      } else {
+        ring.material.opacity = follow === 0 ? 0.9 : 0.22;
+        ring.material.depthTest = true;
+        ring.renderOrder = 0;
+      }
+    });
+    if (hhMesh.instanceColor) hhMesh.instanceColor.needsUpdate = true;
+    bgMesh.material.transparent = follow > 0;
+    bgMesh.material.opacity = follow > 0 ? 0.45 : 1.0;
+    bgMesh.material.needsUpdate = true;
+  }
+
+  function paintHighlightFrame() {
+    if (pulse) {
+      const k = (performance.now() - pulse.t0) / 700;
+      if (k >= 1) {
+        pulse.ring.scale.setScalar(1);
+        pulse.ring.material.opacity = 0.95;
+        pulse = null;
+      } else {
+        pulse.ring.scale.setScalar(1 + k * 0.8);
+        pulse.ring.material.opacity = 0.95 * (1 - k * 0.6);
+      }
+    }
+    const h = hiState;
+    const trip = h && h.trip ? tripById.get(h.trip.id) : null;
+    if (trip && follow > 0) {
+      const dur = Math.max(1, trip.arrive_min - trip.depart_min);
+      const frac = Math.min(1, Math.max(0, (minute - trip.depart_min) / dur));
+      const rkey = `${trip.id}:${Math.round(frac * 64)}`;
+      if (rkey !== lastRouteKey) {
+        lastRouteKey = rkey;
+        const { behind, ahead } = splitRoute(trip, frac);
+        setLine(routeAhead, ahead);
+        setLine(routeDone, behind);
+        routeAhead.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
+      }
+      routeAhead.visible = true;
+      routeDone.visible = true;
+      const dp = h.destNodeId ? nodeWorld(h.destNodeId, 0) : null;
+      if (dp && h.destLabel) {
+        paintTagPin(destPin, dp.x, 10, dp.z, h.destLabel);
+        destMark.position.set(dp.x, 3, dp.z);
+        destMark.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
+        destMark.visible = true;
+      } else {
+        destPin.style.display = "none";
+        destMark.visible = false;
+      }
+      rideStub.visible = false;
+    } else if (h && h.rideAway && follow > 0) {
+      routeAhead.visible = false;
+      routeDone.visible = false;
+      lastRouteKey = "";
+      destMark.visible = false;
+      const sp = h.rideAway.stationNodeId ? nodeWorld(h.rideAway.stationNodeId, 1) : null;
+      if (sp) {
+        setLine(rideStub, [sp, new THREE.Vector3(sp.x, 30, sp.z)]);
+        rideStub.visible = true;
+        paintTagPin(destPin, sp.x, 34, sp.z, `지하철 탑승 (가정값 ${h.rideAway.rideMinutes}분)`);
+      } else {
+        rideStub.visible = false;
+        destPin.style.display = "none";
+      }
+    } else {
+      routeAhead.visible = false;
+      routeDone.visible = false;
+      rideStub.visible = false;
+      destMark.visible = false;
+      destPin.style.display = "none";
+      lastRouteKey = "";
+    }
+  }
+
   // --- sun/sky follow sim time; facades glow from run occupancy ---
   // The rig owns sun/hemi/Sky/environment; per-building lit fractions
   // (at-home residents / agents housed there — the same stage-3 data the
@@ -969,7 +1273,7 @@ async function bootSim() {
       camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m, target: { x: controls.target.x, z: controls.target.z },
-      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth });
+      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM });
     simBloom = p.bloom;
     const key = `${day}:${m}`;
     if (key === lastLightKey) return;
@@ -1001,7 +1305,10 @@ async function bootSim() {
 
   function paintFollow(dt, forceCaption) {
     if (!follow) {
-      if (forceCaption) store.set({ caption: null, judge: null });
+      if (forceCaption) {
+        store.set({ caption: null, judge: null });
+        paintNow();
+      }
       controls.enabled = true;
       return;
     }
@@ -1024,11 +1331,7 @@ async function bootSim() {
     }
     controls.enabled = false;
     if (forceCaption) {
-      store.set({ caption: {
-        name: `${hit.agent.label} 따라가기`,
-        meta: "시뮬레이션 주민 · 생활 시뮬레이션",
-        walk: followCaption(hit.s, hit.agent.label),
-      } });
+      paintNow();
       paintJudgeCaption(hit.agent.key);
     }
   }
@@ -1132,6 +1435,7 @@ async function bootSim() {
       const v = judgedView(d);
       const badge = decisionBadge(v);
       return {
+        id: v.id,
         minute: hhmmOf(v.minute),
         agent: agentLabelOf(run, v.agent),
         kind: DECISION_KIND_KO[v.kind] || v.kind,
@@ -1174,7 +1478,12 @@ async function bootSim() {
       ...household.map((a, i) => ({ value: String(i + 1), label: a.label }))],
     playing,
     speed,
+    simMeta: buildSimMeta(),
+    // The purpose card opens on arrival, but stays out of the way of
+    // deterministic captures (?t= / ?day=) and ?intro=0.
+    introOpen: !PARAMS.has("t") && !PARAMS.has("day") && PARAMS.get("intro") !== "0",
   });
+  applyFollowDim();
   document.title = `주거 시뮬레이터 — ${homeLabel} · ${run.meta.complex}`;
 
   async function paintCompare() {
@@ -1218,6 +1527,103 @@ async function bootSim() {
     }
     store.set({ moneyLoading: false, money: doc,
       moneyTenure: { ...(doc.default_tenure || {}), ...store.getState().moneyTenure } });
+    refreshHighlight(); // QoL hover ids ride on the money doc
+  }
+
+  const ROLE_KO = { adult: "성인", child: "어린이", senior: "노인" };
+
+  function buildSimMeta() {
+    const members = household.map((a, i) => {
+      const raw = scenario && scenario.household && scenario.household.members[i];
+      const role = ROLE_KO[(raw && raw.role) || a.role] || a.role;
+      return `${a.label} (${role})`;
+    });
+    const assumptions = [];
+    if (scenario) {
+      if (scenario.workday_minutes) {
+        assumptions.push({ label: `근무 체류 ${scenario.workday_minutes}분`, source: "가정값" });
+      }
+      for (const m of scenario.household.members || []) {
+        if (m.work && m.work.type === "station_ride" && Number.isFinite(m.work.ride_minutes)) {
+          assumptions.push({ label: `${m.label} 승차 ${m.work.ride_minutes}분`,
+            source: m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값" });
+        }
+      }
+      const A = scenario.money && scenario.money.assumptions;
+      if (A) {
+        if (A.transit_fare_won) {
+          assumptions.push({ label: `통근 1회 ${A.transit_fare_won.toLocaleString()}원`, source: "가정값" });
+        }
+        if (A.basket_won) {
+          assumptions.push({ label: `장보기 1회 ${A.basket_won.toLocaleString()}원`, source: "가정값" });
+        }
+      }
+    }
+    return {
+      members, neighbours: run.meta.background, days: run.meta.days,
+      startDate: run.meta.start_date, homes: homes.map((h) => h.label),
+      assumptions: assumptions.slice(0, 8),
+    };
+  }
+
+  async function paintCriteria() {
+    if (store.getState().criteria || store.getState().criteriaLoading) return;
+    store.set({ criteriaLoading: true });
+    try {
+      const r = await fetch("/scenarios/criteria/kr-default.json");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const doc = await r.json();
+      // Resolve the working scenario against the same criteria the
+      // engine ran with (values + 고객 입력 sources); the file above
+      // proves what the browser read.
+      let resolved = null;
+      try {
+        resolved = scenario ? resolveCriteria(parseScenario(structuredClone(scenario))) : null;
+      } catch {
+        resolved = null;
+      }
+      const byId = resolved ? resolved.byId
+        : Object.fromEntries((doc.criteria || []).map((c) => [c.id, c]));
+      store.set({ criteriaLoading: false, criteria: {
+        doc: doc.name, version: doc.version,
+        groups: doc.groups || CRITERIA_GROUPS,
+        overrides: resolved ? resolved.overridden : [],
+        items: (doc.criteria || []).map((c) => {
+          const row = byId[c.id] || c;
+          return { id: row.id, group: row.group, title: row.title, rule: row.rule,
+            values: row.values || {}, valuesLine: criterionValuesLine(row),
+            source: row.source, affects: row.affects || [], editable: !!row.editable };
+        }),
+      } });
+    } catch (err) {
+      store.set({ criteriaLoading: false,
+        criteria: { error: `기준 파일을 불러오지 못했습니다: ${err.message}` } });
+    }
+  }
+
+  function jumpToCriterionUse(id) {
+    const tripHit = run.trips.find((t) => t.cause && (t.cause.criterion_ids || []).includes(id));
+    const awayHit = !tripHit
+      ? run.aways.find((a) => a.cause && (a.cause.criterion_ids || []).includes(id)) : null;
+    if (!tripHit && !awayHit) {
+      store.set({ viewChip: `기준 ${id}을 쓴 순간이 없습니다 (${run.meta.days}일)` });
+      return;
+    }
+    const hit = tripHit || awayHit;
+    day = hit.day;
+    minute = tripHit ? tripHit.depart_min : awayHit.start_min;
+    if (String(hit.agent).startsWith("h")) {
+      const idx = household.findIndex((a) => a.key === hit.agent);
+      if (idx >= 0) {
+        follow = idx + 1;
+        snapFollow = true;
+        store.set({ follow });
+        applyFollowDim();
+      }
+    }
+    paintClock();
+    paintFollow(0.016, true);
+    store.set({ viewChip: `기준 ${id}: ${hit.day + 1}일차 ${hhmmOf(Math.floor(minute))}으로 이동` });
   }
 
   store.registerActions({
@@ -1245,11 +1651,27 @@ async function bootSim() {
       follow = Math.min(household.length, Math.max(0, next));
       snapFollow = follow > 0;
       store.set({ follow });
+      applyFollowDim();
       paintFollow(0.016, true);
     },
     setResOnly: (next) => {
-      for (const m of dimMeshes) m.material.opacity = next ? 0.3 : 1.0;
+      // Dimmed meshes stop casting (stage 7, Part C): no ghost shadows.
+      for (const m of dimMeshes) {
+        m.material.opacity = next ? 0.3 : 1.0;
+        m.castShadow = !next;
+      }
       store.set({ resOnly: next });
+    },
+    setIntroOpen: (next) => store.set({ introOpen: next }),
+    openCriterion: async (id) => {
+      store.set({ compareOpen: true, compareTab: "criteria", criteriaFocus: id });
+      await paintCompare();
+      await paintCriteria();
+    },
+    jumpToCriterionUse: (id) => jumpToCriterionUse(id),
+    setQualityHover: (category) => {
+      store.set({ qualityHover: category ? { category } : null });
+      refreshHighlight();
     },
     selectHome: (label) => {
       if (label !== homeLabel) location.href = simUrl(label, day, Math.floor(minute), follow);
@@ -1263,9 +1685,10 @@ async function bootSim() {
       }
     },
     setCompareTab: async (tab) => {
-      if (!["compare", "money", "quality"].includes(tab)) return;
+      if (!["compare", "money", "quality", "criteria"].includes(tab)) return;
       store.set({ compareTab: tab });
-      if (tab !== "compare") await paintMoney();
+      if (tab === "criteria") await paintCriteria();
+      else if (tab !== "compare") await paintMoney();
     },
     setMoneyTenure: (label, tenure) => {
       store.set({ moneyTenure: { ...store.getState().moneyTenure, [label]: tenure } });
@@ -1293,6 +1716,7 @@ async function bootSim() {
         follow = Math.min(household.length, Math.max(0, view.follow));
         snapFollow = follow > 0;
         store.set({ follow });
+        applyFollowDim();
       }
       paintClock();
       paintFollow(0.016, true);
@@ -1304,12 +1728,16 @@ async function bootSim() {
   paintClock();
   paintFollow(0.016, true);
   store.set({ ready: true });
-  // ?tab=money|quality opens the compare card on that tab (captures).
+  // The money doc feeds the ticker + QoL hover even with the card shut.
+  paintMoney();
+  // ?tab=money|quality|criteria opens the compare card on that tab.
   const wantTab = PARAMS.get("tab");
-  if (wantTab === "money" || wantTab === "quality" || wantTab === "compare") {
+  if (wantTab === "money" || wantTab === "quality" || wantTab === "compare"
+      || wantTab === "criteria") {
     store.set({ compareOpen: true, compareTab: wantTab });
     paintCompare();
     paintMoney();
+    if (wantTab === "criteria") paintCriteria();
   }
 
   // --- loop ---
@@ -1343,6 +1771,7 @@ async function bootSim() {
     streetMeshes.updateMovers(t);
     updateLighting();
     paintFollow(dt, false);
+    paintHighlightFrame();
     controls.update();
     renderCtl.renderFrame({ bloom: simBloom }, dt);
     frames++;

@@ -8,6 +8,7 @@
 // 0 (upfront deposit/purchase shown separately, not in the line).
 
 import { dateOf } from "../engine/scenario.js";
+import { criterionDefault } from "../engine/criteria.js";
 
 export const MONEY_CATEGORIES = ["salary", "housing", "transit", "grocery", "maintenance", "other_fixed"];
 
@@ -47,8 +48,9 @@ export function moneyTimeline(run, scenario, opts = {}) {
   const otherFixed = Math.max(0, Math.round(Number(opts.other_fixed_won_month) || 0));
   const monthlyNet = Math.max(0, Math.round(Number(opts.household_monthly_net_won) || 0));
   const housingMonthly = Math.max(0, Math.round(Number(opts.housing_monthly_won) || 0));
-  const dueDay = Math.min(days - 1, Math.max(0, (Number(opts.fixed_due_day_1based) || 1) - 1));
-  const payDay = Number(opts.pay_day_of_month) || 25;
+  const dueDay = Math.min(days - 1, Math.max(0,
+    (Number(opts.fixed_due_day_1based) || criterionDefault("C-money-fixed", "due_day_1based")) - 1));
+  const payDay = Number(opts.pay_day_of_month) || criterionDefault("C-money-fixed", "pay_day");
 
   const events = [];
   let commuteLegs = 0;

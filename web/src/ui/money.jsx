@@ -247,7 +247,9 @@ export function MoneyTab({ state }) {
   );
 }
 
-function QolHome({ label, doc, tenure }) {
+const QOL_CATS = [["grocery", "장보기"], ["park", "공원"], ["clinic", "병원"], ["station", "역"], ["eatery", "식당·카페"]];
+
+function QolHome({ label, doc, tenure, active }) {
   const h = doc.homes[label];
   const sel = h.by_tenure && h.by_tenure[tenure];
   const time = h.qol_time || {};
@@ -281,10 +283,20 @@ function QolHome({ label, doc, tenure }) {
           </Text>
         </MetadataListItem>
         <MetadataListItem label="편의 · 10분 도보">
-          <HStack gap={1} vAlign="center">
-            <Text type="supporting" hasTabularNumbers>
-              {`장보기 ${conv.grocery ?? 0} · 공원 ${conv.park ?? 0} · 병원 ${conv.clinic ?? 0} · 역 ${conv.station ?? 0} · 식당·카페 ${conv.eatery ?? 0}`}
-            </Text>
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            {QOL_CATS.map(([k, ko]) => (
+              <span key={k} className={active ? "ui-qolcat" : undefined}
+                onMouseEnter={() => {
+                  if (!active) return;
+                  try { act("setQualityHover", k); } catch { /* tour mode */ }
+                }}
+                onMouseLeave={() => {
+                  if (!active) return;
+                  try { act("setQualityHover", null); } catch { /* tour mode */ }
+                }}>
+                <Text type="supporting" hasTabularNumbers>{`${ko} ${conv[k] ?? 0}`}</Text>
+              </span>
+            ))}
             <SrcBadge source="graph" />
           </HStack>
         </MetadataListItem>
@@ -308,7 +320,7 @@ export function QualityTab({ state }) {
     <VStack gap={2}>
       {labels.map((label) => (
         <QolHome key={label} label={label} doc={doc}
-          tenure={tenureOf(state, label, doc)} />
+          tenure={tenureOf(state, label, doc)} active={state.home === label} />
       ))}
       <VStack gap={1}>
         <Text>내 기준 가중치 (고객 입력, 종합 점수는 매기지 않습니다)</Text>

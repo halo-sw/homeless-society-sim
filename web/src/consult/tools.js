@@ -12,6 +12,9 @@
 
 import { simulate, compare as compareRuns } from "../engine/simulate.js";
 import {
+  CRITERIA_BY_ID, CRITERIA_GROUPS, CRITERIA_LIST, criterionValuesLine, resolveCriteria,
+} from "../engine/criteria.js";
+import {
   parseScenario, homeOf, resolveHome, nameForHome,
 } from "../engine/scenario.js";
 import { Router } from "../engine/graph.js";
@@ -61,7 +64,7 @@ export const TOOL_DEFS = [
     description: "Show the current working scenario (household, homes, assumptions).",
     parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "update_scenario",
-    description: "Patch the working scenario (members, work, errands, habits, homes, days). Returns the updated scenario or validation errors. For station_ride work you MUST have the customer's own ride_minutes number; without it the call fails and you must ask.",
+    description: "Patch the working scenario (members, work, errands, habits, homes, days, criterion overrides). Returns the updated scenario or validation errors. For station_ride work you MUST have the customer's own ride_minutes number; without it the call fails and you must ask.",
     parameters: { type: "object", additionalProperties: false,
       properties: {
         members: { type: "array", description: "Per-member patches matched by index, id or label.",
@@ -72,7 +75,21 @@ export const TOOL_DEFS = [
           items: { type: "object", additionalProperties: true } },
         days: { type: "integer" }, seed: { type: "integer" }, background: { type: "integer" },
         workday_minutes: { type: "integer" }, schoolday_minutes: { type: "integer" },
+        criteria_overrides: { type: "object", additionalProperties: true,
+          description: 'Per-criterion value overrides, e.g. {"C-shop-dwell": {"dwell_min": 25}}. Only overridable numeric values; use list_criteria/explain_criterion to see them. Overridden values read as 고객 입력.' },
       } } } },
+  { type: "function", function: { name: "list_criteria",
+    description: "The explicit simulation criteria (rules, values, sources). Filter by group: 이동, 일상, 판단, 측정, 돈.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        group: str("Optional group id: move, daily, judge, measure, money."),
+      } } } },
+  { type: "function", function: { name: "explain_criterion",
+    description: "One criterion in full: the rule sentence, values with units, source, affected metrics, and whether the customer can change it.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        id: str("Criterion id, e.g. C-shop-dwell (see list_criteria)."),
+      }, required: ["id"] } } },
   { type: "function", function: { name: "list_areas",
     description: "The built areas available today (only these four).",
     parameters: { type: "object", properties: {}, additionalProperties: false } } },
@@ -273,8 +290,27 @@ async function update_scenario(session, patch) {
       }
     }
   }
+  const markedExplicit = [];
   for (const key of ["days", "seed", "background", "workday_minutes", "schoolday_minutes"]) {
-    if (patch[key] !== undefined) next[key] = patch[key];
+    if (patch[key] !== undefined) {
+      next[key] = patch[key];
+      markedExplicit.push(key);
+    }
+  }
+  if (patch.criteria_overrides !== undefined) {
+    if (!patch.criteria_overrides || typeof patch.criteria_overrides !== "object"
+        || Array.isArray(patch.criteria_overrides)) {
+      errors.push("criteria_overrides must be an object keyed by criterion id");
+    } else {
+      next.criteria_overrides = next.criteria_overrides || {};
+      for (const [id, pv] of Object.entries(patch.criteria_overrides)) {
+        if (!pv || typeof pv !== "object" || Array.isArray(pv)) {
+          errors.push(`criteria_overrides[${id}] must be an object of value overrides`);
+          continue;
+        }
+        next.criteria_overrides[id] = { ...(next.criteria_overrides[id] || {}), ...clone(pv) };
+      }
+    }
   }
   if (patch.homes !== undefined) {
     if (!Array.isArray(patch.homes) || patch.homes.length === 0) {
@@ -336,8 +372,54 @@ async function update_scenario(session, patch) {
       } catch { /* area errors already reported above */ }
     }
   }
+  for (const key of markedExplicit) parsed._explicit[key] = true;
   session.scenario = parsed;
   return { ok: true, scenario: clone(parsed), warnings };
+}
+
+function list_criteria(session, args) {
+  const group = args.group !== undefined && args.group !== null ? String(args.group) : null;
+  if (group && !CRITERIA_GROUPS.some((g) => g.id === group)) {
+    return fail(`unknown group ${JSON.stringify(group)} (want ${CRITERIA_GROUPS.map((g) => g.id).join(", ")})`);
+  }
+  const resolved = resolveCriteria(session.scenario);
+  const list = CRITERIA_LIST
+    .filter((c) => !group || c.group === group)
+    .map((c) => {
+      const row = resolved.byId[c.id];
+      return {
+        id: row.id, group: row.group, title: row.title,
+        values: criterionValuesLine(row) || "(값 없음: 규칙 문장 참조)",
+        source: row.source, editable: row.editable,
+      };
+    });
+  return { ok: true, groups: clone(CRITERIA_GROUPS), count: list.length, criteria: list };
+}
+
+function explain_criterion(session, args) {
+  const c = CRITERIA_BY_ID.get(String(args.id || ""));
+  if (!c) {
+    return fail(`unknown criterion ${JSON.stringify(args.id)} — call list_criteria first`);
+  }
+  const resolved = resolveCriteria(session.scenario);
+  const row = resolved.byId[c.id];
+  const groupTitle = (CRITERIA_GROUPS.find((g) => g.id === row.group) || {}).title || row.group;
+  return {
+    ok: true,
+    id: row.id, group: row.group, group_title: groupTitle, title: row.title,
+    rule: row.rule,
+    values: Object.fromEntries(Object.entries(row.values).map(([k, v]) => [k, {
+      value: v.value, unit: v.unit, overridable: v.overridable,
+    }])),
+    values_line: criterionValuesLine(row) || "(값 없음: 규칙 문장 참조)",
+    source: row.source,
+    overridden: resolved.overridden.includes(row.id),
+    affects: [...row.affects],
+    editable: row.editable,
+    how_to_change: row.editable
+      ? "update_scenario의 criteria_overrides(수치 기준) 또는 members/money 패치(입력 기준)로 바꾸고 run_simulation으로 다시 실행한다."
+      : "엔진 계약이라 바꿀 수 없다.",
+  };
 }
 
 function list_areas() {
@@ -576,13 +658,15 @@ function get_day(session, args) {
     .map((t) => ({ depart: hhmm(t.depart_min), arrive: hhmm(t.arrive_min),
       purpose: t.purpose, from: (t.from && (t.from.label || t.from.id)) || "",
       to: (t.to && (t.to.label || t.to.id)) || "",
-      minutes: t.minutes, distance_m: t.distance_m, source: "graph" }));
+      minutes: t.minutes, distance_m: t.distance_m, source: "graph",
+      cause: t.cause || null }));
   const aways = run.aways
     .filter((a) => a.agent === key && a.day === day)
     .map((a) => ({ start: hhmm(a.start_min), end: hhmm(a.end_min),
       kind: a.kind, label: a.label || "",
       ride_minutes: (a.detail && a.detail.ride_minutes) || undefined,
-      ride_note: (a.detail && a.detail.ride_minutes) ? "가정값 (user_input)" : undefined }));
+      ride_note: (a.detail && a.detail.ride_minutes) ? "가정값 (user_input)" : undefined,
+      cause: a.cause || null }));
   return { ok: true, run: hit.id, home: hit.home, day: day1, member: key, label,
     trips, aways, date_note: `day ${day1} of ${run.meta.days}` };
 }
@@ -666,6 +750,7 @@ function set_view(session, args) {
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
+  list_criteria, explain_criterion,
   ...MONEY_HANDLERS,
 };
 
