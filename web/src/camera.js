@@ -50,6 +50,47 @@ export function tourOffset(distance, pitchDeg = TOUR_PITCH_DEG,
   return [(horiz * azimuth[0]) / len, vert, (horiz * azimuth[1]) / len];
 }
 
+// --- architectural lens (two-point perspective, stage 5b) ---
+//
+// A level camera keeps vertical lines vertical; a wide symmetric
+// frustum plus a setViewOffset crop recentres the ground stop inside
+// it (the shift-lens trick). archLensPose returns the camera offset
+// (horizontal metres along the azimuth + height above the target) and
+// the crop fractions for a renderer of any size:
+//
+//   const db = renderer.getDrawingBufferSize(new THREE.Vector2());
+//   const fullH = db.y / viewH;
+//   camera.fov = ARCH_FOV_DEG;
+//   camera.setViewOffset(db.x, fullH, 0, yFrac * fullH, db.x, db.y);
+//   camera.position.copy(camPos); // level: look at camera height
+//   camera.lookAt(camPos.x + dirX, camPos.y, camPos.z + dirZ);
+//
+// Clear with camera.clearViewOffset() + fov restore when the user orbits.
+export const ARCH_FOV_DEG = 100; // full wide frustum (vertical)
+export const ARCH_VIEW_DEG = 24; // cropped view ≈ the 2b framing angle
+export const ARCH_DEPRESSION_DEG = 35; // stop below the level axis
+
+export function archLensPose(frameWidthM = STOP_FRAME_M, aspect = 1.49,
+                             azimuth = TOUR_AZIMUTH) {
+  const beta = ((ARCH_FOV_DEG / 2) * Math.PI) / 180;
+  const gamma = ((ARCH_VIEW_DEG / 2) * Math.PI) / 180;
+  const delta = (ARCH_DEPRESSION_DEG * Math.PI) / 180;
+  const vertSpan = frameWidthM / aspect;
+  const dist = vertSpan / 2 / Math.tan(gamma); // slant distance
+  const horiz = dist * Math.cos(delta);
+  const vert = dist * Math.sin(delta);
+  const len = Math.hypot(azimuth[0], azimuth[1]) || 1;
+  // Crop fractions (tangent-linear NDC): the view spans ±tanγ around
+  // the −tanδ centre inside the ±tanβ frustum.
+  const viewH = Math.tan(gamma) / Math.tan(beta);
+  const yFrac = (1 + (Math.tan(delta) - Math.tan(gamma)) / Math.tan(beta)) / 2;
+  return {
+    horiz, vert, dist,
+    dirX: azimuth[0] / len, dirZ: azimuth[1] / len,
+    viewH, yFrac,
+  };
+}
+
 // --- tower occlusion (per-stop azimuth) ---
 
 // Flattened occluder: exterior ring in local metres + prism height.

@@ -193,3 +193,30 @@ Capture URLs (serve `web/`, CLI runs first):
 4. `ride_minutes_source: "user_input"` (brief 5a) vs the schema
    doc's `"user_assumption"` — the engine accepts both; the doc
    still shows the old value.
+
+## Stage 5c merge note — 5a + 5b (Muse)
+
+Date: 2026-10-28. Resolved the 4 `web/src/main.js` conflict hunks
+(staged, not committed):
+
+- Imports: kept 5a `store` + `mountUI`, kept all 5b `render/`
+  imports, dropped the 5a `windows.js` import (5b's `aLit`
+  occupancy emissive replaces the glow quads — no quad code
+  remains; `windows.js` itself is retained and tested).
+- Tour tail: kept 5a `store.set({ tourPlaying, ready })`,
+  dropped 5b `playBtn`/`resOnly` DOM handlers.
+- `createPlayer`: 5a store captions + 5b `archLens` param and
+  two-point `poseFor` branch (call site already passes it).
+- Sim block: kept 5a (store actions), dropped the whole 5b DOM
+  block (`simPlayBtn`, speed/day buttons, `paintFollowBtns`,
+  compare box, `UNIT_KO` — the store `paintCompare` below it
+  stays).
+- Post-merge fix: both `setResOnly` actions still pointed at
+  5a's `nonMesh`; they now loop over 5b's `dimMeshes`
+  (non-res walls + podium).
+
+5b added no DOM overlay for tilt/quality (both are URL params:
+`?tilt=0`, `?q=`), so no Astryx port was needed. Verified:
+`node --test` **232 passed** (146 base + 47 5a + 39 5b),
+`npm run build` ✓ (~2 s, chunk-size warning only),
+`.venv/bin/pytest` **138 passed**, bundle secret scan clean.
