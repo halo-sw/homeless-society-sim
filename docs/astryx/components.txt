@@ -1,0 +1,525 @@
+
+Next step: run `npx astryx init` to finish setup and install the Astryx agent prompt.
+Components (173)
+
+name:   AlertDialog
+import: @astryxdesign/core/AlertDialog
+
+name:   AppShell
+import: @astryxdesign/core/AppShell
+
+name:   AspectRatio
+import: @astryxdesign/core/AspectRatio
+
+name:   Avatar
+import: @astryxdesign/core/Avatar
+
+name:   AvatarGroup
+import: @astryxdesign/core/AvatarGroup
+
+name:   AvatarGroupOverflow
+import: @astryxdesign/core/AvatarGroup
+
+name:   AvatarStatusDot
+import: @astryxdesign/core/Avatar
+
+name:   Badge
+import: @astryxdesign/core/Badge
+
+name:   Banner
+import: @astryxdesign/core/Banner
+
+name:   BaseTypeahead
+import: @astryxdesign/core/Typeahead
+
+name:   Blockquote
+import: @astryxdesign/core/Blockquote
+
+name:   BottomSheet
+import: @astryxdesign/core/BottomSheet
+
+name:   BottomSheetSwitcher
+import: @astryxdesign/core/BottomSheet
+
+name:   BreadcrumbItem
+import: @astryxdesign/core/Breadcrumbs
+
+name:   Breadcrumbs
+import: @astryxdesign/core/Breadcrumbs
+
+name:   Button
+import: @astryxdesign/core/Button
+
+name:   ButtonGroup
+import: @astryxdesign/core/ButtonGroup
+
+name:   Calendar
+import: @astryxdesign/core/Calendar
+
+name:   Card
+import: @astryxdesign/core/Card
+
+name:   Carousel
+import: @astryxdesign/core/Carousel
+
+name:   Center
+import: @astryxdesign/core/Center
+
+name:   ChatComposer
+import: @astryxdesign/core/Chat
+
+name:   ChatComposerDrawer
+import: @astryxdesign/core/Chat
+
+name:   ChatComposerInput
+import: @astryxdesign/core/Chat
+
+name:   ChatDictationButton
+import: @astryxdesign/core/Chat
+
+name:   ChatLayout
+import: @astryxdesign/core/Chat
+
+name:   ChatLayoutScrollButton
+import: @astryxdesign/core/Chat
+
+name:   ChatMessage
+import: @astryxdesign/core/Chat
+
+name:   ChatMessageBubble
+import: @astryxdesign/core/Chat
+
+name:   ChatMessageList
+import: @astryxdesign/core/Chat
+
+name:   ChatMessageMetadata
+import: @astryxdesign/core/Chat
+
+name:   ChatSendButton
+import: @astryxdesign/core/Chat
+
+name:   ChatSystemMessage
+import: @astryxdesign/core/Chat
+
+name:   ChatTokenizedText
+import: @astryxdesign/core/Chat
+
+name:   ChatToolCalls
+import: @astryxdesign/core/Chat
+
+name:   CheckboxInput
+import: @astryxdesign/core/CheckboxInput
+
+name:   CheckboxList
+import: @astryxdesign/core/CheckboxList
+
+name:   CheckboxListItem
+import: @astryxdesign/core/CheckboxList
+
+name:   Citation
+import: @astryxdesign/core/Citation
+
+name:   ClickableCard
+import: @astryxdesign/core/ClickableCard
+
+name:   Code
+import: @astryxdesign/core/Code
+
+name:   CodeBlock
+import: @astryxdesign/core/CodeBlock
+
+name:   Collapsible
+import: @astryxdesign/core/Collapsible
+
+name:   CollapsibleGroup
+import: @astryxdesign/core/Collapsible
+
+name:   CommandPalette
+import: @astryxdesign/core/CommandPalette
+
+name:   CommandPaletteEmpty
+import: @astryxdesign/core/CommandPalette
+
+name:   CommandPaletteFooter
+import: @astryxdesign/core/CommandPalette
+
+name:   CommandPaletteGroup
+import: @astryxdesign/core/CommandPalette
+
+name:   CommandPaletteInput
+import: @astryxdesign/core/CommandPalette
+
+name:   CommandPaletteItem
+import: @astryxdesign/core/CommandPalette
+
+name:   CommandPaletteList
+import: @astryxdesign/core/CommandPalette
+
+name:   ComplexSelector
+import: @astryxdesign/core/ComplexSelector
+
+name:   ContextMenu
+import: @astryxdesign/core/ContextMenu
+
+name:   DateInput
+import: @astryxdesign/core/DateInput
+
+name:   DateRangeInput
+import: @astryxdesign/core/DateRangeInput
+
+name:   DateTimeInput
+import: @astryxdesign/core/DateTimeInput
+
+name:   Dialog
+import: @astryxdesign/core/Dialog
+
+name:   DialogHeader
+import: @astryxdesign/core/Dialog
+
+name:   Divider
+import: @astryxdesign/core/Divider
+
+name:   Drawer
+import: @astryxdesign/core/Drawer
+
+name:   DrawerHeader
+import: @astryxdesign/core/Drawer
+
+name:   DropdownMenu
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuCheckboxItem
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuDivider
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuGroup
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuItem
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuRadioGroup
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuRadioItem
+import: @astryxdesign/core/DropdownMenu
+
+name:   DropdownMenuSubMenu
+import: @astryxdesign/core/DropdownMenu
+
+name:   EmptyState
+import: @astryxdesign/core/EmptyState
+
+name:   Field
+import: @astryxdesign/core/Field
+
+name:   FieldLabel
+import: @astryxdesign/core/Field
+
+name:   FieldStatus
+import: @astryxdesign/core/FieldStatus
+
+name:   FileInput
+import: @astryxdesign/core/FileInput
+
+name:   FormLayout
+import: @astryxdesign/core/FormLayout
+
+name:   Grid
+import: @astryxdesign/core/Grid
+
+name:   GridSpan
+import: @astryxdesign/core/Grid
+
+name:   Heading
+import: @astryxdesign/core/Heading
+
+name:   HoverCard
+import: @astryxdesign/core/HoverCard
+
+name:   HStack
+import: @astryxdesign/core/HStack
+
+name:   Icon
+import: @astryxdesign/core/Icon
+
+name:   IconButton
+import: @astryxdesign/core/IconButton
+
+name:   InputGroup
+import: @astryxdesign/core/InputGroup
+
+name:   InputGroupText
+import: @astryxdesign/core/InputGroup
+
+name:   InternationalizationProvider
+import: @astryxdesign/core/i18n
+
+name:   Item
+import: @astryxdesign/core/Item
+
+name:   Kbd
+import: @astryxdesign/core/Kbd
+
+name:   Layout
+import: @astryxdesign/core/Layout
+
+name:   LayoutContent
+import: @astryxdesign/core/Layout
+
+name:   LayoutFooter
+import: @astryxdesign/core/Layout
+
+name:   LayoutHeader
+import: @astryxdesign/core/Layout
+
+name:   LayoutPanel
+import: @astryxdesign/core/Layout
+
+name:   Lightbox
+import: @astryxdesign/core/Lightbox
+
+name:   Link
+import: @astryxdesign/core/Link
+
+name:   LinkProvider
+import: @astryxdesign/core/Link
+
+name:   List
+import: @astryxdesign/core/List
+
+name:   ListItem
+import: @astryxdesign/core/List
+
+name:   Markdown
+import: @astryxdesign/core/Markdown
+
+name:   MediaTheme
+import: @astryxdesign/core/theme
+
+name:   MetadataList
+import: @astryxdesign/core/MetadataList
+
+name:   MetadataListItem
+import: @astryxdesign/core/MetadataList
+
+name:   MobileNav
+import: @astryxdesign/core/MobileNav
+
+name:   MoreMenu
+import: @astryxdesign/core/MoreMenu
+
+name:   MultiSelector
+import: @astryxdesign/core/MultiSelector
+
+name:   NavIcon
+import: @astryxdesign/core/NavIcon
+
+name:   NumberInput
+import: @astryxdesign/core/NumberInput
+
+name:   Outline
+import: @astryxdesign/core/Outline
+
+name:   OverflowList
+import: @astryxdesign/core/OverflowList
+
+name:   Overlay
+import: @astryxdesign/core/Overlay
+
+name:   Pagination
+import: @astryxdesign/core/Pagination
+
+name:   Popover
+import: @astryxdesign/core/Popover
+
+name:   PowerSearch
+import: @astryxdesign/core/PowerSearch
+
+name:   ProgressBar
+import: @astryxdesign/core/ProgressBar
+
+name:   RadioList
+import: @astryxdesign/core/RadioList
+
+name:   RadioListItem
+import: @astryxdesign/core/RadioList
+
+name:   ScrollableArea
+import: @astryxdesign/core/ScrollableArea
+
+name:   Section
+import: @astryxdesign/core/Section
+
+name:   SegmentedControl
+import: @astryxdesign/core/SegmentedControl
+
+name:   SegmentedControlItem
+import: @astryxdesign/core/SegmentedControl
+
+name:   SelectableCard
+import: @astryxdesign/core/SelectableCard
+
+name:   Selector
+import: @astryxdesign/core/Selector
+
+name:   SelectorOption
+import: @astryxdesign/core/Selector
+
+name:   SideNav
+import: @astryxdesign/core/SideNav
+
+name:   SideNavCollapseButton
+import: @astryxdesign/core/SideNav
+
+name:   SideNavHeading
+import: @astryxdesign/core/SideNav
+
+name:   SideNavItem
+import: @astryxdesign/core/SideNav
+
+name:   SideNavSection
+import: @astryxdesign/core/SideNav
+
+name:   Skeleton
+import: @astryxdesign/core/Skeleton
+
+name:   Slider
+import: @astryxdesign/core/Slider
+
+name:   Spinner
+import: @astryxdesign/core/Spinner
+
+name:   Stack
+import: @astryxdesign/core/Stack
+
+name:   StatusDot
+import: @astryxdesign/core/StatusDot
+
+name:   Step
+import: @astryxdesign/core/Stepper
+
+name:   Stepper
+import: @astryxdesign/core/Stepper
+
+name:   Switch
+import: @astryxdesign/core/Switch
+
+name:   Tab
+import: @astryxdesign/core/TabList
+
+name:   Table
+import: @astryxdesign/core/Table
+
+name:   TableBody
+import: @astryxdesign/core/Table
+
+name:   TableCell
+import: @astryxdesign/core/Table
+
+name:   TableFooter
+import: @astryxdesign/core/Table
+
+name:   TableHeader
+import: @astryxdesign/core/Table
+
+name:   TableHeaderCell
+import: @astryxdesign/core/Table
+
+name:   TableRow
+import: @astryxdesign/core/Table
+
+name:   TableSelectionToolbar
+import: @astryxdesign/core/Table
+
+name:   TabList
+import: @astryxdesign/core/TabList
+
+name:   TabMenu
+import: @astryxdesign/core/TabList
+
+name:   Text
+import: @astryxdesign/core/Text
+
+name:   TextArea
+import: @astryxdesign/core/TextArea
+
+name:   TextInput
+import: @astryxdesign/core/TextInput
+
+name:   Theme
+import: @astryxdesign/core/theme
+
+name:   Thumbnail
+import: @astryxdesign/core/Thumbnail
+
+name:   TimeInput
+import: @astryxdesign/core/TimeInput
+
+name:   Timer
+import: @astryxdesign/core/Timer
+
+name:   Timestamp
+import: @astryxdesign/core/Timestamp
+
+name:   Toast
+import: @astryxdesign/core/Toast
+
+name:   ToggleButton
+import: @astryxdesign/core/ToggleButton
+
+name:   ToggleButtonGroup
+import: @astryxdesign/core/ToggleButton
+
+name:   Token
+import: @astryxdesign/core/Token
+
+name:   Tokenizer
+import: @astryxdesign/core/Tokenizer
+
+name:   Toolbar
+import: @astryxdesign/core/Toolbar
+
+name:   Tooltip
+import: @astryxdesign/core/Tooltip
+
+name:   TopNav
+import: @astryxdesign/core/TopNav
+
+name:   TopNavHeading
+import: @astryxdesign/core/TopNav
+
+name:   TopNavItem
+import: @astryxdesign/core/TopNav
+
+name:   TopNavMegaMenu
+import: @astryxdesign/core/TopNav
+
+name:   TopNavMegaMenuFeaturedCard
+import: @astryxdesign/core/TopNav
+
+name:   TopNavMegaMenuItem
+import: @astryxdesign/core/TopNav
+
+name:   TopNavMenu
+import: @astryxdesign/core/TopNav
+
+name:   TreeList
+import: @astryxdesign/core/TreeList
+
+name:   Typeahead
+import: @astryxdesign/core/Typeahead
+
+name:   TypeaheadItem
+import: @astryxdesign/core/Typeahead
+
+name:   VisuallyHidden
+import: @astryxdesign/core/VisuallyHidden
+
+name:   VStack
+import: @astryxdesign/core/VStack
+
+Import from the path shown (e.g. import {Button} from '@astryxdesign/core/Button')
+Usage: npx astryx component <name> [name...]
