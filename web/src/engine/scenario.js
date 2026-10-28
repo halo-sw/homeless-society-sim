@@ -88,9 +88,7 @@ function parseWork(raw, where) {
   if (raw.type === "none") return { type: "none" };
   if (raw.type === "station_ride") {
     if (raw.station_name === undefined) fail(`${where}.work needs station_name`);
-    if (!Number.isFinite(raw.ride_minutes) || raw.ride_minutes < 0) {
-      fail(`${where}.work needs ride_minutes >= 0`);
-    }
+    const rideMinutes = parseRideMinutes(raw.ride_minutes, `${where}.work`);
     if (raw.destination_station !== undefined && raw.destination_station !== null
         && typeof raw.destination_station !== "string"
         && typeof raw.destination_station !== "object") {
@@ -103,9 +101,13 @@ function parseWork(raw, where) {
       // unknown): only with it can the engine draw the real journey path.
       // Never invented — without it the ride stays a minutes number.
       destination_station: raw.destination_station === undefined ? null : raw.destination_station,
-      ride_minutes: raw.ride_minutes,
+      ride_minutes: rideMinutes, // number or {homeLabel: minutes} per path
       ride_minutes_source: raw.ride_minutes_source || "user_assumption",
       needs_user_input: raw.needs_user_input === true,
+      // Optional workplace (stage 9c): the engine derives the commute per
+      // home — walk when the workplace is in-area within C-walk-commute-max,
+      // else station ride + destination walk. Absent → the old form.
+      place: parseWorkplace(raw.place, `${where}.work`),
     };
   }
   if (raw.type === "local_poi") {
@@ -113,6 +115,69 @@ function parseWork(raw, where) {
     return { type: "local_poi", name: raw.name };
   }
   fail(`${where}.work has unknown type ${JSON.stringify(raw.type)}`);
+}
+
+// Ride minutes: one customer number for every path, or a per-home map
+// when paths differ (a home without an entry has no ride input — a ride
+// derivation there records unavailable instead of guessing).
+function parseRideMinutes(raw, where) {
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw < 0) fail(`${where} needs ride_minutes >= 0`);
+    return raw;
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const out = {};
+    for (const [label, v] of Object.entries(raw)) {
+      if (!Number.isFinite(v) || v < 0) {
+        fail(`${where}.ride_minutes[${label}] wants a number >= 0`);
+      }
+      out[label] = v;
+    }
+    return out;
+  }
+  fail(`${where} needs ride_minutes >= 0 (a number or a {homeLabel: minutes} map)`);
+}
+
+// The ride input for one home: number, or null when the map has no entry.
+export function rideMinutesForHome(work, homeLabel) {
+  const rm = work && work.ride_minutes;
+  if (typeof rm === "number") return rm;
+  if (rm && typeof rm === "object") {
+    const hit = rm[homeLabel];
+    return Number.isFinite(hit) ? hit : null;
+  }
+  return null;
+}
+
+// Workplace: a display name plus one locating form — lon/lat, a home-area
+// POI name, or a station name (region network stop). Absent → null (the
+// old station_ride form, unchanged).
+function parseWorkplace(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) fail(`${where}.place wants an object`);
+  if (typeof raw.name !== "string" || raw.name.length === 0) fail(`${where}.place needs a name`);
+  const out = { name: raw.name };
+  const hasLonLat = raw.lon !== undefined || raw.lat !== undefined;
+  if (hasLonLat) {
+    if (!Number.isFinite(raw.lon) || raw.lon < -180 || raw.lon > 180
+        || !Number.isFinite(raw.lat) || raw.lat < -90 || raw.lat > 90) {
+      fail(`${where}.place lon/lat wants finite degrees`);
+    }
+    out.lon = raw.lon;
+    out.lat = raw.lat;
+  }
+  for (const key of ["poi", "station"]) {
+    if (raw[key] !== undefined && raw[key] !== null) {
+      if (typeof raw[key] !== "string" || raw[key].length === 0) {
+        fail(`${where}.place.${key} wants a non-empty name`);
+      }
+      out[key] = raw[key];
+    }
+  }
+  if (!hasLonLat && out.poi === undefined && out.station === undefined) {
+    fail(`${where}.place needs lon/lat, a poi name or a station name`);
+  }
+  return out;
 }
 
 // Optional per-home name (destination station): string, {A: ..., B: ...},

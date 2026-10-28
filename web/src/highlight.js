@@ -8,7 +8,13 @@
 
 function currentTrip(indexed, agentKey, day, minute) {
   for (const t of indexed.tripsByAgent.get(agentKey) || []) {
-    if (t.day === day && minute >= t.depart_min && minute < t.arrive_min) return t;
+    if (t.day === day && minute >= t.depart_min && minute < t.arrive_min) {
+      // Remote trips walk another area's graph (reused node ids) — the
+      // home map highlights nothing for them; the journey view owns that
+      // period instead.
+      if (t.remote) return null;
+      return t;
+    }
   }
   return null;
 }
@@ -23,7 +29,7 @@ function currentAway(indexed, agentKey, day, minute) {
 function lastArrivedNode(indexed, agentKey, day, minute) {
   let node = null;
   for (const t of indexed.tripsByAgent.get(agentKey) || []) {
-    if (t.day === day && t.arrive_min <= minute) node = t.path[t.path.length - 1];
+    if (t.day === day && t.arrive_min <= minute && !t.remote) node = t.path[t.path.length - 1];
   }
   return node;
 }
@@ -133,7 +139,7 @@ export function highlightFor({ run, indexed, follow, day, minute, qualityHover =
     }
   } else {
     const away = currentAway(indexed, key, day, m);
-    if (away && away.kind === "work" && away.detail && away.detail.ride_minutes) {
+    if (away && (away.kind === "work" || away.kind === "ride") && away.detail && away.detail.ride_minutes) {
       out.rideAway = { stationNodeId: lastArrivedNode(indexed, key, day, m),
         rideMinutes: away.detail.ride_minutes };
       out.destLabel = away.label;

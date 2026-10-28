@@ -271,7 +271,7 @@ describe("engine simulate (fixture)", () => {
     assert.equal(cmp.home_b.complex, "베타");
     for (const m of cmp.metrics) {
       assert.ok(typeof m.key === "string" && typeof m.label === "string");
-      assert.ok(["minutes", "metres", "count", "index"].includes(m.unit), m.unit);
+      assert.ok(["minutes", "metres", "count", "index", "percent"].includes(m.unit), m.unit);
       assert.ok(["graph", "scenario"].includes(m.source), m.source);
       // Fatigue averages may be null (no commute days); otherwise finite.
       assert.ok(m.a === null || Number.isFinite(m.a), m.key);

@@ -66,6 +66,10 @@ export function groundDetailTexture({ seed = 1, aniso = 4 } = {}) {
   return cache.get("ground");
 }
 
+// Night emissive gain (stage 9c): 2.4 blew lit façades into white blocks
+// under bloom; 1.15 keeps the window grid readable at full night.
+export const FACADE_NIGHT_GAIN = 1.15;
+
 // Patch a facade material: per-vertex lit fraction + night gate.
 // aLit attribute + uNight uniform; chain-safe (composes with the
 // occlusion-fade patch main.js applies later — see makeFadeable).
@@ -85,7 +89,7 @@ export function patchLitMaterial(material) {
         "#ifdef USE_EMISSIVEMAP\n" +
         "\tvec4 litTex = texture2D( emissiveMap, vEmissiveMapUv );\n" +
         "\tfloat litOn = step( litTex.g, vLit ) * litTex.r;\n" +
-        "\ttotalEmissiveRadiance = uLampColor * ( litOn * uNight * 2.4 );\n" +
+        `\ttotalEmissiveRadiance = uLampColor * ( litOn * uNight * ${FACADE_NIGHT_GAIN} );\n` +
         "#endif\n");
     material.userData.shader = shader;
   };

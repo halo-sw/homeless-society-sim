@@ -31,6 +31,11 @@
           "needs_user_input": true,
           "destination_station": {
             "A": "판교"
+          },
+          "place": {
+            "name": "직장 (가정: 판교역 인근)",
+            "lon": 127.111187,
+            "lat": 37.394364
           }
         },
         "errands_per_week": {

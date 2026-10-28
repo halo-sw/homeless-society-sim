@@ -10,12 +10,13 @@
 // renders from this file (plus agent results for home C). Run it from
 // anywhere; paths resolve from the repo root (the script's ../..).
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canon } from "../src/engine/canonical.js";
 import { CRITERIA_DOC_NAME, CRITERIA_VERSION, moneyOptsFromCriteria, resolveCriteria } from "../src/engine/criteria.js";
 import { parseScenario } from "../src/engine/scenario.js";
+import { loadDestArea } from "../src/engine/destload.js";
 import { simulate } from "../src/engine/simulate.js";
 import { Router } from "../src/engine/graph.js";
 import { createCsvBackend } from "../src/money/rtms.js";
@@ -143,11 +144,30 @@ const A = moneyOptsFromCriteria(crit);
 const homes = {};
 const areasById = {};
 for (const h of scenario.homes) {
-  const area = await loadArea(h.area);
-  areasById[h.area] = area;
+  if (!areasById[h.area]) areasById[h.area] = await loadArea(h.area);
+}
+// Destination graph for place commutes (stage 9c): same resolution as
+// the sim CLI, so money and compare read identical runs.
+const metaCache = new Map();
+async function listAreas() {
+  const entries = await readdir(join(REPO, "data", "build"), { withFileTypes: true });
+  return entries.filter((e) => e.isDirectory()).map((e) => e.name)
+    .filter((n) => !["region", "sim", "_cache"].includes(n));
+}
+async function readAreaMeta(areaId) {
+  if (!metaCache.has(areaId)) {
+    const doc = JSON.parse(await readFile(join(REPO, "data", "build", areaId, "area.json"), "utf8"));
+    metaCache.set(areaId, { bbox: doc.bbox || null });
+  }
+  return metaCache.get(areaId);
+}
+for (const h of scenario.homes) {
+  const area = areasById[h.area];
   const router = new Router(area.graph);
+  const destArea = await loadDestArea({ scenario, network: region && region.network,
+    homeArea: area, listAreas, readAreaMeta, loadArea });
   const run = simulate(area, structuredClone(scenarioRaw), h.label,
-    region ? { region } : {});
+    { ...(region ? { region } : {}), ...(destArea ? { destArea } : {}) });
   // Price reference: parcel+name match, name-only fallback (< 3 rows).
   const district = AREA_RTMS_DISTRICT[h.area];
   const rows = district ? await rtmsFor(district) : [];

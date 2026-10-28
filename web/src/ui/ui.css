@@ -98,7 +98,9 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 /* "내 기준" weight inputs. */
 .ui-weight { width: 58px; }
 
-/* Stage 7: the sim left stack (Now card over the judgment log). */
+/* Stage 7: the sim left stack (Now card over the judgment log).
+   Stage 9c: the legend joins the stack in sim mode — one scrolling
+   column with internal scroll, so cards never overlap. */
 .ui-simleft {
   position: absolute; left: 12px; top: 76px;
   width: 330px; max-width: 84vw; max-height: calc(100vh - 320px);
@@ -106,6 +108,9 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 }
 .ui-simleft .ui-judgelog {
   position: static; width: auto; max-width: none; max-height: none; overflow: visible;
+}
+.ui-simleft .ui-legend {
+  position: static; width: auto; max-width: none; flex: none;
 }
 .ui-nowcard { flex: none; }
 

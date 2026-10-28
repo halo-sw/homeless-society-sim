@@ -103,6 +103,7 @@ const FLAT_MAP = {
   "C-station-route": { tolerance_ratio: "station_tolerance" },
   "C-journey-path": { transfer_penalty_km: "journey_transfer_penalty_km" },
   "C-ride-split": { transfer_walk_min: "ride_transfer_min" },
+  "C-walk-commute-max": { max_min: "walk_commute_max_min" },
   "C-congestion": { fallback_pct: "congestion_fallback_pct" },
   "C-fatigue-load": {
     walk_per_min: "fatigue_walk_per_min",

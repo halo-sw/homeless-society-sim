@@ -58,6 +58,39 @@ describe("highlightFor", () => {
     assert.ok(h.rideAway.stationNodeId);
   });
 
+  it("flags the ride-away stub on new-form ride stays (stage 9c)", () => {
+    const scenario = tinyScenario({ days: 1, background: 0, seed: 7,
+      household: { members: [
+        { id: "m1", label: "구성원 1", role: "adult", workdays: ["Mon"],
+          work: { type: "station_ride", station_name: "중앙역", ride_minutes: 20,
+            ride_minutes_source: "user_assumption", destination_station: "직장역",
+            place: { name: "먼직장", lon: 127.1, lat: 37.6 } } },
+      ] } });
+    const run = simulate(tinyArea(), scenario, "A");
+    const indexed = indexRun(run);
+    const a = run.aways.find((x) => x.agent === "h1" && x.kind === "ride");
+    const h = highlightFor({ run, indexed, follow: 1, day: a.day,
+      minute: a.start_min + 2 });
+    assert.equal(h.trip, null);
+    assert.ok(h.rideAway);
+    assert.equal(h.rideAway.rideMinutes, 20);
+    assert.ok(h.rideAway.stationNodeId);
+  });
+
+  it("highlights nothing for remote trips (stage 9c)", () => {
+    const { run } = setup();
+    const remote = { id: "t999999", agent: "h1", day: 0, depart_min: 100,
+      arrive_min: 110, from: { kind: "poi", id: "s", label: "역" },
+      to: { kind: "poi", id: "w", label: "직장" }, purpose: "commute",
+      distance_m: 100, minutes: 2, path: ["a", "b"], remote: true,
+      graph_area: "elsewhere" };
+    const indexed = indexRun({ ...run, trips: [...run.trips, remote] });
+    const h = highlightFor({ run: { ...run, trips: [...run.trips, remote] },
+      indexed, follow: 1, day: 0, minute: 105 });
+    assert.equal(h.trip, null);
+    assert.equal(h.rideAway, null);
+  });
+
   it("emits ticks and the pulse decision for the followed member", () => {
     const { run, indexed } = setup();
     const d = run.decisions.find((x) => x.agent === "h1" && x.day === 0);

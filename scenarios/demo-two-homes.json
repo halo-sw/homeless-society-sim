@@ -1,5 +1,6 @@
 {
   "name": "demo-two-homes",
+  "_note": "Workplace is a place (stage 9c): 직장 (가정: 판교역 인근) at the 신분당선 판교역 stop coords from data/build/region/network.json (OSM-derived: 127.111187, 37.394364). Home A rides 잠실→판교 (customer input 30 min); home B walks when within C-walk-commute-max.",
   "start_date": "2026-11-02",
   "days": 30,
   "seed": 20261102,
@@ -31,6 +32,11 @@
           "needs_user_input": true,
           "destination_station": {
             "A": "판교"
+          },
+          "place": {
+            "name": "직장 (가정: 판교역 인근)",
+            "lon": 127.111187,
+            "lat": 37.394364
           }
         },
         "errands_per_week": {
@@ -63,6 +69,11 @@
           "needs_user_input": true,
           "destination_station": {
             "A": "판교"
+          },
+          "place": {
+            "name": "직장 (가정: 판교역 인근)",
+            "lon": 127.111187,
+            "lat": 37.394364
           }
         },
         "errands_per_week": {

@@ -130,6 +130,17 @@ export function frameIsUniform(pixels, { eps = 2, darkBelow = 14 } = {}) {
   return mean < darkBelow;
 }
 
+// Night bloom ceiling (stage 9c): the sky rig asks up to 1.0 at night,
+// but anything past 0.45 blows lit towers into white blocks and hazes
+// the scene. Clamped here so the pure sky params keep their 0..1 scale.
+export const BLOOM_MAX = 0.45;
+
+export function clampBloom(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(n, BLOOM_MAX);
+}
+
 export function createPost(renderer, scene, camera, opts = {}) {
   const state = {
     level: opts.quality || "medium",
@@ -218,8 +229,9 @@ export function createPost(renderer, scene, camera, opts = {}) {
       state.time += dt;
       if (!state.composer) return;
       if (state.bloom) {
-        state.bloom.strength = bloom;
-        state.bloom.enabled = bloom > 0.01;
+        const clamped = clampBloom(bloom);
+        state.bloom.strength = clamped;
+        state.bloom.enabled = clamped > 0.01;
       }
       if (state.grade) state.grade.uniforms.time.value = state.time % 100;
     },

@@ -18,6 +18,7 @@ import { monthlyHousingLabel, BURDEN_PLAIN_LABEL, BURDEN_PLAIN_NOTE,
   REMAINING_PLAIN_LABEL, HOW_CALCULATED } from "./copy.js";
 import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
 import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
+import { congestionPeakLine } from "../engine/journey.js";
 import { MONEY_CATEGORY_KO } from "../money/timeline.js";
 import { TENURE_DISCLAIMER, TRADE_TAX_NOTE } from "../money/tenure.js";
 import { ELIGIBILITY_NOTE } from "../money/housing.js";
@@ -347,6 +348,20 @@ function QolHome({ label, doc, tenure, active }) {
             <MetadataListItem label="만원 지하철에 탄 시간">
               <HStack gap={1} vAlign="center">
                 <Text hasTabularNumbers>{fmtMinutes(fat.crowded_min)}</Text>
+                <SrcBadge source="scenario" />
+              </HStack>
+            </MetadataListItem>
+            <MetadataListItem label="출근길 가장 붐비는 순간">
+              <HStack gap={1} vAlign="center" wrap="wrap">
+                {fat.peak_congestion_pct === null || fat.peak_congestion_pct === undefined ? (
+                  <Text type="supporting">지하철 탑승 없음</Text>
+                ) : (
+                  <>
+                    <Text hasTabularNumbers>{congestionPeakLine(fat.peak_congestion_ctx)}</Text>
+                    <Badge variant="neutral"
+                      label={fat.peak_congestion_ctx && fat.peak_congestion_ctx.source === "서울교통공사" ? "실측" : "가정값"} />
+                  </>
+                )}
                 <SrcBadge source="scenario" />
               </HStack>
             </MetadataListItem>

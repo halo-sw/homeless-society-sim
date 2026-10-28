@@ -178,7 +178,7 @@ export function entryToAnswer(entry) {
 export async function judgeHome({
   area, scenarioRaw, homeLabel, provider,
   fetchImpl = null, providerOpts = {}, judgeOne = null,
-  region = null,
+  region = null, destArea = null,
 }) {
   providerConfig(provider); // unknown provider throws before any work
   const scenario = parseScenario(clone(scenarioRaw));
@@ -191,9 +191,14 @@ export async function judgeHome({
   const usage = emptyUsage();
   const judge = judgeOne || ((args) => judgeSingle({ provider, fetchImpl, providerOpts, usage, ...args }));
 
+  // destArea rides every pass (lean, final, dry): decision shells carry
+  // minutes, so a missing destination graph would shift the lean
+  // timeline away from the final one.
+  const destOpts = destArea ? { destArea } : {};
   for (;;) {
     const pending = [];
     const run = simulate(area, clone(lean), homeLabel, {
+      ...destOpts,
       decide: (shell) => {
         if (fixed.has(shell.id)) return entryToAnswer(fixed.get(shell.id));
         if (!household.has(shell.agent)) {
@@ -224,6 +229,7 @@ export async function judgeHome({
   // Final run: full background, household fixed, background by rule.
   const finalRun = simulate(area, clone(scenarioRaw), homeLabel, {
     ...(region ? { region } : {}),
+    ...destOpts,
     decide: (shell) => {
       if (fixed.has(shell.id)) return entryToAnswer(fixed.get(shell.id));
       return { chosen_key: shell.default_key, chosen_by: "rule" };
@@ -245,7 +251,7 @@ export async function judgeHome({
 // Dry run: the exact call list (one rule pass, no network) plus token
 // and cost estimates. Memory is empty here, so input tokens are a
 // slight underestimate — noted in the output.
-export function planCalls(area, scenarioRaw, homeLabel) {
+export function planCalls(area, scenarioRaw, homeLabel, opts = {}) {
   const scenario = parseScenario(clone(scenarioRaw));
   const members = scenario.household.members;
   const household = householdKeysOf(members);
@@ -253,6 +259,7 @@ export function planCalls(area, scenarioRaw, homeLabel) {
   lean.background = 0;
   const shells = [];
   const run = simulate(area, lean, homeLabel, {
+    ...(opts.destArea ? { destArea: opts.destArea } : {}),
     decide: (shell) => {
       if (household.has(shell.agent)) shells.push(shell);
       return shell.kind === "weekend_plan"

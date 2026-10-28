@@ -6,8 +6,8 @@ import { tinyRegion } from "./engine-fixture.js";
 import { buildRides } from "../src/engine/journey.js";
 import { defaultFlat } from "../src/engine/criteria.js";
 import {
-  corridorFor, journeyBanner, journeyPhase, legAt, rideSegments,
-  rideStateFor, tilesFor, trainPosition,
+  commuteSegments, corridorFor, journeyBanner, journeyCameraState,
+  journeyPhase, legAt, rideSegments, rideStateFor, tilesFor, trainPosition,
 } from "../src/journey.js";
 import { sliceGeometry, tileBuildings, tileLines, tileWater } from "../src/corridor.js";
 
@@ -168,5 +168,86 @@ describe("corridor tiles", () => {
     const rev = sliceGeometry(geom, [127.029, 37.5], [127.011, 37.5]);
     assert.deepEqual(rev, fwd);
     assert.deepEqual(sliceGeometry([[127.0, 37.5]], [127.0, 37.5], [127.0, 37.5]), []);
+  });
+});
+
+describe("journey camera state (stage 9c)", () => {
+  // One member-day, new engine form: out ride 08:20–08:50, work until
+  // 17:50, back ride 17:50–18:20.
+  const dayAways = [
+    { agent: "h1", day: 0, kind: "ride", start_min: 500, end_min: 530,
+      detail: { direction: "out", ride_minutes: 30 } },
+    { agent: "h1", day: 0, kind: "work", start_min: 530, end_min: 1070, detail: {} },
+    { agent: "h1", day: 0, kind: "ride", start_min: 1070, end_min: 1100,
+      detail: { direction: "back", ride_minutes: 30 } },
+  ];
+  const segments = commuteSegments(dayAways);
+  const phase = (minute, extra = {}) =>
+    journeyCameraState({ segments, minute, ...extra }).phase;
+
+  it("reads ride aways in either engine form", () => {
+    assert.deepEqual(segments, {
+      out: { start: 500, end: 530 },
+      work: { start: 530, end: 1070 },
+      back: { start: 1070, end: 1100 },
+    });
+    // Old form: the work away splits by its ride minutes.
+    const old = commuteSegments([{ agent: "h1", day: 0, kind: "work",
+      start_min: 480, end_min: 1100, detail: { ride_minutes: 20 } }]);
+    assert.deepEqual(old, {
+      out: { start: 480, end: 500 },
+      work: { start: 500, end: 1080 },
+      back: { start: 1080, end: 1100 },
+    });
+    assert.equal(commuteSegments([{ kind: "work", detail: {} }]), null);
+    assert.equal(commuteSegments([]), null);
+  });
+
+  it("locates the member in a ride away (normalised shape)", () => {
+    const st = rideStateFor(dayAways[0], 515);
+    assert.equal(st.dir, "out");
+    assert.equal(st.elapsed, 15);
+    assert.equal(st.progress, 0.5);
+    assert.equal(st.rides, null, "no drawn leg — rides map stays empty");
+    assert.equal(rideStateFor(dayAways[0], 499), null);
+    assert.equal(rideStateFor(dayAways[0], 530), null);
+    const back = rideStateFor(dayAways[2], 1099);
+    assert.equal(back.dir, "back");
+    // With a drawn leg the single ride normalises into the direction map.
+    const drawn = { agent: "h1", day: 0, kind: "ride", start_min: 500, end_min: 530,
+      detail: { direction: "out", ride_minutes: 20, ride: rides().out } };
+    const dst = rideStateFor(drawn, 510);
+    assert.equal(dst.dir, "out");
+    assert.ok(dst.rides && dst.rides.out && dst.rides.out.legs.length > 0);
+    assert.equal(dst.fallback, null);
+  });
+
+  it("cruises inside the ride, streets before it, holds after it", () => {
+    assert.equal(phase(515), "cruise");
+    assert.equal(phase(501), "rising");
+    assert.equal(phase(499), "street");
+    assert.equal(phase(0), "street");
+    assert.equal(phase(600), "hold");
+    assert.equal(phase(1085), "cruise");
+    assert.equal(phase(1100), "street");
+    assert.equal(phase(1439), "street");
+  });
+
+  it("holds through destination-walk gaps", () => {
+    const gapped = {
+      out: { start: 500, end: 530 }, work: { start: 535, end: 1070 },
+      back: { start: 1075, end: 1105 },
+    };
+    const at = (minute) => journeyCameraState({ segments: gapped, minute }).phase;
+    assert.equal(at(532), "hold");
+    assert.equal(at(1072), "hold");
+    assert.equal(at(600), "hold");
+  });
+
+  it("honours the view override and the detail gate", () => {
+    assert.equal(phase(515, { view: "low" }), "boarding");
+    assert.equal(phase(515, { view: "high" }), "cruise");
+    assert.equal(phase(529, { hasDetailDest: true }), "descending");
+    assert.equal(phase(529), "cruise");
   });
 });

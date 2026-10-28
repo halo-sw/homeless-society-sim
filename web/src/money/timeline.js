@@ -1,11 +1,14 @@
 // 30-day money timeline from a simulated run (pure, deterministic).
 //
-// Spending events tie to real simulated activity: transit fare per
-// commute leg of station_ride members (each leg = one ride), one grocery
-// basket per outbound errand leg (home → shop), fixed costs on their due
-// day, salary on payday(s). Household members only — background
-// neighbours have no money. The balance is monthly cash flow starting at
-// 0 (upfront deposit/purchase shown separately, not in the line).
+// Spending events tie to real simulated activity: one transit fare per
+// commute trip that touches a ride (stage 9c: arriving at an out-ride
+// boarding, or leaving from a back-ride alighting — either engine form;
+// members who walk to their workplace touch no ride and pay none), one
+// grocery basket per outbound errand leg (home → shop), fixed costs on
+// their due day, salary on payday(s). Household members only —
+// background neighbours have no money. The balance is monthly cash flow
+// starting at 0 (upfront deposit/purchase shown separately, not in the
+// line).
 
 import { dateOf } from "../engine/scenario.js";
 import { criterionDefault } from "../engine/criteria.js";
@@ -21,13 +24,27 @@ export const MONEY_CATEGORY_KO = {
   other_fixed: "기타 고정비",
 };
 
-function householdStationRiders(scenario) {
-  const out = new Set();
-  const members = ((scenario.household) || {}).members || [];
-  members.forEach((m, i) => {
-    if (m.work && m.work.type === "station_ride") out.add(`h${i + 1}`);
-  });
-  return out;
+// Ride boundaries per member-day (stage 9c): one fare per commute trip
+// that touches a ride — arriving at an out-ride boarding, or leaving
+// from a back-ride alighting. Either engine form: new ride aways carry
+// their direction; legacy work aways board at the start and alight at
+// the end. Destination walks never touch these minutes (they sit
+// between the ride and the work stay), and walking members touch none.
+function rideBoundaries(run) {
+  const board = new Set(); // `${agent}|${day}|${minute}` out-ride starts
+  const alight = new Set(); // back-ride ends
+  for (const a of run.aways || []) {
+    if (!String(a.agent || "").startsWith("h")) continue;
+    const key = (m) => `${a.agent}|${a.day}|${m}`;
+    if (a.kind === "ride") {
+      if ((a.detail && a.detail.direction) === "back") alight.add(key(a.end_min));
+      else board.add(key(a.start_min));
+    } else if (a.kind === "work" && a.detail && (a.detail.rides || a.detail.ride_fallback)) {
+      board.add(key(a.start_min));
+      alight.add(key(a.end_min));
+    }
+  }
+  return { board, alight };
 }
 
 function payDaysInWindow(scenario, payDayOfMonth) {
@@ -41,7 +58,7 @@ function payDaysInWindow(scenario, payDayOfMonth) {
 
 export function moneyTimeline(run, scenario, opts = {}) {
   const days = scenario.days;
-  const riders = householdStationRiders(scenario);
+  const { board, alight } = rideBoundaries(run);
   const fare = Math.max(0, Math.round(Number(opts.transit_fare_won) || 0));
   const basket = Math.max(0, Math.round(Number(opts.basket_won) || 0));
   const maintenance = Math.max(0, Math.round(Number(opts.maintenance_won_month) || 0));
@@ -57,7 +74,9 @@ export function moneyTimeline(run, scenario, opts = {}) {
   let errandVisits = 0;
   for (const t of run.trips || []) {
     if (!String(t.agent || "").startsWith("h")) continue;
-    if (t.purpose === "commute" && riders.has(t.agent) && fare > 0) {
+    if (t.purpose === "commute" && fare > 0
+        && (board.has(`${t.agent}|${t.day}|${t.arrive_min}`)
+          || alight.has(`${t.agent}|${t.day}|${t.depart_min}`))) {
       commuteLegs++;
       events.push({ day: t.day, category: "transit", amount_won: -fare,
         memo: `${t.agent} 통근 승차`, trip_id: t.id, source: "scenario" });

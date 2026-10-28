@@ -4,8 +4,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { tinyRegion } from "./engine-fixture.js";
 import {
-  buildRides, CAPACITY_PCT, congestionBand, congestionFor, dayKindFor,
-  findPath, patternForLeg, rideLegFatigue, SEATED_PCT, slotIndexFor,
+  buildRides, CAPACITY_PCT, congestionBand, congestionFor, congestionPeakLine,
+  dayKindFor, findPath, patternForLeg, rideLegFatigue, SEATED_PCT, slotIndexFor,
   splitLine, splitRide, standShare, VERY_CROWDED_PCT, walkFatigue,
 } from "../src/engine/journey.js";
 import { defaultFlat } from "../src/engine/criteria.js";
@@ -148,5 +148,19 @@ describe("engine journey", () => {
     assert.deepEqual(buildRides(base), buildRides(base));
     assert.deepEqual(findPath(network, "중앙역", "직장역", 2.0),
       findPath(network, "중앙역", "직장역", 2.0));
+  });
+
+  it("lines the peak boarding beside fatigue (stage 9c)", () => {
+    assert.equal(congestionPeakLine(
+      { pct: 93.2, line: "2호선", station: "잠실", source: "서울교통공사" }),
+      "2호선 잠실 혼잡도 93.2%, 서서 감");
+    assert.equal(congestionPeakLine(
+      { pct: 20, line: "A호선", station: "중앙역", source: "서울교통공사" }),
+      "A호선 중앙역 혼잡도 20%, 앉아서 감");
+    assert.equal(congestionPeakLine(
+      { pct: 70, line: null, station: "중앙역", source: "가정값" }),
+      "중앙역 혼잡도 70%, 서서 감");
+    assert.equal(congestionPeakLine(null), null);
+    assert.equal(congestionPeakLine({}), null);
   });
 });

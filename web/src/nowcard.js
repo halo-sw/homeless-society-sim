@@ -9,13 +9,33 @@
 // without causes read "이유 기록 없음 (이전 실행)".
 
 import { chosenLabel, DECISION_KIND_KO, purposeLabel } from "./sim.js";
-import { legAt, rideStateFor } from "./journey.js";
+import { journeyBanner, legAt, rideStateFor } from "./journey.js";
 import { standShare } from "./engine/journey.js";
 import { fmtWon } from "./money/format.js";
 
 export const OLD_RUN_WHY = "이유 기록 없음 (이전 실행)";
 export const TICKER_LIMIT = 5;
 export const FATIGUE_MODEL_NOTE = "피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요";
+// Calm-card budgets (stage 9c): at most 3 criterion chips and 3 ticker
+// rows show; the rest hide behind an expander.
+export const CHIPS_VISIBLE = 3;
+export const TICKER_VISIBLE = 3;
+
+// Visible slice of criterion ids (engine order = relevance order).
+// Returns {visible, hiddenCount}.
+export function chipDisplay(ids, open, limit = CHIPS_VISIBLE) {
+  const list = [...(ids || [])];
+  if (open || list.length <= limit) return { visible: list, hiddenCount: 0 };
+  return { visible: list.slice(0, limit), hiddenCount: list.length - limit };
+}
+
+// Visible slice of ticker events (latest first in, oldest of the shown
+// first out). Returns {visible, hiddenCount}.
+export function tickerDisplay(events, open, limit = TICKER_VISIBLE) {
+  const list = [...(events || [])];
+  if (open || list.length <= limit) return { visible: list, hiddenCount: 0 };
+  return { visible: list.slice(-limit), hiddenCount: list.length - limit };
+}
 
 const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -130,6 +150,7 @@ export function nowCardFor({ run, indexed, agentKey, day, minute }) {
       progress, tripId: trip.id, awayId: null };
   }
   if (kind === "away") {
+    if (away.kind === "ride") return rideCardFor(base, run, away, minute);
     const remain = Math.max(0, away.end_min - Math.floor(minute));
     const dur = Math.max(1, away.end_min - away.start_min);
     const now = away.kind === "work"
@@ -156,6 +177,52 @@ function awayKey(a) {
   return `${a.agent}:a${a.day}:${String(a.start_min).padStart(4, "0")}:${a.kind}`;
 }
 
+// Now card during a subway ride (stage 9c): the full itinerary in one
+// line ("지하철 이동 중 · 2호선 잠실→강남 (약 8.6분) · 환승 · 신분당선
+// 강남→판교 · 21분 남음") plus a per-leg payload the UI renders with
+// congestion % and source badges. Without a drawn path the card says so
+// and falls back to the minutes number.
+function rideCardFor(base, run, away, minute) {
+  const detail = away.detail || {};
+  const dir = detail.direction === "back" ? "back" : "out";
+  const m = Math.floor(minute);
+  const dur = Math.max(1, away.end_min - away.start_min);
+  const progress = Math.min(1, Math.max(0, (m - away.start_min) / dur));
+  const ride = detail.ride || null;
+  const banner = ride
+    ? journeyBanner({ ride, dir, elapsed: m - away.start_min,
+      rideMinutes: detail.ride_minutes || dur })
+    : null;
+  let now;
+  if (banner) {
+    const legBits = ride.legs.map((l) => `${l.lineName} ${l.from}→${l.to} (약 ${l.minutes}분)`).join(" · 환승 · ");
+    now = `지하철 이동 중 · ${legBits} · ${banner.minutesLeft}분 남음`;
+  } else {
+    const left = Math.max(0, away.end_min - m);
+    const note = detail.journey_note || "경로 없음";
+    now = `지하철 이동 중 · ${note} · ${left}분 남음`;
+  }
+  const payload = {
+    direction: dir,
+    where: banner ? banner.where : (detail.journey_note || "경로 없음"),
+    minutesLeft: banner ? banner.minutesLeft : Math.max(0, away.end_min - m),
+    inTransfer: banner ? banner.inTransfer : false,
+    legs: banner ? banner.legs : [],
+    transfers: ride ? ride.transfers.map((t) => ({ station: t.station, minutes: t.minutes })) : [],
+    fallback: !ride && detail.ride_fallback ? { ...detail.ride_fallback } : null,
+  };
+  if (!away.cause) {
+    return { ...base, state: "ride", now, why: OLD_RUN_WHY, whyKind: "none",
+      progress, oldRun: true, tripId: null, awayId: awayKey(away), ride: payload };
+  }
+  return { ...base, state: "ride", now,
+    why: away.cause.text, whyKind: away.cause.type,
+    criterionIds: [...(away.cause.criterion_ids || [])],
+    decisionId: away.cause.decision_id || null,
+    decision: decisionSummary(run, away.cause.decision_id),
+    progress, tripId: null, awayId: awayKey(away), ride: payload };
+}
+
 // Fatigue readout at (day, minute): the series value plus the current
 // leg's delta and its congestion context. Null without a series.
 export function fatigueFor({ run, agentKey, day, minute }) {
@@ -171,7 +238,8 @@ export function fatigueFor({ run, agentKey, day, minute }) {
   const out = { value, delta: null, note: "", source: null,
     criterionIds: [], series: dayFat.series,
     arrivalWork: dayFat.arrival_work, afterHome: dayFat.after_home,
-    peak: dayFat.peak, end: dayFat.end };
+    peak: dayFat.peak, end: dayFat.end,
+    peakCongestion: dayFat.peak_congestion || null };
   const trip = (run.trips || []).find((t) => t.agent === agentKey && t.day === day
     && m >= t.depart_min && m < t.arrive_min);
   if (trip) {
@@ -187,19 +255,22 @@ export function fatigueFor({ run, agentKey, day, minute }) {
     out.criterionIds = ["C-fatigue-recovery"];
     return out;
   }
-  if (away.kind === "work" && away.detail && (away.detail.rides || away.detail.ride_fallback)) {
+  if ((away.kind === "work" || away.kind === "ride") && away.detail
+      && (away.detail.rides || away.detail.ride || away.detail.ride_fallback)) {
     const ride = rideStateFor(away, m);
-    const detail = away.detail;
-    if (ride && (ride.dir === "out" || ride.dir === "back") && detail.rides) {
-      const leg = detail.rides[ride.dir].legs[legAt(detail.rides[ride.dir], ride.elapsed).legIndex];
-      const at = legAt(detail.rides[ride.dir], ride.elapsed);
+    // The normalised ride state (both engine forms): the drawn direction
+    // or the per-direction fallback.
+    if (ride && (ride.dir === "out" || ride.dir === "back") && ride.rides) {
+      const dir = ride.rides[ride.dir];
+      const at = legAt(dir, ride.elapsed);
+      const leg = dir.legs[at.legIndex];
       const c = leg.congestion;
       const posture = standShare(c.valuePct) >= 0.5 ? "서서 감" : "앉아서 감";
       if (at.inTransfer) {
-        const legsSum = detail.rides[ride.dir].legs.reduce((a, l) => a + l.fatigueDelta, 0);
-        const n = detail.rides[ride.dir].transfers.length || 1;
-        out.delta = Math.round(((detail.rides[ride.dir].fatigueDelta - legsSum) / n) * 10) / 10;
-        out.note = `${detail.rides[ride.dir].transfers[at.transferIndex].station} 환승 중`;
+        const legsSum = dir.legs.reduce((a, l) => a + l.fatigueDelta, 0);
+        const n = dir.transfers.length || 1;
+        out.delta = Math.round(((dir.fatigueDelta - legsSum) / n) * 10) / 10;
+        out.note = `${dir.transfers[at.transferIndex].station} 환승 중`;
       } else {
         out.delta = leg.fatigueDelta;
         out.note = `${leg.lineName} ${leg.from}→${leg.to} 붐비는 정도 ${c.valuePct}%, ${posture}`;
@@ -208,8 +279,8 @@ export function fatigueFor({ run, agentKey, day, minute }) {
       out.criterionIds = ["C-congestion", "C-fatigue-load"];
       return out;
     }
-    if (ride && (ride.dir === "out" || ride.dir === "back") && detail.ride_fallback) {
-      const fb = detail.ride_fallback;
+    if (ride && (ride.dir === "out" || ride.dir === "back") && ride.fallback) {
+      const fb = ride.fallback;
       out.delta = ride.dir === "out" ? fb.out_delta : fb.back_delta;
       out.note = `붐비는 정도 자료가 없어요 · 정해 둔 값 ${fb.congestion_pct}%`;
       out.source = "가정값";
@@ -310,9 +381,21 @@ export function simMetaFor({ household, scenario, run, homes }) {
       assumptions.push({ label: `회사에 머무는 시간 ${scenario.workday_minutes}분`, source: "가정값" });
     }
     for (const m of scenario.household.members || []) {
-      if (m.work && m.work.type === "station_ride" && Number.isFinite(m.work.ride_minutes)) {
-        assumptions.push({ label: `${m.label} 차·지하철 탄 시간 ${m.work.ride_minutes}분`,
-          source: m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값" });
+      if (!m.work || m.work.type !== "station_ride") continue;
+      const rm = m.work.ride_minutes;
+      const rideSource = m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값";
+      if (Number.isFinite(rm)) {
+        assumptions.push({ label: `${m.label} 차·지하철 탄 시간 ${rm}분`, source: rideSource });
+      } else if (rm && typeof rm === "object") {
+        for (const [home, v] of Object.entries(rm)) {
+          if (Number.isFinite(v)) {
+            assumptions.push({ label: `${m.label} ${home} 경로 차·지하철 탄 시간 ${v}분`,
+              source: rideSource });
+          }
+        }
+      }
+      if (m.work.place && m.work.place.name) {
+        assumptions.push({ label: `${m.label} 직장 ${m.work.place.name}`, source: "가정값" });
       }
     }
     const A = scenario.money && scenario.money.assumptions;

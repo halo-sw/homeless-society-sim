@@ -64,6 +64,36 @@ describe("sim playback", () => {
     assert.equal(w.state, "away");
   });
 
+  it("hides riders and remote trips on the home map (stage 9c)", () => {
+    const scenario = tinyScenario({ days: 1, background: 0, seed: 7,
+      household: { members: [
+        { id: "m1", label: "구성원 1", role: "adult", workdays: ["Mon"],
+          work: { type: "station_ride", station_name: "중앙역", ride_minutes: 20,
+            ride_minutes_source: "user_assumption", destination_station: "직장역",
+            place: { name: "먼직장", lon: 127.1, lat: 37.6 } } },
+      ] } });
+    const run = simulate(tinyArea(), scenario, "A");
+    const indexed = indexRun(run);
+    const nodes = new Map(Object.entries(tinyArea().graph.nodes));
+    const home = nodes.get("a");
+    // Mid-ride: hidden (the journey view carries the train).
+    const away = run.aways.find((a) => a.agent === "h1" && a.kind === "ride");
+    const r = sampleAgent("h1", indexed, away.day, away.start_min + 5, nodes, home);
+    assert.equal(r.visible, false);
+    assert.equal(r.state, "away");
+    // A remote trip reuses the home id space ("a") yet must not sample.
+    const remote = { id: "t999999", agent: "h1", day: 0, depart_min: 100,
+      arrive_min: 110, from: { kind: "poi", id: "s", label: "역" },
+      to: { kind: "poi", id: "w", label: "직장" }, purpose: "commute",
+      distance_m: 100, minutes: 2, path: ["a", "b"], remote: true,
+      graph_area: "elsewhere" };
+    const idx2 = indexRun({ ...run, trips: [...run.trips, remote] });
+    const s = sampleAgent("h1", idx2, 0, 105, nodes, home);
+    assert.equal(s.visible, false);
+    assert.equal(s.state, "trip");
+    assert.equal(s.trip.id, "t999999");
+  });
+
   it("counts at-home residents per building from the run", () => {
     const run = simulate(tinyArea(), tinyScenario(), "A");
     const indexed = indexRun(run);

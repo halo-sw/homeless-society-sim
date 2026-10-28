@@ -63,6 +63,32 @@ describe("money timeline", () => {
     assert.match(tl2.payday_note, /1일차/);
   });
 
+  it("charges fares only where rides happen (stage 9c)", () => {
+    const scenario = tinyScenario({ days: 7, background: 0, seed: 7,
+      household: { members: [
+        // Rides: the island workplace is unreachable on foot.
+        { id: "m1", label: "구성원 1", role: "adult", workdays: ["Mon"],
+          work: { type: "station_ride", station_name: "중앙역", ride_minutes: 20,
+            ride_minutes_source: "user_assumption", destination_station: "직장역",
+            place: { name: "먼직장", lon: 127.1, lat: 37.6 } } },
+        // Walks: the workplace is one stop down the road.
+        { id: "m2", label: "구성원 2", role: "adult", workdays: ["Mon"],
+          work: { type: "station_ride", station_name: "중앙역", ride_minutes: 20,
+            ride_minutes_source: "user_assumption", destination_station: "직장역",
+            place: { name: "가까운직장", lon: 127.001, lat: 37.5 } } },
+      ] } });
+    const run = simulate(tinyArea(), structuredClone(scenario), "A");
+    assert.ok(run.aways.some((a) => a.agent === "h1" && a.kind === "ride"));
+    assert.ok(!run.aways.some((a) => a.agent === "h2" && a.kind === "ride"));
+    const tl = moneyTimeline(run, parseScenario(scenario), OPTS);
+    // One Monday: the rider pays 2 fares, the walker none.
+    assert.equal(tl.counts.commute_legs, 2);
+    assert.equal(tl.totals_by_category.transit, -3000);
+    const fares = tl.events.filter((e) => e.category === "transit");
+    assert.ok(fares.every((e) => e.memo.startsWith("h1")));
+    assert.ok(fares.every((e) => e.trip_id), "fares tie to walk trips for the ticker");
+  });
+
   it("charges no fare for local-poi commutes", () => {
     const scenario = tinyScenario({ days: 7, background: 0, seed: 7,
       household: { members: [

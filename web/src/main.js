@@ -13,7 +13,7 @@ import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
-import { corridorFor, journeyBanner, journeyPhase, rideStateFor, trainPosition } from "./journey.js";
+import { commuteSegments, corridorFor, journeyBanner, journeyCameraState, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
@@ -1557,8 +1557,12 @@ async function bootSim() {
   function ridesOf(agentKey, dayNum) {
     const out = [];
     for (const a of indexed.awaysByAgent.get(agentKey) || []) {
-      if (a.day === dayNum && a.kind === "work" && a.detail && a.detail.rides) {
+      if (a.day !== dayNum) continue;
+      if (a.kind === "work" && a.detail && a.detail.rides) {
         out.push({ away: a, rides: a.detail.rides });
+      } else if (a.kind === "ride" && a.detail && a.detail.ride) {
+        const dir = a.detail.direction === "back" ? "back" : "out";
+        out.push({ away: a, rides: { [dir]: a.detail.ride } });
       }
     }
     return out;
@@ -1657,7 +1661,8 @@ async function bootSim() {
     if (!agent) return;
     const coords = networkStopCoords();
     for (const { rides } of ridesOf(agent.key, day)) {
-      for (const ride of [rides.out, rides.back]) {
+      const dirs = [rides.out, rides.back].filter(Boolean);
+      for (const ride of dirs) {
         const lastLeg = ride.legs[ride.legs.length - 1];
         const sid = lastLeg.stopIds[lastLeg.stopIds.length - 1];
         const c = coords.get(sid);
@@ -1665,25 +1670,37 @@ async function bootSim() {
         const areaId = await areaForStation(c[0], c[1]);
         if (areaId && areaId !== run.meta.area) await ensureSecondArea(areaId);
       }
-      const first = rides.out.legs[0];
-      const last = rides.out.legs[rides.out.legs.length - 1];
-      const corridor = corridorFor(corridorsIndex, first.from, last.to);
-      if (corridor) {
-        try {
-          journeyLayer.setManifest(
-            await fetchJson(`/data/region/corridor/${corridor.id}/manifest.json`));
-        } catch {
-          // The line still draws; tiles just stay empty.
+      const first = dirs[0];
+      if (first) {
+        const firstLeg = first.legs[0];
+        const lastLeg = first.legs[first.legs.length - 1];
+        const corridor = corridorFor(corridorsIndex, firstLeg.from, lastLeg.to);
+        if (corridor) {
+          try {
+            journeyLayer.setManifest(
+              await fetchJson(`/data/region/corridor/${corridor.id}/manifest.json`));
+          } catch {
+            // The line still draws; tiles just stay empty.
+          }
         }
       }
     }
+    // The boot paint ran before the network arrived: repaint the journey
+    // now, so static ?t= loads engage it without a minute tick.
+    paintJourneyMinute();
   }
 
-  function currentWorkAway(agentKey, dayNum, m) {
-    for (const a of indexed.awaysByAgent.get(agentKey) || []) {
-      if (a.day === dayNum && a.kind === "work" && a.detail && a.detail.ride_minutes > 0
-          && m >= a.start_min && m < a.end_min) {
-        return a;
+  // The drawn ride for one direction of a member-day, either engine
+  // form (old: the work away's pair; new: the ride away). Null when the
+  // ride stays numeric (nothing to draw).
+  function drawnRide(dayAways, dir) {
+    for (const a of dayAways) {
+      if (a.kind === "ride" && a.detail && a.detail.ride
+          && (a.detail.direction || "out") === dir) {
+        return a.detail.ride;
+      }
+      if (a.kind === "work" && a.detail && a.detail.rides && a.detail.rides[dir]) {
+        return a.detail.rides[dir];
       }
     }
     return null;
@@ -1707,53 +1724,70 @@ async function bootSim() {
     return destInLoadedAreas(destLonLat, loaded, origin);
   }
 
-  // Full journey frame state (pure of wall time — minute only).
+  // Full journey frame state (pure of wall time — minute only). The phase
+  // comes from journeyCameraState, so static ?t= loads, slider drags and
+  // playback all engage the same way.
   function journeyFrame() {
     const idle = { phase: "idle", riding: null, away: null, ride: null,
-      dir: null, elapsed: 0, progress: 0, banner: null, hasDetailDest: false,
+      dir: null, elapsed: 0, progress: 0, spanStart: 0, rideMinutes: 0,
+      banner: null, hasDetailDest: false,
       detailNote: "", destLonLat: null, boardLonLat: null };
     if (follow < 1 || !regionNetwork) return idle;
     const agent = household[follow - 1];
     if (!agent) return idle;
     const m = Math.floor(minute);
-    const away = currentWorkAway(agent.key, day, m);
-    if (!away || !away.detail.rides) return idle;
-    const riding = rideStateFor(away, m);
-    if (!riding) return idle;
+    const dayAways = (indexed.awaysByAgent.get(agent.key) || []).filter((a) => a.day === day);
+    const segments = commuteSegments(dayAways);
+    if (!segments) return idle;
+    const outRide = drawnRide(dayAways, "out");
+    const backRide = drawnRide(dayAways, "back");
+    if (!outRide && !backRide) return idle;
     const coords = networkStopCoords();
     const stopPos = (sid) => coords.get(sid) || null;
-    if (riding.dir === "work") {
-      // Arrival hold: stay at the destination while they work.
-      const ride = away.detail.rides.out;
-      const lastLeg = ride.legs[ride.legs.length - 1];
-      const dest = stopPos(lastLeg.stopIds[lastLeg.stopIds.length - 1]);
-      const hasDetail = destDetailLoaded(dest, false);
-      return { ...idle, phase: "hold", riding, away, ride,
-        dir: "work", elapsed: 0, progress: 1,
-        hasDetailDest: hasDetail, destLonLat: dest,
-        detailNote: hasDetail ? "" : "상세 지도는 지역 생성 후",
-        banner: { where: `${lastLeg.to} 도착 · 근무 중`, legIndex: -1,
-          inTransfer: false, minutesLeft: 0,
-          legs: ride.legs.map((l) => ({ line: l.lineName, from: l.from,
-            to: l.to, minutes: l.minutes, valuePct: l.congestion.valuePct,
-            source: l.congestion.source })) } };
-    }
-    const ride = away.detail.rides[riding.dir];
+    // The phase needs the destination load state, which needs the
+    // direction: probe unloaded, then decide with the real gate.
+    const probe = journeyCameraState({ segments, minute: m, view: journeyView,
+      hasDetailDest: false });
+    if (probe.phase === "street") return idle;
+    const backHome = probe.dir === "back";
+    const ride = backHome ? (backRide || outRide) : (outRide || backRide);
     const firstLeg = ride.legs[0];
     const lastLeg = ride.legs[ride.legs.length - 1];
     const board = stopPos(firstLeg.stopIds[0]);
     const dest = stopPos(lastLeg.stopIds[lastLeg.stopIds.length - 1]);
-    const backHome = riding.dir === "back";
     const hasDetail = destDetailLoaded(dest, backHome);
-    const phase = journeyPhase({ riding: { progress: riding.progress },
-      view: journeyView, hasDetailDest: hasDetail });
-    return { phase, riding, away, ride, dir: riding.dir,
-      elapsed: riding.elapsed, progress: riding.progress,
-      hasDetailDest: hasDetail,
-      detailNote: (!hasDetail && !backHome) ? "상세 지도는 지역 생성 후" : "",
-      destLonLat: dest, boardLonLat: board,
-      banner: journeyBanner({ ride, dir: riding.dir, elapsed: riding.elapsed,
-        rideMinutes: riding.rideMinutes }) };
+    const state = journeyCameraState({ segments, minute: m, view: journeyView,
+      hasDetailDest: hasDetail });
+    if (state.phase === "street") return idle;
+    const span = state.dir === "back" ? segments.back
+      : state.dir === "out" ? segments.out : segments.work;
+    const away = state.dir === "work"
+      ? dayAways.find((a) => a.kind === "work") || null
+      : dayAways.find((a) => a.kind === "ride"
+        && (a.detail && a.detail.direction || "out") === state.dir)
+        || dayAways.find((a) => a.kind === "work") || null;
+    const frame = { ...idle, phase: state.phase, away, ride,
+      dir: state.dir, elapsed: state.elapsed, progress: state.progress,
+      spanStart: span ? span.start : 0, rideMinutes: ride.minutesTotal,
+      riding: { rideMinutes: ride.minutesTotal },
+      hasDetailDest: hasDetail, destLonLat: dest, boardLonLat: board };
+    if (state.phase === "hold") {
+      // Arrival hold: stay at the destination while they work (or walk
+      // the last stretch there).
+      const atWork = segments.work && m >= segments.work.start && m < segments.work.end;
+      frame.detailNote = hasDetail ? "" : "상세 지도는 지역 생성 후";
+      frame.banner = { where: atWork ? `${lastLeg.to} 도착 · 근무 중`
+        : `${lastLeg.to} 도착 · 도보 이동 중`, legIndex: -1,
+      inTransfer: false, minutesLeft: 0,
+      legs: ride.legs.map((l) => ({ line: l.lineName, from: l.from,
+        to: l.to, minutes: l.minutes, valuePct: l.congestion.valuePct,
+        source: l.congestion.source })) };
+      return frame;
+    }
+    frame.detailNote = (!hasDetail && !backHome) ? "상세 지도는 지역 생성 후" : "";
+    frame.banner = journeyBanner({ ride, dir: state.dir, elapsed: state.elapsed,
+      rideMinutes: ride.minutesTotal });
+    return frame;
   }
 
   function streetPose(lonLat) {
@@ -1782,7 +1816,7 @@ async function bootSim() {
   function paintJourney(dt) {
     const jf = journeyFrame();
     const active = jf.phase === "rising" || jf.phase === "cruise"
-      || jf.phase === "descending" || jf.phase === "hold" || jf.phase === "street";
+      || jf.phase === "descending" || jf.phase === "hold" || jf.phase === "boarding";
     regionalBase.visible = active && jf.phase !== "hold";
     journeyLayer.setVisible(active);
     if (!active) {
@@ -1799,7 +1833,7 @@ async function bootSim() {
       restoreClipFog(dt);
       return true;
     }
-    if (jf.phase === "street") {
+    if (jf.phase === "boarding") {
       if (jf.boardLonLat) {
         const pose = streetPose(jf.boardLonLat);
         camera.position.copy(pose.pos);
@@ -1855,24 +1889,23 @@ async function bootSim() {
   async function paintJourneyMinute() {
     const jf = journeyFrame();
     const active = jf.phase === "rising" || jf.phase === "cruise"
-      || jf.phase === "descending" || jf.phase === "hold" || jf.phase === "street";
+      || jf.phase === "descending" || jf.phase === "hold" || jf.phase === "boarding";
     if (!active || !jf.ride) {
       if (store.getState().journey) store.set({ journey: null });
       return;
     }
-    const key = `${follow}:${day}:${jf.dir}:${jf.away.start_min}`;
+    const key = `${follow}:${day}:${jf.dir}:${jf.spanStart}`;
     if (key !== journeyRideKey) {
       journeyRideKey = key;
       const cong = await ensureCongestion();
       journeyLayer.setPath({ ride: jf.ride, network: regionNetwork,
         congestion: cong, dayKind: dayKindFor(weekdayOfDay(day)),
-        minute: jf.away.start_min + (jf.dir === "back"
-          ? (jf.away.end_min - jf.away.start_min - jf.riding.rideMinutes) : 0),
+        minute: jf.spanStart,
         fallback: criterionDefault("C-congestion", "fallback_pct") });
     }
     store.set({ journey: { ...jf.banner, dir: jf.dir,
       elapsedMin: Math.floor(jf.elapsed),
-      totalMin: jf.riding ? jf.riding.rideMinutes : 0,
+      totalMin: jf.rideMinutes,
       hasDetailDest: jf.hasDetailDest, detailNote: jf.detailNote,
       corridorLabel: "간략 지도 (건물 높이 추정)",
       congestionSource: "서울교통공사 지하철혼잡도정보 (2026-09-30 기준)" } });
@@ -2204,7 +2237,7 @@ async function bootSim() {
     paintHighlightFrame();
     const jfTrain = journeyFrame();
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
-        || jfTrain.phase === "descending" || jfTrain.phase === "street")) {
+        || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
       journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed);
     }
     controls.update();

@@ -11,7 +11,8 @@ import { indexRun } from "../src/sim.js";
 import { simulate } from "../src/engine/simulate.js";
 import { moneyTimeline } from "../src/money/timeline.js";
 import {
-  FATIGUE_MODEL_NOTE, OLD_RUN_WHY, fatigueFor, householdNow, nextLabel, nowCardFor, tickerFor,
+  FATIGUE_MODEL_NOTE, OLD_RUN_WHY, chipDisplay, fatigueFor, householdNow, nextLabel,
+  nowCardFor, tickerDisplay, tickerFor,
 } from "../src/nowcard.js";
 
 function run0() {
@@ -198,5 +199,79 @@ describe("nowCard fatigue", () => {
     assert.match(FATIGUE_MODEL_NOTE, /가정으로 계산한 값이에요.*건강·의학적 판단이 아니에요/);
     const rows = householdNow({ run, indexed: indexRun(run), day: 0, minute: 500 });
     assert.ok(rows.every((r) => Number.isFinite(r.fatigue)));
+  });
+});
+
+describe("ride card (stage 9c)", () => {
+  function rideScenario() {
+    return tinyScenario({ days: 1, background: 0, seed: 7,
+      household: { members: [
+        { id: "m1", label: "구성원 1", role: "adult", workdays: ["Mon"],
+          work: { type: "station_ride", station_name: "중앙역", ride_minutes: 20,
+            ride_minutes_source: "user_assumption", destination_station: "직장역",
+            place: { name: "먼직장", lon: 127.1, lat: 37.6 } } },
+      ] } });
+  }
+
+  it("names the itinerary mid-ride, never 'work'", () => {
+    const run = simulate(tinyArea(), rideScenario(), "A", { region: tinyRegion() });
+    const indexed = indexRun(run);
+    const away = run.aways.find((a) => a.agent === "h1" && a.kind === "ride");
+    const card = nowCardFor({ run, indexed, agentKey: "h1", day: 0,
+      minute: away.start_min + 2 });
+    assert.equal(card.state, "ride");
+    assert.match(card.now, /^지하철 이동 중 · A호선 중앙역→환승역 \(약 [\d.]+분\) · 환승 · B호선 환승역→직장역/);
+    assert.ok(card.now.includes("분 남음"));
+    assert.ok(!card.now.includes("근무"));
+    assert.equal(card.ride.direction, "out");
+    assert.ok(card.ride.minutesLeft > 0);
+    assert.equal(card.ride.legs.length, 2);
+    assert.deepEqual(card.ride.legs.map((l) => [l.valuePct, l.source]),
+      [[90, "서울교통공사"], [70, "가정값"]]);
+    assert.ok(card.criterionIds.includes("C-ride-minutes"));
+    const f = fatigueFor({ run, agentKey: "h1", day: 0, minute: away.start_min + 2 });
+    assert.ok(Number.isFinite(f.delta));
+    assert.match(f.note, /A호선 중앙역→환승역 붐비는 정도 90%, 서서 감/);
+    assert.equal(f.source, "서울교통공사");
+    assert.deepEqual(f.peakCongestion,
+      { pct: 90, line: "A호선", station: "중앙역", source: "서울교통공사" });
+  });
+
+  it("reads the fallback delta mid-ride without a drawn path", () => {
+    const run = simulate(tinyArea(), rideScenario(), "A");
+    const indexed = indexRun(run);
+    const away = run.aways.find((a) => a.agent === "h1" && a.kind === "ride");
+    const card = nowCardFor({ run, indexed, agentKey: "h1", day: 0,
+      minute: away.start_min + 5 });
+    assert.equal(card.state, "ride");
+    assert.match(card.now, /노선도 없음/);
+    assert.deepEqual(card.ride.legs, []);
+    assert.ok(card.ride.fallback);
+    const f = fatigueFor({ run, agentKey: "h1", day: 0, minute: away.start_min + 5 });
+    assert.ok(Number.isFinite(f.delta));
+    assert.match(f.note, /붐비는 정도 자료가 없어요 · 정해 둔 값 70%/);
+    assert.equal(f.source, "가정값");
+    assert.ok(f.peakCongestion && f.peakCongestion.pct === 70);
+  });
+});
+
+describe("calm-card budgets (stage 9c)", () => {
+  it("shows 3 chips, the rest behind a count", () => {
+    const ids = ["C-a", "C-b", "C-c", "C-d", "C-e", "C-f", "C-g", "C-h", "C-i", "C-j"];
+    assert.deepEqual(chipDisplay(ids, false),
+      { visible: ["C-a", "C-b", "C-c"], hiddenCount: 7 });
+    assert.deepEqual(chipDisplay(ids, true), { visible: ids, hiddenCount: 0 });
+    assert.deepEqual(chipDisplay(["C-a", "C-b"], false),
+      { visible: ["C-a", "C-b"], hiddenCount: 0 });
+    assert.deepEqual(chipDisplay([], false), { visible: [], hiddenCount: 0 });
+  });
+
+  it("shows the last 3 ticker rows, expandable", () => {
+    const events = [1, 2, 3, 4, 5].map((n) => ({ text: `e${n}` }));
+    assert.deepEqual(tickerDisplay(events, false),
+      { visible: events.slice(-3), hiddenCount: 2 });
+    assert.deepEqual(tickerDisplay(events, true), { visible: events, hiddenCount: 0 });
+    assert.deepEqual(tickerDisplay(events.slice(0, 2), false),
+      { visible: events.slice(0, 2), hiddenCount: 0 });
   });
 });

@@ -19,14 +19,33 @@ export const BAND_COLORS = {
 export const BAND_ORDER = ["calm", "normal", "crowded", "packed"];
 export const BAND_LABEL = { calm: "여유", normal: "보통", crowded: "혼잡", packed: "매우 혼잡" };
 
-// Where in the work away is the member? null when not in a station ride.
-// Returns {rides, dir: "out"|"work"|"back", elapsed, ride, progress}.
+// Where in a station ride is the member? null when not in one.
+// Old form: the work away covers out-ride + work + back-ride.
+// New form (stage 9c): each ride is its own away ("ride" kind, one
+// direction); the single leg is normalised into the {out|back} map so
+// every consumer below reads one shape.
+// Returns {rides, fallback, dir: "out"|"work"|"back", elapsed, rideMinutes, progress}.
 export function rideStateFor(away, minute) {
-  if (!away || away.kind !== "work") return null;
+  if (!away) return null;
+  const m = Math.floor(minute);
+  if (away.kind === "ride") {
+    const detail = away.detail || {};
+    const dir = detail.direction === "back" ? "back" : "out";
+    if (m < away.start_min || m >= away.end_min) return null;
+    const total = Math.max(1, away.end_min - away.start_min);
+    const rides = detail.ride ? { [dir]: detail.ride } : null;
+    const fb = detail.ride_fallback || null;
+    const fallback = fb ? { out_delta: fb.delta, back_delta: fb.delta,
+      ride_minutes: fb.ride_minutes, congestion_pct: fb.congestion_pct,
+      source: fb.source } : null;
+    return { rides, fallback, dir, elapsed: m - away.start_min,
+      rideMinutes: detail.ride_minutes || total,
+      progress: (m - away.start_min) / total };
+  }
+  if (away.kind !== "work") return null;
   const detail = away.detail || {};
   const total = detail.ride_minutes;
   if (!(total > 0)) return null;
-  const m = Math.floor(minute);
   const outEnd = away.start_min + total;
   const backStart = away.end_min - total;
   if (m >= away.start_min && m < outEnd) {
@@ -141,6 +160,67 @@ export function journeyPhase({ riding, view = "auto", hasDetailDest = false }) {
   if (p < 0.15) return "rising";
   if (p > 0.85 && hasDetailDest) return "descending";
   return "cruise";
+}
+
+// Journey camera state for ANY clock position (pure, stage 9c): static
+// loads, slider drags and playback all read this, so the journey view
+// never depends on crossing the departure live. segments holds one
+// member-day's commute spans ({start, end} minutes or null) in either
+// engine form — old (one work away) or new (ride aways + work away):
+//   { out, work, back }.
+// Returns {phase, dir, progress, elapsed}:
+//   "street" — before the first ride or after the last (normal follow,
+//     journey layer off); inside a ride → rising/cruise/descending via
+//     journeyPhase ("boarding" when the 거리 보기 override pins the
+//     boarding street); work hours and destination-walk gaps → "hold"
+//     (descended at the destination, journey layer on).
+export function journeyCameraState({ segments, minute, view = "auto", hasDetailDest = false }) {
+  const m = Math.floor(minute);
+  const seg = segments || {};
+  const street = { phase: "street", dir: null, progress: 0, elapsed: 0 };
+  const inRide = (span, dir) => {
+    if (!span || m < span.start || m >= span.end) return null;
+    const total = Math.max(1, span.end - span.start);
+    const elapsed = m - span.start;
+    const inner = journeyPhase({ riding: { progress: elapsed / total }, view, hasDetailDest });
+    return { phase: inner === "street" ? "boarding" : inner,
+      dir, progress: elapsed / total, elapsed };
+  };
+  const rideHit = inRide(seg.out, "out") || inRide(seg.back, "back");
+  if (rideHit) return rideHit;
+  const atDest = (seg.work && m >= seg.work.start && m < seg.work.end)
+    || (seg.out && seg.work && m >= seg.out.end && m < seg.work.start)
+    || (seg.work && seg.back && m >= seg.work.end && m < seg.back.start);
+  if (atDest) return { phase: "hold", dir: "work", progress: 1, elapsed: 0 };
+  return street;
+}
+
+// Commute spans for journeyCameraState from one member-day's aways
+// (pure, either engine form). New form: the ride aways plus the work
+// away. Old form: the work away split by its ride minutes. Null without
+// a station ride.
+export function commuteSegments(dayAways) {
+  const aways = dayAways || [];
+  const rides = aways.filter((a) => a.kind === "ride");
+  const work = aways.find((a) => a.kind === "work");
+  if (rides.length > 0) {
+    const out = rides.find((a) => !a.detail || a.detail.direction !== "back");
+    const back = rides.find((a) => a.detail && a.detail.direction === "back");
+    return {
+      out: out ? { start: out.start_min, end: out.end_min } : null,
+      work: work ? { start: work.start_min, end: work.end_min } : null,
+      back: back ? { start: back.start_min, end: back.end_min } : null,
+    };
+  }
+  if (work && work.detail && work.detail.ride_minutes > 0) {
+    const total = work.detail.ride_minutes;
+    return {
+      out: { start: work.start_min, end: work.start_min + total },
+      work: { start: work.start_min + total, end: work.end_min - total },
+      back: { start: work.end_min - total, end: work.end_min },
+    };
+  }
+  return null;
 }
 
 // Per-segment congestion colours for the travelled ride at its slot:

@@ -122,6 +122,18 @@
       "editable": true
     },
     {
+      "id": "C-walk-commute-max",
+      "group": "move",
+      "title": "도보 통근 상한",
+      "rule": "직장이 같은 지역 안에 있고 집에서 직장까지 도보 그래프 소요 시간이 이 상한 이내면 걸어서 출근한다. 상한을 넘거나 다른 지역이면 역까지 걸어 지하철을 탄다.",
+      "values": {
+        "max_min": { "value": 25, "unit": "분", "overridable": true }
+      },
+      "source": "engine 기본값",
+      "affects": ["commute", "walk", "ride"],
+      "editable": true
+    },
+    {
       "id": "C-lunch",
       "group": "daily",
       "title": "점심",

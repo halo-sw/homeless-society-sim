@@ -70,6 +70,8 @@ export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WAL
     after_home_avg: h.fatigue_after_home_avg ?? null,
     avg_30d: h.fatigue_avg_30d ?? null,
     crowded_min: h.fatigue_crowded_min ?? null,
+    peak_congestion_pct: h.fatigue_peak_congestion_pct ?? null,
+    peak_congestion_ctx: h.fatigue_peak_congestion_ctx ?? null,
     unit: "index",
     source: "scenario",
     note: "피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요",

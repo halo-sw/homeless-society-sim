@@ -8,6 +8,7 @@
 // <canvas> and downloads in the browser (no upload).
 
 import { fmtWon, fmtMinutes, fmtIndex } from "../money/format.js";
+import { congestionPeakLine } from "../engine/journey.js";
 import { monthlyHousingLabel, BURDEN_PLAIN_LABEL,
   REMAINING_PLAIN_LABEL } from "./copy.js";
 
@@ -58,6 +59,19 @@ function homeRows(homeKey, h, tenure) {
       value: fmtIndex(h.qol_fatigue.avg_30d),
       sources: ["scenario"], assumed: true,
       note: "가정으로 계산한 값이에요",
+    });
+  }
+  // The crowding number beside fatigue (stage 9c): 0 crowded minutes is
+  // a measurement, so the peak boarding reads next to it.
+  if (h.qol_fatigue && h.qol_fatigue.peak_congestion_pct !== null
+      && h.qol_fatigue.peak_congestion_pct !== undefined) {
+    const pk = h.qol_fatigue.peak_congestion_ctx || {};
+    const measured = pk.source === "서울교통공사";
+    rows.push({
+      label: "출근길 가장 붐비는 순간",
+      value: `${congestionPeakLine(pk)} (${measured ? "실측" : "가정값"})`,
+      sources: ["scenario"], assumed: !measured,
+      note: measured ? "서울교통공사 지하철혼잡도정보" : "정해 둔 값이에요",
     });
   }
   if (h.qol_convenience) {

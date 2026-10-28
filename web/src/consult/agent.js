@@ -195,7 +195,7 @@ export async function runTurn(opts) {
   const {
     provider = "meta", messages = [], scenario, context = null,
     cache, loadArea, loadDecisions = null, judgeHome = null,
-    loadRegion = null,
+    loadRegion = null, loadAreaMeta = null,
     loadPayroll = null, loadRtms = null, loadHousing = null,
     loadSafety = null, loadPersona = null, loadAssumption = null,
     fetchImpl = null, completeFn = null,
@@ -204,7 +204,7 @@ export async function runTurn(opts) {
   const cfg = providerConfig(provider);
   const complete = completeFn || ((args) => completeWithTools({ ...args, fetchImpl }));
   const session = createSession({
-    scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion,
+    scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion, loadAreaMeta,
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });

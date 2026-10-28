@@ -265,6 +265,40 @@ describe("consult tools", () => {
     assert.equal((await callTool(s, "get_fatigue", { run: "run999", member: "h1" })).ok, false);
   });
 
+  it("get_journey reads new-form ride aways (stage 9c)", async () => {
+    const region = tinyRegion();
+    const s = fixtureSession({ loadRegion: async () => region });
+    const work = s.scenario.household.members[0].work;
+    work.destination_station = "직장역";
+    work.place = { name: "먼직장", lon: 127.1, lat: 37.6 };
+    const one = await callTool(s, "run_simulation", { home: "A", decisions: "rules" });
+    assert.equal(one.ok, true);
+    const j = await callTool(s, "get_journey", { run: one.run_ids.A, day: 1, member: "h1" });
+    assert.equal(j.ok, true);
+    assert.equal(j.rides.length, 1);
+    assert.equal(j.rides[0].stay, "먼직장 근무");
+    assert.equal(j.rides[0].out.legs.length, 2);
+    assert.equal(j.rides[0].out.legs[0].congestion_source, "서울교통공사");
+    assert.equal(j.rides[0].back.legs.length, 2);
+    assert.ok(j.rides[0].dest_walk);
+  });
+
+  it("update_scenario accepts per-home ride minutes (stage 9c)", async () => {
+    const s = fixtureSession();
+    const r = await callTool(s, "update_scenario", {
+      members: [{ id: "m1",
+        work: { type: "station_ride", station_name: "중앙역", ride_minutes: { A: 25 } } }],
+    });
+    assert.equal(r.ok, true);
+    assert.deepEqual(s.scenario.household.members[0].work.ride_minutes, { A: 25 });
+    assert.equal(s.scenario.household.members[0].work.ride_minutes_source, "user_input");
+    const bad = await callTool(s, "update_scenario", {
+      members: [{ id: "m1",
+        work: { type: "station_ride", station_name: "중앙역", ride_minutes: { A: -5 } } }],
+    });
+    assert.equal(bad.ok, false);
+  });
+
   it("get_journey reports numeric rides honestly without a destination", async () => {
     const s = fixtureSession({ loadRegion: async () => tinyRegion() });
     const one = await callTool(s, "run_simulation", { home: "A", decisions: "rules" });

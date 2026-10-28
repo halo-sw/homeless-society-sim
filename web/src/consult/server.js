@@ -48,6 +48,16 @@ async function loadAreaFs(dataDir, areaCache, areaId) {
   return area;
 }
 
+// Bounding boxes for destination-area discovery (stage 9c): the full
+// area.json parses are cached, so the four candidates cost one read.
+async function loadAreaMetaFs(dataDir, areaMetaCache, areaId) {
+  if (areaMetaCache.has(areaId)) return areaMetaCache.get(areaId);
+  const doc = JSON.parse(await readFile(join(dataDir, areaId, "area.json"), "utf8"));
+  const meta = { bbox: doc.bbox || null };
+  areaMetaCache.set(areaId, meta);
+  return meta;
+}
+
 async function loadRegionFs(dataDir) {
   const region = {};
   for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
@@ -84,6 +94,7 @@ async function loadDecisionsFs(scenDir, scenarioName, label) {
 export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImpl = null } = {}) {
   const cache = createRunCache();
   const areaCache = new Map();
+  const areaMetaCache = new Map();
   const rtmsCache = new Map();
   let payrollCache = null;
   let housingCache = null;
@@ -167,6 +178,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         context: body.context && typeof body.context === "object" ? body.context : null,
         cache,
         loadArea: (areaId) => loadAreaFs(dataDir, areaCache, areaId),
+        loadAreaMeta: (areaId) => loadAreaMetaFs(dataDir, areaMetaCache, areaId),
         loadDecisions: (name, label) => loadDecisionsFs(scenDir, name, label),
         loadRegion: () => loadRegionFs(dataDir),
         judgeHome: (args) => judgeHome({ ...args, fetchImpl }),

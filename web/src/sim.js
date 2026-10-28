@@ -109,11 +109,18 @@ export function tripFractions(trip, edgeLen = null) {
 // Returns {lon, lat, visible, state, trip, away}: on a trip the agent
 // walks its recorded path; at a school/errand/clinic/park stay it
 // waits at the destination; at home or out-of-area work it is hidden.
+// Remote trips (stage 9c: destination-graph walks) are always hidden —
+// their node ids belong to another area's graph (which reuses the same
+// id space), so sampling them on the home map would misplace the agent.
 export function sampleAgent(agentKey, indexed, day, minute, nodeLonLat, homeLonLat, edgeLen = null) {
   const trips = indexed.tripsByAgent.get(agentKey) || [];
   const aways = indexed.awaysByAgent.get(agentKey) || [];
   for (const t of trips) {
     if (t.day !== day || minute < t.depart_min || minute >= t.arrive_min) continue;
+    if (t.remote) {
+      return { lon: homeLonLat[0], lat: homeLonLat[1], visible: false,
+        state: "trip", trip: t, away: null };
+    }
     const dur = Math.max(1, t.arrive_min - t.depart_min);
     const f = Math.min(1, Math.max(0, (minute - t.depart_min) / dur));
     const fracs = tripFractions(t, edgeLen);
@@ -131,13 +138,16 @@ export function sampleAgent(agentKey, indexed, day, minute, nodeLonLat, homeLonL
   }
   for (const a of aways) {
     if (a.day !== day || minute < a.start_min || minute >= a.end_min) continue;
-    if (a.kind === "work") {
+    if (a.kind === "work" || a.kind === "ride") {
+      // Out of area (at the workplace, or on the train the journey view
+      // carries): hidden on the home map.
       return { lon: homeLonLat[0], lat: homeLonLat[1], visible: false, state: "away", trip: null, away: a };
     }
-    // At the destination of the latest arrived trip.
+    // At the destination of the latest arrived home-graph trip
+    // (remote trips carry foreign node ids — never sample them here).
     let node = null;
     for (const t of trips) {
-      if (t.day === day && t.arrive_min <= minute) node = t.path[t.path.length - 1];
+      if (t.day === day && t.arrive_min <= minute && !t.remote) node = t.path[t.path.length - 1];
     }
     const p = (node && nodeLonLat.get(node)) || homeLonLat;
     return { lon: p[0], lat: p[1], visible: true, state: "place", trip: null, away: a };

@@ -71,6 +71,14 @@ export function fmtPct(ratio, digits = 1) {
   return `${(v * 100).toFixed(digits)}%`;
 }
 
+// Percent number already in % units (congestion 93.2 → "93.2%").
+export function fmtPercent(v) {
+  if (v === null || v === undefined) return "–";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "–";
+  return `${Math.round(n * 10) / 10}%`;
+}
+
 // Fatigue index 0–100 (one decimal, no unit suffix — the label says 지수).
 export function fmtIndex(v) {
   if (v === null || v === undefined) return "–";

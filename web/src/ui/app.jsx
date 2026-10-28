@@ -27,10 +27,10 @@ import { SupportTab } from "./support.jsx";
 import { ListingsTab } from "./listings.jsx";
 import { ShareDialog } from "./share.jsx";
 import { DemoTour } from "./DemoTour.jsx";
-import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
+import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent, badgeFor } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
-import { congestionBand } from "../engine/journey.js";
-import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
+import { congestionBand, congestionPeakLine } from "../engine/journey.js";
+import { FATIGUE_MODEL_NOTE, chipDisplay, tickerDisplay } from "../nowcard.js";
 
 function useStore() {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -264,11 +264,49 @@ function FatigueSpark({ series, nowMin }) {
   );
 }
 
+// At most 3 criterion chips; the rest hide behind "+N개 기준" (stage 9c).
+function CriterionChips({ ids }) {
+  const [open, setOpen] = useState(false);
+  const { visible, hiddenCount } = chipDisplay(ids, open);
+  if (visible.length === 0) return null;
+  return (
+    <HStack gap={1} vAlign="center" wrap="wrap">
+      {visible.map((id) => (
+        <Button key={id} size="sm" variant="ghost" label={id}
+          onClick={() => act("openCriterion", id)} />
+      ))}
+      {hiddenCount > 0 && (
+        <Button size="sm" variant="ghost" label={open ? "접기" : `+${hiddenCount}개 기준`}
+          onClick={() => setOpen(!open)} />
+      )}
+    </HStack>
+  );
+}
+
+// Last 3 ticker rows; the rest hide behind an expander (stage 9c).
+function TickerList({ events }) {
+  const [open, setOpen] = useState(false);
+  const { visible, hiddenCount } = tickerDisplay(events, open);
+  if (visible.length === 0) return null;
+  return (
+    <VStack gap={0}>
+      {visible.map((e, i) => (
+        <Text key={i} type="supporting" hasTabularNumbers>{e.text}</Text>
+      ))}
+      {hiddenCount > 0 && (
+        <Button size="sm" variant="ghost" label={open ? "접기" : `이전 기록 ${hiddenCount}개 더 보기`}
+          onClick={() => setOpen(!open)} />
+      )}
+    </VStack>
+  );
+}
+
 function FatigueBar({ fatigue, nowMin }) {
   const f = fatigue;
   const width = `${Math.max(0, Math.min(100, f.value))}%`;
   const deltaText = f.delta === null || f.delta === undefined
     ? "" : ` (${f.delta > 0 ? "+" : ""}${Math.round(f.delta * 10) / 10})`;
+  const peakLine = f.peakCongestion ? congestionPeakLine(f.peakCongestion) : null;
   return (
     <VStack gap={1}>
       <HStack gap={1} vAlign="center" wrap="wrap">
@@ -280,16 +318,16 @@ function FatigueBar({ fatigue, nowMin }) {
         <div className="ui-progress-fill" style={{ width }} />
       </div>
       {f.note && <Text type="supporting">{f.note}</Text>}
-      <FatigueSpark series={f.series} nowMin={nowMin} />
-      <Text type="supporting">{FATIGUE_MODEL_NOTE}</Text>
-      {f.criterionIds.length > 0 && (
+      {peakLine && (
         <HStack gap={1} vAlign="center" wrap="wrap">
-          {f.criterionIds.map((id) => (
-            <Button key={id} size="sm" variant="ghost" label={id}
-              onClick={() => act("openCriterion", id)} />
-          ))}
+          <Text type="supporting" hasTabularNumbers>{`오늘 가장 붐비는 순간 · ${peakLine}`}</Text>
+          <Badge variant="neutral"
+            label={f.peakCongestion.source === "서울교통공사" ? "실측" : "가정값"} />
         </HStack>
       )}
+      <FatigueSpark series={f.series} nowMin={nowMin} />
+      <Text type="supporting">{FATIGUE_MODEL_NOTE}</Text>
+      <CriterionChips ids={f.criterionIds} />
     </VStack>
   );
 }
@@ -392,6 +430,23 @@ function NowCard({ state }) {
             <Badge variant="neutral" label={WHY_KIND_KO[n.whyKind] || n.whyKind} />
           </HStack>
           <Text>{n.now}</Text>
+          {n.ride && n.ride.legs.length > 0 && (
+            <VStack gap={0}>
+              {n.ride.legs.map((l, i) => {
+                const band = congestionBand(l.valuePct).key;
+                return (
+                  <HStack key={i} gap={1} vAlign="center" wrap="wrap">
+                    <span style={{ width: 8, height: 8, borderRadius: 4,
+                      background: BAND_CSS[band], display: "inline-block" }} />
+                    <Text type="supporting" hasTabularNumbers>
+                      {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 붐비는 정도 ${l.valuePct}%`}
+                    </Text>
+                    <Badge variant="neutral" label={l.source === "서울교통공사" ? "실측" : "가정값"} />
+                  </HStack>
+                );
+              })}
+            </VStack>
+          )}
           {n.progress !== null && n.progress !== undefined && (
             <div className="ui-progress" role="progressbar" aria-label="현재 일정 진행률"
               aria-valuenow={Math.round(n.progress * 100)} aria-valuemin={0} aria-valuemax={100}>
@@ -409,21 +464,12 @@ function NowCard({ state }) {
           {n.criterionIds.length > 0 && (
             <HStack gap={1} vAlign="center" wrap="wrap">
               <Text type="supporting">적용한 기준</Text>
-              {n.criterionIds.map((id) => (
-                <Button key={id} size="sm" variant="ghost" label={id}
-                  onClick={() => act("openCriterion", id)} />
-              ))}
+              <CriterionChips ids={n.criterionIds} />
             </HStack>
           )}
           <Text type="supporting">{`다음 일정 · ${n.next}`}</Text>
           {n.fatigue && <FatigueBar fatigue={n.fatigue} nowMin={state.clock && state.clock.minute} />}
-          {state.ticker.length > 0 && (
-            <VStack gap={0}>
-              {state.ticker.map((e, i) => (
-                <Text key={i} type="supporting" hasTabularNumbers>{e.text}</Text>
-              ))}
-            </VStack>
-          )}
+          <TickerList events={state.ticker} />
         </VStack>
       </Card>
     </div>
@@ -475,7 +521,7 @@ function IntroCard({ state }) {
 
 const fmtMetric = (unit, v) => (
   unit === "minutes" ? fmtMinutes(v) : unit === "metres" ? fmtDistance(v)
-    : unit === "index" ? fmtIndex(v) : fmtCount(v));
+    : unit === "index" ? fmtIndex(v) : unit === "percent" ? fmtPercent(v) : fmtCount(v));
 
 function CompareTabBody({ state }) {
   const cmp = state.compare;
@@ -632,11 +678,14 @@ export function App() {
           <NowCard state={state} />
           <JourneyCard state={state} />
           <JudgeLogCard state={state} />
+          {/* The legend joins the left stack in sim mode (stage 9c): one
+              scrolling column, so cards never overlap. */}
+          <LegendCard state={state} />
         </div>
       )}
       {isSim && <IntroCard state={state} />}
       {isSim && <CompareCard state={state} />}
-      <LegendCard state={state} />
+      {!isSim && <LegendCard state={state} />}
       <AttrLine state={state} />
       {state.viewChip && (
         <div className="ui-viewchip overlay">

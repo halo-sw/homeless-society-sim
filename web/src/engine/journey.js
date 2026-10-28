@@ -225,6 +225,17 @@ export function standShare(congPct, seatedPct = SEATED_PCT, capacityPct = CAPACI
   return (congPct - seatedPct) / (capacityPct - seatedPct);
 }
 
+// The crowding number shown beside fatigue everywhere (stage 9c):
+// "2호선 잠실 혼잡도 93.2%, 서서 감". peak: {pct, line, station} | null.
+// Null without rides (walked commutes), never a guess.
+export function congestionPeakLine(peak) {
+  if (!peak || !Number.isFinite(peak.pct)) return null;
+  const where = [peak.line, peak.station].filter(Boolean).join(" ");
+  const posture = standShare(peak.pct) >= 0.5 ? "서서 감" : "앉아서 감";
+  const pct = Math.round(peak.pct * 10) / 10;
+  return `${where ? `${where} ` : ""}혼잡도 ${pct}%, ${posture}`;
+}
+
 // Expected fatigue load of a ride leg (C-fatigue-load): seated minutes +
 // standing minutes + above-capacity extra. Deterministic (no sampling).
 export function rideLegFatigue(minutes, congPct, crit) {

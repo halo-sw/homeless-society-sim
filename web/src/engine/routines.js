@@ -21,11 +21,12 @@
 // text} built where it was scheduled, so the UI can always say what is
 // happening and why (stage 7, Part A).
 
-import { destForHome, nameForHome, weekdayOf, WEEKDAYS, dateOf } from "./scenario.js";
-import { nearestRoundTrip, poisByName, stationsByName } from "./places.js";
+import { destForHome, nameForHome, rideMinutesForHome, weekdayOf, WEEKDAYS, dateOf } from "./scenario.js";
+import { MAX_ANCHOR_M, nearestRoundTrip, poisByName, stationsByName } from "./places.js";
 import { ruleDefault, WEEKEND_HOME } from "./decisions.js";
 import { criterionDefault, defaultFlat, resolveCriteria } from "./criteria.js";
 import { CAPACITY_PCT, buildRides, rideLegFatigue, walkFatigue } from "./journey.js";
+import { bboxContains, resolveWorkplace, stationCoords } from "./workplace.js";
 
 export const MORNING_ANCHOR = criterionDefault("C-commute-depart", "morning_anchor_min"); // 07:30 + jitter
 export const SCHOOL_ANCHOR = criterionDefault("C-commute-depart", "school_anchor_min"); // 08:00 + jitter
@@ -93,6 +94,14 @@ export function planAgent(agent, day, ctx) {
   const { scenario, homeLabel, home, router, places, decider, schedule, collect } = ctx;
   const F = (ctx && ctx.crit) || (scenario ? resolveCriteria(scenario).flat : DEFAULTS);
   const region = (ctx && ctx.region) || null;
+  // Destination-area graph for place commutes (stage 9c): {area, router,
+  // places} or null. destAreaId/homeAreaId tag remote trips; homeBbox
+  // gates the in-area walk check (fixture areas carry no bbox — then the
+  // graph alone decides).
+  const dest = (ctx && ctx.dest) || null;
+  const destAreaId = (ctx && ctx.destAreaId) || null;
+  const homeAreaId = (ctx && ctx.homeAreaId) || null;
+  const homeBbox = (ctx && ctx.homeBbox) || null;
   const weekday = WEEKDAYS[weekdayOf(scenario.start_date, day)];
   const wk = WEEKDAY_KO[weekday] || weekday;
   const speed = agent.speed;
@@ -110,6 +119,23 @@ export function planAgent(agent, day, ctx) {
   let fatCrowded = 0;
   let fatArrivalWork = null;
   let fatAfterHome = null;
+  // The day's most crowded boarding (stage 9c): shown beside fatigue
+  // everywhere ("혼잡도 93 %, 서서 감"), so 0 crowded minutes reads as a
+  // measurement, not a gap. Strictly-greater wins (first boarding keeps
+  // ties — deterministic).
+  let fatPeakCong = null;
+  const noteCongestion = (pct, line, station, source) => {
+    if (!Number.isFinite(pct)) return;
+    if (fatPeakCong === null || pct > fatPeakCong.pct) {
+      fatPeakCong = { pct, line: line || null, station: station || null, source: source || null };
+    }
+  };
+  const noteRidePeak = (ride) => {
+    for (const leg of (ride && ride.legs) || []) {
+      const c = leg.congestion;
+      if (c) noteCongestion(c.valuePct, leg.lineName, c.station, c.source);
+    }
+  };
   const fatSeries = agent.household ? [{ m: 0, v: round1(fat), label: "시작" }] : [];
   const fatPoint = (m, label = null) => {
     if (fat !== null) fatSeries.push({ m, v: round1(fat), label });
@@ -171,14 +197,58 @@ export function planAgent(agent, day, ctx) {
     return trip;
   }
 
+  // A commute walk on the destination graph (stage 9c): same minute grid
+  // and walk fatigue as addTrip, but the path belongs to another area's
+  // graph (graph_area tags it; remote marks a foreign graph so the scene
+  // never samples it on the home map). No at-home recovery — the member
+  // is away.
+  function addRemoteTrip(depart, leg, from, to, cause, labels = {}) {
+    fatPoint(depart, labels.depart || null);
+    const distance_m = round2(leg.distance_m);
+    const minutes = round1(leg.minutes);
+    const arrive = depart + Math.max(1, Math.round(minutes));
+    const fatigueDelta = round1(walkFatigue(minutes, F));
+    fatLoad(fatigueDelta);
+    fatPoint(arrive, labels.arrive || null);
+    const trip = {
+      id: `t${String(collect.tripSeq++).padStart(6, "0")}`,
+      agent: agent.key, day, depart_min: depart, arrive_min: arrive,
+      from, to, purpose: "commute", distance_m, minutes, path: leg.path,
+      remote: leg.graphArea !== homeAreaId, graph_area: leg.graphArea,
+      congestion: null, // walk legs have no congestion reading
+      fatigue_delta: fatigueDelta,
+      cause,
+    };
+    trips.push(trip);
+    collect.trips.push(trip);
+    clock = arrive;
+    commuteWalk += minutes;
+    return trip;
+  }
+
   // Seated stays (work/school) recover; errand/clinic/park stays are
-  // neutral. Station-ride work aways replay the ride timeline inside:
-  // out-ride load, seated work hours, back-ride load — from the journey
-  // legs when a path was drawn, else from the fallback congestion.
+  // neutral. Old-form station-ride work aways replay the ride timeline
+  // inside: out-ride load, seated work hours, back-ride load — from the
+  // journey legs when a path was drawn, else from the fallback
+  // congestion. New-form (stage 9c) ride aways carry one direction each.
   function addAway(start, end, kind, label, detail, cause, labels = {}) {
     const rides = detail && detail.rides;
     const fallback = detail && detail.ride_fallback;
-    if ((kind === "work") && (rides || fallback)) {
+    if (kind === "ride") {
+      const ride = detail && detail.ride;
+      const dir = (detail && detail.direction) === "back" ? "back" : "out";
+      fatPoint(start, dir === "out" ? "출근 승차" : "퇴근 승차");
+      if (ride) {
+        fatLoad(ride.fatigueDelta);
+        fatCrowded = round1(fatCrowded + ride.crowdedMin);
+      } else if (fallback) {
+        fatLoad(fallback.delta);
+        if (fallback.congestion_pct > CAPACITY_PCT) {
+          fatCrowded = round1(fatCrowded + fallback.ride_minutes);
+        }
+      }
+      fatPoint(end, "하차");
+    } else if ((kind === "work") && (rides || fallback)) {
       const outD = rides ? rides.out.fatigueDelta : fallback.out_delta;
       const backD = rides ? rides.back.fatigueDelta : fallback.back_delta;
       const outLen = rides ? rides.out.minutesTotal : fallback.ride_minutes;
@@ -244,66 +314,291 @@ export function planAgent(agent, day, ctx) {
     return { dest, decision };
   }
 
+  // Old-form station ride (no work.place): one work away covering the
+  // out ride, the workday and the back ride. Behaviour is unchanged;
+  // rideMinutesForHome only adds per-home map support (numbers behave
+  // exactly as before). placedNull reuses this shape for a named
+  // workplace the engine cannot locate, labelled by the workplace name.
+  function commuteLegacy(work, depart, placedNull = false) {
+    const rideMin = rideMinutesForHome(work, homeLabel);
+    if (rideMin === null) {
+      unavailable("commute", "ride", `${homeLabel} 경로의 승차 시간 입력 없음`);
+      return;
+    }
+    const rideIds = ["C-ride-minutes"];
+    const name = nameForHome(work.station_name, homeLabel);
+    const stations = stationsByName(places, name);
+    if (stations.length === 0) {
+      unavailable("commute", "station", name);
+      return;
+    }
+    const found = commuteStation(stations, depart);
+    if (found === null) {
+      unavailable("commute", "station", name);
+      return;
+    }
+    const ids = ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+      ...rideIds, "C-congestion", "C-fatigue-load", "C-fatigue-recovery"];
+    if (found.decision) ids.push("C-station-route");
+    const cause = makeCause("routine", ids,
+      `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)}`,
+      found.decision ? found.decision.id : null);
+    const out = addTrip(depart, found.dest.route, homeEnd(), poiEnd(found.dest.place), "commute", cause);
+    commuteRide += rideMin * 2;
+    const awayEnd = out.arrive_min + rideMin + F.workday_minutes + rideMin;
+    // The journey path (both directions) when the destination is
+    // known and the region network is loaded; else the ride stays
+    // numeric and fatigue uses the fallback congestion.
+    const destName = destForHome(work.destination_station, homeLabel);
+    let rides = null;
+    let journeyNote = null;
+    if (!destName) journeyNote = "목적지 역 없음";
+    else if (!region || !region.network) journeyNote = "노선도 없음";
+    else {
+      rides = buildRides({
+        network: region.network, congestion: region.congestion || null,
+        fromName: name, toName: destName, rideMinutes: rideMin,
+        departOut: out.arrive_min, departBack: awayEnd - rideMin,
+        weekday, crit: F,
+      });
+      if (!rides) journeyNote = "노선도에 없는 역";
+      else {
+        cause.criterion_ids.push("C-journey-path", "C-ride-split");
+        noteRidePeak(rides.out);
+        noteRidePeak(rides.back);
+      }
+    }
+    if (placedNull) {
+      journeyNote = journeyNote
+        ? `${journeyNote}; 근무지 위치 확인 불가` : "근무지 위치 확인 불가";
+    }
+    const detail = {
+      ride_minutes: rideMin, workday_minutes: F.workday_minutes,
+      seated_minutes: F.workday_minutes,
+      ride_minutes_source: work.ride_minutes_source || "user_assumption",
+      rides, journey_note: journeyNote,
+    };
+    if (!rides && rideMin > 0) {
+      const perRide = round1(rideLegFatigue(rideMin,
+        F.congestion_fallback_pct, F));
+      detail.ride_fallback = { out_delta: perRide, back_delta: perRide,
+        ride_minutes: rideMin,
+        congestion_pct: F.congestion_fallback_pct, source: "가정값" };
+      noteCongestion(F.congestion_fallback_pct, null, name, "가정값");
+    }
+    const label = placedNull && work.place
+      ? `${work.place.name} 근무` : `${found.dest.place.name} 방면 근무`;
+    addAway(out.arrive_min, awayEnd, "work", label, detail, cause);
+    addTrip(awayEnd, found.dest.back, poiEnd(found.dest.place), homeEnd(), "commute", cause,
+      { arrive: "귀가" });
+    fatAfterHome = fat;
+  }
+
+  // Destination walk for a place commute (stage 9c): the alighting
+  // station to the workplace on the destination graph. Graph minutes
+  // only — never a straight-line estimate (see graph.js): without a
+  // loaded destination area, an anchored station, or a route, the walk
+  // is 0 with an explicit note.
+  function planDestWalk(destName, wp) {
+    const none = (note) => ({ go: null, back: null, source: "none", note, graphArea: destAreaId });
+    if (!destName) return none("목적지 역 없음");
+    if (!dest) return none("목적지 지역 미생성");
+    const networkHit = region && region.network ? stationCoords(region.network, destName) : null;
+    let anchor = networkHit ? { lon: networkHit.lon, lat: networkHit.lat } : null;
+    if (!anchor) {
+      const pois = stationsByName(dest.places, destName);
+      if (pois.length > 0) anchor = { lon: pois[0].lon, lat: pois[0].lat };
+    }
+    if (!anchor) return none("하차역 위치 확인 불가");
+    const sNode = dest.router.nearestNode(anchor.lon, anchor.lat);
+    const wNode = dest.router.nearestNode(wp.lon, wp.lat);
+    if (sNode.id === null || wNode.id === null
+        || sNode.distM > MAX_ANCHOR_M || wNode.distM > MAX_ANCHOR_M) {
+      return none("목적지 도보 연결 확인 불가");
+    }
+    const go = dest.router.route(sNode.id, wNode.id);
+    const back = dest.router.route(wNode.id, sNode.id);
+    if (!go || !back) return none("목적지 도보 연결 확인 불가");
+    return { go, back, source: "graph", note: "", graphArea: destAreaId };
+  }
+
+  // Place-based commute (stage 9c): the workplace is a place, so the
+  // engine derives the commute per home. In-area within
+  // C-walk-commute-max → walk there and back. Otherwise → walk to the
+  // home station, ride (the customer's per-path minutes, split on the
+  // stage-8 path), walk from the alighting station to the workplace,
+  // and mirror it home. Work is labelled by the workplace and starts
+  // on arrival there — the ride is its own leg, never "work".
+  function commutePlace(work, depart) {
+    const rideMin = rideMinutesForHome(work, homeLabel);
+    const wp = resolveWorkplace(work.place, { places, network: region && region.network });
+    if (!wp) {
+      commuteLegacy(work, depart, true);
+      return;
+    }
+    const wpId = wp.how === "poi" && wp.poiId ? wp.poiId : `workplace:${agent.key}`;
+    const inBbox = !homeBbox || bboxContains(homeBbox, wp.lon, wp.lat);
+    let walkCand = null;
+    let walkMin = null;
+    if (inBbox) {
+      const anchor = router.nearestNode(wp.lon, wp.lat);
+      if (anchor.id !== null && anchor.distM <= MAX_ANCHOR_M) {
+        const cands = nearestRoundTrip(router, agent.home_node,
+          [{ id: wpId, name: wp.name, lon: wp.lon, lat: wp.lat, nodeId: anchor.id }], 1);
+        if (cands.length > 0) {
+          walkCand = cands[0];
+          walkMin = cands[0].lengthM / speed / 60;
+        }
+      }
+    }
+    if (walkCand && walkMin <= F.walk_commute_max_min) {
+      const cause = makeCause("routine",
+        ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+          "C-walk-commute-max", "C-fatigue-load", "C-fatigue-recovery"],
+        `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)} · ` +
+        `${wp.name}까지 도보 ${round1(walkMin)}분(${F.walk_commute_max_min}분 이내)`);
+      const end = { kind: "poi", id: walkCand.place.id, label: wp.name };
+      const out = addTrip(depart, walkCand.route, homeEnd(), end, "commute", cause);
+      fatArrivalWork = fat;
+      const awayEnd = out.arrive_min + F.workday_minutes;
+      addAway(out.arrive_min, awayEnd, "work", `${wp.name} 근무`, {
+        workday_minutes: F.workday_minutes, seated_minutes: F.workday_minutes,
+        workplace: { name: wp.name, lon: wp.lon, lat: wp.lat },
+        commute: "walk",
+      }, cause);
+      addTrip(awayEnd, walkCand.back, end, homeEnd(), "commute", cause,
+        { arrive: "귀가" });
+      fatAfterHome = fat;
+      return;
+    }
+    if (rideMin === null) {
+      unavailable("commute", "ride", `${homeLabel} 경로의 승차 시간 입력 없음`);
+      return;
+    }
+    const name = nameForHome(work.station_name, homeLabel);
+    const stations = stationsByName(places, name);
+    if (stations.length === 0) {
+      unavailable("commute", "station", name);
+      return;
+    }
+    const found = commuteStation(stations, depart);
+    if (found === null) {
+      unavailable("commute", "station", name);
+      return;
+    }
+    const destName = destForHome(work.destination_station, homeLabel);
+    const dw = planDestWalk(destName, wp);
+    const dwGoMin = dw.go ? round1(dw.go.lengthM / speed / 60) : 0;
+    const dwBackMin = dw.back ? round1(dw.back.lengthM / speed / 60) : 0;
+    const overText = walkCand
+      ? `도보 ${round1(walkMin)}분(${F.walk_commute_max_min}분 초과)`
+      : "도보 연결 없음";
+    const ids = ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+      "C-walk-commute-max", "C-ride-minutes", "C-congestion", "C-fatigue-load", "C-fatigue-recovery"];
+    if (found.decision) ids.push("C-station-route");
+    const cause = makeCause("routine", ids,
+      `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)} · ` +
+      `${wp.name}까지 ${overText} → ${name}역 승차`,
+      found.decision ? found.decision.id : null);
+    const out = addTrip(depart, found.dest.route, homeEnd(), poiEnd(found.dest.place), "commute", cause);
+    commuteRide += rideMin * 2;
+    const dwGoLen = dw.go && dwGoMin > 0 ? Math.max(1, Math.round(dwGoMin)) : 0;
+    const dwBackLen = dw.back && dwBackMin > 0 ? Math.max(1, Math.round(dwBackMin)) : 0;
+    const tBoard = out.arrive_min;
+    const tWork = tBoard + rideMin + dwGoLen;
+    const tWorkEnd = tWork + F.workday_minutes;
+    const tBackBoard = tWorkEnd + dwBackLen;
+    const tStation = tBackBoard + rideMin;
+    let rides = null;
+    let journeyNote = null;
+    if (!(rideMin > 0)) journeyNote = "승차 시간 0분";
+    else if (!destName) journeyNote = "목적지 역 없음";
+    else if (!region || !region.network) journeyNote = "노선도 없음";
+    else {
+      rides = buildRides({
+        network: region.network, congestion: region.congestion || null,
+        fromName: name, toName: destName, rideMinutes: rideMin,
+        departOut: tBoard, departBack: tBackBoard,
+        weekday, crit: F,
+      });
+      if (!rides) journeyNote = "노선도에 없는 역";
+      else {
+        cause.criterion_ids.push("C-journey-path", "C-ride-split");
+        noteRidePeak(rides.out);
+        noteRidePeak(rides.back);
+      }
+    }
+    let singleFallback = null;
+    if (!rides && rideMin > 0) {
+      const perRide = round1(rideLegFatigue(rideMin,
+        F.congestion_fallback_pct, F));
+      singleFallback = { delta: perRide, ride_minutes: rideMin,
+        congestion_pct: F.congestion_fallback_pct, source: "가정값" };
+      noteCongestion(F.congestion_fallback_pct, null, name, "가정값");
+    }
+    const rideSource = work.ride_minutes_source || "user_assumption";
+    const mkRideDetail = (direction, ride) => ({
+      direction, ride_minutes: rideMin, ride_minutes_source: rideSource,
+      ride: ride || null, journey_note: journeyNote,
+      ride_fallback: ride ? null : (singleFallback ? { ...singleFallback } : null),
+    });
+    const outDetail = mkRideDetail("out", rides && rides.out);
+    outDetail.dest_walk = {
+      minutes: dwGoMin, distance_m: dw.go ? round2(dw.go.lengthM) : 0,
+      source: dw.source, note: dw.note || "",
+    };
+    // A zero-minute destination walk (workplace at the station node) leaves
+    // no trip record — the timeline spends 0 minutes there too.
+    const walkGo = dw.go && dwGoMin > 0;
+    const walkBack = dw.back && dwBackMin > 0;
+    if (rideMin > 0) addAway(tBoard, tBoard + rideMin, "ride", "지하철 이동", outDetail, cause);
+    const stationEnd = { kind: "poi", id: `station:${destName || "?"}`, label: destName || "하차역" };
+    const workEnd = { kind: "poi", id: wpId, label: wp.name };
+    if (walkGo) {
+      const dwCause = makeCause("routine", ["C-walk-speed", "C-walk-route", "C-fatigue-load"],
+        `하차 후 ${wp.name}까지 도보 ${dwGoMin}분 (목적지 도보 그래프)`);
+      addRemoteTrip(tBoard + rideMin,
+        { minutes: dwGoMin, distance_m: dw.go.lengthM, path: dw.go.nodeIds, graphArea: dw.graphArea },
+        stationEnd, workEnd, dwCause, { arrive: "직장 도착" });
+    }
+    const lastOutLeg = rides && rides.out.legs[rides.out.legs.length - 1];
+    const firstOutLeg = rides && rides.out.legs[0];
+    // Arrival fatigue is read at the workplace door, before the seated
+    // work hours recover it.
+    fatArrivalWork = fat;
+    addAway(tWork, tWorkEnd, "work", `${wp.name} 근무`, {
+      workday_minutes: F.workday_minutes, seated_minutes: F.workday_minutes,
+      workplace: { name: wp.name, lon: wp.lon, lat: wp.lat },
+      commute: {
+        mode: "ride",
+        out_start: tBoard, out_end: tBoard + rideMin,
+        back_start: tBackBoard, back_end: tStation,
+        dest_station: destName,
+        dest_stop_id: lastOutLeg ? lastOutLeg.stopIds[lastOutLeg.stopIds.length - 1] : null,
+        board_stop_id: firstOutLeg ? firstOutLeg.stopIds[0] : null,
+      },
+    }, cause);
+    if (walkBack) {
+      const dwCause = makeCause("routine", ["C-walk-speed", "C-walk-route", "C-fatigue-load"],
+        `${wp.name}에서 ${destName}역까지 도보 ${dwBackMin}분 (목적지 도보 그래프)`);
+      addRemoteTrip(tWorkEnd,
+        { minutes: dwBackMin, distance_m: dw.back.lengthM, path: dw.back.nodeIds, graphArea: dw.graphArea },
+        workEnd, stationEnd, dwCause);
+    }
+    if (rideMin > 0) {
+      addAway(tBackBoard, tStation, "ride", "지하철 이동", mkRideDetail("back", rides && rides.back), cause);
+    }
+    addTrip(tStation, found.dest.back, poiEnd(found.dest.place), homeEnd(), "commute", cause,
+      { arrive: "귀가" });
+    fatAfterHome = fat;
+  }
+
   const work = agent.work;
   if (agent.workdays.includes(weekday) && work.type !== "none") {
     const depart = F.morning_anchor_min + schedule.departJitter[day];
-    const rideIds = work.type === "station_ride" ? ["C-ride-minutes"] : [];
     if (work.type === "station_ride") {
-      const name = nameForHome(work.station_name, homeLabel);
-      const stations = stationsByName(places, name);
-      if (stations.length === 0) {
-        unavailable("commute", "station", name);
-      } else {
-        const found = commuteStation(stations, depart);
-        if (found === null) {
-          unavailable("commute", "station", name);
-        } else {
-          const ids = ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
-            ...rideIds, "C-congestion", "C-fatigue-load", "C-fatigue-recovery"];
-          if (found.decision) ids.push("C-station-route");
-          const cause = makeCause("routine", ids,
-            `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)}`,
-            found.decision ? found.decision.id : null);
-          const out = addTrip(depart, found.dest.route, homeEnd(), poiEnd(found.dest.place), "commute", cause);
-          commuteRide += work.ride_minutes * 2;
-          const awayEnd = out.arrive_min + work.ride_minutes + F.workday_minutes + work.ride_minutes;
-          // The journey path (both directions) when the destination is
-          // known and the region network is loaded; else the ride stays
-          // numeric and fatigue uses the fallback congestion.
-          const destName = destForHome(work.destination_station, homeLabel);
-          let rides = null;
-          let journeyNote = null;
-          if (!destName) journeyNote = "목적지 역 없음";
-          else if (!region || !region.network) journeyNote = "노선도 없음";
-          else {
-            rides = buildRides({
-              network: region.network, congestion: region.congestion || null,
-              fromName: name, toName: destName, rideMinutes: work.ride_minutes,
-              departOut: out.arrive_min, departBack: awayEnd - work.ride_minutes,
-              weekday, crit: F,
-            });
-            if (!rides) journeyNote = "노선도에 없는 역";
-            else cause.criterion_ids.push("C-journey-path", "C-ride-split");
-          }
-          const detail = {
-            ride_minutes: work.ride_minutes, workday_minutes: F.workday_minutes,
-            seated_minutes: F.workday_minutes,
-            ride_minutes_source: work.ride_minutes_source || "user_assumption",
-            rides, journey_note: journeyNote,
-          };
-          if (!rides && work.ride_minutes > 0) {
-            const perRide = round1(rideLegFatigue(work.ride_minutes,
-              F.congestion_fallback_pct, F));
-            detail.ride_fallback = { out_delta: perRide, back_delta: perRide,
-              ride_minutes: work.ride_minutes,
-              congestion_pct: F.congestion_fallback_pct, source: "가정값" };
-          }
-          addAway(out.arrive_min, awayEnd, "work", `${found.dest.place.name} 방면 근무`, detail, cause);
-          addTrip(awayEnd, found.dest.back, poiEnd(found.dest.place), homeEnd(), "commute", cause,
-            { arrive: "귀가" });
-          fatAfterHome = fat;
-        }
-      }
+      if (work.place) commutePlace(work, depart);
+      else commuteLegacy(work, depart, false);
     } else if (work.type === "local_poi") {
       const name = nameForHome(work.name, homeLabel);
       const pois = poisByName(places, name);
@@ -529,6 +824,7 @@ export function planAgent(agent, day, ctx) {
       arrival_work: fatArrivalWork === null ? null : round1(fatArrivalWork),
       after_home: fatAfterHome === null ? null : round1(fatAfterHome),
       crowded_min: round1(fatCrowded),
+      peak_congestion: fatPeakCong,
       series: fatSeries,
     },
   };

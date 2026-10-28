@@ -15,7 +15,7 @@ import { makeDecider } from "./decisions.js";
 import { homeOf, parseScenario, resolveHome } from "./scenario.js";
 import { planAgent, round1, round2 } from "./routines.js";
 
-export const ENGINE_VERSION = "sim-engine/6";
+export const ENGINE_VERSION = "sim-engine/7";
 
 export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const scenario = parseScenario(scenarioJson);
@@ -27,6 +27,20 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const agents = buildAgents(area, scenario, resolved, resolved.nodeId, router, crit.flat);
   const decider = makeDecider(opts);
   const region = opts.region && typeof opts.region === "object" ? opts.region : null;
+  // Destination-area graph for place commutes (stage 9c): only built when
+  // a household member names a workplace and the caller passed the area.
+  // Same-area destinations reuse the home router/places.
+  const destArea = opts.destArea && typeof opts.destArea === "object" ? opts.destArea : null;
+  const wantDest = destArea && scenario.household.members.some((m) => m.work && m.work.place);
+  let dest = null;
+  if (wantDest) {
+    if (destArea.area === area.area) {
+      dest = { area: destArea, router, places };
+    } else {
+      const destRouter = new Router(destArea.graph);
+      dest = { area: destArea, router: destRouter, places: buildPlaces(destArea, destRouter) };
+    }
+  }
   const collect = { trips: [], aways: [], decisions: [], unavailable: [], tripSeq: 1 };
   const daily = [];
   const totals = {};
@@ -38,7 +52,8 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   for (const agent of agents) {
     const schedule = planSchedule(agent, scenario, crit.flat);
     const ctx = { scenario, homeLabel, home: resolved, router, places, decider, schedule, collect,
-      crit: crit.flat, region };
+      crit: crit.flat, region, dest, destAreaId: dest ? dest.area.area : null,
+      homeAreaId: area.area || null, homeBbox: area.bbox || null };
     const perDay = [];
     for (let day = 0; day < scenario.days; day++) {
       const summary = planAgent(agent, day, ctx);
@@ -91,6 +106,19 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
     [...householdKeys].map((k) => totals[k].fatigue && totals[k].fatigue.after_home_avg));
   household.fatigue_crowded_min = round1(
     [...householdKeys].reduce((a, k) => a + ((totals[k].fatigue && totals[k].fatigue.crowded_min) || 0), 0));
+  // Household peak boarding: the highest member peak, with its context.
+  let peakPct = null;
+  let peakCtx = null;
+  for (const k of [...householdKeys].sort()) {
+    const p = totals[k].fatigue && totals[k].fatigue.peak_congestion;
+    if (p && Number.isFinite(p.pct) && (peakPct === null || p.pct > peakPct)) {
+      peakPct = p.pct;
+      peakCtx = { pct: p.pct, line: p.line ?? null, station: p.station ?? null,
+        source: p.source ?? null, member: k };
+    }
+  }
+  household.fatigue_peak_congestion_pct = peakPct;
+  household.fatigue_peak_congestion_ctx = peakCtx;
   const byKind = {};
   for (const d of collect.decisions) byKind[d.kind] = (byKind[d.kind] || 0) + 1;
   const choiceModes = new Set(collect.decisions.map((d) => d.chosen_by));
@@ -118,6 +146,7 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
         network: !!(region && region.network),
         congestion: !!(region && region.congestion),
       },
+      dest_area: dest ? dest.area.area : null,
     },
     agents: agents.map((a) => ({
       key: a.key, id: a.id, label: a.label, role: a.role,
@@ -146,7 +175,21 @@ export function summarizeFatigue(days) {
     after_home_avg: meanOrNull(rows.map((r) => r.after_home)),
     peak_max: rows.reduce((a, r) => Math.max(a, r.peak), 0),
     crowded_min: round1(rows.reduce((a, r) => a + r.crowded_min, 0)),
+    peak_congestion: peakCongestionOf(rows),
   };
+}
+
+// Highest boarding congestion of the member's commute rides (stage 9c):
+// {pct, line, station, source} or null without rides. First wins ties.
+export function peakCongestionOf(rows) {
+  let best = null;
+  for (const r of rows || []) {
+    const p = r && r.peak_congestion;
+    if (p && Number.isFinite(p.pct) && (best === null || p.pct > best.pct)) {
+      best = { pct: p.pct, line: p.line ?? null, station: p.station ?? null, source: p.source ?? null };
+    }
+  }
+  return best;
 }
 
 export function meanOrNull(values) {
@@ -176,6 +219,7 @@ export function compare(runA, runB) {
     { key: "fatigue_after_home_avg", label: "퇴근해서 집에 왔을 때 피곤한 정도", unit: "index", source: "scenario" },
     { key: "fatigue_avg_30d", label: `${runA.meta.days || 30}일 평균 피곤한 정도`, unit: "index", source: "scenario" },
     { key: "fatigue_crowded_min", label: "만원 지하철에 탄 시간", unit: "minutes", source: "scenario" },
+    { key: "fatigue_peak_congestion_pct", label: "출근길 가장 붐비는 순간", unit: "percent", source: "scenario" },
   ].map((m) => ({ ...m, a: ha[m.key] ?? null, b: hb[m.key] ?? null,
     delta_b_minus_a: deltaOrNull(hb[m.key], ha[m.key]) }));
   const members = Object.keys(runA.totals.per_member)

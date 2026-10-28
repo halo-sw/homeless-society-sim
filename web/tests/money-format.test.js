@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   fmtDistance, fmtMinutes, fmtMinutesTable, fmtWon, fmtPct, fmtCount,
-  fmtArea, badgeFor,
+  fmtArea, fmtPercent, badgeFor,
 } from "../src/money/format.js";
 
 describe("money format", () => {
@@ -38,5 +38,12 @@ describe("money format", () => {
     assert.equal(badgeFor("housing_api"), "공공임대");
     assert.equal(badgeFor("scenario"), "가정값");
     assert.equal(badgeFor("payroll_estimate"), "추정");
+  });
+
+  it("formats percent numbers (stage 9c)", () => {
+    assert.equal(fmtPercent(93.2), "93.2%");
+    assert.equal(fmtPercent(70), "70%");
+    assert.equal(fmtPercent(null), "–");
+    assert.equal(fmtPercent(NaN), "–");
   });
 });

@@ -10,12 +10,13 @@
 // decisions file (zero hook calls). Paths resolve from the repo root
 // (the script's ../..); run it from anywhere.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canon } from "../src/engine/canonical.js";
 import { homeOf, parseScenario } from "../src/engine/scenario.js";
 import { compare, simulate } from "../src/engine/simulate.js";
+import { loadDestArea } from "../src/engine/destload.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
@@ -85,12 +86,36 @@ const region = await loadRegion();
 console.log(JSON.stringify({ region: region ? {
   network: !!region.network, congestion: !!region.congestion,
 } : null }));
+// Home areas first (the destination loader may reuse them), then one run
+// per label with the workplace's destination graph when it is built.
+const metaCache = new Map();
+async function listAreas() {
+  const entries = await readdir(join(REPO, "data", "build"), { withFileTypes: true });
+  return entries.filter((e) => e.isDirectory()).map((e) => e.name)
+    .filter((n) => !["region", "sim", "_cache"].includes(n));
+}
+async function readAreaMeta(areaId) {
+  if (!metaCache.has(areaId)) {
+    const doc = JSON.parse(await readFile(join(REPO, "data", "build", areaId, "area.json"), "utf8"));
+    metaCache.set(areaId, { bbox: doc.bbox || null });
+  }
+  return metaCache.get(areaId);
+}
+const areasByLabel = {};
+for (const label of labels) {
+  const home = homeOf(scenario, label);
+  areasByLabel[label] = await loadArea(home.area);
+}
 const runs = {};
 for (const label of labels) {
   const home = homeOf(scenario, label);
-  const area = await loadArea(home.area);
+  const area = areasByLabel[label];
+  const destArea = await loadDestArea({ scenario, network: region && region.network,
+    homeArea: area, listAreas, readAreaMeta, loadArea });
+  if (destArea && destArea.area !== area.area) metaCache.set(destArea.area, { bbox: destArea.bbox || null });
   const t0 = performance.now();
-  const simOpts = { ...(decisions ? { decisions } : {}), ...(region ? { region } : {}) };
+  const simOpts = { ...(decisions ? { decisions } : {}), ...(region ? { region } : {}),
+    ...(destArea ? { destArea } : {}) };
   const run = simulate(area, structuredClone(scenarioRaw), label, simOpts);
   const ms = performance.now() - t0;
   const file = join(outDir, `${scenario.name}-${label}.json`);
@@ -103,6 +128,7 @@ for (const label of labels) {
     decisions: run.decisions.length, decisions_by_kind: run.decisions_by_kind,
     unavailable: run.unavailable.length,
     dijkstra_sources: run.meta.dijkstra_sources,
+    dest_area: run.meta.dest_area,
   }));
 }
 if (labels.length === 2) {

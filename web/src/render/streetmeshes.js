@@ -11,6 +11,19 @@ import { carBodyMaterial, carGlassMaterial, lampHeadMaterial, lampPoleMaterial }
 
 export const LAMP_POLE_H = 8;
 
+// Lamp glow response (pure, stage 9c): small warm points, not flares —
+// the head gain drops from 3.2 and the halo stays compact under the
+// clamped night bloom.
+export const LAMP_HEAD_GAIN = 1.8;
+export const LAMP_HALO_SIZE = 1.8;
+export const LAMP_HALO_OPACITY = 0.6;
+
+export function lampGlowFor(v) {
+  const n = Number(v);
+  const k = !Number.isFinite(n) || n <= 0 ? 0 : Math.min(n, 1);
+  return { head: k * LAMP_HEAD_GAIN, haloOpacity: k * LAMP_HALO_OPACITY, visible: k > 0.01 };
+}
+
 export function buildStreetMeshes(streetlife) {
   const group = new THREE.Group();
   const dummy = new THREE.Object3D();
@@ -62,8 +75,8 @@ export function buildStreetMeshes(streetlife) {
 
   // --- street lamps: pole + glowing head + halo points ---
   // Heads alone are sub-pixel at stop framing, so each lamp also gets an
-  // additive halo point (~2.4 m) that reads as a small warm point from
-  // far away and feeds the night bloom.
+  // additive halo point that reads as a small warm point from far away
+  // and feeds the night bloom.
   const poleGeo = new THREE.CylinderGeometry(0.09, 0.14, LAMP_POLE_H, 6);
   poleGeo.translate(0, LAMP_POLE_H / 2, 0);
   const headGeo = new THREE.SphereGeometry(0.5, 8, 6);
@@ -88,7 +101,7 @@ export function buildStreetMeshes(streetlife) {
   });
   haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
   const haloMat = new THREE.PointsMaterial({
-    color: 0xffc37a, size: 2.4, sizeAttenuation: true,
+    color: 0xffc37a, size: LAMP_HALO_SIZE, sizeAttenuation: true,
     transparent: true, opacity: 0, depthWrite: false,
     blending: THREE.AdditiveBlending, map: glowTexture(),
   });
@@ -101,9 +114,10 @@ export function buildStreetMeshes(streetlife) {
     parked: cars.length, moverCount: movers.length, lampCount: lamps.length,
     updateMovers,
     setLampGlow(v) {
-      headMat.emissiveIntensity = v * 3.2;
-      haloMat.opacity = Math.min(1, v) * 0.85;
-      halo.visible = v > 0.01;
+      const g = lampGlowFor(v);
+      headMat.emissiveIntensity = g.head;
+      haloMat.opacity = g.haloOpacity;
+      halo.visible = g.visible;
     },
   };
 }

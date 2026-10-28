@@ -71,6 +71,22 @@ describe("result card data builder", () => {
     assert.match(sparse.homes[0].rows[0].value, /계산하기 어려워요/);
   });
 
+  it("shows the crowding number beside fatigue (stage 9c)", () => {
+    const withPeak = structuredClone(MONEY);
+    withPeak.homes.A.qol_fatigue.peak_congestion_pct = 93.2;
+    withPeak.homes.A.qol_fatigue.peak_congestion_ctx =
+      { pct: 93.2, line: "2호선", station: "잠실", source: "서울교통공사" };
+    const data = resultCardData({ money: withPeak, tenures: { A: "전세", B: "전세" },
+      date: "2026-10-29" });
+    const row = data.homes[0].rows.find((r) => r.label === "출근길 가장 붐비는 순간");
+    assert.ok(row);
+    assert.equal(row.value, "2호선 잠실 혼잡도 93.2%, 서서 감 (실측)");
+    assert.equal(row.assumed, false);
+    const plain = resultCardData({ money: MONEY, tenures: { A: "전세", B: "전세" },
+      date: "2026-10-29" });
+    assert.equal(plain.homes[0].rows.some((r) => r.label === "출근길 가장 붐비는 순간"), false);
+  });
+
   it("emits plain labels and never a verdict", () => {
     const data = resultCardData({ money: MONEY, tenures: { A: "전세", B: "전세" },
       date: "2026-10-29" });

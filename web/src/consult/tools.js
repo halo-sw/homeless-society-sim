@@ -11,6 +11,7 @@
 // artifacts in an in-memory cache (no disk, no conversation storage).
 
 import { simulate, compare as compareRuns } from "../engine/simulate.js";
+import { loadDestArea } from "../engine/destload.js";
 import {
   CRITERIA_BY_ID, CRITERIA_GROUPS, CRITERIA_LIST, criterionValuesLine, resolveCriteria,
 } from "../engine/criteria.js";
@@ -247,6 +248,7 @@ function cacheRun(cache, record) {
 //   scenario,            working copy (handlers mutate via update_scenario)
 //   cache,               run cache (shared across turns, memory only)
 //   loadArea(areaId),    async area loader (server: fs; tests: fixtures)
+//   loadAreaMeta(areaId),async {bbox} loader or null (dest-area discovery)
 //   loadDecisions(name), async committed-decisions loader or null
 //   judgeHome,           async judge runner for decisions=muse or null
 //   provider, fetchImpl, museRunsPrior (count of muse runs earlier in this
@@ -258,6 +260,7 @@ export function createSession(opts) {
     scenarioName: (opts.scenario && opts.scenario.name) || "scenario",
     cache: opts.cache || createRunCache(),
     loadArea: opts.loadArea,
+    loadAreaMeta: opts.loadAreaMeta || null,
     loadRegion: opts.loadRegion || null,
     loadDecisions: opts.loadDecisions || null,
     judgeHome: opts.judgeHome || null,
@@ -311,10 +314,21 @@ function checkStationRide(work, where, errors) {
   if (work.station_name === undefined || work.station_name === null || work.station_name === "") {
     errors.push(`${where}.work.station_name이 필요합니다 — 고객에게 이용 역을 물어보세요`);
   }
-  if (work.ride_minutes === undefined || work.ride_minutes === null) {
+  const rm = work.ride_minutes;
+  if (rm === undefined || rm === null) {
     errors.push(`${where}.work.ride_minutes가 필요합니다 — 반드시 고객이 말한 숫자여야 합니다. 앱은 대중교통 시간을 알 수 없으니 고객에게 물어보고 그 값을 그대로 쓰세요 (가정값으로 표시됨)`);
-  } else if (!Number.isFinite(work.ride_minutes) || work.ride_minutes < 0) {
-    errors.push(`${where}.work.ride_minutes는 0 이상의 숫자여야 합니다`);
+  } else if (typeof rm === "number") {
+    if (!Number.isFinite(rm) || rm < 0) {
+      errors.push(`${where}.work.ride_minutes는 0 이상의 숫자여야 합니다`);
+    }
+  } else if (rm && typeof rm === "object" && !Array.isArray(rm)) {
+    for (const [label, v] of Object.entries(rm)) {
+      if (!Number.isFinite(v) || v < 0) {
+        errors.push(`${where}.work.ride_minutes[${label}]는 0 이상의 숫자여야 합니다`);
+      }
+    }
+  } else {
+    errors.push(`${where}.work.ride_minutes는 0 이상의 숫자(또는 집별 숫자)여야 합니다`);
   }
 }
 
@@ -393,7 +407,10 @@ async function update_scenario(session, patch) {
   // station_ride needs the customer's own numbers, stamped as user input.
   for (const [i, m] of next.household.members.entries()) {
     checkStationRide(m.work, `household.members[${i}]`, errors);
-    if (m.work && m.work.type === "station_ride" && Number.isFinite(m.work.ride_minutes)) {
+    const rm = m.work && m.work.type === "station_ride" ? m.work.ride_minutes : undefined;
+    const hasRide = Number.isFinite(rm) || (rm && typeof rm === "object" && !Array.isArray(rm)
+      && Object.values(rm).some((v) => Number.isFinite(v)));
+    if (hasRide) {
       m.work.ride_minutes_source = "user_input";
       m.work.needs_user_input = false;
     }
@@ -610,7 +627,15 @@ async function runOne(session, label, decisionsMode) {
   if (session.loadRegion) {
     region = await session.loadRegion().catch(() => null);
   }
-  const simOpts = region ? { region } : {};
+  // Destination graph for place commutes (stage 9c): same resolution as
+  // the CLIs (server: cheap bbox reads; fixtures: the tiny areas).
+  const destArea = await loadDestArea({ scenario, network: region && region.network,
+    homeArea: area,
+    listAreas: async () => CONSULT_AREAS.map((a) => a.id),
+    readAreaMeta: session.loadAreaMeta
+      || (async (id) => ({ bbox: (await needArea(session, id)).bbox || null })),
+    loadArea: (id) => needArea(session, id) }).catch(() => null);
+  const simOpts = { ...(region ? { region } : {}), ...(destArea ? { destArea } : {}) };
   const t0 = Date.now();
   let run;
   let note = "";
@@ -619,7 +644,7 @@ async function runOne(session, label, decisionsMode) {
     const judged = await session.judgeHome({
       area, scenarioRaw: clone(session.scenario), homeLabel: label,
       provider: session.provider, fetchImpl: session.fetchImpl,
-      region,
+      region, destArea,
     });
     run = judged.run;
     note = `judged live (${session.provider}, ${judged.usage.calls} calls, $${(costUsd(session.provider, judged.usage) || 0).toFixed(3)})`;
@@ -852,28 +877,28 @@ function get_journey(session, args) {
     return fail(err.message);
   }
   const label = (run.agents.find((a) => a.key === key) || {}).label || key;
+  const slim = (r) => ({
+    depart: hhmm(r.departMin),
+    minutes_total: r.minutesTotal,
+    legs: r.legs.map((l) => ({
+      line: l.lineName, from: l.from, to: l.to,
+      stops: [...l.stops], distance_km: l.distanceKm, minutes: l.minutes,
+      congestion_pct: l.congestion.valuePct,
+      congestion_source: l.congestion.source === "서울교통공사" ? "서울교통공사" : "가정값",
+      congestion_slot: l.congestion.slotLabel,
+      direction: l.congestion.direction,
+      fatigue_delta: l.fatigueDelta,
+    })),
+    transfers: r.transfers.map((t) => ({ station: t.station, minutes: t.minutes })),
+    transfer_minutes: r.transferMinutes,
+    fatigue_delta: r.fatigueDelta,
+    crowded_min: r.crowdedMin,
+  });
   const rides = [];
   for (const a of run.aways) {
     if (a.agent !== key || a.day !== day1 - 1 || a.kind !== "work") continue;
     const detail = a.detail || {};
     if (detail.rides) {
-      const slim = (r) => ({
-        depart: hhmm(r.departMin),
-        minutes_total: r.minutesTotal,
-        legs: r.legs.map((l) => ({
-          line: l.lineName, from: l.from, to: l.to,
-          stops: [...l.stops], distance_km: l.distanceKm, minutes: l.minutes,
-          congestion_pct: l.congestion.valuePct,
-          congestion_source: l.congestion.source === "서울교통공사" ? "서울교통공사" : "가정값",
-          congestion_slot: l.congestion.slotLabel,
-          direction: l.congestion.direction,
-          fatigue_delta: l.fatigueDelta,
-        })),
-        transfers: r.transfers.map((t) => ({ station: t.station, minutes: t.minutes })),
-        transfer_minutes: r.transferMinutes,
-        fatigue_delta: r.fatigueDelta,
-        crowded_min: r.crowdedMin,
-      });
       rides.push({ stay: a.label, out: slim(detail.rides.out), back: slim(detail.rides.back) });
     } else if (detail.ride_minutes) {
       rides.push({ stay: a.label,
@@ -881,6 +906,34 @@ function get_journey(session, args) {
         ride_minutes: detail.ride_minutes,
         ride_minutes_source: detail.ride_minutes_source || "user_assumption",
         fallback: detail.ride_fallback || null });
+    }
+  }
+  // New form (stage 9c): the day's ride aways pair under the work stay's
+  // label, in the same shape (plus the destination walk when recorded).
+  const dayRides = (run.aways || []).filter((a) => a.agent === key
+    && a.day === day1 - 1 && a.kind === "ride");
+  if (dayRides.length > 0) {
+    const stay = ((run.aways || []).find((a) => a.agent === key
+      && a.day === day1 - 1 && a.kind === "work") || {}).label || "근무";
+    const out = dayRides.find((a) => !a.detail || a.detail.direction !== "back");
+    const back = dayRides.find((a) => a.detail && a.detail.direction === "back");
+    const outRide = out && out.detail && out.detail.ride;
+    const backRide = back && back.detail && back.detail.ride;
+    if (outRide || backRide) {
+      rides.push({ stay, out: outRide ? slim(outRide) : null,
+        back: backRide ? slim(backRide) : null,
+        dest_walk: (out && out.detail && out.detail.dest_walk) || null });
+    } else {
+      const first = (out || back).detail || {};
+      const fb = first.ride_fallback || null;
+      rides.push({ stay,
+        note: first.journey_note || "경로 없음 (승차 시간 숫자만)",
+        ride_minutes: first.ride_minutes,
+        ride_minutes_source: first.ride_minutes_source || "user_assumption",
+        fallback: fb ? { out_delta: fb.delta, back_delta: fb.delta,
+          ride_minutes: fb.ride_minutes, congestion_pct: fb.congestion_pct,
+          source: fb.source } : null,
+        dest_walk: first.dest_walk || null });
     }
   }
   return { ok: true, run: hit.id, home: hit.home, day: day1, member: key, label,

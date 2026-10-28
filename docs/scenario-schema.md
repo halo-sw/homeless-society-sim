@@ -59,6 +59,20 @@ Example: `scenarios/demo-two-homes.json`. Run it with
   uses the fallback congestion. Missing homes read null. **Never
   invented**: an unknown destination keeps the ride numeric, it never
   blocks the run (recorded as `detail.journey_note`).
+  `ride_minutes` may also be a `{homeLabel: minutes}` map when the input
+  differs per path; a home without an entry has no ride input (a ride
+  derivation there records `unavailable` instead of guessing).
+  Optional `place` (stage 9c): the workplace as a place —
+  `{name, lon, lat}` or `{name, poi: "<home-area POI name>"}` or
+  `{name, station: "<network station name>"}`. With it the engine derives
+  the commute per home: walk when the workplace sits in the home's built
+  area within `C-walk-commute-max` (25 graph minutes), else walk to the
+  home station → ride the customer's per-path minutes on the stage-8 path
+  → walk from the alighting station to the workplace (graph minutes when
+  the destination area is built and loaded, else 0 with an explicit
+  note). The ride is its own leg (`kind: "ride"` aways); work starts on
+  arrival at the workplace and is labelled by `place.name`. Without
+  `place` the old single-away form runs unchanged.
 - `{type: "local_poi", name}` — walk to a real POI with the verbatim
   `name` (nearest by graph when several share it), work the assumed
   workday, walk back. `name` may also be a per-home map.
