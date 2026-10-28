@@ -17,6 +17,8 @@ import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, t
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 import { assignWalkers, sampleWalker } from "./walkers.js";
 import { WINDOW_H, WINDOW_W, litCounts, planWindows } from "./windows.js";
+import { store } from "./ui/store.js";
+import { mountUI } from "./ui/main.jsx";
 
 const AREAS = [
   { id: "pangyo", label: "판교" },
@@ -283,15 +285,36 @@ async function bootTour() {
   const applyFade = (i) => applyStopFade(fadeMeshes,
     i >= 0 && i < stopFades.length ? stopFades[i] : []);
 
+  mountUI();
+  registerCommonActions();
+  store.set({ mode: "tour" });
   buildUI(area, plan);
-  buildModeSwitch("tour");
   document.getElementById("loading").remove();
   document.getElementById("fade").classList.add("clear");
 
   // --- tour playback ---
   const player = createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths, applyFade);
   if (plan.stops.length > 0) applyFade(0);
-  const playBtn = document.getElementById("play");
+  store.registerActions({
+    toggleTourPlay: () => {
+      if (plan.stops.length === 0) return;
+      player.toggle();
+      store.set({ tourPlaying: player.playing });
+    },
+    setResOnly: (next) => {
+      nonMesh.material.opacity = next ? 0.3 : 1.0;
+      store.set({ resOnly: next });
+    },
+    applyView: (view) => {
+      // Tour has no clock: a consult set_view always navigates to sim.
+      const p = new URLSearchParams({
+        mode: "sim", home: (view && view.home) || "A",
+        day: String((view && view.day) || 1), t: (view && view.time) || "07:30",
+      });
+      if (view && view.follow) p.set("follow", String(view.follow));
+      location.href = `${location.pathname}?${p}`;
+    },
+  });
   // Debug flags for deterministic captures: ?shot=<stopIndex> jumps to
   // that stop and pauses; ?t=<seconds> jumps the tour clock and pauses
   // unless ?play=1 opts into playing.
@@ -302,23 +325,13 @@ async function bootTour() {
     const k = Number.parseInt(shot, 10);
     if (Number.isInteger(k) && k >= 0 && k < plan.stops.length) {
       player.seekStop(k);
-      playBtn.textContent = "재생";
     }
   } else if (tParam !== null && plan.stops.length > 0) {
     const s = Number.parseFloat(tParam);
     if (Number.isFinite(s) && s >= 0) player.seekTime(s);
-    if (!shouldAutoplay(params) && player.playing) {
-      player.toggle();
-      playBtn.textContent = "재생";
-    }
+    if (!shouldAutoplay(params) && player.playing) player.toggle();
   }
-  playBtn.addEventListener("click", () => {
-    player.toggle();
-    playBtn.textContent = player.playing ? "일시정지" : "재생";
-  });
-  document.getElementById("resOnly").addEventListener("change", (e) => {
-    nonMesh.material.opacity = e.target.checked ? 0.3 : 1.0;
-  });
+  store.set({ tourPlaying: player.playing, ready: true });
 
   // --- loop ---
   const clock = new THREE.Clock();
@@ -361,14 +374,7 @@ function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
 // --- tour player: glide legs, 3 s dwell per stop, outro pull-back ---
 // onLeg(i) fires whenever the current leg view changes (fade updates).
 function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null) {
-  const caption = document.getElementById("caption");
-  const capName = document.getElementById("capName");
-  const capMeta = document.getElementById("capMeta");
-  const capWalk = document.getElementById("capWalk");
-  const dots = document.getElementById("dots");
   const stops = plan.stops;
-  dots.innerHTML = stops.map(() => "<span></span>").join("");
-  const dotEls = [...dots.children];
 
   const schedule = tourSchedule(plan);
   const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
@@ -406,11 +412,12 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
 
   function showStop(i) {
     const s = stops[i];
-    caption.hidden = false;
-    capName.textContent = s.name;
-    capMeta.textContent = `${s.label} · ${s.category} · ${Math.abs(s.lat).toFixed(4)}° N ${Math.abs(s.lon).toFixed(4)}° E`;
-    capWalk.textContent = i === 0 ? "출발" : `이전 정류장에서 도보 ${s.legMinutes.toFixed(1)}분 (${Math.round(s.legLengthM)} m)`;
-    dotEls.forEach((d, j) => d.classList.toggle("on", j === i));
+    store.set({ caption: {
+      name: s.name,
+      meta: `${s.label} · ${s.category} · ${Math.abs(s.lat).toFixed(4)}° N ${Math.abs(s.lon).toFixed(4)}° E`,
+      walk: i === 0 ? "출발" : `이전 정류장에서 도보 ${s.legMinutes.toFixed(1)}분 (${Math.round(s.legLengthM)} m)`,
+      dots: { count: stops.length, active: i },
+    } });
   }
 
   function legDuration(i) {
@@ -436,7 +443,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
         state.done = true;
         state.playing = false;
         controls.enabled = true;
-        document.getElementById("play").textContent = "재생";
+        store.set({ tourPlaying: false });
       }
       return;
     }
@@ -450,7 +457,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
         if (onLeg) onLeg(state.leg);
         if (state.leg >= stops.length) {
           state.outro = 0.001;
-          caption.hidden = true;
+          store.set({ caption: null });
           return;
         }
       } else return;
@@ -490,7 +497,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
       state.dwell = 0;
       state.outro = 0.001;
       state.done = false;
-      caption.hidden = true;
+      store.set({ caption: null });
       if (onLeg) onLeg(-1);
       return;
     }
@@ -500,7 +507,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     state.outro = 0;
     state.done = false;
     if (st.phase === "dwell") showStop(st.leg);
-    else if (st.leg === 0) caption.hidden = true;
+    else if (st.leg === 0) store.set({ caption: null });
     else showStop(st.leg - 1);
     snap(st.leg, ease(Math.min(1, st.legT)));
     if (onLeg) onLeg(st.leg);
@@ -523,7 +530,6 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
         state.playing = !state.playing;
       }
       controls.enabled = !state.playing;
-      if (!state.playing) caption.hidden = false;
     },
     update,
     seekStop,
@@ -532,18 +538,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   };
 }
 
-function buildUI(area, plan) {
-  const nav = document.getElementById("areas");
-  for (const a of AREAS) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = a.label;
-    if (a.id === areaId) btn.classList.add("active");
-    btn.addEventListener("click", () => {
-      location.href = `${location.pathname}?area=${a.id}`;
-    });
-    nav.appendChild(btn);
-  }
+function legendRows(area) {
   const resCounts = {};
   const hCounts = {};
   for (const b of area.buildings) {
@@ -552,50 +547,50 @@ function buildUI(area, plan) {
     const h = b.height_source || "inferred";
     hCounts[h] = (hCounts[h] || 0) + 1;
   }
-  const resEl = document.getElementById("legendRes");
-  for (const [key, label] of Object.entries(RES_LABELS)) {
-    const row = document.createElement("div");
-    row.innerHTML = `<span class="swatch" style="background:${RES_SWATCH[key]}"></span>${label} ${(resCounts[key] || 0).toLocaleString()}`;
-    resEl.appendChild(row);
-  }
+  const resRows = Object.entries(RES_LABELS).map(([key, label]) => ({
+    label, color: RES_SWATCH[key], count: resCounts[key] || 0,
+  }));
   const namedCx = (area.complexes || []).filter((c) => c.name).length;
-  const cxRow = document.createElement("div");
-  cxRow.innerHTML = `<span class="swatch" style="background:#b25a33"></span>단지 ${(area.complexes || []).length.toLocaleString()} (이름 ${namedCx.toLocaleString()})`;
-  resEl.appendChild(cxRow);
-  const hEl = document.getElementById("legendHeight");
-  for (const [key, label] of Object.entries(HEIGHT_LABELS)) {
-    if (!hCounts[key]) continue;
-    const row = document.createElement("div");
-    row.innerHTML = `<span class="swatch" style="background:${HEIGHT_SWATCH[key]}"></span>${label} ${hCounts[key].toLocaleString()}`;
-    hEl.appendChild(row);
-  }
-  if (plan.stops.length === 0) {
-    const play = document.getElementById("play");
-    play.disabled = true;
-    play.textContent = "재생";
-  }
+  resRows.push({ label: "단지", color: "#b25a33", count: (area.complexes || []).length });
+  resRows.push({ label: "이름 있는 단지", color: "#b25a33", count: namedCx });
+  const heightRows = Object.entries(HEIGHT_LABELS)
+    .filter(([key]) => hCounts[key])
+    .map(([key, label]) => ({ label, color: HEIGHT_SWATCH[key], count: hCounts[key] }));
+  return { resRows, heightRows };
+}
+
+function buildUI(area, plan) {
+  const { resRows, heightRows } = legendRows(area);
+  store.set({
+    areaOptions: AREAS.map((a) => ({ value: a.id, label: a.label })),
+    area: { id: areaId, label: area.label || areaId },
+    legend: {
+      title: "범례",
+      resRows,
+      heightRows,
+      note: "나무·인물은 장식용 모의 표시입니다",
+    },
+  });
+  if (plan.stops.length === 0) store.set({ tourPlaying: false });
   document.title = `주거 시뮬레이터 — ${area.label || areaId}`;
 }
 
-function buildModeSwitch(mode) {
-  const nav = document.getElementById("modeBtns");
-  const mk = (label, active, href) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = label;
-    if (active) btn.classList.add("active");
-    btn.addEventListener("click", () => {
-      location.href = href;
-    });
-    nav.appendChild(btn);
-  };
-  if (mode === "sim") {
-    mk("투어", false, `${location.pathname}?area=${simAreaId}`);
-    mk("생활 시뮬레이션", true, location.href);
-  } else {
-    mk("투어", true, location.href);
-    mk("생활 시뮬레이션", false, `${location.pathname}?mode=sim&home=A`);
-  }
+// Shared UI actions (both modes); mode-specific boots add their own.
+function registerCommonActions() {
+  store.registerActions({
+    selectArea: (id) => {
+      location.href = `${location.pathname}?area=${id}`;
+    },
+    selectMode: (mode) => {
+      location.href = mode === "sim"
+        ? `${location.pathname}?mode=sim&home=A`
+        : `${location.pathname}?area=${simAreaId}`;
+    },
+    selectHome: (label) => {
+      location.href = `${location.pathname}?mode=sim&home=${label}`;
+    },
+    setConsultOpen: (next) => store.set({ consultOpen: next }),
+  });
 }
 
 // Set by bootSim for the tour-mode link target.
@@ -639,8 +634,9 @@ function workerRuns(scenarioName, labels) {
 
 async function bootSim() {
   document.body.classList.add("sim");
-  document.getElementById("play").style.display = "none";
-  document.getElementById("simbar").hidden = false;
+  mountUI();
+  registerCommonActions();
+  store.set({ mode: "sim" });
   const loading = document.getElementById("loading");
   const scenarioName = PARAMS.get("scenario") || "demo-two-homes";
   const homeLabel = PARAMS.get("home") || "A";
@@ -799,26 +795,14 @@ async function bootSim() {
   let playing = shouldAutoplay(PARAMS);
   let speed = 1;
   let follow = Math.min(household.length, Math.max(0, Number.parseInt(PARAMS.get("follow") || "0", 10) || 0));
-  const clockEl = document.getElementById("simClock");
-  const simPlayBtn = document.getElementById("simPlay");
-  simPlayBtn.textContent = playing ? "일시정지" : "재생";
-  const caption = document.getElementById("caption");
-  const capName = document.getElementById("capName");
-  const capMeta = document.getElementById("capMeta");
-  const capWalk = document.getElementById("capWalk");
-  document.getElementById("dots").style.display = "none";
-  const judgeCap = document.getElementById("judgeCap");
-  const judgeBadge = document.getElementById("judgeBadge");
-  const judgeText = document.getElementById("judgeText");
-  const judgeAsk = document.getElementById("judgeAsk");
-  const judgeLive = document.getElementById("judgeLive");
-  const judgeLog = document.getElementById("judgeLog");
-  const judgeLogBody = document.getElementById("judgeLogBody");
   const hhmmOf = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
   function paintClock() {
-    clockEl.textContent = formatClock(run.meta.start_date, day, Math.floor(minute), days);
-    document.getElementById("dayJump").value = String(day + 1);
+    store.set({ clock: {
+      day, minute: Math.floor(minute), days,
+      startDate: run.meta.start_date,
+      label: formatClock(run.meta.start_date, day, Math.floor(minute), days),
+    } });
     paintJudgeLog();
   }
 
@@ -905,7 +889,6 @@ async function bootSim() {
   // --- follow camera (2b miniature framing) ---
   const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
   let snapFollow = follow > 0;
-  const followBtns = document.getElementById("followBtns");
 
   function followedSample() {
     if (follow < 1 || follow > household.length) return null;
@@ -917,7 +900,7 @@ async function bootSim() {
 
   function paintFollow(dt, forceCaption) {
     if (!follow) {
-      caption.hidden = true;
+      if (forceCaption) store.set({ caption: null, judge: null });
       controls.enabled = true;
       return;
     }
@@ -940,35 +923,37 @@ async function bootSim() {
     }
     controls.enabled = false;
     if (forceCaption) {
-      caption.hidden = false;
-      capName.textContent = `${hit.agent.label} 따라가기`;
-      capMeta.textContent = "시뮬레이션 주민 · 생활 시뮬레이션";
-      capWalk.textContent = followCaption(hit.s, hit.agent.label);
+      store.set({ caption: {
+        name: `${hit.agent.label} 따라가기`,
+        meta: "시뮬레이션 주민 · 생활 시뮬레이션",
+        walk: followCaption(hit.s, hit.agent.label),
+      } });
       paintJudgeCaption(hit.agent.key);
     }
   }
 
   // Branch caption: the followed member's latest decision — options with
   // graph minutes, the chosen one, the Korean reason, and who decided.
+  // The captioned decision id, so askLive judges what is shown.
+  let captionedId = null;
+
   function paintJudgeCaption(agentKey) {
     const d = latestDecision(run, agentKey, day, Math.floor(minute));
-    judgeLive.hidden = true;
+    captionedId = d ? d.id : null;
+    store.set({ judgeLive: false, judgeAskState: "idle" });
     if (!d) {
-      judgeCap.hidden = true;
+      store.set({ judge: null });
       return;
     }
     const v = judgedView(d);
-    judgeCap.hidden = false;
     const badge = decisionBadge(v);
-    judgeBadge.textContent = badge.text;
-    judgeBadge.className = `badge ${badge.cls}`;
-    judgeText.textContent =
-      `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
-      (v.reason_ko ? ` · “${v.reason_ko}”` : "");
-    judgeAsk.hidden = !import.meta.env.DEV;
-    judgeAsk.disabled = false;
-    judgeAsk.textContent = "Muse에게 묻기";
-    judgeAsk.onclick = () => askLive(v);
+    store.set({ judge: {
+      badgeText: badge.text,
+      badgeCls: badge.cls,
+      text: `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
+        (v.reason_ko ? ` · “${v.reason_ko}”` : ""),
+      canAsk: import.meta.env.DEV,
+    } });
   }
 
   function liveRequestBody(v) {
@@ -1009,9 +994,10 @@ async function bootSim() {
 
   // Dev-only live judgment: ask Muse about the captioned decision. The
   // key stays on the dev server (/api/judge); production has no button.
-  async function askLive(v) {
-    judgeAsk.disabled = true;
-    judgeAsk.textContent = "묻는 중…";
+  async function askLive() {
+    const v = judgedView(run.decisions.find((d) => d.id === captionedId) || {});
+    if (!v || !v.kind) return;
+    store.set({ judgeAskState: "asking", askError: "" });
     try {
       const r = await fetch("/api/judge", {
         method: "POST",
@@ -1022,67 +1008,39 @@ async function bootSim() {
       if (!payload.ok) throw new Error(payload.error || `HTTP ${r.status}`);
       const live = { ...v, ...payload.entry };
       const badge = decisionBadge(live);
-      judgeBadge.textContent = badge.text;
-      judgeBadge.className = `badge ${badge.cls}`;
-      judgeText.textContent =
-        `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
-        (live.reason_ko ? ` · “${live.reason_ko}”` : "") +
-        ` (${live.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"})`;
-      judgeLive.hidden = false;
+      store.set({
+        judge: {
+          badgeText: badge.text,
+          badgeCls: badge.cls,
+          text: `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
+            (live.reason_ko ? ` · “${live.reason_ko}”` : "") +
+            ` (${live.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"})`,
+          canAsk: true,
+        },
+        judgeLive: true,
+        judgeAskState: "live",
+      });
     } catch (err) {
-      judgeText.textContent += ` (라이브 판단 불가: ${err.message})`;
+      store.set({ judgeAskState: "error", askError: String((err && err.message) || err).slice(0, 200) });
     }
-    judgeAsk.textContent = "Muse에게 묻기";
-    judgeAsk.disabled = false;
   }
 
   // Today's household decisions, latest first.
   function paintJudgeLog() {
-    const rows = dayDecisions(run, day).slice(0, 12);
-    if (rows.length === 0) {
-      judgeLog.hidden = true;
-      return;
-    }
-    judgeLog.hidden = false;
-    judgeLogBody.innerHTML = "";
-    for (const d of rows) {
+    const rows = dayDecisions(run, day).slice(0, 12).map((d) => {
       const v = judgedView(d);
       const badge = decisionBadge(v);
-      const row = document.createElement("div");
-      row.className = "jrow";
-      const pill = document.createElement("span");
-      pill.className = `badge ${badge.cls}`;
-      pill.textContent = badge.text;
-      row.append(`${hhmmOf(v.minute)} ${agentLabelOf(run, v.agent)} · ` +
-        `${DECISION_KIND_KO[v.kind] || v.kind} → ${chosenLabel(v)} `);
-      row.appendChild(pill);
-      if (v.reason_ko) {
-        const why = document.createElement("div");
-        why.className = "jreason";
-        why.textContent = `“${v.reason_ko}”`;
-        row.appendChild(why);
-      }
-      judgeLogBody.appendChild(row);
-    }
-  }
-
-  function paintFollowBtns() {
-    followBtns.innerHTML = "";
-    const mk = (label, active, value) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      if (active) btn.classList.add("active");
-      btn.addEventListener("click", () => {
-        follow = value;
-        snapFollow = value > 0;
-        paintFollowBtns();
-        paintFollow(0.016, true);
-      });
-      followBtns.appendChild(btn);
-    };
-    mk("자유 시점", follow === 0, 0);
-    household.forEach((a, i) => mk(a.label, follow === i + 1, i + 1));
+      return {
+        minute: hhmmOf(v.minute),
+        agent: agentLabelOf(run, v.agent),
+        kind: DECISION_KIND_KO[v.kind] || v.kind,
+        choice: chosenLabel(v),
+        badgeText: badge.text,
+        badgeCls: badge.cls,
+        reason: v.reason_ko || "",
+      };
+    });
+    store.set({ judgeLog: rows });
   }
 
   // --- sim UI: A/B homes, speeds, day jump, compare ---
@@ -1096,91 +1054,30 @@ async function bootSim() {
     return `${location.pathname}?${p}`;
   }
 
-  const nav = document.getElementById("areas");
-  for (const h of homes) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = h.label;
-    btn.title = `${h.complex_name || ""} (${h.area || ""})`;
-    if (h.label === homeLabel) btn.classList.add("active");
-    btn.addEventListener("click", () => {
-      if (h.label !== homeLabel) location.href = simUrl(h.label, day, Math.floor(minute), follow);
-    });
-    nav.appendChild(btn);
-  }
-  document.querySelector("#legend .legend-title").textContent =
-    `범례 — ${homeLabel} · ${run.meta.complex}`;
-  const note = document.createElement("div");
-  note.className = "legend-note";
-  note.textContent = `시뮬레이션 주민 ${run.meta.agents}명 (가구 ${run.meta.household}명 + 이웃 ${run.meta.background}명) · 엔진 재생`;
-  document.getElementById("legend").appendChild(note);
-  {
-    const resCounts = {};
-    const hCounts = {};
-    for (const b of area.buildings) {
-      const r = b.residential || "none";
-      resCounts[r] = (resCounts[r] || 0) + 1;
-      const h = b.height_source || "inferred";
-      hCounts[h] = (hCounts[h] || 0) + 1;
-    }
-    const resEl = document.getElementById("legendRes");
-    for (const [key, label] of Object.entries(RES_LABELS)) {
-      const row = document.createElement("div");
-      row.innerHTML = `<span class="swatch" style="background:${RES_SWATCH[key]}"></span>${label} ${(resCounts[key] || 0).toLocaleString()}`;
-      resEl.appendChild(row);
-    }
-  }
+  // --- sim UI state (published) + actions (UI calls scene) ---
+  const { resRows, heightRows } = legendRows(area);
+  store.set({
+    home: homeLabel,
+    homes,
+    scenarioName,
+    area: { id: run.meta.area, label: run.meta.area },
+    legend: {
+      title: `범례 — ${homeLabel} · ${run.meta.complex}`,
+      resRows: resRows.filter((r) => Object.values(RES_LABELS).includes(r.label)),
+      heightRows: [],
+      simNote: `시뮬레이션 주민 ${run.meta.agents}명 (가구 ${run.meta.household}명 + 이웃 ${run.meta.background}명) · 엔진 재생`,
+      note: "나무·인물은 장식용 모의 표시입니다",
+    },
+    follow,
+    followOptions: [{ value: "0", label: "자유 시점" },
+      ...household.map((a, i) => ({ value: String(i + 1), label: a.label }))],
+    playing,
+    speed,
+  });
   document.title = `주거 시뮬레이터 — ${homeLabel} · ${run.meta.complex}`;
-  buildModeSwitch("sim");
 
-  simPlayBtn.addEventListener("click", () => {
-    playing = !playing;
-    simPlayBtn.textContent = playing ? "일시정지" : "재생";
-  });
-  const speedBox = document.getElementById("simSpeed");
-  for (const s of SPEEDS) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = `${s}×`;
-    if (s === speed) btn.classList.add("active");
-    btn.addEventListener("click", () => {
-      speed = s;
-      [...speedBox.children].forEach((el, i) => el.classList.toggle("active", SPEEDS[i] === s));
-    });
-    speedBox.appendChild(btn);
-  }
-  document.getElementById("dayPrev").addEventListener("click", () => {
-    day = Math.max(0, day - 1);
-    paintClock();
-  });
-  document.getElementById("dayNext").addEventListener("click", () => {
-    day = Math.min(days - 1, day + 1);
-    paintClock();
-  });
-  document.getElementById("dayJump").max = String(days);
-  document.getElementById("dayGo").addEventListener("click", () => {
-    const v = Number.parseInt(document.getElementById("dayJump").value, 10);
-    if (Number.isInteger(v)) day = Math.min(days - 1, Math.max(0, v - 1));
-    paintClock();
-  });
-  document.getElementById("resOnly").addEventListener("change", (e) => {
-    nonMesh.material.opacity = e.target.checked ? 0.3 : 1.0;
-  });
-  paintFollowBtns();
-
-  const compareBox = document.getElementById("compare");
-  const compareBody = document.getElementById("compareBody");
-  document.getElementById("compareBtn").addEventListener("click", async () => {
-    compareBox.hidden = !compareBox.hidden;
-    if (!compareBox.hidden) await paintCompare();
-  });
-  document.getElementById("compareClose").addEventListener("click", () => {
-    compareBox.hidden = true;
-  });
-
-  const UNIT_KO = { minutes: "분", metres: "m", count: "회" };
   async function paintCompare() {
-    compareBody.innerHTML = "<div>불러오는 중…</div>";
+    store.set({ compareLoading: true });
     let cmp = await fetch(`/data/sim/${scenarioName}-compare.json`)
       .then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (!cmp && homes.length >= 2) {
@@ -1196,37 +1093,86 @@ async function bootSim() {
       }
     }
     if (!cmp) {
-      compareBody.innerHTML = `<div>비교 데이터를 불러오지 못했습니다.<br><code>node web/scripts/simulate.mjs --scenario scenarios/${scenarioName}.json --home both</code> 실행 후 새로고침하세요.</div>`;
+      store.set({ compareLoading: false,
+        compare: { error: `node web/scripts/simulate.mjs --scenario scenarios/${scenarioName}.json --home both 실행 후 새로고침하세요.` } });
       return;
     }
-    const fmt = (v) => (typeof v === "number" ? v.toLocaleString("ko-KR") : v);
-    const rows = cmp.metrics.map((m) => {
-      const src = m.source === "graph"
-        ? '<span class="src">그래프</span>'
-        : '<span class="src assumption">가정</span>';
-      return `<tr><td>${m.label}${src}</td><td>${fmt(m.a)}</td><td>${fmt(m.b)}</td>` +
-        `<td>${m.delta_b_minus_a > 0 ? "+" : ""}${fmt(m.delta_b_minus_a)} ${UNIT_KO[m.unit] || ""}</td></tr>`;
-    }).join("");
-    compareBody.innerHTML =
-      `<table><tr><th>30일 지표 (${cmp.days}일)</th><th>${cmp.home_a.label} · ${cmp.home_a.complex}</th>` +
-      `<th>${cmp.home_b.label} · ${cmp.home_b.complex}</th><th>Δ (B−A)</th></tr>${rows}</table>`;
-    if (cmp.judgment && (cmp.judgment.a || cmp.judgment.b)) {
-      const fmtJ = (side) => {
-        const s = (cmp.judgment && cmp.judgment[side]) || {};
-        const other = (s.rule || 0) + (s.replay || 0) + (s.hook || 0);
-        return `모델 ${s.model || 0} · 폴백 ${s.rule_fallback || 0} · 규칙 ${other}`;
-      };
-      const div = document.createElement("div");
-      div.className = "judge-counts";
-      div.textContent = `판단 주체 — A: ${fmtJ("a")} / B: ${fmtJ("b")}`;
-      compareBody.appendChild(div);
-    }
+    store.set({ compareLoading: false, compare: cmp });
   }
+
+  store.registerActions({
+    toggleSimPlay: () => {
+      playing = !playing;
+      store.set({ playing });
+    },
+    setSpeed: (next) => {
+      if (SPEEDS.includes(next)) {
+        speed = next;
+        store.set({ speed });
+      }
+    },
+    setDay: (next) => {
+      day = Math.min(days - 1, Math.max(0, next));
+      paintClock();
+      paintFollow(0.016, true);
+    },
+    setMinute: (next) => {
+      minute = Math.min(1439, Math.max(0, next));
+      paintClock();
+      paintFollow(0.016, true);
+    },
+    setFollow: (next) => {
+      follow = Math.min(household.length, Math.max(0, next));
+      snapFollow = follow > 0;
+      store.set({ follow });
+      paintFollow(0.016, true);
+    },
+    setResOnly: (next) => {
+      nonMesh.material.opacity = next ? 0.3 : 1.0;
+      store.set({ resOnly: next });
+    },
+    selectHome: (label) => {
+      if (label !== homeLabel) location.href = simUrl(label, day, Math.floor(minute), follow);
+    },
+    toggleCompare: async () => {
+      const open = !store.getState().compareOpen;
+      store.set({ compareOpen: open });
+      if (open) await paintCompare();
+    },
+    askLive: () => askLive(),
+    applyView: (view) => {
+      const targetHome = (view && view.home) || homeLabel;
+      const targetMode = (view && view.mode) || "sim";
+      if (targetMode !== "sim") {
+        location.href = `${location.pathname}?area=${simAreaId}`;
+        return;
+      }
+      if (targetHome !== homeLabel) {
+        const d = view && view.day ? view.day - 1 : day;
+        const t = view && view.time ? parseTParam(view.time) : Math.floor(minute);
+        location.href = simUrl(targetHome, d, t ?? Math.floor(minute), view && view.follow ? view.follow : follow);
+        return;
+      }
+      if (view && view.day) day = Math.min(days - 1, Math.max(0, view.day - 1));
+      if (view && view.time) {
+        const t = parseTParam(view.time);
+        if (t !== null) minute = t;
+      }
+      if (view && view.follow !== undefined && view.follow !== null) {
+        follow = Math.min(household.length, Math.max(0, view.follow));
+        snapFollow = follow > 0;
+        store.set({ follow });
+      }
+      paintClock();
+      paintFollow(0.016, true);
+    },
+  });
 
   loading.remove();
   document.getElementById("fade").classList.add("clear");
   paintClock();
   paintFollow(0.016, true);
+  store.set({ ready: true });
 
   // --- loop ---
   const clock = new THREE.Clock();
@@ -1243,7 +1189,7 @@ async function bootSim() {
           day = days - 1;
           minute = 1439;
           playing = false;
-          simPlayBtn.textContent = "재생";
+          store.set({ playing: false });
         }
       }
       const m = Math.floor(minute);

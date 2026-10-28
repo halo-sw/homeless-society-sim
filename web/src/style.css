@@ -1,3 +1,6 @@
+/* Scene shell only: the 3D canvas, household tags, vignette, fade and
+   the boot loader. Every overlay is an Astryx component (src/ui/). */
+
 :root {
   --paper: #fbf7ee;
   --ink: #3d3227;
@@ -30,65 +33,6 @@ html, body {
 }
 #fade.clear { opacity: 0; }
 
-#topbar {
-  position: absolute; top: 0; left: 0; right: 0;
-  display: flex; align-items: center; gap: 16px;
-  padding: 10px 16px;
-  background: linear-gradient(rgba(251, 247, 238, 0.95), rgba(251, 247, 238, 0.75));
-  border-bottom: 1px solid rgba(61, 50, 39, 0.12);
-}
-
-.title { font-weight: 800; font-size: 17px; white-space: nowrap; }
-.title .style {
-  font-weight: 600; font-size: 12px; color: var(--paper);
-  background: var(--accent); border-radius: 10px; padding: 2px 8px;
-  margin-left: 4px; vertical-align: 2px;
-}
-
-#areas { display: flex; gap: 6px; flex-wrap: wrap; }
-#areas button, #modeBtns button {
-  border: 1px solid rgba(61, 50, 39, 0.25); background: transparent;
-  border-radius: 14px; padding: 4px 12px; font-size: 13px; cursor: pointer;
-  color: var(--ink);
-}
-#areas button.active, #modeBtns button.active { background: var(--ink); color: var(--paper); }
-#modeBtns { display: flex; gap: 6px; }
-
-.controls { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-#play {
-  border: none; background: var(--accent); color: #fff;
-  border-radius: 14px; padding: 6px 16px; font-size: 13px; cursor: pointer;
-}
-.toggle { font-size: 13px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
-
-#legend {
-  position: absolute; left: 12px; bottom: 34px;
-  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
-  border-radius: 10px; padding: 10px 12px; font-size: 12px;
-  max-width: 210px;
-}
-.legend-title { font-weight: 800; margin-bottom: 4px; }
-.legend-sub { font-weight: 700; margin: 8px 0 2px; color: #6b5d4d; }
-#legendRes div, #legendHeight div { display: flex; gap: 6px; align-items: center; }
-.swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-.legend-note { margin-top: 8px; color: #6b5d4d; font-size: 11px; }
-
-#caption {
-  position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
-  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
-  border-radius: 12px; padding: 10px 18px; text-align: center;
-  min-width: 260px; max-width: min(480px, 90vw);
-}
-#capName { font-weight: 800; font-size: 18px; }
-#capMeta { font-size: 12px; color: #6b5d4d; margin-top: 2px; }
-#capWalk { font-size: 13px; margin-top: 4px; }
-#dots { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
-#dots span {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: rgba(61, 50, 39, 0.25);
-}
-#dots span.on { background: var(--accent); }
-
 #tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .hhtag {
   position: absolute; transform: translate(-50%, -100%);
@@ -97,86 +41,8 @@ html, body {
   border-radius: 10px; padding: 2px 9px; margin-top: -6px;
 }
 
-#judgeCap { font-size: 12px; margin-top: 6px; line-height: 1.5; }
-.badge {
-  font-size: 10px; font-weight: 800; border-radius: 8px; padding: 1px 7px;
-  margin-right: 4px; white-space: nowrap; vertical-align: 1px;
-}
-.badge.rule { background: rgba(61, 50, 39, 0.14); color: var(--ink); }
-.badge.spark { background: #1f3a5f; color: #fff; }
-.badge.open { background: #5f3a1f; color: #fff; }
-.badge.live { background: var(--accent); color: #fff; margin-left: 4px; }
-#judgeAsk {
-  border: 1px solid rgba(61, 50, 39, 0.3); background: transparent;
-  border-radius: 10px; padding: 1px 9px; font-size: 11px; cursor: pointer;
-  color: var(--ink); margin-left: 6px;
-}
-#judgeAsk:disabled { opacity: 0.6; cursor: wait; }
-
-#judgeLog {
-  position: absolute; left: 12px; top: 60px;
-  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
-  border-radius: 10px; padding: 10px 12px; font-size: 12px;
-  max-width: 310px; max-height: 52vh; overflow: auto;
-}
-#judgeLog[hidden] { display: none; }
-#judgeLogBody .jrow { margin-top: 6px; line-height: 1.45; }
-#judgeLogBody .jreason { color: #6b5d4d; font-size: 11px; }
-#compare .judge-counts { margin-top: 8px; font-size: 11px; color: #6b5d4d; }
-
-#attr {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  font-size: 11px; color: #6b5d4d; text-align: center;
-  padding: 5px 8px; background: rgba(251, 247, 238, 0.9);
-  border-top: 1px solid rgba(61, 50, 39, 0.1);
-}
-#attr a { color: inherit; }
-
 #loading {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: var(--card); padding: 12px 24px; border-radius: 12px;
   border: 1px solid rgba(61, 50, 39, 0.15); font-size: 14px;
 }
-
-/* --- sim mode --- */
-#simbar {
-  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
-  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
-  border-radius: 12px; padding: 8px 14px; font-size: 13px;
-  max-width: 96vw;
-}
-#simbar[hidden] { display: none; }
-#simClock { font-weight: 800; white-space: nowrap; }
-#simbar button {
-  border: 1px solid rgba(61, 50, 39, 0.25); background: transparent;
-  border-radius: 12px; padding: 3px 10px; font-size: 12px; cursor: pointer;
-  color: var(--ink);
-}
-#simbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-#simSpeed { display: flex; gap: 4px; }
-#followBtns { display: flex; gap: 4px; }
-#simbar .jump { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-#dayJump { width: 52px; font-size: 12px; padding: 2px 4px; }
-body.sim #caption { bottom: 96px; }
-body.sim #legend { bottom: 96px; }
-
-#compare {
-  position: absolute; right: 12px; top: 60px;
-  background: var(--card); border: 1px solid rgba(61, 50, 39, 0.15);
-  border-radius: 10px; padding: 10px 12px; font-size: 12px;
-  max-width: 330px; max-height: 70vh; overflow: auto;
-}
-#compare[hidden] { display: none; }
-#compare .legend-title button {
-  float: right; border: 1px solid rgba(61, 50, 39, 0.25); background: transparent;
-  border-radius: 10px; padding: 1px 8px; font-size: 11px; cursor: pointer; color: var(--ink);
-}
-#compare table { border-collapse: collapse; width: 100%; margin-top: 6px; }
-#compare td, #compare th { padding: 2px 6px; text-align: right; white-space: nowrap; }
-#compare td:first-child, #compare th:first-child { text-align: left; white-space: normal; }
-#compare .src {
-  font-size: 10px; border-radius: 8px; padding: 0 6px; margin-left: 4px;
-  background: rgba(61, 50, 39, 0.12); white-space: nowrap;
-}
-#compare .src.assumption { background: rgba(178, 90, 51, 0.18); color: #8a4426; }

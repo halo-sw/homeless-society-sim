@@ -1,9 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, normalize, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import react from "@vitejs/plugin-react";
 import { buildPrompt } from "./src/judge/context.js";
 import { providerConfig } from "./src/judge/providers.js";
 import { emptyUsage, judgeSingle } from "./src/judge/run.js";
+import { createConsultHandler } from "./src/consult/server.js";
 
 // Serves the pipeline output (data/build/<area>/*.json) at /data/<area>/*
 // in dev. The data stays outside web/ (never copied); the production build
@@ -139,7 +141,21 @@ function judgeApiPlugin() {
   };
 }
 
+// Consult path (vite dev only): POST /api/consult runs one 상담 turn
+// server-side. Same key rules as /api/judge: env only, never logged,
+// never returned. The production build has no consult key path — the
+// panel shows a recorded demo transcript instead.
+function consultApiPlugin() {
+  return {
+    name: "consult-api",
+    configureServer(server) {
+      server.middlewares.use("/api/consult",
+        createConsultHandler({ dataDir: DATA_DIR, scenDir: SCEN_DIR }));
+    },
+  };
+}
+
 export default {
-  plugins: [areaDataPlugin(), judgeApiPlugin()],
+  plugins: [react(), areaDataPlugin(), judgeApiPlugin(), consultApiPlugin()],
   server: { port: 5173 },
 };

@@ -197,6 +197,100 @@ function retryable(status) {
   return status === 429 || (status >= 500 && status <= 599);
 }
 
+// Tool-call chat completions for the 상담 agent (OpenAI-style tools).
+// messages is the full history (system/user/assistant/tool roles);
+// tools is [{type: "function", function: {name, description, parameters}}].
+// Returns {message: {content, tool_calls: [{id, name, args}]}, finish,
+// usage, latency_ms, provider, model}. tool_calls[].args is the parsed
+// arguments object (bad JSON -> {} with args_parse_error set). Same retry,
+// timeout, pool and reasoning-effort rules as complete().
+export async function completeWithTools({
+  provider, messages, tools,
+  apiKey = null, fetchImpl = null, timeoutMs = DEFAULT_TIMEOUT_MS,
+  retries = DEFAULT_RETRIES, retryBaseMs = DEFAULT_RETRY_BASE_MS,
+  maxTokens = DEFAULT_MAX_TOKENS, reasoningEffort = undefined,
+  pool = sharedPool,
+} = {}) {
+  const cfg = providerConfig(provider);
+  const key = apiKey || (typeof process !== "undefined" && process.env ? process.env[cfg.keyEnv] : "");
+  if (!key) {
+    fail("missing_key", `judge: provider ${provider} needs ${cfg.keyEnv} in the environment (no key, no call)`);
+  }
+  const fetch = fetchImpl || globalThis.fetch;
+  if (typeof fetch !== "function") fail("no_fetch", "judge: no fetch implementation available");
+  const maxTok = maxTokens ?? DEFAULT_MAX_TOKENS;
+  const effort = reasoningEffort === undefined
+    ? (provider === "meta" ? META_DEFAULT_EFFORT : undefined)
+    : reasoningEffort;
+  const url = `${cfg.baseUrl}/chat/completions`;
+  const started = Date.now();
+  return pool.run(async () => {
+    for (let attempt = 0; ; attempt++) {
+      const body = {
+        model: cfg.model,
+        messages,
+        temperature: 0,
+        max_tokens: maxTok,
+      };
+      if (effort != null) body.reasoning_effort = effort;
+      if (tools) body.tools = tools;
+      let resp;
+      try {
+        resp = await postOnce({ url, apiKey: key, body, timeoutMs, fetchImpl: fetch });
+      } catch (err) {
+        if ((err.code === "timeout" || err.code === "network_error") && attempt < retries) {
+          await sleep(retryBaseMs * 2 ** attempt);
+          continue;
+        }
+        throw err;
+      }
+      const text = await resp.text().catch(() => "");
+      if (resp.ok) {
+        let payload;
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          fail("bad_json", `judge: provider returned invalid JSON: ${snippet(text)}`);
+        }
+        const choice = payload.choices && payload.choices[0];
+        const msg = (choice && choice.message) || {};
+        const finish = (choice && choice.finish_reason) || "stop";
+        const rawCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+        if (finish === "length" || (msg.content == null && rawCalls.length === 0)) {
+          const err = new Error(`judge: provider reply truncated (finish_reason=${JSON.stringify(finish)})`);
+          err.code = "truncated";
+          err.usage = takeUsage(payload);
+          throw err;
+        }
+        const tool_calls = rawCalls.map((c) => {
+          let args = {};
+          let parseError = null;
+          try {
+            args = JSON.parse((c.function && c.function.arguments) || "{}");
+          } catch {
+            parseError = true;
+          }
+          return { id: c.id, name: (c.function && c.function.name) || "",
+            args, ...(parseError ? { args_parse_error: true } : {}) };
+        });
+        return {
+          message: { content: msg.content || "", tool_calls },
+          finish,
+          usage: takeUsage(payload),
+          latency_ms: Date.now() - started,
+          provider,
+          model: cfg.model,
+        };
+      }
+      if (retryable(resp.status) && attempt < retries) {
+        await sleep(retryBaseMs * 2 ** attempt);
+        continue;
+      }
+      fail(`http_${resp.status}`, `judge: provider ${provider} returned ${resp.status}: ${snippet(text)}`);
+    }
+  });
+}
+
 export async function complete({
   provider, system, user, schema, schemaName = "decision",
   apiKey = null, fetchImpl = null, timeoutMs = DEFAULT_TIMEOUT_MS,

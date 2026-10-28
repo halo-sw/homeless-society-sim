@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { complete, createPool, extractJson, providerConfig, PROVIDERS } from "../src/judge/providers.js";
+import { complete, completeWithTools, createPool, extractJson, providerConfig, PROVIDERS } from "../src/judge/providers.js";
 import { DECISION_SCHEMA } from "../src/judge/context.js";
 
 function okJson(payload) {
@@ -247,5 +247,73 @@ describe("judge providers", () => {
       apiKey: "k", fetchImpl: fake,
     });
     assert.deepEqual(res.usage, { prompt_tokens: 300, completion_tokens: 347, reasoning_tokens: 312 });
+  });
+});
+
+describe("tool-call completions (consult)", () => {
+  const TOOLS = [{ type: "function",
+    function: { name: "list_areas", description: "areas", parameters: { type: "object" } } }];
+
+  it("sends tools and parses tool_calls arguments", async () => {
+    const seen = {};
+    const fake = async (url, init) => {
+      seen.init = init;
+      return okJson({
+        choices: [{ finish_reason: "tool_calls",
+          message: { content: "",
+            tool_calls: [{ id: "c1", type: "function",
+              function: { name: "run_simulation", arguments: '{"home":"both"}' } }] } }],
+        usage: { prompt_tokens: 50, completion_tokens: 12 },
+      });
+    };
+    const res = await completeWithTools({
+      provider: "meta", messages: [{ role: "user", content: "hi" }], tools: TOOLS,
+      apiKey: "k", fetchImpl: fake,
+    });
+    const body = JSON.parse(seen.init.body);
+    assert.equal(body.model, "muse-spark-1.3");
+    assert.equal(body.reasoning_effort, "low");
+    assert.equal(body.max_tokens, 2000);
+    assert.deepEqual(body.tools, TOOLS);
+    assert.equal(res.finish, "tool_calls");
+    assert.deepEqual(res.message.tool_calls,
+      [{ id: "c1", name: "run_simulation", args: { home: "both" } }]);
+    assert.equal(res.provider, "meta");
+  });
+
+  it("flags unparseable arguments instead of throwing", async () => {
+    const fake = async () => okJson({
+      choices: [{ finish_reason: "tool_calls",
+        message: { content: "",
+          tool_calls: [{ id: "c9", type: "function",
+            function: { name: "set_view", arguments: "{bad" } }] } }],
+      usage: {},
+    });
+    const res = await completeWithTools({
+      provider: "meta", messages: [], tools: TOOLS, apiKey: "k", fetchImpl: fake,
+    });
+    assert.deepEqual(res.message.tool_calls,
+      [{ id: "c9", name: "set_view", args: {}, args_parse_error: true }]);
+  });
+
+  it("reports truncation and missing keys like complete()", async () => {
+    const cut = async () => okJson({
+      choices: [{ finish_reason: "length", message: { content: null } }],
+      usage: { prompt_tokens: 1, completion_tokens: 2 },
+    });
+    const err = await completeWithTools({
+      provider: "meta", messages: [], tools: TOOLS, apiKey: "k", fetchImpl: cut,
+    }).then(() => null, (e) => e);
+    assert.equal(err.code, "truncated");
+    assert.deepEqual(err.usage, { prompt_tokens: 1, completion_tokens: 2 });
+    const saved = process.env.MODEL_API_KEY;
+    delete process.env.MODEL_API_KEY;
+    try {
+      await assert.rejects(
+        completeWithTools({ provider: "meta", messages: [], apiKey: "" }),
+        /needs MODEL_API_KEY/);
+    } finally {
+      if (saved !== undefined) process.env.MODEL_API_KEY = saved;
+    }
   });
 });

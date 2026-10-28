@@ -1,0 +1,54 @@
+/* Overlay layout only: positioning and pointer routing. Spacing, colour
+   and type come from Astryx tokens; no colours here except nothing at all
+   (the 3D canvas keeps its own palette). */
+
+#ui-root {
+  position: absolute; inset: 0; pointer-events: none; z-index: 10;
+}
+#ui-root .overlay { pointer-events: auto; }
+
+.ui-topbar {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; justify-content: center; padding: 8px 12px;
+}
+.ui-topbar-inner { width: 100%; max-width: 1100px; }
+
+.ui-simbar {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  width: max-content; max-width: 96vw;
+}
+.ui-simbar-sliders { display: flex; gap: 12px; }
+.ui-simbar-sliders > * { min-width: 140px; }
+
+.ui-caption {
+  position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+  width: max-content; max-width: min(480px, 90vw); text-align: center;
+}
+body.sim .ui-caption { bottom: 178px; }
+
+.ui-judgelog {
+  position: absolute; left: 12px; top: 76px;
+  width: 310px; max-width: 80vw; max-height: 52vh; overflow: auto;
+}
+.ui-compare {
+  position: absolute; right: 12px; top: 76px;
+  width: 360px; max-width: 86vw; max-height: 72vh; overflow: auto;
+}
+.ui-legend {
+  position: absolute; left: 12px; bottom: 34px;
+  width: 210px; max-width: 60vw;
+}
+body.sim .ui-legend { bottom: 178px; }
+.ui-legend-row { display: flex; gap: 6px; align-items: center; }
+.ui-swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+
+.ui-attr {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center; padding: 4px 8px;
+}
+.ui-viewchip {
+  position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
+}
+.ui-dots { display: flex; gap: 6px; justify-content: center; }
+.ui-consult-chat { height: 100%; display: flex; flex-direction: column; }
+.ui-consult-meta { display: flex; justify-content: space-between; align-items: center; }
