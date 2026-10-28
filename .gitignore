@@ -4,3 +4,5 @@ data/build/
 node_modules/
 .env
 *.pbf
+__pycache__/
+.pytest_cache/
