@@ -22,6 +22,7 @@ Example: `scenarios/demo-two-homes.json`. Run it with
 | `schoolday_minutes` | int | `360` | time away at school per schoolday — **scenario assumption** |
 | `household.members[]` | array (≥ 1) | — | household members (below) |
 | `homes[]` | array (≥ 1) | — | `{label, area, complex_name}`; labels unique |
+| `money` | object | defaults below | salary/living-cost inputs (stage 6, below) — optional |
 
 ## Household members
 
@@ -215,3 +216,44 @@ Canonical JSON: sorted keys at every depth, integers as-is,
 non-integers rounded to 3 decimals (`web/src/engine/canonical.js`).
 Two runs with the same inputs are byte-identical (sha256); see the
 engine tests (`web/tests/engine-*.test.js`).
+
+## Money block (stage 6, optional)
+
+Salary → monthly living-cost inputs. The engine ignores this block;
+the money modules (`web/src/money/`), the consult tools
+(`set_money`, `estimate_net_pay`, `price_reference`, `living_cost`,
+`recommend_public_rental`, `add_home_c`) and the `money.mjs` CLI read
+it. Income lives in browser memory only — never stored server-side.
+
+| field | type | default | meaning |
+|---|---|---|---|
+| `money.members` | `{memberId: {annual_salary_won?, monthly_net_won?}}` | `{}` | per-member gross salary and/or the customer's real monthly net (the typed net always wins; else the payroll table estimates it — 추정) |
+| `money.cash_won` | won ≥ 0 | `0` | household own funds (보유 현금) |
+| `money.tenure` | `{homeLabel: 매매/전세/월세/공공임대}` | all `전세` | tenure per home |
+| `money.area_m2` | `{homeLabel: ㎡}` | median of matched rows | target exclusive area per home (price bucket centre ±5 ㎡) |
+| `money.assumptions` | object | below | spending assumptions, all labelled 가정값 and editable |
+| `money.burden_threshold_pct` | 0..100 | `30` | 주거비 부담률 rule-of-thumb line (editable) |
+| `money.home_c` | object | `null` | public-rental candidate added as home C (`add_home_c` writes it) |
+
+Assumption defaults: `loan_rate_pct` 4.0, `loan_years` 30,
+`maintenance_won_month` 150000, `transit_fare_won` 1500, `basket_won`
+30000, `other_fixed_won_month` 0, `pay_day_of_month` 25,
+`fixed_due_day_1based` 1.
+
+Net pay uses the replaceable rule table
+`scenarios/assumptions/kr-payroll.json` (social insurance rates +
+simplified income-tax brackets, with `as_of`/`source`; uncertain rates
+carry `needs_confirmation: true`). Housing cost per tenure: 월세 =
+deposit from cash + monthly rent; 전세 = shortfall × rate / 12
+(interest-only); 매매 = amortised payment on (price − cash) + a note
+that taxes/fees are excluded; 공공임대 = API deposit + monthly rent.
+The money timeline (`moneyTimeline`) emits deterministic spending
+events tied to simulated trips (fare per station-commute leg, basket
+per outbound errand leg, fixed costs on the due day, salary on
+payday). The app never judges loan eligibility (LTV·DSR), move-in
+eligibility, or buy/don't-buy — the UI and agent disclaimers say so.
+
+Precompute the UI payload with
+`node web/scripts/money.mjs --scenario scenarios/<name>.json --out data/build/sim/`
+(writes `<name>-money.json`: net pay, per-home price references, per
+tenure timelines, QoL time/convenience axes).

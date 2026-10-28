@@ -14,6 +14,9 @@ const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const DATA_DIR = normalize(join(ROOT, "..", "data", "build"));
 // Committed scenario JSON (scenarios/*.json) for sim mode + the worker.
 const SCEN_DIR = normalize(join(ROOT, "..", "scenarios"));
+// Raw reference data (RTMS CSVs, housing snapshot) for the consult server
+// only — never served to the browser.
+const RAW_DIR = normalize(join(ROOT, "..", "data", "raw"));
 
 function serveDir(mount, dir, { jsonOnly = false } = {}) {
   return async (req, res, next) => {
@@ -150,7 +153,7 @@ function consultApiPlugin() {
     name: "consult-api",
     configureServer(server) {
       server.middlewares.use("/api/consult",
-        createConsultHandler({ dataDir: DATA_DIR, scenDir: SCEN_DIR }));
+        createConsultHandler({ dataDir: DATA_DIR, scenDir: SCEN_DIR, rawDir: RAW_DIR }));
     },
   };
 }

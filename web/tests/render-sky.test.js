@@ -30,14 +30,14 @@ describe("Seoul sky parameters", () => {
     assert.equal(p.bloom, 0);
     assert.equal(p.emissive, 0);
     assert.equal(p.skyVisible, true);
-    assert.equal(p.sunColor, 0xfff2dd);
+    assert.equal(p.sunColor, 0xffe9c8); // stage 6: warmer midday sun
   });
 
   it("is golden at 16:30: low warm sun, still no emissive", () => {
     const p = at("16:30", 990);
     assert.equal(p.phase, "golden");
     assert.ok(p.altitude > 10 && p.altitude < 20, `alt=${p.altitude}`);
-    assert.notEqual(p.sunColor, 0xfff2dd); // warmed
+    assert.notEqual(p.sunColor, 0xffe9c8); // warmed further
     assert.equal(p.skyVisible, true);
     assert.equal(p.bloom, 0);
     assert.equal(p.emissive, 0);

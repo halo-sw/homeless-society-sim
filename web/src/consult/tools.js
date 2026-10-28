@@ -18,6 +18,7 @@ import { Router } from "../engine/graph.js";
 import { buildPlaces, stationsByName, nearestReachable } from "../engine/places.js";
 import { ADULT_MPS } from "../engine/agents.js";
 import { costUsd } from "../judge/run.js";
+import { MONEY_TOOL_DEFS, MONEY_HANDLERS } from "./tools-money.js";
 
 export const CONSULT_AREAS = [
   { id: "pangyo", label: "판교" },
@@ -136,6 +137,8 @@ export const TOOL_DEFS = [
       } } } },
 ];
 
+for (const def of MONEY_TOOL_DEFS) TOOL_DEFS.push(def);
+
 export const TOOL_NAMES = new Set(TOOL_DEFS.map((t) => t.function.name));
 
 // ---------------------------------------------------------------------------
@@ -173,6 +176,9 @@ export function createSession(opts) {
     loadArea: opts.loadArea,
     loadDecisions: opts.loadDecisions || null,
     judgeHome: opts.judgeHome || null,
+    loadPayroll: opts.loadPayroll || null,
+    loadRtms: opts.loadRtms || null,
+    loadHousing: opts.loadHousing || null,
     provider: opts.provider || "meta",
     fetchImpl: opts.fetchImpl || null,
     museRunsPrior: opts.museRunsPrior || 0,
@@ -660,6 +666,7 @@ function set_view(session, args) {
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
+  ...MONEY_HANDLERS,
 };
 
 export async function callTool(session, name, args) {

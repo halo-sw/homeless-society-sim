@@ -176,6 +176,7 @@ export function parseScenario(raw) {
       fail(`household.members[${i}].clinic_visits_per_month wants 0..31`);
     }
   }
+  const homesOut = homes.map((h) => ({ label: h.label, area: h.area, complex_name: h.complex_name }));
   return {
     name: typeof raw.name === "string" ? raw.name : "scenario",
     start_date: raw.start_date === undefined ? DEFAULT_START_DATE : raw.start_date,
@@ -185,8 +186,92 @@ export function parseScenario(raw) {
     workday_minutes: raw.workday_minutes === undefined ? DEFAULT_WORKDAY_MINUTES : raw.workday_minutes,
     schoolday_minutes: raw.schoolday_minutes === undefined ? DEFAULT_SCHOOLDAY_MINUTES : raw.schoolday_minutes,
     household: { members },
-    homes: homes.map((h) => ({ label: h.label, area: h.area, complex_name: h.complex_name })),
+    homes: homesOut,
+    money: parseMoney(raw.money, members, homesOut),
   };
+}
+
+export const TENURE_KINDS = ["매매", "전세", "월세", "공공임대"];
+
+export const DEFAULT_MONEY_ASSUMPTIONS = {
+  loan_rate_pct: 4.0,
+  loan_years: 30,
+  maintenance_won_month: 150000,
+  transit_fare_won: 1500,
+  basket_won: 30000,
+  other_fixed_won_month: 0,
+  pay_day_of_month: 25,
+  fixed_due_day_1based: 1,
+};
+
+export const DEFAULT_BURDEN_THRESHOLD_PCT = 30;
+
+// Optional `money` block (stage 6): salary inputs, own funds, per-home
+// tenure and spending assumptions. Everything without a measured source
+// is a 가정값 the customer can edit; income lives in browser memory only.
+function parseMoney(raw, members, homes) {
+  const out = {
+    members: {},
+    cash_won: 0,
+    tenure: {},
+    area_m2: {},
+    assumptions: { ...DEFAULT_MONEY_ASSUMPTIONS },
+    burden_threshold_pct: DEFAULT_BURDEN_THRESHOLD_PCT,
+    home_c: null,
+  };
+  if (raw === undefined || raw === null) {
+    for (const h of homes) out.tenure[h.label] = "전세";
+    return out;
+  }
+  if (typeof raw !== "object") fail("money must be an object");
+  const ids = new Set(members.map((m) => m.id));
+  for (const [id, entry] of Object.entries(raw.members || {})) {
+    if (!ids.has(id)) fail(`money.members has unknown member ${JSON.stringify(id)}`);
+    if (!entry || typeof entry !== "object") fail(`money.members[${id}] must be an object`);
+    const slot = {};
+    for (const key of ["annual_salary_won", "monthly_net_won"]) {
+      if (entry[key] !== undefined && entry[key] !== null) {
+        if (!Number.isFinite(entry[key]) || entry[key] < 0) fail(`money.members[${id}].${key} wants a won amount >= 0`);
+        slot[key] = entry[key];
+      }
+    }
+    out.members[id] = slot;
+  }
+  if (raw.cash_won !== undefined && raw.cash_won !== null) {
+    if (!Number.isFinite(raw.cash_won) || raw.cash_won < 0) fail("money.cash_won wants a won amount >= 0");
+    out.cash_won = raw.cash_won;
+  }
+  for (const h of homes) {
+    const t = (raw.tenure || {})[h.label];
+    if (t === undefined || t === null) {
+      out.tenure[h.label] = "전세";
+    } else if (!TENURE_KINDS.includes(t)) {
+      fail(`money.tenure[${h.label}] wants one of ${TENURE_KINDS.join("/")}`);
+    } else {
+      out.tenure[h.label] = t;
+    }
+    const am2 = (raw.area_m2 || {})[h.label];
+    if (am2 !== undefined && am2 !== null) {
+      if (!Number.isFinite(am2) || am2 <= 0) fail(`money.area_m2[${h.label}] wants a positive ㎡ number`);
+      out.area_m2[h.label] = am2;
+    }
+  }
+  for (const [key, value] of Object.entries(raw.assumptions || {})) {
+    if (!(key in out.assumptions)) fail(`money.assumptions has unknown key ${JSON.stringify(key)}`);
+    if (!Number.isFinite(value) || value < 0) fail(`money.assumptions.${key} wants a number >= 0`);
+    out.assumptions[key] = value;
+  }
+  if (raw.burden_threshold_pct !== undefined && raw.burden_threshold_pct !== null) {
+    if (!Number.isFinite(raw.burden_threshold_pct) || raw.burden_threshold_pct <= 0 || raw.burden_threshold_pct > 100) {
+      fail("money.burden_threshold_pct wants 0..100");
+    }
+    out.burden_threshold_pct = raw.burden_threshold_pct;
+  }
+  if (raw.home_c !== undefined && raw.home_c !== null) {
+    if (typeof raw.home_c !== "object") fail("money.home_c must be an object");
+    out.home_c = { ...raw.home_c };
+  }
+  return out;
 }
 
 export function homeOf(scenario, label) {

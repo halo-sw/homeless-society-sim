@@ -1,0 +1,177 @@
+#!/usr/bin/env node
+// Money-data CLI: precompute living-cost + price + QoL data for the UI.
+//
+//   node web/scripts/money.mjs --scenario scenarios/demo-two-homes.json --out data/build/sim/
+//
+// Reads data/build/<area>, runs the engine in-process (rules), loads RTMS
+// CSVs (data/raw/rtms) and the payroll table, and writes
+// <out>/<name>-money.json: household net, per-home price references, per
+// tenure living-cost timelines, and QoL time/convenience axes. The UI
+// renders from this file (plus agent results for home C). Run it from
+// anywhere; paths resolve from the repo root (the script's ../..).
+
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { canon } from "../src/engine/canonical.js";
+import { parseScenario } from "../src/engine/scenario.js";
+import { simulate } from "../src/engine/simulate.js";
+import { Router } from "../src/engine/graph.js";
+import { createCsvBackend } from "../src/money/rtms.js";
+import { referencePrice } from "../src/money/prices.js";
+import { buildPnuIndex, matchRtmsRow, complexOfBuildings, 단지명Matches } from "../src/money/pnu.js";
+import { householdMonthlyNet } from "../src/money/payroll.js";
+import { tenureCost, TENURES } from "../src/money/tenure.js";
+import { moneyTimeline } from "../src/money/timeline.js";
+import { qualityCard } from "../src/money/quality.js";
+import { AREA_RTMS_DISTRICT } from "../src/consult/tools-money.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = resolve(HERE, "..", "..");
+
+function usage(exit = 2) {
+  console.error("usage: money.mjs --scenario <json> --out <dir>");
+  process.exit(exit);
+}
+
+function args(argv) {
+  const out = { scenario: null, out: "data/build/sim" };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--scenario") out.scenario = argv[++i];
+    else if (a === "--out") out.out = argv[++i];
+    else if (a === "--help" || a === "-h") usage(0);
+    else usage();
+  }
+  if (!out.scenario) usage();
+  return out;
+}
+
+async function loadArea(areaId) {
+  const dir = join(REPO, "data", "build", areaId);
+  const area = JSON.parse(await readFile(join(dir, "area.json"), "utf8"));
+  for (const [key, value] of Object.entries(area)) {
+    if (value && typeof value === "object" && !Array.isArray(value)
+        && Object.keys(value).join() === "$ref") {
+      area[key] = JSON.parse(await readFile(join(dir, value.$ref), "utf8"));
+    }
+  }
+  return area;
+}
+
+const opts = args(process.argv.slice(2));
+const scenarioRaw = JSON.parse(await readFile(resolve(REPO, opts.scenario), "utf8"));
+const scenario = parseScenario(structuredClone(scenarioRaw));
+const table = JSON.parse(await readFile(join(REPO, "scenarios", "assumptions", "kr-payroll.json"), "utf8"));
+const net = householdMonthlyNet(scenario.money, scenario.household.members, table);
+const backend = createCsvBackend({
+  rawDir: join(REPO, "data", "raw", "rtms"),
+  readFile: (p) => readFile(p),
+});
+const rtmsCache = new Map();
+async function rtmsFor(district) {
+  if (!rtmsCache.has(district)) rtmsCache.set(district, await backend.loadAll(district));
+  return rtmsCache.get(district);
+}
+
+const A = scenario.money.assumptions;
+const homes = {};
+for (const h of scenario.homes) {
+  const area = await loadArea(h.area);
+  const router = new Router(area.graph);
+  const run = simulate(area, structuredClone(scenarioRaw), h.label);
+  // Price reference: parcel+name match, name-only fallback (< 3 rows).
+  const district = AREA_RTMS_DISTRICT[h.area];
+  const rows = district ? await rtmsFor(district) : [];
+  const idx = buildPnuIndex(Array.isArray(area.buildings) ? area.buildings : []);
+  const parcelHits = [];
+  for (const r of rows) {
+    const m = matchRtmsRow(r, idx);
+    if (m.buildings.length === 0) continue;
+    if (!complexOfBuildings(m.buildings, area.complexes).some((c) => c.name === h.complex_name)) continue;
+    if (!단지명Matches(r.complex, h.complex_name)) continue;
+    parcelHits.push(r);
+  }
+  const nameHits = rows.filter((r) => 단지명Matches(r.complex, h.complex_name));
+  const used = parcelHits.length >= 3 ? parcelHits : nameHits;
+  const matchMethod = parcelHits.length >= 3 ? "parcel+name" : "name-only";
+  let areaM2 = scenario.money.area_m2[h.label] || null;
+  if (!areaM2) {
+    const areas = used.map((r) => r.area_m2).filter(Number.isFinite).sort((a, b) => a - b);
+    areaM2 = areas.length > 0 ? areas[Math.floor(areas.length / 2)] : null;
+  }
+  const reference = areaM2 ? referencePrice(used, { areaM2 }) : null;
+  const priceInputs = (tenure) => {
+    if (!reference) return { price_won: null, deposit_won: null, monthly_rent_won: null, source: "rtms" };
+    if (tenure === "매매") return { price_won: reference.trade.median, source: "rtms" };
+    if (tenure === "전세") return { price_won: reference.jeonse.deposit.median, source: "rtms" };
+    if (tenure === "월세") {
+      return { deposit_won: reference.wolse.deposit.median,
+        monthly_rent_won: reference.wolse.monthly.median, source: "rtms" };
+    }
+    return { price_won: null, deposit_won: null, monthly_rent_won: null, source: "rtms" };
+  };
+  const byTenure = {};
+  for (const tenure of TENURES) {
+    if (tenure === "공공임대") {
+      byTenure[tenure] = null; // needs a candidate (agent add_home_c)
+      continue;
+    }
+    const pi = priceInputs(tenure);
+    const hasPrice = [pi.price_won, pi.deposit_won, pi.monthly_rent_won].some((v) => Number.isFinite(v));
+    if (!hasPrice) {
+      byTenure[tenure] = null;
+      continue;
+    }
+    const housing = tenureCost({ tenure, ...pi,
+      cash_won: scenario.money.cash_won,
+      loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years, source: pi.source });
+    const tl = moneyTimeline(run, scenario, {
+      transit_fare_won: A.transit_fare_won, basket_won: A.basket_won,
+      maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
+      household_monthly_net_won: net.household_monthly_net_won,
+      housing_monthly_won: housing.monthly_won, tenure, housing_source: pi.source,
+      pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+    });
+    byTenure[tenure] = {
+      housing, price_inputs: pi,
+      totals_by_category: tl.totals_by_category,
+      monthly_spent_won: tl.monthly_spent_won,
+      remaining_won: tl.remaining_won,
+      burden_ratio: tl.burden_ratio,
+      counts: tl.counts,
+      daily_balance_won: tl.daily_balance_won,
+      payday_note: tl.payday_note,
+    };
+  }
+  // QoL time + convenience axes (money merges client-side per tenure).
+  const qol = qualityCard(run, area, router, {});
+  homes[h.label] = {
+    area: h.area, complex_name: h.complex_name, area_m2: areaM2,
+    match_method: matchMethod,
+    parcel_rows: parcelHits.length, name_rows: nameHits.length,
+    reference, by_tenure: byTenure,
+    qol_time: qol.time, qol_convenience: qol.convenience,
+  };
+  console.log(JSON.stringify({ home: h.label, area_m2: areaM2, match: matchMethod,
+    parcel: parcelHits.length, name: nameHits.length,
+    tenures: Object.fromEntries(Object.entries(byTenure).map(([k, v]) =>
+      [k, v ? v.housing.monthly_won : null])) }));
+}
+
+const doc = {
+  scenario: scenario.name,
+  days: scenario.days,
+  payroll: { as_of: table.as_of, source: table.source },
+  household_monthly_net_won: net.household_monthly_net_won,
+  per_member_net: net.per_member,
+  cash_won: scenario.money.cash_won,
+  assumptions: scenario.money.assumptions,
+  burden_threshold_pct: scenario.money.burden_threshold_pct,
+  default_tenure: scenario.money.tenure,
+  homes,
+};
+const outDir = resolve(REPO, opts.out);
+await mkdir(outDir, { recursive: true });
+await writeFile(join(outDir, `${scenario.name}-money.json`), `${canon(doc)}\n`, "utf8");
+console.log(JSON.stringify({ file: join(opts.out, `${scenario.name}-money.json`) }));

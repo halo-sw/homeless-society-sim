@@ -26,8 +26,13 @@ export const INITIAL_STATE = {
   judgeLog: [], // [{minute, agent, kind, choice, badgeText, badgeCls, reason}]
   tourPlaying: true,
   compareOpen: false,
+  compareTab: "compare", // "compare" | "money" | "quality"
   compare: null, // compare() payload, or {error}
   compareLoading: false,
+  money: null, // <scenario>-money.json payload + agent C merges, or {error}
+  moneyLoading: false,
+  moneyTenure: {}, // {A: "전세", ...} UI-selected tenure per home
+  moneyCandidates: [], // recommend_public_rental results (agent) for "C로 추가"
   legend: null, // {title, resRows, heightRows, note, simNote?}
   loading: "지역을 불러오는 중…",
   ready: false,

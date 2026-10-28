@@ -11,6 +11,8 @@ import { providerConfig } from "../judge/providers.js";
 import { judgeHome } from "../judge/run.js";
 import { runTurn } from "./agent.js";
 import { createRunCache } from "./tools.js";
+import { createCsvBackend } from "../money/rtms.js";
+import { normalizeSnapshot, createHousingApi, HOUSING_KEY_ENV } from "../money/housing.js";
 
 export const CONSULT_BODY_MAX = 1048576; // 1 MB (scenario + history)
 
@@ -57,9 +59,47 @@ async function loadDecisionsFs(scenDir, scenarioName, label) {
   return null;
 }
 
-export function createConsultHandler({ dataDir, scenDir, fetchImpl = null } = {}) {
+export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImpl = null } = {}) {
   const cache = createRunCache();
   const areaCache = new Map();
+  const rtmsCache = new Map();
+  let payrollCache = null;
+  let housingCache = null;
+  const loadPayroll = async () => {
+    if (!payrollCache) {
+      payrollCache = JSON.parse(await readFile(join(scenDir, "assumptions", "kr-payroll.json"), "utf8"));
+    }
+    return payrollCache;
+  };
+  const loadRtms = async (district) => {
+    if (rtmsCache.has(district)) return rtmsCache.get(district);
+    if (!rawDir) throw new Error("RTMS data is unavailable on this server");
+    const backend = createCsvBackend({
+      rawDir: join(rawDir, "rtms"),
+      readFile: (path) => readFile(path),
+    });
+    const rows = await backend.loadAll(district);
+    rtmsCache.set(district, rows);
+    return rows;
+  };
+  const loadHousing = async () => {
+    if (housingCache) return housingCache;
+    // Dev snapshot first (orchestrator-fetched, gitignored, never served);
+    // live API when the key is set.
+    if (rawDir) {
+      try {
+        const raw = await readFile(join(rawDir, "public_housing", "snapshot_3districts.json"), "utf8");
+        housingCache = normalizeSnapshot(JSON.parse(raw));
+        return housingCache;
+      } catch { /* fall through to the API */ }
+    }
+    const key = process.env[HOUSING_KEY_ENV];
+    if (!key) throw new Error("public-rental data needs the dev snapshot or HOUSING_API_KEY on the server");
+    const api = createHousingApi({ key, fetchImpl: fetchImpl || fetch });
+    const [complexes, notices] = await Promise.all([api.complexes(), api.notices()]);
+    housingCache = normalizeSnapshot({ fetched_at: new Date().toISOString(), complexes, notices });
+    return housingCache;
+  };
   return async (req, res) => {
     if (req.method !== "POST") {
       res.statusCode = 405;
@@ -89,6 +129,7 @@ export function createConsultHandler({ dataDir, scenDir, fetchImpl = null } = {}
         loadArea: (areaId) => loadAreaFs(dataDir, areaCache, areaId),
         loadDecisions: (name, label) => loadDecisionsFs(scenDir, name, label),
         judgeHome: (args) => judgeHome({ ...args, fetchImpl }),
+        loadPayroll, loadRtms, loadHousing,
         fetchImpl,
       });
       res.setHeader("Content-Type", "application/json");

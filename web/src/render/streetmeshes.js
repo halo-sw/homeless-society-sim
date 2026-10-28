@@ -60,10 +60,13 @@ export function buildStreetMeshes(streetlife) {
   }
   updateMovers(0);
 
-  // --- street lamps: pole + glowing head ---
+  // --- street lamps: pole + glowing head + halo points ---
+  // Heads alone are sub-pixel at stop framing, so each lamp also gets an
+  // additive halo point (~2.4 m) that reads as a small warm point from
+  // far away and feeds the night bloom.
   const poleGeo = new THREE.CylinderGeometry(0.09, 0.14, LAMP_POLE_H, 6);
   poleGeo.translate(0, LAMP_POLE_H / 2, 0);
-  const headGeo = new THREE.SphereGeometry(0.34, 8, 6);
+  const headGeo = new THREE.SphereGeometry(0.5, 8, 6);
   headGeo.translate(0, LAMP_POLE_H + 0.1, 0);
   const poleMesh = new THREE.InstancedMesh(poleGeo, lampPoleMaterial(), Math.max(lamps.length, 1));
   const headMat = lampHeadMaterial();
@@ -76,12 +79,53 @@ export function buildStreetMeshes(streetlife) {
   headMesh.count = lamps.length;
   group.add(poleMesh, headMesh);
 
+  const haloGeo = new THREE.BufferGeometry();
+  const haloPos = new Float32Array(Math.max(lamps.length, 1) * 3);
+  lamps.forEach((l, i) => {
+    haloPos[i * 3] = l.x;
+    haloPos[i * 3 + 1] = LAMP_POLE_H + 0.1;
+    haloPos[i * 3 + 2] = -l.y;
+  });
+  haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+  const haloMat = new THREE.PointsMaterial({
+    color: 0xffc37a, size: 2.4, sizeAttenuation: true,
+    transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, map: glowTexture(),
+  });
+  const halo = new THREE.Points(haloGeo, haloMat);
+  halo.frustumCulled = false;
+  group.add(halo);
+
   return {
-    group, bodyMesh, glassMesh, poleMesh, headMesh,
+    group, bodyMesh, glassMesh, poleMesh, headMesh, halo,
     parked: cars.length, moverCount: movers.length, lampCount: lamps.length,
     updateMovers,
     setLampGlow(v) {
       headMat.emissiveIntensity = v * 3.2;
+      haloMat.opacity = Math.min(1, v) * 0.85;
+      halo.visible = v > 0.01;
     },
   };
+}
+
+// Soft round sprite for the lamp halos (browser canvas; null without a
+// DOM — points still render, as squares).
+function glowTexture() {
+  try {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 64;
+    const ctx = c.getContext("2d");
+    const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.35, "rgba(255,255,255,0.55)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    return tex;
+  } catch {
+    return null;
+  }
 }

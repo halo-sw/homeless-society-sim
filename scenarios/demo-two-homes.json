@@ -47,5 +47,24 @@
   "homes": [
     {"label": "A", "area": "songpa-jamsil", "complex_name": "레이크팰리스"},
     {"label": "B", "area": "pangyo", "complex_name": "백현마을"}
-  ]
+  ],
+  "money": {
+    "_note": "PLACEHOLDER inputs for the demo couple (not real customer data): m1 연봉 6,000만, m2 연봉 5,000만, 보유현금 2억, A 59.97㎡, B 84.82㎡, both 전세.",
+    "members": {
+      "m1": {"annual_salary_won": 60000000},
+      "m2": {"annual_salary_won": 50000000}
+    },
+    "cash_won": 200000000,
+    "tenure": {"A": "전세", "B": "전세"},
+    "area_m2": {"A": 59.97, "B": 84.82},
+    "assumptions": {
+      "loan_rate_pct": 4.0,
+      "loan_years": 30,
+      "maintenance_won_month": 150000,
+      "transit_fare_won": 1500,
+      "basket_won": 30000,
+      "other_fixed_won_month": 0
+    },
+    "burden_threshold_pct": 30
+  }
 }

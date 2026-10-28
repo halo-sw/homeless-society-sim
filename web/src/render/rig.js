@@ -11,7 +11,7 @@
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { sunDirection } from "../lighting.js";
-import { skyParams } from "./sky.js";
+import { skyParams, fogRangeFor } from "./sky.js";
 
 // Fixed moon direction when the sun is down (unit-ish, y-up world).
 const MOON_DIR = (() => {
@@ -55,7 +55,7 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     u.sunPosition.value.copy(dir);
   }
 
-  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null }) {
+  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null }) {
     const p = skyParams(lat, lon, date, minute);
     // Sun above the horizon; moonlight below it.
     if (p.altitude > -1) {
@@ -90,7 +90,14 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
       bg.setHex(p.skyColor);
       scene.background = bg;
     }
-    if (scene.fog) scene.fog.color.setHex(p.fogColor);
+    if (scene.fog) {
+      scene.fog.color.setHex(p.fogColor);
+      // Distance cueing follows the framing (stage 6): crisp stops, haze
+      // only far beyond the frame.
+      const range = fogRangeFor(framedWidth === null ? span : framedWidth);
+      scene.fog.near = range.near;
+      scene.fog.far = range.far;
+    }
     renderer.toneMappingExposure = p.exposure;
     if ("environmentIntensity" in scene) scene.environmentIntensity = p.envIntensity;
 

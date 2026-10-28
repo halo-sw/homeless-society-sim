@@ -7,7 +7,7 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, followCaption, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant } from "./sim.js";
@@ -18,7 +18,8 @@ import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
-import { litFractionFor } from "./render/facades.js";
+import { eveningHomeFraction, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
+import { hashString, hashUnit } from "./palette.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -46,7 +47,7 @@ const HEIGHT_SWATCH = { osm_height: "#7ba05b", osm_levels: "#a9bf8e", register_h
 const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
 const SUN_MINUTE = 15 * 60;
 const BASE_GROUND = 0xa9a79b; // unmapped fringe under the ground layer
-const FOG_DAY = 0xcfd8de;
+const FOG_DAY = 0xd9dee2;
 
 const PARAMS = new URLSearchParams(location.search);
 const areaId = PARAMS.get("area") || DEFAULT_AREA;
@@ -82,6 +83,27 @@ function addLitAttr(mesh) {
   mesh.geometry.setAttribute("aLit", new THREE.BufferAttribute(new Float32Array(count), 1));
 }
 
+// Fill every facade mesh's aLit from an occupancy map (or null in tour
+// mode) plus the run-wide at-home share: buildings with simulated
+// residents use their exact share, other residential buildings with real
+// households use the fallback estimate, the rest stay dark.
+function makeLitFiller(litMeshes, householdsById) {
+  return (occ, globalFrac) => {
+    for (const { mesh, ranges } of litMeshes) {
+      const attr = mesh.geometry.attributes.aLit;
+      for (const [bid, r] of ranges) {
+        const v = litFractionWithFallback(occ ? occ.get(bid) : null, {
+          households: householdsById.get(bid) || 0,
+          globalHomeFrac: globalFrac,
+          hash01: hashUnit(hashString(bid), 3),
+        });
+        attr.array.fill(v, r.start, r.start + r.count);
+      }
+      attr.needsUpdate = true;
+    }
+  };
+}
+
 async function fetchArea(wantId) {
   const loading = document.getElementById("loading");
   try {
@@ -112,7 +134,10 @@ function buildWorld(area) {
   const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(FOG_DAY, span * 1.6, span * 3.2);
-  const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, innerWidth / innerHeight, 1, span * 8);
+  const wrap0 = document.getElementById("scene-wrap");
+  const aspect0 = wrap0 && wrap0.clientHeight > 0
+    ? wrap0.clientWidth / wrap0.clientHeight : innerWidth / innerHeight;
+  const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, aspect0, 1, span * 8);
   const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
   const [hox, hoy, hoz] = tourOffset(homeDist);
   camera.position.set(cx + hox, hoy, -cy + hoz);
@@ -253,19 +278,38 @@ function buildWorld(area) {
     placeStreetlife(area.roads, origin, { seed: area.area || areaId }));
   scene.add(streetMeshes.group);
 
-  renderCtl.attach(scene, camera);
+  // Real household counts per building (register API) for the night
+  // lighting fallback (buildings without simulated residents).
+  const householdsById = new Map();
+  for (const b of area.buildings || []) {
+    const hh = b.register && b.register.api && b.register.api.households;
+    householdsById.set(b.id, Number(hh) || 0);
+  }
+
+  renderCtl.attach(scene, camera, document.getElementById("scene-wrap"));
   return {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
-    dimMeshes, litMeshes, fadeMeshes,
+    dimMeshes, litMeshes, fadeMeshes, householdsById,
     trees, trunkMesh, canopyMeshes, streetMeshes, dummy,
   };
+}
+
+// Refit the camera + renderer to the (docked-panel-shrunk) canvas.
+function refitToWrap(camera, renderCtl) {
+  const wrap = document.getElementById("scene-wrap");
+  const w = wrap ? wrap.clientWidth : innerWidth;
+  const h = wrap ? wrap.clientHeight : innerHeight;
+  camera.aspect = Math.max(0.2, w / Math.max(1, h));
+  camera.updateProjectionMatrix();
+  renderCtl.fitContainer();
 }
 
 async function bootTour() {
   const area = await fetchArea(areaId);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
-    dimMeshes, fadeMeshes, streetMeshes, trees, dummy } = buildWorld(area);
+    dimMeshes, fadeMeshes, litMeshes, householdsById,
+    streetMeshes, trees, dummy } = buildWorld(area);
   for (const { mesh } of fadeMeshes) makeFadeable(mesh);
 
   // --- preview walkers (instanced capsules, simulated) ---
@@ -342,14 +386,24 @@ async function bootTour() {
 
   // --- tour sun/sky (?time=HH:MM override; static through the tour) ---
   const { date: tourDate, minute: tourMinute } = tourSun();
+  const fillTourLit = makeLitFiller(litMeshes, householdsById);
   let tourBloom = 0;
+  let tourLitDone = false;
   function updateTourSky() {
+    const framedWidth = frameWidthFor(
+      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute, target: { x: controls.target.x, z: controls.target.z },
-      shadowSpan: 240, envKey: "tour" });
+      shadowSpan: 240, envKey: "tour", framedWidth });
     tourBloom = p.bloom;
     setGlobalNight(p.emissive);
     streetMeshes.setLampGlow(p.emissive);
+    // No run in tour mode: light residential windows from the evening
+    // estimate (once — the tour sun is static).
+    if (!tourLitDone) {
+      tourLitDone = true;
+      fillTourLit(null, p.emissive > 0 ? eveningHomeFraction(tourMinute) : 0);
+    }
   }
   updateTourSky();
 
@@ -433,12 +487,12 @@ async function bootTour() {
     }
   });
 
-  addEventListener("resize", () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderCtl.setSize(innerWidth, innerHeight);
+  const refitTour = () => {
+    refitToWrap(camera, renderCtl);
     if (archLens) applyArchLens();
-  });
+  };
+  addEventListener("resize", refitTour);
+  new ResizeObserver(refitTour).observe(document.getElementById("scene-wrap"));
 }
 
 function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
@@ -787,7 +841,8 @@ async function bootSim() {
     ? scenario.homes
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
-    dimMeshes, litMeshes, streetMeshes } = buildWorld(area);
+    dimMeshes, litMeshes, householdsById, streetMeshes } = buildWorld(area);
+  const fillSimLit = makeLitFiller(litMeshes, householdsById);
 
   // --- run indexes ---
   const indexed = indexRun(run);
@@ -900,8 +955,9 @@ async function bootSim() {
   // --- sun/sky follow sim time; facades glow from run occupancy ---
   // The rig owns sun/hemi/Sky/environment; per-building lit fractions
   // (at-home residents / agents housed there — the same stage-3 data the
-  // old glow quads used) fill the aLit vertex attributes at 30-minute
-  // granularity. Daytime emissive is off (uNight = 0).
+  // old glow quads used — plus the fallback estimate for other residential
+  // buildings with real households) fill the aLit vertex attributes at
+  // 30-minute granularity. Daytime emissive is off (uNight = 0).
   let simBloom = 0;
   let lastLightKey = "";
   let lastLitKey = "";
@@ -909,9 +965,11 @@ async function bootSim() {
   function updateLighting() {
     const m = Math.floor(minute);
     const instant = simInstant(run.meta.start_date, day, m);
+    const framedWidth = frameWidthFor(
+      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m, target: { x: controls.target.x, z: controls.target.z },
-      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}` });
+      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth });
     simBloom = p.bloom;
     const key = `${day}:${m}`;
     if (key === lastLightKey) return;
@@ -926,13 +984,7 @@ async function bootSim() {
     if (key === lastLitKey) return;
     lastLitKey = key;
     const occ = homeOccupancy(run, indexed, day, m);
-    for (const { mesh, ranges } of litMeshes) {
-      const attr = mesh.geometry.attributes.aLit;
-      for (const [bid, r] of ranges) {
-        attr.array.fill(litFractionFor(occ.get(bid)), r.start, r.start + r.count);
-      }
-      attr.needsUpdate = true;
-    }
+    fillSimLit(occ, globalHomeFraction(occ));
   }
 
   // --- follow camera (2b miniature framing) ---
@@ -1149,6 +1201,25 @@ async function bootSim() {
     store.set({ compareLoading: false, compare: cmp });
   }
 
+  async function paintMoney() {
+    if (store.getState().money) return;
+    store.set({ moneyLoading: true });
+    const doc = await fetch(`/data/sim/${scenarioName}-money.json`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (!doc) {
+      store.set({ moneyLoading: false,
+        money: { error: `node web/scripts/money.mjs --scenario scenarios/${scenarioName}.json 실행 후 새로고침하세요.` } });
+      return;
+    }
+    // The agent may already have merged home C while we fetched.
+    const merged = store.getState().money;
+    if (merged && !merged.error && merged.homes && merged.homes.C && !doc.homes.C) {
+      doc.homes.C = merged.homes.C;
+    }
+    store.set({ moneyLoading: false, money: doc,
+      moneyTenure: { ...(doc.default_tenure || {}), ...store.getState().moneyTenure } });
+  }
+
   store.registerActions({
     toggleSimPlay: () => {
       playing = !playing;
@@ -1186,7 +1257,18 @@ async function bootSim() {
     toggleCompare: async () => {
       const open = !store.getState().compareOpen;
       store.set({ compareOpen: open });
-      if (open) await paintCompare();
+      if (open) {
+        await paintCompare();
+        await paintMoney();
+      }
+    },
+    setCompareTab: async (tab) => {
+      if (!["compare", "money", "quality"].includes(tab)) return;
+      store.set({ compareTab: tab });
+      if (tab !== "compare") await paintMoney();
+    },
+    setMoneyTenure: (label, tenure) => {
+      store.set({ moneyTenure: { ...store.getState().moneyTenure, [label]: tenure } });
     },
     askLive: () => askLive(),
     applyView: (view) => {
@@ -1222,6 +1304,13 @@ async function bootSim() {
   paintClock();
   paintFollow(0.016, true);
   store.set({ ready: true });
+  // ?tab=money|quality opens the compare card on that tab (captures).
+  const wantTab = PARAMS.get("tab");
+  if (wantTab === "money" || wantTab === "quality" || wantTab === "compare") {
+    store.set({ compareOpen: true, compareTab: wantTab });
+    paintCompare();
+    paintMoney();
+  }
 
   // --- loop ---
   updateLighting();
@@ -1263,11 +1352,9 @@ async function bootSim() {
     }
   });
 
-  addEventListener("resize", () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderCtl.setSize(innerWidth, innerHeight);
-  });
+  const refitSim = () => refitToWrap(camera, renderCtl);
+  addEventListener("resize", refitSim);
+  new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }
 
 if (PARAMS.get("mode") === "sim") bootSim();

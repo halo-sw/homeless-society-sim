@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { findInventedNumbers, forbiddenTopic } from "../src/judge/guards.js";
 import {
   checkConsultReply, investmentAdvice, predictionClaim, toolResultNumbers,
-  numbersOnlyAnswer,
+  numbersOnlyAnswer, forecastQuestion, priceForecastReply, forecastClaim,
+  loanVerdict, buyVerdict, consultTopic,
 } from "../src/consult/guards.js";
 
 const RESULTS = [
@@ -44,9 +45,8 @@ describe("consult guards", () => {
     assert.deepEqual(r.offending, ["17"]);
   });
 
-  it("refuses price, safety, school and health topics", () => {
+  it("refuses safety, school and health topics (price references are stage-6 feature)", () => {
     for (const text of [
-      "이 동네 집값이 오를 것 같습니다",
       "밤길이 안전합니다",
       "학군이 좋습니다",
       "건강에 좋은 동네입니다",
@@ -55,8 +55,34 @@ describe("consult guards", () => {
       assert.equal(r.ok, false, text);
       assert.equal(r.cause, "forbidden_topic", text);
     }
+    // Price *references* with cited numbers pass; forecasts do not.
+    assert.deepEqual(
+      checkConsultReply("이 동네 집값이 오를 것 같습니다", RESULTS).cause, "forecast_claim");
     assert.ok(forbiddenTopic("안전", ""));
     assert.deepEqual(findInventedNumbers("1번째", "", new Set()), []);
+  });
+
+  it("rejects forecast claims, loan/buy verdicts, allows polite refusals", () => {
+    assert.notEqual(forecastClaim("집값이 오를 것 같습니다"), null);
+    assert.notEqual(forecastClaim("하락이 예상됩니다"), null);
+    assert.equal(forecastClaim("죄송합니다. 이 앱은 집값 전망을 하지 않습니다."), null);
+    assert.notEqual(loanVerdict("대출이 충분히 나옵니다"), null);
+    assert.equal(loanVerdict("대출 가능 여부(LTV·DSR)와 입주 자격은 판단하지 않습니다."), null);
+    assert.notEqual(buyVerdict("지금 사세요"), null);
+    assert.equal(buyVerdict("공공임대 후보 두 곳을 찾았습니다"), null);
+    assert.equal(consultTopic("전세 9,970만 원입니다"), null);
+    const r = checkConsultReply("대출이 나옵니다", RESULTS);
+    assert.equal(r.cause, "loan_verdict");
+  });
+
+  it("detects forecast questions and answers the polite refusal", () => {
+    assert.notEqual(forecastQuestion("잠실 집값이 오를까?"), null);
+    assert.equal(forecastQuestion("잠실 실거래가를 보여줘"), null);
+    const reply = priceForecastReply("레이크팰리스");
+    assert.match(reply, /전망을 하지 않습니다/);
+    assert.match(reply, /최근 12개월 실거래/);
+    assert.deepEqual(checkConsultReply(reply, []), { ok: true });
+    assert.match(numbersOnlyAnswer([], { userText: "잠실 집값이 오를까?" }), /전망을 하지 않습니다/);
   });
 
   it("refuses investment advice", () => {
@@ -89,9 +115,9 @@ describe("consult guards", () => {
       { places: [{ name: "슈퍼1", minutes: 3.2, distance_m: 251 }] },
     ]);
     assert.match(text, /도보 이동 시간 합계: A 10분 \/ B 20분/);
-    assert.match(text, /A 합계: 도보 10분\/800m/);
+    assert.match(text, /A 합계: 도보 10분\/800 m/);
     assert.match(text, /08:00→08:10/);
-    assert.match(text, /슈퍼1: 3\.2분\(251m/);
+    assert.match(text, /슈퍼1: 3분\(251 m/);
     assert.match(numbersOnlyAnswer([]), /수치가 없습니다/);
     assert.ok(toolResultNumbers(null) instanceof Set);
   });

@@ -7,8 +7,9 @@
 
 export const PAPER = 0xfbf7ee;
 export const GROUND_PLATE = 0xeadfc4;
-export const ROAD = 0xdcd6cc;
-export const ROAD_MAJOR = 0xd0c8b8;
+// Stage 6: asphalt reads darker than pavement and grass (was washed out).
+export const ROAD = 0xa9adb0;
+export const ROAD_MAJOR = 0x9ba1a4;
 export const FOOTWAY = 0xe9e3d5;
 export const CROSSWALK = 0xffffff;
 export const WATER = 0x93bcd6;

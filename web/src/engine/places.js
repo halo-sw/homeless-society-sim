@@ -10,6 +10,7 @@ export const SCHOOL_CAT = "amenity:school";
 export const SHOP_CATS = { supermarket: "shop:supermarket", convenience: "shop:convenience" };
 export const CLINIC_CATS = new Set(["amenity:clinic", "amenity:pharmacy", "amenity:doctors", "amenity:dentist"]);
 export const PARK_CAT = "leisure:park";
+export const EATERY_CATS = new Set(["amenity:restaurant", "amenity:cafe", "amenity:fast_food"]);
 export const MAX_ANCHOR_M = 500; // same reach rule as the tour planner
 
 function polygonCentroid(geometry) {
@@ -40,6 +41,7 @@ export function buildPlaces(area, router) {
   const schools = [];
   const clinics = [];
   const parks = [];
+  const eateries = [];
   const byName = new Map(); // name -> [{place}]
   const pushName = (place) => {
     if (!byName.has(place.name)) byName.set(place.name, []);
@@ -57,6 +59,7 @@ export function buildPlaces(area, router) {
     if (poi.category === SCHOOL_CAT) schools.push(place);
     if (CLINIC_CATS.has(poi.category)) clinics.push(place);
     if (poi.category === PARK_CAT) parks.push(place);
+    if (EATERY_CATS.has(poi.category)) eateries.push(place);
   }
   // Named park polygons without a POI node (same fallback as the tour).
   const parkNames = new Set(parks.map((p) => p.name));
@@ -77,6 +80,7 @@ export function buildPlaces(area, router) {
     schools: sortPlaces(schools),
     clinics: sortPlaces(clinics),
     parks: sortPlaces(parks),
+    eateries: sortPlaces(eateries),
     byName,
   };
 }

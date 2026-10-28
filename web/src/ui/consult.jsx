@@ -1,15 +1,23 @@
-// "시뮬레이션 상담" side panel: Astryx Chat in a non-modal Drawer.
+// "시뮬레이션 상담" docked right panel: Astryx Chat in a plain Card.
+//
+// Stage 6: no Drawer — the panel docks right of the canvas (via a portal
+// into #panel-root) and shrinks it, so it never covers the 3D view, the
+// followed resident or the caption. Open on first visit, a slim tab after
+// that (the TopBar 상담 toggle reopens). Ditching the Drawer also removes
+// the stuck Close tooltip and the showPopover console error.
 //
 // Dev: live agent over POST /api/consult (key on the dev server only).
 // Production: a notice plus the recorded demo transcript
 // (scenarios/consult-demo.json; empty state when absent). Conversations
 // live in browser memory only; the server stores nothing.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
-import { Drawer, DrawerHeader } from "@astryxdesign/core/Drawer";
-import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
@@ -26,7 +34,8 @@ const IS_DEV = import.meta.env.DEV;
 
 const GREETING = [
   "안녕하세요! 생활 시뮬레이션 상담입니다.",
-  "먼저 누구와 사는지 알려주세요. (예: 성인 2명)",
+  "먼저 누구와 사시는지 알려주세요. (예: 성인 2명)",
+  "연봉과 보유 현금을 알려주시면 월 생활비도 시뮬레이션해 드립니다.",
 ].join("\n");
 
 const PROVIDER_BADGE = { meta: "Muse Spark 1.3", baseten: "Muse Spark Open" };
@@ -61,7 +70,48 @@ function AssistantMsg({ msg, toolRows }) {
   );
 }
 
-function LiveChat({ scenarioName }) {
+// Merge agent money results into the store so the 생활비 tab can show
+// home C and the "C로 추가" candidates. Pure over the message list.
+function mergeMoneyResults(messages) {
+  for (const m of messages || []) {
+    if (!m || m.role !== "tool" || typeof m.content !== "string") continue;
+    let r = null;
+    try {
+      r = JSON.parse(m.content);
+    } catch {
+      continue;
+    }
+    if (!r || r.ok !== true) continue;
+    if (r.timeline && r.housing && r.home) {
+      const prev = store.getState().money;
+      const doc = prev && !prev.error ? structuredClone(prev) : { homes: {} };
+      doc.homes = doc.homes || {};
+      const slot = doc.homes[r.home] || { by_tenure: {} };
+      slot.by_tenure = slot.by_tenure || {};
+      slot.by_tenure[r.tenure] = {
+        housing: r.housing,
+        totals_by_category: r.timeline.totals_by_category,
+        monthly_spent_won: r.timeline.monthly_spent_won,
+        remaining_won: r.timeline.remaining_won,
+        burden_ratio: r.timeline.burden_ratio,
+        counts: r.timeline.counts,
+        daily_balance_won: r.timeline.daily_balance_won,
+        payday_note: r.timeline.payday_note,
+      };
+      slot.area_m2 = slot.area_m2 ?? (r.price_inputs && r.price_inputs.area_m2) ?? null;
+      if (r.monthly_net_won && !doc.household_monthly_net_won) {
+        doc.household_monthly_net_won = r.monthly_net_won;
+      }
+      doc.homes[r.home] = slot;
+      store.set({ money: doc,
+        moneyTenure: { ...store.getState().moneyTenure, [r.home]: r.tenure } });
+    } else if (Array.isArray(r.candidates)) {
+      store.set({ moneyCandidates: r.candidates });
+    }
+  }
+}
+
+function LiveChat({ scenarioName, pending, onConsumed }) {
   const [history, setHistory] = useState([{ role: "assistant", content: GREETING }]);
   const [toolRows, setToolRows] = useState({});
   const [scenario, setScenario] = useState(null);
@@ -103,6 +153,7 @@ function LiveChat({ scenarioName }) {
       });
       setToolRows(rows);
       setHistory([...next, ...out.messages]);
+      mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
       setUsage((u) => ({
         prompt_tokens: u.prompt_tokens + ((out.usage && out.usage.prompt_tokens) || 0),
@@ -122,6 +173,16 @@ function LiveChat({ scenarioName }) {
       setBusy(false);
     }
   }
+
+  // "C로 추가" from the money tab: send once the scenario is ready.
+  const pendingRef = useRef(null);
+  useEffect(() => {
+    if (pending && pending !== pendingRef.current && scenario && !busyRef.current) {
+      pendingRef.current = pending;
+      send(pending.text);
+      if (onConsumed) onConsumed();
+    }
+  });
 
   return (
     <VStack gap={2}>
@@ -201,23 +262,50 @@ function DemoTranscript() {
   );
 }
 
-export function ConsultDrawer() {
+export function ConsultPanel() {
   const consultOpen = useSyncExternalStore(store.subscribe,
     () => store.getState().consultOpen, () => store.getState().consultOpen);
   const scenarioName = useSyncExternalStore(store.subscribe,
     () => store.getState().scenarioName, () => store.getState().scenarioName);
+  const [pending, setPending] = useState(null);
   const setOpen = (next) => store.set({ consultOpen: next });
-  return (
-    <Drawer isOpen={consultOpen} onOpenChange={setOpen}
-      label="시뮬레이션 상담" width={400} hasScrim={false}>
-      <Layout
-        header={<DrawerHeader title="시뮬레이션 상담"
-          subtitle="조건 정하기 · 결과 설명 · 다시 실행" onOpenChange={setOpen} />}
-        content={(
-          <LayoutContent>
+
+  useEffect(() => {
+    const root = document.getElementById("panel-root");
+    if (root) root.dataset.state = consultOpen ? "open" : "tab";
+  }, [consultOpen]);
+
+  // The money tab's "C로 추가" sends through the agent (server tools own
+  // the scenario + housing lookups). Opens the panel and queues the text.
+  useEffect(() => {
+    store.registerActions({
+      consultSend: (text) => {
+        setPending({ text: String(text || ""), at: Date.now() });
+        store.set({ consultOpen: true });
+      },
+    });
+  }, []);
+
+  const host = typeof document === "undefined" ? null : document.getElementById("panel-root");
+  if (!host) return null;
+  return createPortal(
+    consultOpen ? (
+      <div className="ui-panel">
+        <Card>
+          <VStack gap={2}>
+            <HStack gap={2} vAlign="center">
+              <VStack gap={0}>
+                <Heading level={4}>시뮬레이션 상담</Heading>
+                <Text type="supporting">조건 정하기 · 결과 설명 · 다시 실행</Text>
+              </VStack>
+              <span className="ui-panel-spacer" />
+              <Button size="sm" variant="ghost" label="접기"
+                onClick={() => setOpen(false)} />
+            </HStack>
             <div className="ui-consult-chat">
               {IS_DEV ? (
-                <LiveChat scenarioName={scenarioName} />
+                <LiveChat scenarioName={scenarioName} pending={pending}
+                  onConsumed={() => setPending(null)} />
               ) : (
                 <VStack gap={2}>
                   <Banner status="info" title="상담은 로컬 개발 서버에서 Muse 키로 동작합니다" />
@@ -225,9 +313,18 @@ export function ConsultDrawer() {
                 </VStack>
               )}
             </div>
-          </LayoutContent>
-        )}
-      />
-    </Drawer>
+          </VStack>
+        </Card>
+      </div>
+    ) : (
+      <div className="ui-paneltab">
+        <Button size="sm" variant="secondary" label="상담"
+          onClick={() => setOpen(true)} />
+      </div>
+    ),
+    host,
   );
 }
+
+// Back-compat alias (tests / older call sites).
+export const ConsultDrawer = ConsultPanel;

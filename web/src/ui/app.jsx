@@ -14,8 +14,11 @@ import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/Segme
 import { Slider } from "@astryxdesign/core/Slider";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
+import { useState } from "react";
 import { store } from "./store.js";
-import { ConsultDrawer } from "./consult.jsx";
+import { ConsultPanel } from "./consult.jsx";
+import { MoneyTab, QualityTab } from "./money.jsx";
+import { fmtMinutes, fmtDistance, fmtCount, badgeFor } from "../money/format.js";
 
 function useStore() {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -120,9 +123,11 @@ function CaptionCard({ state }) {
   return (
     <div className="ui-caption overlay">
       <Card>
-        <VStack gap={1}>
-          <Heading level={4}>{c.name}</Heading>
-          {c.meta && <Text type="supporting">{c.meta}</Text>}
+        <VStack gap={2}>
+          <VStack gap={0}>
+            <Heading level={4}>{c.name}</Heading>
+            {c.meta && <Text type="supporting">{c.meta}</Text>}
+          </VStack>
           {c.walk && <Text>{c.walk}</Text>}
           {c.dots && c.dots.count > 0 && (
             <div className="ui-dots" aria-hidden="true">
@@ -132,16 +137,18 @@ function CaptionCard({ state }) {
             </div>
           )}
           {j && (
-            <HStack gap={1} vAlign="center" wrap="wrap">
-              <Badge variant={JUDGE_BADGE[j.badgeCls] || "neutral"} label={j.badgeText} />
+            <VStack gap={1}>
+              <HStack gap={1} vAlign="center" wrap="wrap">
+                <Badge variant={JUDGE_BADGE[j.badgeCls] || "neutral"} label={j.badgeText} />
+                {state.judgeLive && <Badge variant="success" label="live" />}
+                {j.canAsk && (
+                  <Button size="sm" variant="ghost" label="Muse에게 묻기"
+                    isLoading={state.judgeAskState === "asking"}
+                    onClick={() => act("askLive")} />
+                )}
+              </HStack>
               <Text type="supporting">{j.text}</Text>
-              {j.canAsk && (
-                <Button size="sm" variant="ghost" label="Muse에게 묻기"
-                  isLoading={state.judgeAskState === "asking"}
-                  onClick={() => act("askLive")} />
-              )}
-              {state.judgeLive && <Badge variant="success" label="live" />}
-            </HStack>
+            </VStack>
           )}
           {state.askError && (
             <Banner status="warning" title="라이브 판단을 불러오지 못했습니다"
@@ -159,58 +166,84 @@ function JudgeLogCard({ state }) {
   return (
     <div className="ui-judgelog overlay">
       <Card>
-        <VStack gap={1}>
+        <VStack gap={2}>
           <Heading level={4}>판단 기록</Heading>
-          {state.judgeLog.map((row, i) => (
-            <HStack key={i} gap={1} vAlign="center" wrap="wrap">
-              <Text type="supporting">{`${row.minute} ${row.agent} · ${row.kind} → ${row.choice}`}</Text>
-              <Badge variant={JUDGE_BADGE[row.badgeCls] || "neutral"} label={row.badgeText} />
-              {row.reason && <Text type="supporting">“{row.reason}”</Text>}
-            </HStack>
-          ))}
+          <ol className="ui-timeline">
+            {state.judgeLog.map((row, i) => (
+              <li key={i} className="ui-timeline-row">
+                <span className="ui-timeline-dot" aria-hidden="true" />
+                <VStack gap={0}>
+                  <HStack gap={1} vAlign="center" wrap="wrap">
+                    <Text type="supporting" hasTabularNumbers>{row.minute}</Text>
+                    <Text type="supporting">{`${row.agent} · ${row.kind} → ${row.choice}`}</Text>
+                    <Badge variant={JUDGE_BADGE[row.badgeCls] || "neutral"} label={row.badgeText} />
+                  </HStack>
+                  {row.reason && <Text type="supporting">“{row.reason}”</Text>}
+                </VStack>
+              </li>
+            ))}
+          </ol>
         </VStack>
       </Card>
     </div>
   );
 }
 
-const UNIT_KO = { minutes: "분", metres: "m", count: "회" };
-const fmt = (v) => (typeof v === "number" ? v.toLocaleString("ko-KR") : v);
+const fmtMetric = (unit, v) => (
+  unit === "minutes" ? fmtMinutes(v) : unit === "metres" ? fmtDistance(v) : fmtCount(v));
+
+function CompareTabBody({ state }) {
+  const cmp = state.compare;
+  if (state.compareLoading) return <Text type="supporting">불러오는 중…</Text>;
+  if (cmp && cmp.error) {
+    return (
+      <Banner status="warning" title="비교 데이터를 불러오지 못했습니다" description={cmp.error} />
+    );
+  }
+  if (!cmp || !cmp.metrics) return null;
+  return (
+    <>
+      <MetadataList>
+        {cmp.metrics.map((m) => (
+          <MetadataListItem key={m.key} label={m.label}>
+            <HStack gap={1} vAlign="center" wrap="wrap">
+              <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)} · B ${fmtMetric(m.unit, m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`}</Text>
+              <Badge variant={m.source === "graph" ? "teal" : "orange"}
+                label={badgeFor(m.source)} />
+            </HStack>
+          </MetadataListItem>
+        ))}
+      </MetadataList>
+      {cmp.judgment && (
+        <Text type="supporting">{`판단 주체 — A: ${judgmentLine(cmp.judgment.a)} / B: ${judgmentLine(cmp.judgment.b)}`}</Text>
+      )}
+      <Text type="supporting">그래프 = 도보 그래프 실측 · 가정값 = 시나리오 가정값</Text>
+    </>
+  );
+}
+
+const COMPARE_TABS = [
+  { value: "compare", label: "A·B 비교" },
+  { value: "money", label: "생활비" },
+  { value: "quality", label: "삶의 질" },
+];
 
 function CompareCard({ state }) {
   if (!state.compareOpen) return null;
-  const cmp = state.compare;
   return (
     <div className="ui-compare overlay">
       <Card>
         <VStack gap={2}>
           <HStack gap={2} vAlign="center">
             <Heading level={4}>30일 생활 비교</Heading>
+            <span className="ui-panel-spacer" />
             <Button size="sm" variant="ghost" label="닫기" onClick={() => act("toggleCompare")} />
           </HStack>
-          {state.compareLoading && <Text type="supporting">불러오는 중…</Text>}
-          {cmp && cmp.error && (
-            <Banner status="warning" title="비교 데이터를 불러오지 못했습니다" description={cmp.error} />
-          )}
-          {cmp && !cmp.error && cmp.metrics && (
-            <>
-              <MetadataList>
-                {cmp.metrics.map((m) => (
-                  <MetadataListItem key={m.key} label={m.label}>
-                    <HStack gap={1} vAlign="center" wrap="wrap">
-                      <Text hasTabularNumbers>{`A ${fmt(m.a)} · B ${fmt(m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmt(m.delta_b_minus_a)}${UNIT_KO[m.unit] || ""}`}</Text>
-                      <Badge variant={m.source === "graph" ? "teal" : "orange"}
-                        label={m.source === "graph" ? "그래프" : "가정값"} />
-                    </HStack>
-                  </MetadataListItem>
-                ))}
-              </MetadataList>
-              {cmp.judgment && (
-                <Text type="supporting">{`판단 주체 — A: ${judgmentLine(cmp.judgment.a)} / B: ${judgmentLine(cmp.judgment.b)}`}</Text>
-              )}
-              <Text type="supporting">그래프 = 도보 그래프 실측 · 가정값 = 시나리오 가정값</Text>
-            </>
-          )}
+          <SegControl label="비교 탭" value={state.compareTab}
+            onChange={(v) => act("setCompareTab", v)} items={COMPARE_TABS} />
+          {state.compareTab === "compare" && <CompareTabBody state={state} />}
+          {state.compareTab === "money" && <MoneyTab state={state} />}
+          {state.compareTab === "quality" && <QualityTab state={state} />}
         </VStack>
       </Card>
     </div>
@@ -225,39 +258,52 @@ function judgmentLine(side) {
 
 function LegendCard({ state }) {
   const legend = state.legend;
+  const [open, setOpen] = useState(false);
   if (!legend) return null;
+  const total = legend.resRows.reduce((a, r) => a + (r.count || 0), 0);
   return (
     <div className="ui-legend overlay">
       <Card>
         <VStack gap={1}>
-          <Heading level={4}>{legend.title}</Heading>
-          {legend.resRows.map((row) => (
-            <div className="ui-legend-row" key={row.label}>
-              <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
-              <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
-            </div>
-          ))}
-          {legend.heightRows.length > 0 && <Text type="supporting">높이 출처</Text>}
-          {legend.heightRows.map((row) => (
-            <div className="ui-legend-row" key={row.label}>
-              <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
-              <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
-            </div>
-          ))}
-          {legend.simNote && <Text type="supporting">{legend.simNote}</Text>}
-          <Text type="supporting">{legend.note}</Text>
+          <HStack gap={2} vAlign="center">
+            <Heading level={4}>{legend.title}</Heading>
+            <span className="ui-panel-spacer" />
+            <Button size="sm" variant="ghost" label={open ? "접기" : `${total.toLocaleString()}동`}
+              onClick={() => setOpen(!open)} />
+          </HStack>
+          {open && (
+            <>
+              {legend.resRows.map((row) => (
+                <div className="ui-legend-row" key={row.label}>
+                  <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
+                  <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
+                </div>
+              ))}
+              {legend.heightRows.length > 0 && <Text type="supporting">높이 출처</Text>}
+              {legend.heightRows.map((row) => (
+                <div className="ui-legend-row" key={row.label}>
+                  <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
+                  <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
+                </div>
+              ))}
+              {legend.simNote && <Text type="supporting">{legend.simNote}</Text>}
+              <Text type="supporting">{legend.note}</Text>
+            </>
+          )}
         </VStack>
       </Card>
     </div>
   );
 }
 
-function AttrLine() {
+function AttrLine({ state }) {
+  const money = state.compareTab === "money" || state.compareTab === "quality";
   return (
     <div className="ui-attr">
       <div className="overlay">
         <Text type="supporting">
           © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) · GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시
+          {money && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 공공임대: LH·마이홈 (공공주택 데이터 API)"}
         </Text>
       </div>
     </div>
@@ -276,13 +322,13 @@ export function App() {
       {isSim && <JudgeLogCard state={state} />}
       {isSim && <CompareCard state={state} />}
       <LegendCard state={state} />
-      <AttrLine />
+      <AttrLine state={state} />
       {state.viewChip && (
         <div className="ui-viewchip overlay">
           <Badge variant="info" label={state.viewChip} />
         </div>
       )}
-      <ConsultDrawer />
+      <ConsultPanel />
     </>
   );
 }

@@ -35,21 +35,21 @@ function mixHex(h1, h2, t) {
 }
 
 export const SKY_COLORS = {
-  sunDay: 0xfff2dd,
+  sunDay: 0xffe9c8, // stage 6: crisper midday, warmer sun
   sunGolden: 0xffb377,
   sunNight: 0x93a0cc, // moonlight
-  hemiSkyDay: 0xbfd6e8,
+  hemiSkyDay: 0xb8cfe4,
   hemiSkyNight: 0x2a3358,
-  hemiGroundDay: 0x9a8f7a,
+  hemiGroundDay: 0x877c66, // deeper shade under the warm sun
   hemiGroundNight: 0x1c2036,
   skyDay: 0x87a9c8, // fallback clear colour (Sky mesh covers it by day)
   skyGolden: 0xc99a78,
-  skyBlue: 0x3d4a73,
-  skyNight: 0x14172e,
-  fogDay: 0xcfd8de,
+  skyBlue: 0x44548f, // blue hour: brighter blue, distinct from night
+  skyNight: 0x1a2650, // deep blue, not black
+  fogDay: 0xd9dee2,
   fogGolden: 0xd8b49a,
-  fogBlue: 0x4a5578,
-  fogNight: 0x1a1e36,
+  fogBlue: 0x525f8a,
+  fogNight: 0x232c52,
 };
 
 export function skyParams(lat, lon, date, minute) {
@@ -69,7 +69,7 @@ export function skyParams(lat, lon, date, minute) {
   // Hemisphere fill follows the same mix.
   const hemiSky = mixHex(SKY_COLORS.hemiSkyNight, SKY_COLORS.hemiSkyDay, dayF);
   const hemiGround = mixHex(SKY_COLORS.hemiGroundNight, SKY_COLORS.hemiGroundDay, dayF);
-  const hemiIntensity = lerp(0.5, 1.0, dayF);
+  const hemiIntensity = lerp(0.5, 0.85, dayF);
 
   // Sky dome uniforms (Preetham): hazier at golden hour.
   const turbidity = phase === "golden" ? 6.5 : phase === "day" ? 4.5 : 3.0;
@@ -89,11 +89,19 @@ export function skyParams(lat, lon, date, minute) {
     turbidity, rayleigh,
     skyColor, fogColor,
     skyVisible: phase === "day" || phase === "golden",
-    exposure: lerp(0.85, 1.05, dayF),
+    exposure: lerp(0.9, 1.12, dayF),
     envIntensity: lerp(0.12, 0.55, dayF),
     // Bloom only at night/dusk (lit windows, street lamps).
     bloom: Math.min(1, nightF * 0.9 + duskF * 0.35),
     // Emissive gate: windows/lamps dark by day.
     emissive: nightF >= 0.05 || duskF >= 0.35 ? Math.min(1, nightF + duskF * 0.5) : 0,
   };
+}
+
+// Fog is distance cueing only: it starts beyond 1.5× the framed width so
+// the stop framing itself stays crisp, and ends at 6× so the skyline
+// melts into the sky colour. Pure; the rig applies it per frame.
+export function fogRangeFor(framedWidthM) {
+  const w = Math.max(50, Number(framedWidthM) || 300);
+  return { near: w * 1.5, far: w * 6 };
 }

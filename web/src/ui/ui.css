@@ -13,9 +13,13 @@
 }
 .ui-topbar-inner { width: 100%; max-width: 1100px; }
 
+/* Stage 6 layout: the sim bar docks bottom-left so the frame centre
+   (followed resident) stays clear; the caption stays bottom-centre above
+   it in sim mode. The compare card sits top-right of the canvas region
+   (right of it is the docked consult panel, outside the canvas). */
 .ui-simbar {
-  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
-  width: max-content; max-width: 96vw;
+  position: absolute; left: 12px; bottom: 26px;
+  width: max-content; max-width: min(560px, 60vw);
 }
 .ui-simbar-sliders { display: flex; gap: 12px; }
 .ui-simbar-sliders > * { min-width: 140px; }
@@ -24,21 +28,20 @@
   position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
   width: max-content; max-width: min(480px, 90vw); text-align: center;
 }
-body.sim .ui-caption { bottom: 178px; }
 
 .ui-judgelog {
   position: absolute; left: 12px; top: 76px;
-  width: 310px; max-width: 80vw; max-height: 52vh; overflow: auto;
+  width: 310px; max-width: 80vw; max-height: 46vh; overflow: auto;
 }
 .ui-compare {
   position: absolute; right: 12px; top: 76px;
-  width: 360px; max-width: 86vw; max-height: 72vh; overflow: auto;
+  width: 400px; max-width: 88vw; max-height: 78vh; overflow: auto;
 }
 .ui-legend {
   position: absolute; left: 12px; bottom: 34px;
   width: 210px; max-width: 60vw;
 }
-body.sim .ui-legend { bottom: 178px; }
+body.sim .ui-legend { bottom: 218px; }
 .ui-legend-row { display: flex; gap: 6px; align-items: center; }
 .ui-swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
 
@@ -50,5 +53,26 @@ body.sim .ui-legend { bottom: 178px; }
   position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
 }
 .ui-dots { display: flex; gap: 6px; justify-content: center; }
-.ui-consult-chat { height: 100%; display: flex; flex-direction: column; }
+.ui-panel-spacer { flex: 1 1 auto; }
+
+/* Docked consult panel (in #panel-root, outside the canvas). */
+.ui-panel { height: 100%; padding: 8px 8px 8px 0; }
+.ui-panel > * { height: 100%; overflow: auto; }
+.ui-paneltab { height: 100%; padding: 8px 8px 8px 0; display: flex; flex-direction: column; }
+.ui-consult-chat { display: flex; flex-direction: column; min-height: 0; }
 .ui-consult-meta { display: flex; justify-content: space-between; align-items: center; }
+
+/* Compact judgment timeline. */
+.ui-timeline { list-style: none; margin: 0; padding: 0; }
+.ui-timeline-row { display: flex; gap: 8px; position: relative; padding-bottom: 8px; }
+.ui-timeline-row:not(:last-child)::before {
+  content: ""; position: absolute; left: 3px; top: 12px; bottom: 0;
+  width: 2px; background: rgba(61, 50, 39, 0.15);
+}
+.ui-timeline-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 4px;
+  background: rgba(61, 50, 39, 0.45);
+}
+
+/* "내 기준" weight inputs. */
+.ui-weight { width: 58px; }

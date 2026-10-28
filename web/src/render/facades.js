@@ -69,6 +69,44 @@ export function litFractionFor(occ) {
   return Math.min(1, Math.max(0, occ.home / occ.total));
 }
 
+// Night lit fraction with the stage-6 fallback: buildings that house
+// simulated residents use their exact at-home share; residential
+// buildings with real households but no simulated agents use the
+// run-wide at-home share modulated ±20% by a deterministic per-building
+// hash (a lighting estimate, not data — the legend says whose); empty
+// non-residential buildings stay dark.
+export function litFractionWithFallback(occ, { households = 0, globalHomeFrac = 0, hash01 = 0.5 } = {}) {
+  if (occ && occ.total > 0) return Math.min(1, Math.max(0, occ.home / occ.total));
+  if (!(households > 0)) return 0;
+  if (!(globalHomeFrac > 0)) return 0;
+  const jitter = 0.8 + 0.4 * Math.min(1, Math.max(0, hash01));
+  return Math.min(1, globalHomeFrac * jitter);
+}
+
+// Run-wide at-home share from an occupancy map (for the fallback above).
+export function globalHomeFraction(occMap) {
+  let home = 0;
+  let total = 0;
+  for (const occ of (occMap || new Map()).values()) {
+    home += occ.home || 0;
+    total += occ.total || 0;
+  }
+  return total > 0 ? home / total : 0;
+}
+
+// Tour-mode lighting estimate (no run, no residents): ramps up through
+// the evening, full at night, down toward dawn. Decorative only.
+export function eveningHomeFraction(minute) {
+  const m = Number(minute);
+  if (!Number.isFinite(m)) return 0;
+  if (m >= 5 * 60 + 30 && m < 16 * 60 + 30) return 0; // daytime: dark
+  if (m < 5 * 60 + 30) return 0.55; // small hours: most home, most asleep
+  if (m < 18 * 60) return 0.45; // late afternoon arrivals
+  if (m < 20 * 60) return 0.8; // evening peak
+  if (m < 23 * 60) return 0.9; // night
+  return 0.7; // toward midnight
+}
+
 // --- tiny deterministic PRNG (local mulberry32; no shared state) ---
 
 export function rng32(seed) {
@@ -116,13 +154,14 @@ function fillRect(buf, x0, y0, x1, y1, rgba) {
   }
 }
 
-// Window pane with a vertical glass gradient + slight per-window tint.
+// Window pane with a vertical glass gradient + slight per-window tint
+// (stage 6: deeper glass so windows read at stop-framing distance).
 function paintWindow(buf, rng, x0, y0, w, h, tint) {
   for (let y = 0; y < h; y++) {
     const k = y / Math.max(1, h - 1); // 0 top → 1 bottom
-    const r = Math.round(96 + 60 * k + tint[0]);
-    const g = Math.round(128 + 52 * k + tint[1]);
-    const bl = Math.round(158 + 40 * k + tint[2]);
+    const r = Math.round(74 + 58 * k + tint[0]);
+    const g = Math.round(104 + 52 * k + tint[1]);
+    const bl = Math.round(134 + 44 * k + tint[2]);
     for (let x = 0; x < w; x++) {
       const i = (((y0 + y) * TEX_SIZE) + (x0 + x)) * 4;
       if (y0 + y < 0 || y0 + y >= TEX_SIZE || x0 + x < 0 || x0 + x >= TEX_SIZE) continue;
@@ -181,7 +220,7 @@ function synthApartment(seed) {
     // Floor slab band: light strip + shadow line under it.
     fillRect(buf.map, 0, fy, TEX_SIZE, fy + Math.max(2, Math.round(0.28 * pxmY)), [246, 240, 228, 255]);
     fillRect(buf.map, 0, fy + Math.max(2, Math.round(0.28 * pxmY)),
-      TEX_SIZE, fy + Math.max(4, Math.round(0.42 * pxmY)), [168, 158, 142, 255]);
+      TEX_SIZE, fy + Math.max(4, Math.round(0.42 * pxmY)), [150, 140, 124, 255]);
     for (let c = 0; c < tile.cols; c++) {
       const bx = c * bayW;
       const ww = Math.round(1.9 * pxmX);
@@ -189,7 +228,7 @@ function synthApartment(seed) {
       const wx = bx + Math.round((bayW - ww) / 2);
       const wy = fy + Math.round(1.05 * pxmY);
       // Frame + sill.
-      fillRect(buf.map, wx - 2, wy - 2, wx + ww + 2, wy + wh + 2, [122, 112, 100, 255]);
+      fillRect(buf.map, wx - 2, wy - 2, wx + ww + 2, wy + wh + 2, [104, 94, 82, 255]);
       const tint = [(rng() - 0.5) * 26, (rng() - 0.5) * 22, (rng() - 0.5) * 18];
       paintWindow(buf.map, rng, wx, wy, ww, wh, tint);
       fillRect(buf.map, wx - 2, wy + wh + 2, wx + ww + 2, wy + wh + 4, [200, 192, 178, 255]);

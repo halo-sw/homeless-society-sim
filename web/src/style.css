@@ -18,8 +18,14 @@ html, body {
   background: var(--paper);
 }
 
-#app { position: fixed; inset: 0; }
-#scene { width: 100%; height: 100%; display: block; }
+#app { position: fixed; inset: 0; display: flex; flex-direction: row; }
+/* Stage 6: the consult panel docks right and shrinks the canvas — panels
+   never overlap the 3D view, the followed resident or the caption. */
+#scene-wrap { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; }
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#panel-root { flex: 0 0 auto; height: 100%; overflow: hidden; }
+#panel-root[data-state="open"] { width: 372px; }
+#panel-root[data-state="tab"] { width: 56px; }
 
 #vignette {
   position: absolute; inset: 0; pointer-events: none;

@@ -20,6 +20,42 @@ describe("engine scenario", () => {
     assert.equal(s.household.members[0].preferences, "");
   });
 
+  it("parses the optional money block with documented defaults", () => {
+    const s = parseScenario({
+      household: { members: [{ id: "m1", role: "adult" }] },
+      homes: [{ label: "A", area: "tiny", complex_name: "알파" }],
+      money: {
+        members: { m1: { annual_salary_won: 60000000 } },
+        cash_won: 200000000,
+        tenure: { A: "월세" },
+        area_m2: { A: 59.97 },
+        assumptions: { transit_fare_won: 1400 },
+      },
+    });
+    assert.equal(s.money.members.m1.annual_salary_won, 60000000);
+    assert.equal(s.money.cash_won, 200000000);
+    assert.equal(s.money.tenure.A, "월세");
+    assert.equal(s.money.area_m2.A, 59.97);
+    assert.equal(s.money.assumptions.transit_fare_won, 1400);
+    assert.equal(s.money.assumptions.loan_rate_pct, 4.0); // default kept
+    assert.equal(s.money.burden_threshold_pct, 30);
+    const bare = parseScenario({
+      household: { members: [{ role: "adult" }] },
+      homes: [{ label: "A", area: "tiny", complex_name: "알파" }],
+    });
+    assert.equal(bare.money.tenure.A, "전세");
+    assert.throws(() => parseScenario({
+      household: { members: [{ id: "m1" }] },
+      homes: [{ label: "A", area: "tiny", complex_name: "알파" }],
+      money: { members: { m9: {} } },
+    }), /unknown member/);
+    assert.throws(() => parseScenario({
+      household: { members: [{ id: "m1" }] },
+      homes: [{ label: "A", area: "tiny", complex_name: "알파" }],
+      money: { tenure: { A: "lease" } },
+    }), /tenure/);
+  });
+
   it("keeps member preferences short free text", () => {
     const good = tinyScenario();
     good.household.members[0].preferences = "주말에는 가까운 공원에서 쉬는 것을 좋아한다.";

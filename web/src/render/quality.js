@@ -8,7 +8,15 @@ export const QUALITY_LEVELS = ["high", "medium", "low"];
 
 export const QUALITY_SETTINGS = {
   high: {
-    pixelRatio: 2, shadowMapSize: 2048, composer: true, composerSamples: 4,
+    // Stage 6: composer MSAA is OFF even on high. ?q=high rendered a
+    // fully black canvas on the real GPU (ANGLE Metal) while SwiftShader
+    // rendered it; the only high-vs-medium deltas were SAO + MSAA(4) +
+    // pixelRatio 2, and the MSAA HalfFloat-target × SAO readBuffer
+    // write-back combo is the prime suspect. AA loss at pixelRatio 2 is
+    // minor; a black screen is not. The renderer also carries a
+    // black-frame guard that drops high→medium if the framebuffer ever
+    // reads back uniform (see renderFrameGuard).
+    pixelRatio: 2, shadowMapSize: 2048, composer: true, composerSamples: 0,
     sao: true, bloom: true, tiltShift: true, grain: false,
   },
   medium: {

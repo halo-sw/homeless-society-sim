@@ -12,13 +12,25 @@ import {
 } from "./tools.js";
 import { checkConsultReply, numbersOnlyAnswer } from "./guards.js";
 
+function lastUserText(messages) {
+  for (let i = (messages || []).length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m && m.role === "user" && typeof m.content === "string") return m.content;
+  }
+  return "";
+}
+
 export const SYSTEM_PROMPT = [
-  "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 한국어로 짧게 답한다.",
+  "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 한국어로 짧게 답한다. 반말은 절대 쓰지 않는다.",
   "역할: 시나리오 조건을 정하고(run_simulation), 결과를 설명하고, '만약에' 질문에는 조건을 바꿔 다시 실행해 전/후를 비교한다.",
   "첫 대화에서는 한 번에 하나씩 묻는다: 누구와 사는지, 근무일, 출근역, 승차 시간(앱은 대중교통 시간을 알 수 없으니 고객이 말한 숫자를 그대로 쓰고 가정값이라 밝힌다), 장보기·산책·병원 이용. 그 뒤 실행을 제안한다.",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
+  "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위와 출처(그래프/실거래/공공임대/가정값/추정)를 항상 함께 밝힌다.",
+  "생활비 상담 흐름: set_money로 연봉·보유현금·점유형태(매매/전세/월세/공공임대)·가정값을 받고, estimate_net_pay로 추정 실수령액을 보여준 뒤(고객이 실제 값을 말하면 그 값을 쓴다), price_reference로 실거래 기준가를 조회하고, run_simulation 후 living_cost로 30일 생활비를 계산한다. 공공임대 후보는 recommend_public_rental로 고르고 add_home_c로 C에 추가한다.",
+  "집값 전망 질문(예: '잠실 집값이 오를까?')에는 정중히 '이 앱은 집값 전망을 하지 않습니다'라고 답하고, 대신 해당 단지의 최근 12개월 실거래(price_reference)를 제안한다. 전망이나 상승/하락 단정은 절대 하지 않는다.",
+  "대출 가능 여부(LTV·DSR)와 입주 자격은 판단하지 않는다. '사세요/사지 마세요' 같은 매매 판단도 하지 않는다. 수치 비교만 보여준다.",
+  "투자 조언·안전/범죄·학군·건강/의료 질문은 정중히 거절하고 시뮬레이션으로 답할 수 있는 것(도보 시간·거리, 생활 패턴 비교, 생활비)으로 돌린다.",
   "오늘 고를 수 있는 지역은 판교·성수·송파구·잠실 4곳뿐이다. 다른 곳을 물으면 '전국 생성은 다음 단계'라고 안내한다.",
-  "가격 전망·투자 조언·안전/범죄·학군·건강/의료 질문은 정중히 거절하고 시뮬레이션으로 답할 수 있는 것(도보 시간·거리, 생활 패턴 비교)으로 돌린다.",
   "시뮬레이션은 현실 예측이 아니라 '가정한 조건의 시나리오'임을 분명히 한다. 현실을 예언하는 표현을 쓰지 않는다.",
   "decisions=muse 실행은 느리고 비용이 든다: 실행 전에 경고하고 고객 확인을 받는다. 한 대화에서 1회까지만.",
   "설명할 때는 set_view로 화면을 함께 보여준다(홈·일차·시간·따라가기).",
@@ -81,6 +93,18 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `${r.kind_ko} → ${r.chosen_key}(${r.badge})`, ok: true };
     case "set_view":
       return { summary: r.chip || "화면 이동", ok: true };
+    case "set_money":
+      return { summary: "생활비 조건 갱신", ok: true };
+    case "estimate_net_pay":
+      return { summary: r.estimated ? "추정 실수령액" : "실수령액", ok: true };
+    case "price_reference":
+      return { summary: `${r.complex || ""} 실거래 기준가`, ok: true };
+    case "living_cost":
+      return { summary: `${r.home || ""} 생활비(${r.tenure || ""})`, ok: true };
+    case "recommend_public_rental":
+      return { summary: `공공임대 후보 ${(r.candidates || []).length}곳`, ok: true };
+    case "add_home_c":
+      return { summary: "C 후보 추가", ok: true };
     case "get_scenario":
     case "list_areas":
       return { summary: "조회", ok: true };
@@ -108,6 +132,7 @@ export async function runTurn(opts) {
   const {
     provider = "meta", messages = [], scenario,
     cache, loadArea, loadDecisions = null, judgeHome = null,
+    loadPayroll = null, loadRtms = null, loadHousing = null,
     fetchImpl = null, completeFn = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
@@ -115,6 +140,7 @@ export async function runTurn(opts) {
   const complete = completeFn || ((args) => completeWithTools({ ...args, fetchImpl }));
   const session = createSession({
     scenario, cache, loadArea, loadDecisions, judgeHome,
+    loadPayroll, loadRtms, loadHousing,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];
@@ -160,13 +186,13 @@ export async function runTurn(opts) {
         appended.push({ role: "assistant", content: reply2 });
         return finish({ reply: reply2, guardRetries: 1, fallback: false });
       }
-      const fallback = numbersOnlyAnswer(toolResults);
+      const fallback = numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 1, fallback: true,
         guardCause: checked2.cause });
     }
     if (rounds > MAX_TOOL_ROUNDS) {
-      const fallback = `도구 호출이 ${MAX_TOOL_ROUNDS}라운드를 넘었다.\n${numbersOnlyAnswer(toolResults)}`;
+      const fallback = `도구 호출이 ${MAX_TOOL_ROUNDS}라운드를 넘었다.\n${numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) })}`;
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 0, fallback: true,
         guardCause: "too_many_rounds" });
