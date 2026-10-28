@@ -174,6 +174,59 @@ strings and no `followPin`. Stage-8 journey + fatigue UI payloads
 corridor c1, fatigue load/recovery + series + summaries) are
 asserted against the real run in the smoke test.
 
+## 8c — follow-mode crash (`bboxToXY is not a function or its return value is not iterable`)
+
+Found by the orchestrator on the real GPU at 7a90a4d (after 8b): every
+follow-mode sim URL (`?mode=sim&…&follow=1` at `t=08:30`, `08:50`,
+`09:02`, `t=19:18`, `&tab=criteria`) threw on load. Free camera,
+compare tab and intro loaded fine.
+
+Cause: two stage-8 helpers in `web/src/main.js` — `areaForStation`
+(≈ line 1565, the itinerary preload that resolves a station to a
+built area) and `destDetailLoaded` (≈ line 1693, the gate for the
+descent into the destination detail) — destructured `bboxToXY()`
+as an array (`const [x0, y0, x1, y1] = bboxToXY(...)`), but
+`web/src/frame.js` returns an object `{minX, minY, maxX, maxY}`.
+Destructuring a non-iterable object throws exactly the reported
+`TypeError` (reproduced in Node with the same expression against
+the real `songpa-jamsil/area.json`). Both run only in follow mode
+with a station ride, so the 8b smoke test never reached them.
+
+Fix (Muse):
+- New pure module `web/src/station-areas.js` (no three.js/DOM):
+  `bboxContains`, `pickStationArea` (smallest containing area wins —
+  songpa contains jamsil; null → corridor level + note) and
+  `destInLoadedAreas`. Object fields throughout.
+- `main.js` keeps only the bbox fetching/caching wrappers and calls
+  the pure module; net −10 lines there.
+- Same-family audit over `web/src`: the only other `bboxToXY` use
+  (`buildWorld`) already reads object fields; every
+  `lonLatToXY`/`lonLatToWorld`/`xyToLonLat` call site correctly uses
+  arrays; `frame.js` `haversineM` callers treat it as a number
+  (`journey.js` and `consult/tools-money.js` define their own local
+  `haversineM` with different signatures — unaffected). No other
+  array-destructuring of object returns found.
+
+New check — the smoke test (`web/tests/sim-smoke.test.js`, runs in
+`npm test`) gains "resolves station areas (stage-8c crash site)":
+it calls the extracted module with the real `data/build` area
+bboxes, the home-area origin and the real `network.json` stop
+coords, and asserts 잠실역 → `songpa-jamsil` (smallest-wins over
+`songpa`), 판교역 → `pangyo`, outside-every-area → null, plus the
+descent gate (loaded pangyo → true, only home loaded → false,
+null dest → false). The tripwire test now also fails if
+`main.js` ever array-destructures `bboxToXY` again
+(`] = bboxToXY(`) or stops using the tested module.
+
+Test output: JS 384 passed + 1 skipped (the bundle-contents test
+skips — `web/dist` is absent because `vite build` cannot run in
+this sandbox: `web/node_modules` is a symlink to a sibling tree
+outside the workspace, so vite's `.vite-temp` config write fails
+with EPERM; verified identical on the untouched tree, i.e.
+pre-existing/environmental, failing at config load before any
+source is read). Python 163 passed (unchanged). `node --check`
+passes on all touched files; smoke suite 10/10.
+
 ## Needs the real GPU or live keys
 
 - Journey rendering itself (camera flights, corridor look, legibility),

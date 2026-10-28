@@ -17,6 +17,7 @@ import { corridorFor, journeyBanner, journeyPhase, rideStateFor, trainPosition }
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
+import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
@@ -1554,24 +1555,15 @@ async function bootSim() {
     }
   }
 
-  // Smallest built area containing the station (songpa contains jamsil —
-  // the smallest wins). Built areas only; null → corridor level + note.
+  // Smallest built area containing the station (pure lookup in
+  // station-areas.js; null → corridor level + note).
   async function areaForStation(lon, lat) {
-    let best = null;
-    let bestArea = Infinity;
+    const entries = [];
     for (const { id } of AREAS) {
       const bbox = await areaBbox(id);
-      if (!bbox) continue;
-      const [x0, y0, x1, y1] = bboxToXY(bbox, origin);
-      const [x, y] = lonLatToXY(lon, lat, origin);
-      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-      const size = (x1 - x0) * (y1 - y0);
-      if (size < bestArea) {
-        bestArea = size;
-        best = id;
-      }
+      if (bbox) entries.push([id, bbox]);
     }
-    return best;
+    return pickStationArea(lon, lat, entries, origin);
   }
 
   // Lite second world: ground + buildings + water under an offset group
@@ -1686,14 +1678,12 @@ async function bootSim() {
   function destDetailLoaded(destLonLat, backHome) {
     if (backHome) return true;
     if (!destLonLat) return false;
-    const [x, y] = lonLatToXY(destLonLat[0], destLonLat[1], origin);
+    const loaded = [];
     for (const [id] of secondAreas) {
       const bbox = areaBboxes.get(id);
-      if (!bbox) continue;
-      const [x0, y0, x1, y1] = bboxToXY(bbox, origin);
-      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return true;
+      if (bbox) loaded.push(bbox);
     }
-    return false;
+    return destInLoadedAreas(destLonLat, loaded, origin);
   }
 
   // Full journey frame state (pure of wall time — minute only).

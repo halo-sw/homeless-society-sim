@@ -19,6 +19,8 @@ import { FATIGUE_MODEL_NOTE, fatigueFor, householdNow, nowCardFor, simMetaFor,
 import { corridorFor, journeyBanner, journeyPhase, legAt, rideStateFor,
   trainPosition } from "../src/journey.js";
 import { highlightFor } from "../src/highlight.js";
+import { bboxContains, destInLoadedAreas, pickStationArea } from "../src/station-areas.js";
+import { originOf } from "../src/load.js";
 import { compare as compareRuns } from "../src/engine/simulate.js";
 import { CONGESTION_SOURCE, FALLBACK_SOURCE } from "../src/engine/journey.js";
 import { createStore, INITIAL_STATE } from "../src/ui/store.js";
@@ -33,6 +35,10 @@ const P = {
   network: join(ROOT, "data/build/region/network.json"),
   corridors: join(ROOT, "data/build/region/corridors.json"),
   mainSrc: join(ROOT, "web/src/main.js"),
+  areaPangyo: join(ROOT, "data/build/pangyo/area.json"),
+  areaSeongsu: join(ROOT, "data/build/seongsu/area.json"),
+  areaSongpa: join(ROOT, "data/build/songpa/area.json"),
+  areaJamsil: join(ROOT, "data/build/songpa-jamsil/area.json"),
 };
 const json = (p) => JSON.parse(readFileSync(p, "utf8"));
 
@@ -109,6 +115,13 @@ describe("sim smoke (headless boot)", { skip: SKIP_ALL }, () => {
       "main.js must not redeclare ROLE_KO (it lives in nowcard.js module scope)");
     assert.ok(src.includes("simMetaFor"),
       "main.js must import simMetaFor from nowcard.js");
+    // Stage 8c: station-area containment must stay in the tested
+    // station-areas.js module — main.js must not destructure the
+    // object-returning bboxToXY() as an array again.
+    assert.ok(!src.includes("] = bboxToXY("),
+      "main.js must not array-destructure bboxToXY() (it returns {minX,minY,maxX,maxY})");
+    assert.ok(src.includes("pickStationArea") && src.includes("destInLoadedAreas"),
+      "main.js must use pickStationArea/destInLoadedAreas from station-areas.js");
   });
 
   it("paints the first frame (?day=1&t=08:28, follow=1)", () => {
@@ -224,6 +237,48 @@ describe("sim smoke (headless boot)", { skip: SKIP_ALL }, () => {
       const corridor = corridorFor(index, legs[0].from, legs[legs.length - 1].to);
       assert.ok(corridor && corridor.id, "expected a corridor for the commute");
     }
+  });
+
+  it("resolves station areas (stage-8c crash site)", (t) => {
+    // Follow mode preloads the destination area via areaForStation and
+    // gates the descent on destDetailLoaded; both destructured the
+    // object-returning bboxToXY() as an array and threw on every
+    // follow-mode sim URL. Same inputs the scene passes: the real
+    // area.json bboxes, the home-area origin, real network stop coords.
+    for (const k of ["areaPangyo", "areaSeongsu", "areaSongpa", "areaJamsil", "network"]) {
+      if (skipIfMissing(t, k)) return;
+    }
+    const areas = {
+      pangyo: json(P.areaPangyo),
+      seongsu: json(P.areaSeongsu),
+      songpa: json(P.areaSongpa),
+      "songpa-jamsil": json(P.areaJamsil),
+    };
+    const origin = originOf(areas[run.meta.area]);
+    const entries = Object.entries(areas).map(([id, a]) => [id, a.bbox]);
+    const network = json(P.network);
+    const stopNamed = (name) => {
+      for (const line of network.lines || []) {
+        const s = (line.stops || []).find((s) => s.name === name);
+        if (s) return s;
+      }
+      return null;
+    };
+    const jamsil = stopNamed("잠실");
+    const pangyo = stopNamed("판교");
+    assert.ok(jamsil && pangyo, "expected 잠실/판교 stops in network.json");
+    // 잠실역 sits in both songpa and songpa-jamsil — smallest wins.
+    assert.equal(pickStationArea(jamsil.lon, jamsil.lat, entries, origin), "songpa-jamsil");
+    assert.equal(pickStationArea(pangyo.lon, pangyo.lat, entries, origin), "pangyo");
+    assert.ok(bboxContains(areas["songpa-jamsil"].bbox, jamsil.lon, jamsil.lat, origin));
+    // Outside every built area → null → corridor level + note.
+    assert.equal(pickStationArea(126.9, 37.4, entries, origin), null);
+    // Descent gate: dest detail counts as loaded only when its bbox is
+    // among the loaded second areas.
+    const dest = [pangyo.lon, pangyo.lat];
+    assert.equal(destInLoadedAreas(dest, [areas.pangyo.bbox], origin), true);
+    assert.equal(destInLoadedAreas(dest, [areas["songpa-jamsil"].bbox], origin), false);
+    assert.equal(destInLoadedAreas(null, [areas.pangyo.bbox], origin), false);
   });
 
   it("shows stage-8 fatigue (load → recovery)", () => {
