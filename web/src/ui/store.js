@@ -115,6 +115,44 @@ export function createStore(initial = {}) {
   return { getState, set, subscribe, registerActions, act, hasAction };
 }
 
+// --- Referentially stable selectors for useSyncExternalStore (stage 10b).
+//
+// React requires getSnapshot to return a cached (===) result while the
+// store state is unchanged. A getSnapshot that builds a fresh object per
+// call retriggers renders forever ("The result of getSnapshot should be
+// cached" → "Maximum update depth exceeded"), unmounting the whole UI
+// and leaving only the 3D canvas. Every component getSnapshot below is
+// one of these selectors: primitives are trivially stable, and the one
+// object selector memoises on state identity (set() replaces the state
+// object, so identity tracks freshness exactly). Tests enumerate every
+// `select*` export and require === across repeated calls.
+function memoizeByState(pick) {
+  let lastState = null;
+  let lastResult;
+  let hasResult = false;
+  return (state) => {
+    if (hasResult && state === lastState) return lastResult;
+    lastState = state;
+    lastResult = pick(state);
+    hasResult = true;
+    return lastResult;
+  };
+}
+
+export const selectState = (s) => s;
+export const selectCompareTab = (s) => s.compareTab;
+export const selectAgentNudges = (s) => s.agentNudges;
+export const selectConsultOpen = (s) => s.consultOpen;
+export const selectScenarioName = (s) => s.scenarioName;
+export const selectShareOpen = (s) => s.shareOpen;
+export const selectAgentNudge = memoizeByState((s) => ({
+  journey: s.journey,
+  judgeLog: s.judgeLog,
+  money: s.money,
+  home: s.home,
+  on: s.agentNudges,
+}));
+
 // One shared store for the running page. Tests create their own via
 // createStore() so page state never leaks between cases.
 export const store = createStore();

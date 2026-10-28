@@ -53,8 +53,8 @@ export function DemoTour() {
         <Text>{step.caption}</Text>
         <Stepper activeStep={index} density="compact" label="둘러보기 단계"
           onStepClick={(i) => go(i)}>
-          {DEMO_TOUR_STEPS.map((s) => (
-            <Step key={s.id} label={s.caption} />
+          {DEMO_TOUR_STEPS.map((s, i) => (
+            <Step key={s.id} step={i} label={s.caption} />
           ))}
         </Stepper>
       </VStack>

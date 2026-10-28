@@ -54,3 +54,43 @@ Popover/Toast/Stepper/Dialog visual check — build-only verified here.
 web: 525/525 node --test green; vite build green; bundle has no keys/server loaders;
 verdict grep clean (2 code comments). python: env broken pre-existing (.venv self-symlink,
 no osmium/shapely) — 47 runnable pass; 11 modules error identically on clean tree.
+
+## Stage 10b — whole-UI React loop + tour NaN (Muse)
+
+Found by the orchestrator on the real GPU at 38efcf8: every sim URL
+rendered only the 3D canvas (no React UI) with `getSnapshot should be
+cached` → `Maximum update depth exceeded`, plus `Received NaN for the
+children attribute` on tour URLs.
+
+Fixes. `consult.jsx` `AgentNudge` built a fresh `{journey, judgeLog,
+money, home, on}` object in every getSnapshot call — React re-rendered
+forever and unmounted the root. The object selector now lives in
+`store.js` as exported `selectAgentNudge`, memoised on state identity
+(`set()` replaces the state object, so identity tracks freshness);
+every other `useSyncExternalStore` in `web/src/ui/` routes through an
+exported `select*` too (`app.jsx` keeps the canonical `store.getState`
+form, already stable; `listings.jsx` reads once per render without
+subscribing — stale-safe, no loop). Tour NaN: `DemoTour.jsx` rendered
+`<Step>` without its required zero-based `step` prop, so Astryx
+rendered `step + 1` = NaN children — now `step={i}`. Numeric-attribute
+audit (`aria-valuenow`, Slider values, `activeStep`) clean; all are fed
+by engine-built payloads.
+
+Tests (`web/tests/ui-render.test.js` + `jsx-loader.mjs`, esbuild JSX
+hook for `node --test`, no DOM): every exported `select*` returns
+`===` across repeated calls on the same state and refreshes on a new
+state; crash-site tripwires (no fresh-object getSnapshot in
+`consult.jsx`, `step={i}` in `DemoTour.jsx`); `renderToString` smoke
+of `App` on a realistic store state (real runs + money + compare +
+legend/judgeLog/journey built like `bootSim`) for sim base, money tab,
+listings `fill=example`, share open, ride-time journey card and tour
+steps 1/9 — must not throw, must not log React errors, must not render
+`NaN`. Negative control: against the unfixed tree 4 subtests fail
+(selector stability, tripwires, tour NaN).
+
+Also wrote the missing `briefs/09c-RESULT.md` (before/after A vs B,
+08:30/08:50/09:02 Now texts from `nowCardFor`, capture URLs).
+
+Verification: web 581/581 `node --test` green; `.venv/bin/pytest` 168
+passed (env healthy again — the stage-10 breakage note above is
+stale); `vite build` green.

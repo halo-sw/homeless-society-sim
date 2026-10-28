@@ -13,7 +13,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { Text } from "@astryxdesign/core/Text";
-import { store } from "./store.js";
+import { store, selectShareOpen } from "./store.js";
 import { resultCardData, renderShareCard, shareSourceKo } from "./share.js";
 
 function CardPreview({ data }) {
@@ -56,7 +56,7 @@ function CardPreview({ data }) {
 
 export function ShareDialog() {
   const open = useSyncExternalStore(store.subscribe,
-    () => store.getState().shareOpen, () => store.getState().shareOpen);
+    () => selectShareOpen(store.getState()), () => selectShareOpen(store.getState()));
   const canvasRef = useRef(null);
   const [pngUrl, setPngUrl] = useState("");
   const [pngError, setPngError] = useState("");

@@ -29,7 +29,8 @@ import {
   ChatLayout, ChatMessageList, ChatMessage, ChatMessageBubble,
   ChatComposer, ChatToolCalls, ChatSystemMessage,
 } from "@astryxdesign/core/Chat";
-import { store } from "./store.js";
+import { store, selectAgentNudge, selectAgentNudges, selectCompareTab,
+  selectConsultOpen, selectScenarioName } from "./store.js";
 import { recordedReplyFor } from "./demotour.js";
 import { postConsult, loadScenario, loadDemoTranscript, formatUsage } from "./consult-client.js";
 import { agentContext, chipsFor, citationsFor, nextAgentCorner,
@@ -159,9 +160,9 @@ function LiveChat({ scenarioName, pending, onConsumed }) {
   const [usage, setUsage] = useState({ prompt_tokens: 0, completion_tokens: 0, est_usd: 0 });
   const busyRef = useRef(false);
   const compareTab = useSyncExternalStore(store.subscribe,
-    () => store.getState().compareTab, () => store.getState().compareTab);
+    () => selectCompareTab(store.getState()), () => selectCompareTab(store.getState()));
   const nudgesOn = useSyncExternalStore(store.subscribe,
-    () => store.getState().agentNudges, () => store.getState().agentNudges);
+    () => selectAgentNudges(store.getState()), () => selectAgentNudges(store.getState()));
 
   useEffect(() => {
     let cancelled = false;
@@ -369,17 +370,11 @@ const NUDGE_QUESTIONS = {
 };
 
 function AgentNudge({ corner, onAsk }) {
+  // Stable selector (memoised by state identity): a fresh object per
+  // getSnapshot call unmounted the whole UI (stage 10b).
   const snap = useSyncExternalStore(store.subscribe,
-    () => {
-      const s = store.getState();
-      return { journey: s.journey, judgeLog: s.judgeLog, money: s.money,
-        home: s.home, on: s.agentNudges };
-    },
-    () => {
-      const s = store.getState();
-      return { journey: s.journey, judgeLog: s.judgeLog, money: s.money,
-        home: s.home, on: s.agentNudges };
-    });
+    () => selectAgentNudge(store.getState()),
+    () => selectAgentNudge(store.getState()));
   const [seen, setSeen] = useState([]);
   const [lastAt, setLastAt] = useState(null);
   const [dismissed, setDismissed] = useState("");
@@ -427,9 +422,9 @@ function measureAvoid() {
 
 export function ConsultPanel() {
   const consultOpen = useSyncExternalStore(store.subscribe,
-    () => store.getState().consultOpen, () => store.getState().consultOpen);
+    () => selectConsultOpen(store.getState()), () => selectConsultOpen(store.getState()));
   const scenarioName = useSyncExternalStore(store.subscribe,
-    () => store.getState().scenarioName, () => store.getState().scenarioName);
+    () => selectScenarioName(store.getState()), () => selectScenarioName(store.getState()));
   const [pending, setPending] = useState(null);
   const [minimized, setMinimized] = useState(false);
   const [corner, setCorner] = useState("bottom-right");
