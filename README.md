@@ -14,6 +14,9 @@ So we built a simulator that answers these questions with real public data. **On
 
 ## What it does
 
+![Following a resident: the Now card shows what they are doing, why, which criteria applied, and their fatigue (real GPU capture, 2026-10-29)](briefs/img/08c-follow.png)
+
+
 - **Builds the real neighbourhood in 3D** from OpenStreetMap and the national building register: footprints, heights, number of floors, residential complexes, roads, stations, parks and shops. Four areas are built today: 판교 Pangyo, 성수 Seongsu, 송파구 Songpa-gu and 잠실 Jamsil.
 - **Simulates daily life for 30 days.** A household (2 adults, plus 60 simulated neighbours, all labelled as simulated) goes to work, shops, walks in the park and visits clinics on the real walking graph. The engine is deterministic: the same seed gives byte-identical output.
 - **Muse makes the household's choices; the engine does the counting.** At each decision point (where to shop, what to do on the weekend, whether to stop on the way home) Muse Spark 1.3 picks from options the engine offers and gives a reason. In our run Muse made 198 decisions, 50 of them different from the rule-based default. Every number shown comes from the data or the engine. A guard rejects any model answer that contains a number not found in a tool result.
@@ -21,9 +24,10 @@ So we built a simulator that answers these questions with real public data. **On
 - **Uses explicit simulation criteria.** Every rule and assumed value the engine uses lives in one file, [`scenarios/criteria/kr-default.json`](scenarios/criteria/kr-default.json), rendered as [`docs/criteria.md`](docs/criteria.md). Each criterion has a source label: engine default, customer input, data, or assumption. Customers can change the editable ones and re-run.
 - **Living costs that fit your salary.** Enter your salary and your cash. The app estimates take-home pay (or you type in the real figure), then computes monthly housing cost for 매매 (buying), 전세 (lump-sum deposit lease), 월세 (monthly rent) and public rental housing. Prices come from **real transactions** of the same complex and floor area over the last 12 months, with cancelled deals excluded. Spending in the 30-day simulation is tied to what the household actually does: a fare for each subway trip, a basket for each grocery run.
 - **Recommends similar public rental housing.** It uses the public-housing API (LH · MyHome) and filters by housing-cost ratio, floor area and commute. Each candidate links to its official notice. One click adds it as home C and simulates it too.
-- **A consult agent.** A Muse agent with 19 tools sets up the scenario through conversation, runs the simulation, compares the results, explains decisions and criteria, and moves the 3D view to the moment it is talking about.
+- **A consult agent.** A Muse agent with 20+ tools sets up the scenario through conversation, runs the simulation, compares the results, explains decisions and criteria, and moves the 3D view to the moment it is talking about.
 - **Next (stages 9a–9b, in the queue):** personas (1인 사회초년생, 예비·신혼부부, a working couple with a school-age child); the customer's own priority weights (education · our life · safety · money · convenience); official crime statistics and OSM-based education access; a multi-year **"is it worth it?" simulation** of buying vs 전세 vs 월세 vs public rental (loan schedule, rate stress, customer-chosen price scenarios, never forecasts); a **전세 safety check** (전세-to-sale ratio from real transactions, register signals, an official checklist, and mock deposit-loss scenarios); and **support programmes at a glance** (public rental, policy loans, youth and newly-wed benefits, shown as condition-by-condition comparisons with official links, never as eligibility verdicts).
-- **In progress (stage 8):** a journey view that follows the person across the region when they ride the subway, using real line geometry and a lightweight corridor map. It also adds a congestion-based **fatigue index** built from Seoul Metro's real congestion data. The index is a stated model, not a medical judgement.
+- **Follows the person across the region (stage 8).** When the followed member rides the subway, the camera rises over a lightweight corridor map (10,971 buildings in 65 lazily loaded tiles) and a train moves along the real line geometry from OpenStreetMap (2·8·9호선, 수인분당선, 신분당선). The customer's ride time is split by line distance, for example 잠실→판교 = 2호선 8.6 min + transfer 4 min + 신분당선 17.4 min.
+- **A congestion-based fatigue index (stage 8).** Built from Seoul Metro's measured congestion per station, direction and 30-minute slot (e.g. 2호선 잠실 08:00 inner loop ≈ 93 %). Lines without data, such as 신분당선, are marked "no data" and use a stated assumption. Every weight is a public, editable criterion. It is a stated model, not a medical judgement.
 
 ### What it deliberately does not do
 
@@ -56,7 +60,7 @@ Every line of product code, every test and every pipeline script in this reposit
 
 Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the coding agent that wrote the repo). Muse Spark Open runs are planned once inference credits arrive.
 
-Tests: 330+ `node --test` tests and 130+ `pytest` tests.
+Tests: 380+ `node --test` tests (including a headless sim-mode smoke test) and 160+ `pytest` tests.
 
 ## Run it
 
@@ -85,16 +89,29 @@ Raw and built data are never committed. The scripts above regenerate them. Real-
 
 ## Data sources
 
-OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
+OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형) · 경찰청 범죄 발생 지역별 통계 (2025, stage 9a). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
 ## Known issues
 
-- Sim mode can stop at "불러오는 중…" because of a variable-initialisation-order bug found on 2026-10-29. A fix and a browser smoke check are queued (`briefs/08b-sim-crash-smoke.md`).
-- `?q=high` renders black on Apple GPUs (ANGLE Metal). The app detects this and falls back to medium.
-- The daytime look is still too hazy and low in contrast. Polishing it is next.
-- The payroll rates in `scenarios/assumptions/kr-payroll.json` are marked `needs_confirmation`.
+- On the real GPU, the subway ride currently shows as "at work" from the moment the person reaches the home station, so the journey view does not appear on a static time link. The demo scenario also gives home B (Pangyo) a 30-minute ride even though work is near 판교역, which hides the real difference. Both are fixed in stage 9c (queued): the workplace becomes a place, each home derives its own commute (A rides, B walks), and the ride is its own trip.
+- Two sim-mode load crashes were found on the real GPU on 2026-10-29 and fixed (8b, 8c) with a headless smoke test. The 8c fix is on branch `fix-8c` and merges into `main` before 9c.
+- Night scenes over-expose lit towers. The daytime look is still hazy and low in contrast. `?q=high` renders black on Apple GPUs (ANGLE Metal); the app detects this and falls back to medium.
+- The payroll rates in `scenarios/assumptions/kr-payroll.json` are marked `needs_confirmation`. Policy-loan figures will be filled only from official pages.
 - Subway ride minutes are customer input (an assumption), not a timetable.
+
+## Progress log
+
+| Stage | What Muse built | Brief → result |
+|---|---|---|
+| 1–2 | Data pipeline, 3D scene, building-register lookups | [`briefs/01…02b`](briefs/) |
+| 3 | Deterministic 30-day life engine | [`03-RESULT`](briefs/03-RESULT.md) |
+| 4 | Muse judgement layer (198 real decisions, number guards) | [`04-RESULT`](briefs/04-RESULT.md) |
+| 5 | Astryx UI, consult agent, PBR rendering | [`05a`](briefs/05a-RESULT.md), [`05b`](briefs/05b-RESULT.md) |
+| 6 | Salary-based living costs, real transactions, public rental | [`06-RESULT`](briefs/06-RESULT.md) |
+| 7 | Now card, causes, highlighting, criteria, shadow fix | [`07-RESULT`](briefs/07-RESULT.md) |
+| 8 | Journey view, corridor map, congestion fatigue (+8b/8c fixes) | [`08-RESULT`](briefs/08-RESULT.md) |
+| 9a–9c | Personas, priorities, safety/education; worth-it finance, 전세 check, support; per-home commute | in progress |
 
 ## Roadmap (until 11-04)
 
-Stage 8 (journey view and fatigue) → 9a (personas, priorities, safety and education) → 9b (worth-it finance, 전세 safety check, support programmes) → one polished demo flow → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
+9a (personas, priorities, safety and education) → 9b (worth-it finance, 전세 safety check, support programmes) → 9c (per-home commute, the ride as a trip, calmer cards) → one polished demo flow → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
