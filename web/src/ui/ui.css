@@ -127,3 +127,6 @@ body.sim .ui-legend { bottom: 218px; }
   font-size: 12px; line-height: 1.4; padding: 1px 7px; border-radius: 9px;
   background: rgba(30, 26, 22, 0.82); color: #f5efe4; pointer-events: none;
 }
+
+/* Glossary terms: dotted underline, native tooltip on hover/tap. */
+.ui-gloss { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }

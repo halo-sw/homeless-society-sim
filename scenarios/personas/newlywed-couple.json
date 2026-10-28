@@ -1,0 +1,118 @@
+{
+  "_note": "PERSONA 예비·신혼부부 (2 adults, both working). Runnable template: run with simulate.mjs + money.mjs like demo-two-homes.json. PLACEHOLDER inputs below are 가정값 the customer replaces in consult (update_scenario / set_money): salaries, cash, ride minutes, habits.",
+  "name": "persona-newlywed-couple",
+  "start_date": "2026-11-02",
+  "days": 30,
+  "seed": 20261102,
+  "background": 60,
+  "workday_minutes": 540,
+  "household": {
+    "members": [
+      {
+        "id": "m1",
+        "label": "배우자 1",
+        "role": "adult",
+        "preferences": "아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.",
+        "workdays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "work": {
+          "type": "station_ride",
+          "station_name": {
+            "A": "잠실",
+            "B": "판교"
+          },
+          "ride_minutes": 30,
+          "ride_minutes_source": "user_assumption",
+          "needs_user_input": true,
+          "destination_station": {
+            "A": "판교"
+          }
+        },
+        "errands_per_week": {
+          "supermarket": 1,
+          "convenience": 2
+        },
+        "park_walks_per_week": 2,
+        "clinic_visits_per_month": 1
+      },
+      {
+        "id": "m2",
+        "label": "배우자 2",
+        "role": "adult",
+        "preferences": "주말에는 가까운 공원에서 쉬는 것을 좋아하고, 장보기는 한 번에 끝내려 한다.",
+        "workdays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "work": {
+          "type": "station_ride",
+          "station_name": {
+            "A": "잠실",
+            "B": "판교"
+          },
+          "ride_minutes": 30,
+          "ride_minutes_source": "user_assumption",
+          "needs_user_input": true,
+          "destination_station": {
+            "A": "판교"
+          }
+        },
+        "errands_per_week": {
+          "supermarket": 1,
+          "convenience": 1
+        },
+        "park_walks_per_week": 1,
+        "clinic_visits_per_month": 0
+      }
+    ]
+  },
+  "homes": [
+    {
+      "label": "A",
+      "area": "songpa-jamsil",
+      "complex_name": "레이크팰리스"
+    },
+    {
+      "label": "B",
+      "area": "pangyo",
+      "complex_name": "백현마을"
+    }
+  ],
+  "money": {
+    "_note": "PLACEHOLDER (가정값): 연봉 4,500만 + 4,000만 · 보유현금 1억 · 대출금리 4.0% · A 59.97㎡ · B 84.82㎡ · both 전세.",
+    "members": {
+      "m1": {
+        "annual_salary_won": 45000000
+      },
+      "m2": {
+        "annual_salary_won": 40000000
+      }
+    },
+    "cash_won": 100000000,
+    "tenure": {
+      "A": "전세",
+      "B": "전세"
+    },
+    "area_m2": {
+      "A": 59.97,
+      "B": 84.82
+    },
+    "assumptions": {
+      "loan_rate_pct": 4.0,
+      "loan_years": 30,
+      "maintenance_won_month": 150000,
+      "transit_fare_won": 1500,
+      "basket_won": 30000,
+      "other_fixed_won_month": 0
+    },
+    "burden_threshold_pct": 30
+  }
+}

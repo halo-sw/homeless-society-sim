@@ -61,6 +61,15 @@ async function loadRegionFs(dataDir) {
   return region;
 }
 
+async function loadSafetyFs(dataDir) {
+  return JSON.parse(await readFile(join(dataDir, "region", "safety.json"), "utf8"));
+}
+
+async function loadPersonaFs(scenDir, personaId) {
+  if (!/^[a-z0-9-]+$/.test(personaId)) throw new Error("bad persona id");
+  return JSON.parse(await readFile(join(scenDir, "personas", `${personaId}.json`), "utf8"));
+}
+
 async function loadDecisionsFs(scenDir, scenarioName, label) {
   for (const provider of ["meta", "baseten"]) {
     try {
@@ -144,6 +153,8 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         loadRegion: () => loadRegionFs(dataDir),
         judgeHome: (args) => judgeHome({ ...args, fetchImpl }),
         loadPayroll, loadRtms, loadHousing,
+        loadSafety: () => loadSafetyFs(dataDir),
+        loadPersona: (id) => loadPersonaFs(scenDir, id),
         fetchImpl,
       });
       res.setHeader("Content-Type", "application/json");

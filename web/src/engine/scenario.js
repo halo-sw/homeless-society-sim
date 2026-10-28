@@ -11,6 +11,7 @@
 // customer set, so resolved criterion sources read 고객 입력 honestly.
 
 import { criterionDefault, validateOverrides } from "./criteria.js";
+import { defaultWeights, validateWeights } from "../priorities.js";
 
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const DEFAULT_START_DATE = criterionDefault("C-sim-window", "start_default"); // a Monday
@@ -220,8 +221,26 @@ export function parseScenario(raw) {
   } catch (err) {
     fail(String((err && err.message) || err).replace(/^criteria: /, "criteria_overrides: "));
   }
+  let priorities = { weights: defaultWeights(), explicit: false };
+  if (raw.priorities !== undefined && raw.priorities !== null) {
+    if (typeof raw.priorities !== "object" || Array.isArray(raw.priorities)) {
+      fail("priorities must be an object {weights, explicit}");
+    }
+    if (raw.priorities.weights !== undefined) {
+      const checked = validateWeights(raw.priorities.weights);
+      if (!checked.ok) fail(`priorities: ${checked.errors.join("; ")}`);
+      priorities = { weights: checked.weights,
+        explicit: raw.priorities.explicit === true };
+    } else if (raw.priorities.explicit !== undefined
+        && typeof raw.priorities.explicit !== "boolean") {
+      fail("priorities.explicit wants a boolean");
+    } else if (raw.priorities.explicit === true) {
+      priorities = { weights: defaultWeights(), explicit: true };
+    }
+  }
   return {
     name: typeof raw.name === "string" ? raw.name : "scenario",
+    priorities,
     start_date: raw.start_date === undefined ? DEFAULT_START_DATE : raw.start_date,
     days,
     seed,

@@ -2087,7 +2087,7 @@ async function bootSim() {
       }
     },
     setCompareTab: async (tab) => {
-      if (!["compare", "money", "quality", "criteria"].includes(tab)) return;
+      if (!["compare", "priorities", "money", "quality", "safety", "criteria"].includes(tab)) return;
       store.set({ compareTab: tab });
       if (tab === "criteria") await paintCriteria();
       else if (tab !== "compare") await paintMoney();
@@ -2134,10 +2134,10 @@ async function bootSim() {
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
-  // ?tab=money|quality|criteria opens the compare card on that tab.
+  // ?tab=money|quality|priorities|safety|criteria opens the compare card on that tab.
   const wantTab = PARAMS.get("tab");
   if (wantTab === "money" || wantTab === "quality" || wantTab === "compare"
-      || wantTab === "criteria") {
+      || wantTab === "criteria" || wantTab === "priorities" || wantTab === "safety") {
     store.set({ compareOpen: true, compareTab: wantTab });
     paintCompare();
     paintMoney();

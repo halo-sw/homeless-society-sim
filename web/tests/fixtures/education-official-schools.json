@@ -1,0 +1,4 @@
+[
+  { "name": "가나초등학교", "level": "elementary", "address": "서울특별시 송파구 가나로 1", "lon": 127.001, "lat": 37.5 },
+  { "name": "다라중학교", "level": "middle", "address": "서울특별시 송파구 다라로 2", "lon": null, "lat": null }
+]

@@ -5,9 +5,13 @@
 // Stage 6: price *references* (RTMS medians, living costs) are the
 // feature, so price words are allowed when the numbers cite tool
 // results — but price *forecasts*, investment advice, loan/eligibility
-// judgement, buy/don't-buy verdicts, safety/crime, school quality and
-// health/medical topics stay refused, as does any claim that the
-// simulation predicts real life. Pure; unit-tested.
+// judgement, buy/don't-buy verdicts, school quality and health/medical
+// topics stay refused, as does any claim that the simulation predicts
+// real life. Stage 9a: official safety counts and school-access numbers
+// are citable from tool results (every figure needs its source, period,
+// unit and level), but safety verdicts, safety/school scores and
+// rankings, and "recommended home" language trip the no-score guard.
+// Pure; unit-tested.
 
 import { findInventedNumbers } from "../judge/guards.js";
 import { fmtWon, fmtPct, fmtDistance, fmtMinutes } from "../money/format.js";
@@ -15,7 +19,7 @@ import { fmtWon, fmtPct, fmtDistance, fmtMinutes } from "../money/format.js";
 // Investment advice on top of the judge's price/safety/school/health list.
 // Tight on purpose: generic words like 전망 (view) stay allowed.
 const INVEST_KO = [
-  "투자", "수익", "수익률", "시세차익", "갭투자", "재테크", "전세가율",
+  "투자", "수익", "수익률", "시세차익", "갭투자", "재테크",
   "매수", "매도", "청약당첨", "로또청약",
 ];
 const INVEST_EN = [
@@ -97,15 +101,18 @@ function addVariants(out, n) {
   }
 }
 
-// Consult topic check: price *references* are allowed (the stage-6
-// feature), so only the evaluative topics stay forbidden — safety/crime,
-// school quality, health — plus forecasts, loan/eligibility verdicts and
-// buy/don't-buy verdicts. Refusal sentences (…판단하지 않습니다,
-// …원문에서 확인해 주세요, …알 수 없습니다) are stripped before the
-// verdict checks so a polite refusal never trips its own guard.
+// Consult topic check: price *references* are the stage-6 feature and
+// official safety counts + school-access numbers are the stage-9a
+// feature, so only the evaluative topics stay forbidden — school
+// quality, health, and non-stat crime talk — plus forecasts,
+// loan/eligibility verdicts and buy/don't-buy verdicts. Safety *verdicts*
+// and safety/school scores or rankings trip the separate no-score guard
+// (scoreVerdict). Refusal sentences (…판단하지 않습니다, …원문에서
+// 확인해 주세요, …알 수 없습니다) are stripped before the verdict checks
+// so a polite refusal never trips its own guard.
 const CONSULT_KO = [
-  // safety / crime
-  "안전", "위험", "치안", "조심", "무서", "범죄", "도둑", "절도", "강도", "소매치기",
+  // non-stat crime talk (official counts are cited from tool results)
+  "조심", "무서", "도둑", "소매치기",
   // school quality
   "학군", "명문", "진학률",
   // health
@@ -113,8 +120,7 @@ const CONSULT_KO = [
 ];
 
 const CONSULT_EN_RES = [
-  "safe", "safety", "unsafe", "danger", "dangerous", "crime", "criminal",
-  "theft", "robbery", "thief", "school quality", "good school",
+  "thief", "pickpocket", "school quality", "good school",
   "top school", "school rating", "school district", "health", "healthy",
   "medical", "sick", "illness", "disease", "treatment", "symptom",
 ].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
@@ -145,6 +151,63 @@ export function withoutHealthNotes(text) {
   let s = String(text || "");
   for (const re of HEALTH_NOTE_RES) s = s.replace(re, " ");
   return s;
+}
+
+// The honest safety framing names the topic only to disclaim it ("기록된
+// 곳 기준 발생 건수이며 거주자의 위험도가 아닙니다", "점수·순위·등급을
+// 매기지 않습니다") — strip those sentences before the no-score check so
+// the caveat never trips its own guard. Genuine verdicts ("안전합니다",
+// "1위입니다") still trip.
+const SAFETY_NOTE_RES = [
+  /[^.!?\n]*기록된 곳 기준[^.!?\n]*[.!\n]/g,
+  /[^.!?\n]*거주자의 위험도[^.!?\n]*[.!\n]/g,
+  /[^.!?\n]*점수·순위·등급을 매기지 않[^.!?\n]*[.!\n]/g,
+  /[^.!?\n]*직접 비교할 수 없[^.!?\n]*[.!\n]/g,
+  /[^.!?\n]*분리할 수 없[^.!?\n]*[.!\n]/g,
+];
+
+export function withoutSafetyNotes(text) {
+  let s = String(text || "");
+  for (const re of SAFETY_NOTE_RES) s = s.replace(re, " ");
+  return s;
+}
+
+// No-score guard (stage 9a): safety verdicts ("안전합니다"), safety or
+// school scores/rankings ("치안 점수 80점", "학교 순위 1위"), and
+// "recommended home" language ("이 집을 추천합니다"). Plain occurrence
+// counts and access numbers with their caveats pass; polite refusals are
+// stripped first like every other verdict check.
+const SCORE_KO_RES = [
+  /안전합/, /위험합/,
+  /안전한 (동네|집|지역|곳|매물|아파트)/, /위험한 (동네|집|지역|곳|매물|아파트)/,
+  /치안이 (좋|나쁩|괜찮|최고|최악|양호|불량)/,
+  /살기 (좋|나쁩|안전|위험|괜찮)/,
+  /더 안전/, /덜 안전/, /더 위험/, /덜 위험/, /가장 안전/, /가장 위험/,
+  /치안 (점수|순위|등급)/, /안전 (점수|순위|등급)/,
+  /학교.{0,8}(순위|점수|등급)/, /(순위|점수).{0,8}학교/,
+  /범죄.{0,4}(순위|1위)/,
+  /집을 추천/, /추천.{0,4}(집|매물|동네|지역|아파트)/,
+  /가장 (좋은|나은) 집/,
+  /[0-9]+\s*위/,
+];
+
+const SCORE_EN_RES = [
+  "safest", "most dangerous", "more dangerous", "less safe", "safer area",
+  "safer neighborhood", "safety score", "safety rating", "crime rank",
+  "school rank", "best home", "recommended home",
+  "safe area", "safe neighborhood", "dangerous area", "dangerous neighborhood",
+].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
+
+export function scoreVerdict(text) {
+  const s = withoutRefusals(withoutSafetyNotes(text));
+  for (const re of SCORE_KO_RES) {
+    const m = re.exec(s);
+    if (m) return m[0].slice(0, 60);
+  }
+  for (const { w, re } of SCORE_EN_RES) {
+    if (re.test(s)) return w;
+  }
+  return null;
 }
 
 const REFUSAL_RES = [
@@ -181,9 +244,12 @@ export function forecastClaim(text) {
 }
 
 // Loan/eligibility *verdicts* ("대출이 나옵니다", "입주 자격이 됩니다").
+// Bare LTV/DSR mentions are definitions (the 9a glossary), not verdicts —
+// only verdict contexts trip.
 const LOAN_RES = [
   /대출.{0,10}(가능|나옵|받을 수 있|충분|문제없)/,
-  /LTV|DSR/,
+  /(LTV|DSR).{0,12}(가능|나옵|충분|문제없|통과|여유|괜찮)/,
+  /(가능|충분|여유).{0,12}(LTV|DSR)/,
   /입주.{0,10}(가능|자격.{0,6}(됩|있|충족|가능))/,
   /청약.{0,10}(당첨|가능|노려)/,
 ];
@@ -293,7 +359,7 @@ export function checkConsultReply(answer, toolResults) {
       detail: `number ${badNums[0]} appears in no tool result of this conversation`,
       offending: badNums };
   }
-  const badTopic = consultTopic(withoutHealthNotes(text));
+  const badTopic = consultTopic(withoutHealthNotes(withoutSafetyNotes(text)));
   if (badTopic !== null) {
     return { ok: false, cause: "forbidden_topic",
       detail: `mentions ${badTopic} — refuse and redirect instead`,
@@ -309,6 +375,7 @@ export function checkConsultReply(answer, toolResults) {
     [forecastClaim, "forecast_claim", "predicts prices — refuse and offer the last-12-month transactions instead"],
     [loanVerdict, "loan_verdict", "judges loans/eligibility — the app never does"],
     [buyVerdict, "buy_verdict", "buy/don't-buy verdict — compare numbers only"],
+    [scoreVerdict, "score_verdict", "safety verdict, safety/school score or ranking — cite counts only, never judge"],
   ]) {
     const hit = fn(text);
     if (hit !== null) {
@@ -392,6 +459,30 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
         const d = r.day_fatigue;
         lines.push(`- ${r.day}일차: 시작 ${d.start} → 끝 ${d.end}, 최고 ${d.peak} (가정 모델)`);
       }
+    } else if (r.persona && r.summary) {
+      lines.push(`- 상황: ${r.summary} (가정값)`);
+    } else if (r.weights && typeof r.weights === "object") {
+      const w = r.weights;
+      lines.push(`- 고객님이 정한 비중: 교육 ${w.edu} · 생활 ${w.life} · 치안 ${w.safety} · 돈 ${w.money} · 생활 편의 ${w.convenience} (0–5)`);
+    } else if (Array.isArray(r.groups) && r.column) {
+      lines.push(`- ${r.column} 발생 ${r.total}건 (${r.source}, ${r.period}, ${r.geo_level_ko})`);
+      for (const g of r.groups.slice(0, 15)) {
+        lines.push(`  · ${g.cat1} ${g.count}건`);
+      }
+      lines.push("  · 기록된 곳 기준 발생 건수이며 거주자의 위험도가 아닙니다. 점수·순위·등급을 매기지 않습니다.");
+    } else if (r.access && r.access.counts) {
+      const c10 = r.access.counts.within_10min || {};
+      lines.push(`- ${r.complex} 10분 안: 초등 ${c10.school_elementary ?? 0} · 중 ${c10.school_middle ?? 0} · 고 ${c10.school_high ?? 0} · 유치원 ${c10.kindergarten ?? 0} · 학원 ${c10.academy ?? 0} (그래프, OSM)`);
+      for (const [bucket, ko] of [["school", "학교"], ["academy", "학원"], ["library", "도서관"]]) {
+        const near = (r.access.nearest || {})[bucket] || [];
+        if (near[0]) lines.push(`  · 가장 가까운 ${ko}: ${near[0].name} ${fmtMinutes(near[0].minutes)} (그래프)`);
+      }
+      for (const s of (r.school_routes || []).slice(0, 2)) {
+        if (s.route === null) lines.push(`  · 등교 이동 없음 (${s.note})`);
+        else lines.push(`  · 등교: ${s.school} ${fmtMinutes(s.minutes)} (${fmtDistance(s.distance_m)}, primary 구간 ${s.primary_ways})`);
+      }
+    } else if (r.term && r.def) {
+      lines.push(`- ${r.term}: ${r.def}`);
     }
   }
   if (lines.length === 1) {

@@ -102,6 +102,8 @@ export const SOURCE_BADGE = {
   rtms: "실거래",
   housing_api: "공공임대",
   payroll_estimate: "추정",
+  police: "경찰청",
+  "graph+scenario": "그래프+가정",
 };
 
 export function badgeFor(source) {

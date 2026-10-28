@@ -184,6 +184,16 @@ def cmd_areas(args) -> int:
     return 0
 
 
+def cmd_safety(args) -> int:
+    from .safety import run_build
+
+    summary = run_build(raw_csv=Path(args.csv) if args.csv else None,
+                        build_dir=Path(args.build_dir),
+                        raw_dir=Path(args.raw_dir))
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
 def cmd_register_fill(args) -> int:
     from .register_api import (DEFAULT_CACHE_DIR, RegisterApiError,
                                fill_area)
@@ -261,6 +271,14 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--criteria", default=None)
     n.add_argument("--osmium", default="osmium")
     n.set_defaults(func=cmd_corridor)
+
+    s = sub.add_parser("safety",
+                       help="build data/build/region/safety.json from the police crime CSV")
+    s.add_argument("--csv", default=None,
+                   help="crime CSV (default: data/raw/safety/경찰청_범죄 발생 지역별 통계_20251231.csv)")
+    s.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    s.add_argument("--raw-dir", default="data/raw")
+    s.set_defaults(func=cmd_safety)
 
     r = sub.add_parser("register-fill",
                        help="fill inferred heights via the 건축HUB title API")

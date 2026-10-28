@@ -25,6 +25,10 @@ import { householdMonthlyNet } from "../src/money/payroll.js";
 import { tenureCost, TENURES } from "../src/money/tenure.js";
 import { moneyTimeline } from "../src/money/timeline.js";
 import { qualityCard } from "../src/money/quality.js";
+import { buildPlaces } from "../src/engine/places.js";
+import { resolveHome } from "../src/engine/scenario.js";
+import { educationCounts, schoolRoute } from "../src/education.js";
+import { safetyView } from "../src/safety.js";
 import { AREA_RTMS_DISTRICT } from "../src/consult/tools-money.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +83,14 @@ async function loadRegion() {
   return region;
 }
 const region = await loadRegion();
+// Safety stats (stage 9a): optional build artifact; the UI + consult say
+// so honestly when it is missing.
+let safetyDoc = null;
+try {
+  safetyDoc = JSON.parse(await readFile(join(REPO, "data", "build", "region", "safety.json"), "utf8"));
+} catch {
+  safetyDoc = null;
+}
 const scenario = parseScenario(structuredClone(scenarioRaw));
 const table = JSON.parse(await readFile(join(REPO, "scenarios", "assumptions", "kr-payroll.json"), "utf8"));
 const net = householdMonthlyNet(scenario.money, scenario.household.members, table);
@@ -167,6 +179,21 @@ for (const h of scenario.homes) {
   // QoL time + convenience axes (money merges client-side per tenure).
   // POI ids ship alongside the counts for the 3D hover highlight.
   const qol = qualityCard(run, area, router, {}, crit.flat.convenience_minutes, { includeIds: true });
+  // Education access + child school routes (stage 9a, Part D).
+  const places = buildPlaces(area, router);
+  let qolEducation = null;
+  let schoolRoutes = [];
+  try {
+    const homeNode = resolveHome(area, h, router).nodeId;
+    qolEducation = educationCounts(places, router, homeNode);
+    schoolRoutes = run.agents
+      .filter((a) => a.household && a.role === "child")
+      .map((a) => ({ ...schoolRoute(run, router, a.key), label: a.label, id: a.id }));
+  } catch {
+    qolEducation = null;
+    schoolRoutes = [];
+  }
+  const qolSafety = safetyView(safetyDoc, h.area);
   // Tenure-independent spending events for the Now-card ticker (transit,
   // grocery, salary, fixed — housing is monthly and lives in its tab).
   const spendTl = moneyTimeline(run, scenario, {
@@ -183,6 +210,8 @@ for (const h of scenario.homes) {
     reference, by_tenure: byTenure,
     qol_time: qol.time, qol_convenience: qol.convenience,
     qol_fatigue: qol.fatigue,
+    qol_education: qolEducation, school_routes: schoolRoutes,
+    qol_safety: qolSafety,
     spending_events: spendTl.events,
   };
   console.log(JSON.stringify({ home: h.label, area_m2: areaM2, match: matchMethod,

@@ -1,0 +1,139 @@
+{
+  "_note": "PERSONA 맞벌이 + 초등학생 자녀 (2 adults + 1 child with a school route). Runnable template: run with simulate.mjs + money.mjs like demo-two-homes.json. The child walks to the nearest amenity:school on the graph at the slow speed (C-walk-speed slow_mps 1.1 m/s). PLACEHOLDER inputs below are 가정값 the customer replaces in consult: salaries, cash, ride minutes, habits. Which school the child attends is NOT assigned — the engine uses the nearest school as the route endpoint.",
+  "name": "persona-dual-income-child",
+  "start_date": "2026-11-02",
+  "days": 30,
+  "seed": 20261102,
+  "background": 60,
+  "workday_minutes": 540,
+  "schoolday_minutes": 360,
+  "household": {
+    "members": [
+      {
+        "id": "m1",
+        "label": "배우자 1",
+        "role": "adult",
+        "preferences": "아침에 아이 등교를 챙기고 출근한다. 퇴근길에 장을 본다.",
+        "workdays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "work": {
+          "type": "station_ride",
+          "station_name": {
+            "A": "잠실",
+            "B": "판교"
+          },
+          "ride_minutes": 30,
+          "ride_minutes_source": "user_assumption",
+          "needs_user_input": true,
+          "destination_station": {
+            "A": "판교"
+          }
+        },
+        "errands_per_week": {
+          "supermarket": 1,
+          "convenience": 2
+        },
+        "park_walks_per_week": 2,
+        "clinic_visits_per_month": 1
+      },
+      {
+        "id": "m2",
+        "label": "배우자 2",
+        "role": "adult",
+        "preferences": "주말에는 아이와 가까운 공원에서 쉬는 것을 좋아한다.",
+        "workdays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "work": {
+          "type": "station_ride",
+          "station_name": {
+            "A": "잠실",
+            "B": "판교"
+          },
+          "ride_minutes": 30,
+          "ride_minutes_source": "user_assumption",
+          "needs_user_input": true,
+          "destination_station": {
+            "A": "판교"
+          }
+        },
+        "errands_per_week": {
+          "supermarket": 1,
+          "convenience": 1
+        },
+        "park_walks_per_week": 1,
+        "clinic_visits_per_month": 0
+      },
+      {
+        "id": "m3",
+        "label": "자녀",
+        "role": "child",
+        "preferences": "초등학생. 평일에는 가장 가까운 초등학교에 등교한다.",
+        "schooldays": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "school": true,
+        "errands_per_week": {
+          "supermarket": 0,
+          "convenience": 0
+        },
+        "park_walks_per_week": 2,
+        "clinic_visits_per_month": 0
+      }
+    ]
+  },
+  "homes": [
+    {
+      "label": "A",
+      "area": "songpa-jamsil",
+      "complex_name": "레이크팰리스"
+    },
+    {
+      "label": "B",
+      "area": "pangyo",
+      "complex_name": "백현마을"
+    }
+  ],
+  "money": {
+    "_note": "PLACEHOLDER (가정값): 연봉 5,500만 + 4,500만 · 보유현금 1.5억 · 대출금리 4.0% · A 59.97㎡ · B 84.82㎡ · both 전세. The child has no income.",
+    "members": {
+      "m1": {
+        "annual_salary_won": 55000000
+      },
+      "m2": {
+        "annual_salary_won": 45000000
+      }
+    },
+    "cash_won": 150000000,
+    "tenure": {
+      "A": "전세",
+      "B": "전세"
+    },
+    "area_m2": {
+      "A": 59.97,
+      "B": 84.82
+    },
+    "assumptions": {
+      "loan_rate_pct": 4.0,
+      "loan_years": 30,
+      "maintenance_won_month": 150000,
+      "transit_fare_won": 1500,
+      "basket_won": 30000,
+      "other_fixed_won_month": 0
+    },
+    "burden_threshold_pct": 30
+  }
+}

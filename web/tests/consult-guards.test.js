@@ -45,9 +45,8 @@ describe("consult guards", () => {
     assert.deepEqual(r.offending, ["17"]);
   });
 
-  it("refuses safety, school and health topics (price references are stage-6 feature)", () => {
+  it("refuses school and health topics (price references are stage-6 feature)", () => {
     for (const text of [
-      "밤길이 안전합니다",
       "학군이 좋습니다",
       "건강에 좋은 동네입니다",
     ]) {

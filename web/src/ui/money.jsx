@@ -1,7 +1,6 @@
 // 생활비 + 삶의 질 tabs (React, Astryx). Rendered inside the compare
 // card in sim mode. Data comes from <scenario>-money.json (CLI) plus
 // agent merges for home C — never computed from thin air here.
-import { useState } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -12,6 +11,8 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
+import { Gloss } from "./gloss.jsx";
+import { glossaryTerms } from "./glossary.js";
 import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
 import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { MONEY_CATEGORY_KO } from "../money/timeline.js";
@@ -37,7 +38,7 @@ function SrcBadge({ source }) {
   );
 }
 
-function tenureOf(state, label, doc) {
+export function tenureOf(state, label, doc) {
   return (state.moneyTenure && state.moneyTenure[label])
     || (doc.default_tenure && doc.default_tenure[label]) || "전세";
 }
@@ -225,6 +226,11 @@ export function MoneyTab({ state }) {
         </VStack>
       )}
       <VStack gap={1}>
+        <Text>
+          <>어려운 말: {glossaryTerms().map((t, i) => (
+            <span key={t}>{i > 0 ? " · " : ""}<Gloss term={t} /></span>
+          ))} (단어에 마우스를 올리면 뜻이 보입니다)</>
+        </Text>
         <Text>가정값</Text>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Text type="supporting">{`금리 ${doc.assumptions.loan_rate_pct}% · ${doc.assumptions.loan_years}년`}</Text>
@@ -338,7 +344,6 @@ function QolHome({ label, doc, tenure, active }) {
 
 export function QualityTab({ state }) {
   const doc = state.money;
-  const [weights, setWeights] = useState({ time: 40, money: 40, convenience: 20 });
   if (state.moneyLoading) return <Text type="supporting">불러오는 중…</Text>;
   if (!doc || doc.error) {
     return (
@@ -353,21 +358,7 @@ export function QualityTab({ state }) {
         <QolHome key={label} label={label} doc={doc}
           tenure={tenureOf(state, label, doc)} active={state.home === label} />
       ))}
-      <VStack gap={1}>
-        <Text>내 기준 가중치 (고객 입력, 종합 점수는 매기지 않습니다)</Text>
-        <HStack gap={2} vAlign="center" wrap="wrap">
-          {[["time", "시간"], ["money", "돈"], ["convenience", "편의"]].map(([k, ko]) => (
-            <HStack gap={1} vAlign="center" key={k}>
-              <Text type="supporting">{ko}</Text>
-              <input className="ui-weight" type="number" min="0" max="100" step="5"
-                value={weights[k]}
-                onChange={(e) => setWeights({ ...weights, [k]: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
-                aria-label={`내 기준 ${ko} 가중치`} />
-            </HStack>
-          ))}
-        </HStack>
-        <Text type="supporting">{`시간 ${weights.time} · 돈 ${weights.money} · 편의 ${weights.convenience} — 고객님이 직접 정한 비중입니다.`}</Text>
-      </VStack>
+      <Text type="supporting">내 비중으로 나란히 보려면 내 기준으로 보기 탭을 여세요. 종합 점수는 매기지 않습니다.</Text>
     </VStack>
   );
 }

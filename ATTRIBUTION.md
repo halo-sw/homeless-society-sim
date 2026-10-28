@@ -42,6 +42,15 @@ link to this file or the sources above.
   `data/raw/public_housing/snapshot_3districts.json` (fetched
   2026-10-28, not committed). Shown on screen as “LH·마이홈
   (공공주택 데이터 API, 스냅샷 시각 표시)”.
+* **경찰청 범죄 발생 지역별 통계 (2025년, stage 9a)** —
+  `경찰청_범죄 발생 지역별 통계_20251231.csv` (`data/raw/safety/`, not
+  committed): occurrence counts by 범죄대분류/범죄중분류 per 시군구 for
+  the year ending 2025-12-31. Used for local computation and display
+  only — the CSV and the derived `data/build/region/safety.json` are
+  never committed or redistributed. Shown on screen with every reading
+  (source, period, unit, geographic level). 성남시 is city-level
+  (판교/분당 not separable); counts are where crimes were recorded, not
+  a resident's risk; no scores, no rankings.
 * **서울교통공사 지하철혼잡도정보 (stage 8)** —
   `서울교통공사_지하철혼잡도정보_20260930.xlsx`
   (`data/raw/traffic/`, not committed): Seoul Metro lines 1–8, sheets

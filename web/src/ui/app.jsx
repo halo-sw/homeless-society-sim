@@ -19,6 +19,8 @@ import { store } from "./store.js";
 import { ConsultPanel } from "./consult.jsx";
 import { CriteriaTab } from "./criteria.jsx";
 import { MoneyTab, QualityTab } from "./money.jsx";
+import { PrioritiesTab } from "./priorities.jsx";
+import { SafetyEduTab } from "./safety-edu.jsx";
 import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand } from "../engine/journey.js";
@@ -434,7 +436,8 @@ function IntroCard({ state }) {
             <span className="ui-panel-spacer" />
             <Button size="sm" variant="ghost" label="닫기" onClick={() => act("setIntroOpen", false)} />
           </HStack>
-          <Text>{`같은 가구가 ${m.homes.join("와 ")}에 살면 ${m.days}일 동안 시간·돈·생활이 어떻게 다른가 — 그 질문에 답하는 시나리오입니다.`}</Text>
+          <Text>부동산 결정, 혼자 알아보기 어렵죠. 살아 보고(시뮬레이션), 계산해 보고(돈), 위험 신호를 확인하고(전세), 받을 수 있는 지원을 보고(공공임대·지원 제도) 직접 결정하세요.</Text>
+          <Text type="supporting">{`같은 가구가 ${m.homes.join("와 ")}에 살면 ${m.days}일 동안 시간·돈·생활이 어떻게 다른가 — 그 질문에 답하는 시나리오입니다.`}</Text>
           <MetadataList>
             <MetadataListItem label="누가">
               <Text type="supporting">{`${m.members.join(" · ")} + 시뮬레이션 이웃 ${m.neighbours}명`}</Text>
@@ -500,8 +503,10 @@ function CompareTabBody({ state }) {
 
 const COMPARE_TABS = [
   { value: "compare", label: "A·B 비교" },
+  { value: "priorities", label: "내 기준으로 보기" },
   { value: "money", label: "생활비" },
   { value: "quality", label: "삶의 질" },
+  { value: "safety", label: "안전·교육" },
   { value: "criteria", label: "기준" },
 ];
 
@@ -519,8 +524,10 @@ function CompareCard({ state }) {
           <SegControl label="비교 탭" value={state.compareTab}
             onChange={(v) => act("setCompareTab", v)} items={COMPARE_TABS} />
           {state.compareTab === "compare" && <CompareTabBody state={state} />}
+          {state.compareTab === "priorities" && <PrioritiesTab state={state} />}
           {state.compareTab === "money" && <MoneyTab state={state} />}
           {state.compareTab === "quality" && <QualityTab state={state} />}
+          {state.compareTab === "safety" && <SafetyEduTab state={state} />}
           {state.compareTab === "criteria" && <CriteriaTab state={state} />}
         </VStack>
       </Card>
@@ -576,6 +583,7 @@ function LegendCard({ state }) {
 
 function AttrLine({ state }) {
   const money = state.compareTab === "money" || state.compareTab === "quality";
+  const safety = state.compareTab === "safety" || state.compareTab === "priorities";
   const congestion = state.region && state.region.congestion;
   return (
     <div className="ui-attr">
@@ -583,6 +591,7 @@ function AttrLine({ state }) {
         <Text type="supporting">
           © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) · GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시
           {money && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 공공임대: LH·마이홈 (공공주택 데이터 API)"}
+          {safety && " · 치안: 경찰청 범죄 발생 지역별 통계 (2025년)"}
           {congestion && " · 혼잡도: 서울교통공사 지하철혼잡도정보(2026-09-30 기준, 공공누리 3유형)"}
         </Text>
       </div>

@@ -286,3 +286,22 @@ the UI reads them as 고객 입력. Precedence: overrides > the scenario's own
 native field (`workday_minutes`, `money.assumptions`, …) > the file default.
 The parsed scenario also carries `_explicit` (which native fields the file
 set) so criterion source badges stay honest across consult re-parses.
+
+## Personas (stage 9a, `scenarios/personas/`)
+
+Runnable starting templates with placeholder 가정값 the customer
+replaces in consult: `single-firstjob.json` (1인 사회초년생, 1 adult),
+`newlywed-couple.json` (예비·신혼부부, 2 working adults),
+`dual-income-child.json` (맞벌이 + 초등학생 자녀 — 2 adults + 1 child
+with `school: true`). The consult agent applies one via `apply_persona`
+after its first question ("어떤 상황이세요?"), then asks priorities.
+
+## Priorities (stage 9a, optional)
+
+| field | type | default | meaning |
+|---|---|---|---|
+| `priorities.weights` | `{edu, life, safety, money, convenience}` 0–5 ints | all `3` (모두 보통) | the customer's own weights — the only weighting of homes |
+| `priorities.explicit` | bool | `false` | true once the customer sets weights (consult `set_priorities`) |
+
+The one-number weighted view (`web/src/priorities.js`) requires
+explicit weights and shows its formula; safety counts are never summed.

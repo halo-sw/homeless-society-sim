@@ -4,6 +4,12 @@
 // park polygon) anchored to the walk graph. Nothing is invented: when a
 // needed category has no reachable place, the routine records
 // `unavailable` and skips the activity.
+//
+// The `education` list (stage 9a) classifies the same anchored POIs into
+// school/kindergarten/childcare/library/academy buckets for the access
+// views; it changes no routing.
+
+import { classifyEducation } from "../education.js";
 
 export const STATION_CATS = new Set(["railway:station", "railway:subway_station", "public_transport:station"]);
 export const SCHOOL_CAT = "amenity:school";
@@ -42,6 +48,7 @@ export function buildPlaces(area, router) {
   const clinics = [];
   const parks = [];
   const eateries = [];
+  const education = [];
   const byName = new Map(); // name -> [{place}]
   const pushName = (place) => {
     if (!byName.has(place.name)) byName.set(place.name, []);
@@ -60,6 +67,8 @@ export function buildPlaces(area, router) {
     if (CLINIC_CATS.has(poi.category)) clinics.push(place);
     if (poi.category === PARK_CAT) parks.push(place);
     if (EATERY_CATS.has(poi.category)) eateries.push(place);
+    const edu = classifyEducation(place);
+    if (edu) education.push({ place, bucket: edu.bucket, level: edu.level });
   }
   // Named park polygons without a POI node (same fallback as the tour).
   const parkNames = new Set(parks.map((p) => p.name));
@@ -81,6 +90,7 @@ export function buildPlaces(area, router) {
     clinics: sortPlaces(clinics),
     parks: sortPlaces(parks),
     eateries: sortPlaces(eateries),
+    education: education.sort((a, b) => (a.place.id < b.place.id ? -1 : 1)),
     byName,
   };
 }

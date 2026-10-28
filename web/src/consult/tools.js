@@ -22,6 +22,10 @@ import { buildPlaces, stationsByName, nearestReachable } from "../engine/places.
 import { ADULT_MPS } from "../engine/agents.js";
 import { costUsd } from "../judge/run.js";
 import { MONEY_TOOL_DEFS, MONEY_HANDLERS } from "./tools-money.js";
+import { PRIORITY_GROUPS, PRIORITY_METRICS, validateWeights } from "../priorities.js";
+import { safetyView } from "../safety.js";
+import { educationCounts, schoolRoute } from "../education.js";
+import { glossDef, glossaryTerms } from "../ui/glossary.js";
 
 export const CONSULT_AREAS = [
   { id: "pangyo", label: "판교" },
@@ -32,6 +36,17 @@ export const CONSULT_AREAS = [
 
 export const CONSULT_CATEGORIES = [
   "supermarket", "convenience", "park", "clinic", "school", "station",
+];
+
+// Stage-9a persona templates (scenarios/personas/<id>.json): runnable
+// starting points with placeholder 가정값 the customer replaces.
+export const PERSONAS = [
+  { id: "single-firstjob", title: "1인 사회초년생",
+    desc: "혼자 사는 첫 직장인 (성인 1명, 작은 예산)" },
+  { id: "newlywed-couple", title: "예비·신혼부부",
+    desc: "맞벌이 두 사람 (성인 2명, 둘 다 출근)" },
+  { id: "dual-income-child", title: "맞벌이 + 초등학생 자녀",
+    desc: "맞벌이 두 사람 + 등교하는 아이 1명" },
 ];
 
 export const MAX_TOOL_ROUNDS = 6;
@@ -158,6 +173,42 @@ export const TOOL_DEFS = [
         member: str("Agent key (h1), member id (m1) or label (구성원 1)."),
         day: { type: "integer", description: "Optional 1-based day number for the day's series." },
       }, required: ["run", "member"] } } },
+  { type: "function", function: { name: "apply_persona",
+    description: "Start from a household template: single-firstjob (1인 사회초년생), newlywed-couple (예비·신혼부부), dual-income-child (맞벌이 + 초등학생 자녀). Replaces the working scenario with the template (placeholder 가정값 the customer then replaces). Ask priorities next.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        persona: str("One of: single-firstjob, newlywed-couple, dual-income-child."),
+      }, required: ["persona"] } } },
+  { type: "function", function: { name: "get_priorities",
+    description: "The five customer priority groups (교육·생활·치안·돈·생활 편의) with the named metrics, units and sources each one uses, plus the current weights.",
+    parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "set_priorities",
+    description: "Record the customer's own priority weights (0–5 per group: edu, life, safety, money, convenience). These are the only weighting of homes and are always shown as the customer's.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        weights: { type: "object", additionalProperties: true,
+          description: 'E.g. {"edu": 5, "life": 3, "safety": 4, "money": 2, "convenience": 3}.' },
+      }, required: ["weights"] } } },
+  { type: "function", function: { name: "get_safety",
+    description: "Official police occurrence counts for an area (경찰청 범죄 발생 지역별 통계 2025, counts by category with source/period/unit/level). Counts are where crimes were recorded, not a resident's risk. Never a score, ranking or safe/unsafe verdict.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        area: str("Area id from list_areas."),
+      }, required: ["area"] } } },
+  { type: "function", function: { name: "get_education",
+    description: "Education access for a home: schools by level, kindergartens/childcare, libraries, academies (OSM, partial for academies) with graph walk minutes, plus the simulated school route with an optional run id. Access only — never quality, scores or rankings.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        area: str("Area id from list_areas."),
+        home: str("Home label from the scenario (default: the scenario home in this area)."),
+        run: str("Optional run id from run_simulation for the child's school route."),
+      }, required: ["area"] } } },
+  { type: "function", function: { name: "define_term",
+    description: "Plain-Korean definition of a housing term, shared with the UI glossary (전세, 월세, 매매, 전세가율, LTV, DSR, 확정일자, 전입신고, 전세보증보험, 공공임대, 주거비 부담률).",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        term: str("The term to define."),
+      }, required: ["term"] } } },
   { type: "function", function: { name: "set_view",
     description: "Show the customer what you explain: the UI moves the 3D view and shows a chip. Returns the chip text.",
     parameters: { type: "object", additionalProperties: false,
@@ -213,6 +264,8 @@ export function createSession(opts) {
     loadPayroll: opts.loadPayroll || null,
     loadRtms: opts.loadRtms || null,
     loadHousing: opts.loadHousing || null,
+    loadSafety: opts.loadSafety || null,
+    loadPersona: opts.loadPersona || null,
     provider: opts.provider || "meta",
     fetchImpl: opts.fetchImpl || null,
     museRunsPrior: opts.museRunsPrior || 0,
@@ -878,10 +931,157 @@ function get_fatigue(session, args) {
   return out;
 }
 
+async function apply_persona(session, args) {
+  const id = String(args.persona || "");
+  const meta = PERSONAS.find((p) => p.id === id);
+  if (!meta) {
+    return fail(`unknown persona ${JSON.stringify(id)} (want ${PERSONAS.map((p) => p.id).join(", ")})`);
+  }
+  if (!session.loadPersona) return fail("persona templates are unavailable on this server");
+  let raw;
+  try {
+    raw = await session.loadPersona(id);
+  } catch (err) {
+    return fail(`cannot load persona ${id}: ${String((err && err.message) || err).slice(0, 200)}`);
+  }
+  let parsed;
+  try {
+    parsed = parseScenario(clone(raw));
+  } catch (err) {
+    return fail(`persona ${id} failed validation: ${String((err && err.message) || err).slice(0, 300)}`);
+  }
+  for (const h of parsed.homes) {
+    if (!CONSULT_AREAS.some((a) => a.id === h.area)) {
+      return fail(`persona ${id}: unknown area ${JSON.stringify(h.area)}`);
+    }
+    try {
+      const area = await needArea(session, h.area);
+      const names = new Set((area.complexes || []).map((c) => c.name));
+      if (!names.has(h.complex_name)) {
+        return fail(`persona ${id}: no complex named ${JSON.stringify(h.complex_name)} in ${h.area}`);
+      }
+    } catch (err) {
+      return fail(`persona ${id}: cannot verify ${h.area}: ${String((err && err.message) || err).slice(0, 200)}`);
+    }
+  }
+  session.scenario = parsed;
+  session.scenarioName = parsed.name;
+  const members = parsed.household.members
+    .map((m) => `${m.label}(${m.role}${m.school ? "·등교" : ""})`).join(", ");
+  return { ok: true, persona: id, title: meta.title, scenario: clone(parsed),
+    summary: `${meta.title}: ${members}; 홈 ${parsed.homes.map((h) => `${h.label} ${h.complex_name}`).join(" / ")}`,
+    placeholders_note: "연봉·현금·승차 시간·이용 습관은 가정값입니다. 고객에게 물어 update_scenario/set_money로 바꾸세요.",
+    next: "다음으로 우선순위(교육·생활·치안·돈·생활 편의, 각 0–5)를 쉽게 물어보세요 (get_priorities가 쓰는 지표를 알려준다)." };
+}
+
+function get_priorities(session) {
+  const current = (session.scenario && session.scenario.priorities)
+    || { weights: null, explicit: false };
+  return {
+    ok: true,
+    groups: PRIORITY_GROUPS.map((g) => ({
+      id: g.id, title: g.title, question: g.question, note: g.note,
+      metrics: PRIORITY_METRICS.filter((m) => m.group === g.id).map((m) => ({
+        id: m.id, label: m.label, unit: m.unit, source: m.source,
+        direction: m.direction, note: m.note || undefined,
+      })),
+    })),
+    weights: current.weights ? clone(current.weights) : null,
+    explicit: current.explicit === true,
+    scale_note: "각 0–5 (0 = 안 봄, 5 = 가장 중요). 기본은 모두 보통(3). 이 비중이 집을 비교하는 유일한 가중치이며, 항상 고객의 것으로 표시된다.",
+  };
+}
+
+function set_priorities(session, args) {
+  const checked = validateWeights(args.weights);
+  if (!checked.ok) return { ok: false, errors: checked.errors };
+  const next = clone(session.scenario);
+  next.priorities = { weights: checked.weights, explicit: true };
+  let parsed;
+  try {
+    parsed = parseScenario(next);
+  } catch (err) {
+    return fail(String((err && err.message) || err));
+  }
+  session.scenario = parsed;
+  return { ok: true, weights: checked.weights, explicit: true,
+    note: "고객님이 정한 비중으로 기록했다. 비교 화면의 내 기준으로 보기에 그대로 보인다." };
+}
+
+async function get_safety(session, args) {
+  const areaId = String(args.area || "");
+  if (!CONSULT_AREAS.some((a) => a.id === areaId)) {
+    return fail(`unknown area ${JSON.stringify(areaId)} — call list_areas first`);
+  }
+  if (!session.loadSafety) {
+    return fail("safety statistics are unavailable on this server (pipeline safety not built)");
+  }
+  let doc;
+  try {
+    doc = await session.loadSafety();
+  } catch (err) {
+    return fail(`cannot load safety statistics: ${String((err && err.message) || err).slice(0, 200)}`);
+  }
+  const view = safetyView(doc, areaId);
+  if (view.missing) return fail(view.missing);
+  return { ok: true, ...view };
+}
+
+async function get_education(session, args) {
+  const area = await needArea(session, args.area).catch((err) => ({ __error: err }));
+  if (area.__error) return fail(area.__error.message);
+  const homes = session.scenario.homes || [];
+  const home = args.home ? homes.find((h) => h.label === args.home)
+    : homes.find((h) => h.area === args.area);
+  if (!home) {
+    return fail(args.home
+      ? `unknown home label ${JSON.stringify(args.home)} — call get_scenario first`
+      : `the scenario has no home in ${args.area} — pass "home" or set one via update_scenario`);
+  }
+  let router;
+  try {
+    router = new Router(area.graph);
+  } catch (err) {
+    return fail(`graph failed: ${err.message}`);
+  }
+  const places = buildPlaces(area, router);
+  let resolved;
+  try {
+    resolved = resolveHome(area, home, router);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const access = educationCounts(places, router, resolved.nodeId);
+  const out = { ok: true, area: args.area, home: home.label,
+    complex: resolved.complex.name, access };
+  if (args.run !== undefined && args.run !== null) {
+    let hit;
+    try {
+      hit = needRun(session, args.run);
+    } catch (err) {
+      return fail(err.message);
+    }
+    const children = hit.run.agents.filter((a) => a.household && a.role === "child");
+    out.school_routes = children.map((c) => schoolRoute(hit.run, router, c.key));
+    if (children.length === 0) out.school_routes_note = "이 가구에는 등교하는 아이가 없습니다";
+  }
+  return out;
+}
+
+function define_term(session, args) {
+  const hit = glossDef(args.term);
+  if (!hit) {
+    return fail(`unknown term ${JSON.stringify(args.term)} (glossary: ${glossaryTerms().join(", ")})`);
+  }
+  return { ok: true, term: hit.term, def: hit.def, source_url: hit.source_url };
+}
+
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
   list_criteria, explain_criterion, get_journey, get_fatigue,
+  apply_persona, get_priorities, set_priorities, get_safety, get_education,
+  define_term,
   ...MONEY_HANDLERS,
 };
 
