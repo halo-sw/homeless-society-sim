@@ -26,7 +26,14 @@ So we built a simulator that answers these questions with real public data. **On
 - **Recommends similar public rental housing.** It uses the public-housing API (LH · MyHome) and filters by housing-cost ratio, floor area and commute. Each candidate links to its official notice. One click adds it as home C and simulates it too.
 - **A consult agent.** A Muse agent with 20+ tools sets up the scenario through conversation, runs the simulation, compares the results, explains decisions and criteria, and moves the 3D view to the moment it is talking about.
 - **Personas and priorities (stage 9a).** Three household templates (1인 사회초년생, 예비·신혼부부, 맞벌이 + 초등학생 자녀) the consult agent offers first; the customer's own priority weights (education · our life · safety · money · convenience) with a side-by-side "내 기준으로 보기" view; official police occurrence counts and OSM-based education access — all shown, explained and never scored or ranked.
-- **Next (stage 9b, in the queue):** a multi-year **"is it worth it?" simulation** of buying vs 전세 vs 월세 vs public rental (loan schedule, rate stress, customer-chosen price scenarios, never forecasts); a **전세 safety check** (전세-to-sale ratio from real transactions, register signals, an official checklist, and mock deposit-loss scenarios); and **support programmes at a glance** (public rental, policy loans, youth and newly-wed benefits, shown as condition-by-condition comparisons with official links, never as eligibility verdicts).
+- **"Is it worth it?" over 5, 10 or 20 years (stage 9b).** Buying vs 전세 vs 월세 vs public rental: total cash out, interest, locked cash, opportunity cost at a rate the customer sets, a yearly loan schedule, rate stress (+1/+2 %p) and DSR. Price paths appear only as customer-chosen scenarios (default −2/0/+2 % a year), each labelled "가정 시나리오, 전망 아님". The app shows the break-even year per scenario and never says buy or don't buy.
+- **전세 safety check (stage 9b).** The 전세-to-sale ratio of the same complex and area from real transactions (e.g. 레이크팰리스 59.97㎡: 37 %), building-register signals, an official six-step checklist (등기부등본, 전입·확정일자, 보증보험, 세금 체납… each linked to the official site) and a **mock deposit-loss simulation** (insured / auction / unrecovered paths with stated assumptions). It shows signals and next steps, never a "safe / unsafe" verdict, and it is not legal advice.
+- **Support programmes at a glance (stage 9b, data verified 2026-10-29).** 버팀목 전세, 청년전용 버팀목, 신혼부부전용 전세, 디딤돌, 신생아 특례 디딤돌: income, asset, rate, loan limit and deposit/price caps from the official 주택도시기금 product pages, each with a source link and date. The table compares the customer's stated numbers condition by condition, with exceptions in plain words, and never says "eligible".
+- **The commute the home really gives you (stage 9c).** The workplace is a place, and each home derives its own commute: from home A (잠실) the person walks to the station, rides 2호선 → 신분당선 and walks to work; from home B (판교) they walk. The ride is its own trip, with per-leg congestion and sources on the Now card.
+- **Plain words everywhere (stage 10).** Labels say what the number means in everyday Korean: "월 주거비 (전세)" became "전세로 살면 매달 집에 드는 돈", "주거비 부담률" became "월급에서 집에 나가는 비율", "출근 도착 피로도" became "회사 도착할 때 피곤한 정도". Every figure has "어떻게 계산했나요?". Jargon appears only with a glossary tooltip, and a test scans the UI for banned bare jargon ([`docs/copy-guide.md`](docs/copy-guide.md)).
+- **A floating AI agent (stage 10).** A "물어보기" button opens a floating Astryx chat panel (Popover, ChatLayout, ChatToolCalls, ChatSystemMessage, Citation, ChatComposer) with suggestion chips that follow the current screen ("이 출근길 왜 피곤해요?"). It knows what "this" refers to, shows each tool step and cites every source. Gentle nudges appear at notable moments, at most one a minute.
+- **Check a real listing you found (stage 10).** Paste the text of a listing from any real-estate app. The agent extracts only values present in the text, matches the complex, and shows where the asking price sits among the last year of real transactions (e.g. 전세 9.8억: middle of 47 deals, range 7.61억–11.8억), the 전세-to-sale ratio and the checklist. One click lives in it for 30 days as home C. Private listing sites are never scraped. Public notices (LH, SH, youth housing) come from the official API with links to the originals.
+- **A shareable result card and a 3-minute tour (stage 10).** "결과 공유" builds a PNG and a printable page comparing A and B in plain words, with source badges and assumption marks; nothing is uploaded. `?tour=demo` plays an 11-step guided tour for first-time users and for recording.
 - **Follows the person across the region (stage 8).** When the followed member rides the subway, the camera rises over a lightweight corridor map (10,971 buildings in 65 lazily loaded tiles) and a train moves along the real line geometry from OpenStreetMap (2·8·9호선, 수인분당선, 신분당선). The customer's ride time is split by line distance, for example 잠실→판교 = 2호선 8.6 min + transfer 4 min + 신분당선 17.4 min.
 - **A congestion-based fatigue index (stage 8).** Built from Seoul Metro's measured congestion per station, direction and 30-minute slot (e.g. 2호선 잠실 08:00 inner loop ≈ 93 %). Lines without data, such as 신분당선, are marked "no data" and use a stated assumption. Every weight is a public, editable criterion. It is a stated model, not a medical judgement.
 
@@ -36,14 +43,23 @@ No price forecasts (price paths appear only as customer-chosen scenarios labelle
 
 ## Example output (demo couple; inputs are placeholders)
 
+![08:50 on day 1. Left: from home A the person is on 2호선 (91 % crowded, measured) heading to 신분당선. Right: from home B they are walking to work (real GPU capture, 2026-10-29)](briefs/img/10-commute-ab.png)
+
 | | Home A · 잠실 레이크팰리스 59.97㎡ | Home B · 판교 백현마을 84.82㎡ |
 |---|---|---|
 | Real-transaction median (last 12 months) | buy 26.5억 / 전세 9.8억 / 월세 4억 + 200만 | buy 25.2억 / 전세 9.5억 / 월세 4.5억 + 200만 |
-| Monthly housing cost (전세) | 260만 원 | 250만 원 |
-| Housing-cost ratio | 36.0 % | 34.6 % |
-| Left over per month | 334만 원 | 392만 원 |
+| 전세로 살면 매달 집에 드는 돈 | 260만 원 | 250만 원 |
+| 월급에서 집에 나가는 비율 | 36 % | 35 % |
+| 보증금이 집값의 몇 %인지 (전세가율) | 37 % | 37.7 % |
+| How they get to work (workplace near 판교역, assumed) | walk → 2호선 → 신분당선 → walk | walk |
+| Time on trains in 30 days | 44 h | 0 |
+| Time walked in 30 days | 27.8 h | 38.0 h |
+| How tired on arrival at work (stated model, 0–100) | 25.3 | 5.7 |
+| Most crowded leg | 2호선 93 % (measured) | — |
+| Evenings at home in 30 days (18–24 h) | 323 h | 343 h |
+| Park visits / errands in 30 days | 10 / 33 | 26 / 17 |
 
-Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원, and a loan rate. All are labelled as assumptions on screen.
+Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원, a loan rate, and a 30-minute 잠실→판교 ride. All are labelled as assumptions on screen. The table shows differences; which matters more is the customer's call.
 
 ## How it is built
 
@@ -61,7 +77,7 @@ Every line of product code, every test and every pipeline script in this reposit
 
 Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the coding agent that wrote the repo). Muse Spark Open runs are planned once inference credits arrive.
 
-Tests: 380+ `node --test` tests (including a headless sim-mode smoke test) and 160+ `pytest` tests.
+Tests: 581 `node --test` tests (including a headless sim-mode smoke test, a server-render smoke test of the whole React UI and a plain-words scan) and 168 `pytest` tests.
 
 ## Run it
 
@@ -84,21 +100,22 @@ node web/scripts/money.mjs   --scenario scenarios/demo-two-homes.json --out data
 cd web && MODEL_API_KEY=... npm run dev
 ```
 
-Useful URLs: `/?mode=sim&home=A&day=1&t=08:28&follow=1` (follow a commute), `&tab=money` (living costs), `&tab=quality` (quality of life), `&tab=criteria` (criteria), and `/?area=seongsu&shot=3&time=18:30` (tour).
+Useful URLs (add to `/?mode=sim&scenario=demo-two-homes`): `&tour=demo` (3-minute guided tour), `&home=A&day=1&t=08:50&follow=1` (follow the commute), `&tab=money` (living costs), `&tab=listings` (check a listing; `&fill=example` for a labelled example), `&tab=money&share=1` (result card), `&tab=criteria` (criteria). `/?area=seongsu&shot=3&time=18:30` is a scenic tour.
 
 Raw and built data are never committed. The scripts above regenerate them. Real-transaction CSVs, the public-housing snapshot and the subway congestion file are fetched by the operator and stay local, as their terms require.
 
 ## Data sources
 
-OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형) · 경찰청 범죄 발생 지역별 통계 (2025, stage 9a). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
+OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형) · 경찰청 범죄 발생 지역별 통계 (2025, stage 9a) · 주택도시기금 product pages (nhuf.molit.go.kr, checked 2026-10-29) · official 전세 checklist sites (인터넷등기소, 정부24, HUG 안심전세포털, 국세청). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
 ## Known issues
 
-- On the real GPU, the subway ride currently shows as "at work" from the moment the person reaches the home station, so the journey view does not appear on a static time link. The demo scenario also gives home B (Pangyo) a 30-minute ride even though work is near 판교역, which hides the real difference. Both are fixed in stage 9c (queued): the workplace becomes a place, each home derives its own commute (A rides, B walks), and the ride is its own trip.
-- Two sim-mode load crashes were found on the real GPU on 2026-10-29 and fixed (8b, 8c) with a headless smoke test. The 8c fix is on branch `fix-8c` and merges into `main` before 9c.
-- Night scenes over-expose lit towers. The daytime look is still hazy and low in contrast. `?q=high` renders black on Apple GPUs (ANGLE Metal); the app detects this and falls back to medium.
-- The payroll rates in `scenarios/assumptions/kr-payroll.json` are marked `needs_confirmation`. Policy-loan figures will be filled only from official pages.
-- Subway ride minutes are customer input (an assumption), not a timetable.
+- Found on the real GPU after stage 10b (2026-10-29): the floating agent panel can overlap the compare card and the listings tab; some tab labels and header buttons are truncated; the share card shows too few A/B figures; the day and regional views are still hazy and night lights are still bright. A polish stage is next.
+- `?q=high` renders black on Apple GPUs (ANGLE Metal); the app detects this and falls back to medium.
+- The payroll rates in `scenarios/assumptions/kr-payroll.json` and the ownership costs (취득세, 중개수수료, 재산세…) are marked `needs_confirmation` and are listed as "아직 계산에 넣지 않은 것" until filled from official pages.
+- Subway ride minutes are customer input (an assumption), not a timetable. 신분당선 has no public congestion data, so it uses a stated 70 % assumption.
+- 성남시 crime statistics are city-level, while Seoul's are district-level; the app shows the level next to every figure.
+- Public-housing notices have no deadline field in the API, so the app lists "recent notices" and links to the original.
 
 ## Progress log
 
@@ -111,8 +128,12 @@ OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장
 | 6 | Salary-based living costs, real transactions, public rental | [`06-RESULT`](briefs/06-RESULT.md) |
 | 7 | Now card, causes, highlighting, criteria, shadow fix | [`07-RESULT`](briefs/07-RESULT.md) |
 | 8 | Journey view, corridor map, congestion fatigue (+8b/8c fixes) | [`08-RESULT`](briefs/08-RESULT.md) |
-| 9a–9c | Personas, priorities, safety/education; worth-it finance, 전세 check, support; per-home commute | in progress |
+| 9a | Personas, customer priorities, official safety and education figures | [`09a-RESULT`](briefs/09a-RESULT.md) |
+| 9b | Worth-it finance, 전세 safety check, mock deposit loss, support programmes | [`09b-RESULT`](briefs/09b-RESULT.md) |
+| 9c | Per-home commute, the ride as a trip, calmer cards | [`09c-RESULT`](briefs/09c-RESULT.md) |
+| 10 | Plain words, floating Astryx agent, listing check, public notices, share card, demo tour | [`10-RESULT`](briefs/10-RESULT.md) |
+| 10b | Fix: React snapshot loop, tour NaN, render smoke test | [`10-RESULT`](briefs/10-RESULT.md#stage-10b--whole-ui-react-loop--tour-nan-muse) |
 
 ## Roadmap (until 11-04)
 
-9a (personas, priorities, safety and education — done) → 9b (worth-it finance, 전세 safety check, support programmes) → 9c (per-home commute, the ride as a trip, calmer cards) → one polished demo flow → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
+9a → 9b → 9c → 10 (done) → UI polish (floating panel placement, truncation, fuller share card, less haze) → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
