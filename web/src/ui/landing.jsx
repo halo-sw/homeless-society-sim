@@ -13,7 +13,6 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { Heading } from "@astryxdesign/core/Heading";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Grid } from "@astryxdesign/core/Grid";
@@ -114,10 +113,7 @@ export function Landing() {
                         padding={3}
                         onClick={() => { setValue(p.prompt); setExampleId(p.id); }}>
                         <VStack gap={0.5}>
-                          <HStack gap={1} vAlign="center">
-                            <Heading level={4}>{p.title}</Heading>
-                            <Badge variant="yellow" label="예시" />
-                          </HStack>
+                          <Heading level={4}>{`${p.title} · 예시`}</Heading>
                           <Text type="body" color="secondary" size="xsm">{p.prompt}</Text>
                         </VStack>
                       </ClickableCard>

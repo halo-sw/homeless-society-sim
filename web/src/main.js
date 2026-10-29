@@ -7,7 +7,7 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -34,9 +34,9 @@ import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
-import { eveningHomeFraction, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
+import { aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
-import { capLitFraction, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
+import { PAINTED_NIGHT_GROUND, PAINTED_WATER, capLitFraction, lerpHex, nightTint, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -47,8 +47,8 @@ import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMat
 import { flatHeightAt, makeHeightAt, seatOnTerrain } from "./scene/height.js";
 import { loadScene, toTypedMesh } from "./scene/load.js";
 import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
-import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
-import { setSway, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
+import { MARKINGS_HIDE_M, buildRoadMarkings, buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
+import { fillStreetTrees, setSway, treeColour, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
 // Stage 14b: procedural motion — pure state (motion/) evaluated at sim time.
 import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
 import { MAX_PEDS_HIGH, buildCrowd, pedCapFor, stationCongestionScale } from "./motion/pedestrians.js";
@@ -85,6 +85,35 @@ const HEIGHT_SWATCH = { osm_height: "#7ba05b", osm_levels: "#a9bf8e", register_h
 // ?time=HH:MM overrides the tour sun for day/golden/blue/night captures.
 const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
 const SUN_MINUTE = 15 * 60;
+// Painted leaf colours (14e) read the sim date: the tour's fixed day is
+// 2026-10-15 (inside the autumn window); sim runs use scenario start.
+const TOUR_DATE_ISO = "2026-10-15";
+function simDateISO(startDate, day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startDate || "");
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    + (Number(day) || 0) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+// Building footprint exterior rings in scene coords ([x, z] plan) for
+// the rule-filled street trees (skip spots on/near footprints).
+function footprintRings(buildings, origin) {
+  const rings = [];
+  for (const b of buildings || []) {
+    const g = b.geometry;
+    if (!g) continue;
+    const polys = g.type === "Polygon" ? [g.coordinates]
+      : g.type === "MultiPolygon" ? g.coordinates : [];
+    for (const poly of polys) {
+      const ring = (poly[0] || []).map(([lon, lat]) => {
+        const [x, y] = lonLatToXY(lon, lat, origin);
+        return [x, -y];
+      });
+      if (ring.length >= 3) rings.push(ring);
+    }
+  }
+  return rings;
+}
 const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
 // 12b: map-route colours shared with the day strip (timeline.js).
@@ -92,8 +121,12 @@ const WALK_ROUTE_CSS = ACTIVITIES.walk.color;
 const SUBWAY_ROUTE_CSS = ACTIVITIES.subway.color;
 
 const PARAMS = new URLSearchParams(location.search);
+// Stage 14e: ?style=painted (default, near-isometric) vs ?style=photo
+// (today's look, unchanged pixels). CAM carries fov/pitch/azimuth/rotate.
+const STYLE = resolveStyle(PARAMS);
+const CAM = cameraStyle(STYLE);
 // Stage-11 look table (?look=key:value,… retunes without a rebuild).
-const LOOK = resolveLook(PARAMS);
+const LOOK = resolveLook(PARAMS, STYLE);
 const areaId = PARAMS.get("area") || DEFAULT_AREA;
 
 // Tour sun from ?time=HH:MM (validated) or the fixed afternoon default.
@@ -178,7 +211,9 @@ async function fetchArea(wantId) {
 // Static world shared by tour and sim modes: renderer, camera, lights,
 // ground, buildings, trees. Returns every handle the modes need.
 // scene14 is the box's scene.json (or null → flat fallback).
-function buildWorld(area, scene14) {
+// opts.treeDateISO (YYYY-MM-DD) drives the painted autumn leaf window.
+function buildWorld(area, scene14, opts = {}) {
+  const treeDateISO = opts.treeDateISO ?? null;
   const origin = originOf(area);
   const box = bboxToXY(area.bbox, origin);
   const cx = (box.minX + box.maxX) / 2;
@@ -203,13 +238,26 @@ function buildWorld(area, scene14) {
   const wrap0 = document.getElementById("scene-wrap");
   const aspect0 = wrap0 && wrap0.clientHeight > 0
     ? wrap0.clientWidth / wrap0.clientHeight : innerWidth / innerHeight;
-  const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, aspect0, 1, span * 8);
-  const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
-  const [hox, hoy, hoz] = tourOffset(homeDist);
+  const camera = new THREE.PerspectiveCamera(CAM.fovDeg, aspect0, 1, span * 8);
+  const homeDist = distanceForWidth(span, CAM.fovDeg, camera.aspect);
+  // The narrow painted FOV needs a much longer distance; the far plane
+  // must cover at least 2× that distance.
+  camera.far = Math.max(span * 8, homeDist * 2);
+  camera.updateProjectionMatrix();
+  const [hox, hoy, hoz] = tourOffset(homeDist, CAM.pitchDeg, CAM.azimuth);
   camera.position.set(cx + hox, hoy + ground0, -cy + hoz);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(cx, ground0, -cy);
   controls.maxPolarAngle = Math.PI * 0.49;
+  // Painted: fixed azimuth (no rotate); pan and zoom stay, zoom clamped
+  // to 150 m…span framed width. Photo keeps today's free controls.
+  controls.enableRotate = CAM.rotate;
+  if (STYLE === "painted") {
+    const clamp = zoomClampDistances(span, CAM.fovDeg, camera.aspect);
+    controls.minDistance = clamp.min;
+    controls.maxDistance = clamp.max;
+    camera.userData.clampSpan = span;
+  }
   controls.update();
 
   // --- sky rig: sun + hemi + Sky dome + PMREM environment ---
@@ -224,9 +272,12 @@ function buildWorld(area, scene14) {
   document.getElementById("vignette").style.display = "none";
 
   // --- ground: base plane + merged layer + paint + water skin ---
+  // Painted: the fringe matches the warm ground so the box edge never
+  // shows a grey ring; photo keeps today's darker fringe.
+  const baseDayColor = STYLE === "painted" ? LOOK.terrainBase : BASE_GROUND;
   const base = new THREE.Mesh(
     new THREE.PlaneGeometry(span * 1.5, span * 1.5),
-    new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 })
+    new THREE.MeshStandardMaterial({ color: baseDayColor, roughness: 1, metalness: 0 })
   );
   base.rotation.x = -Math.PI / 2;
   base.position.set(cx, scene14 ? demMin - 1 : -0.05, -cy);
@@ -264,6 +315,7 @@ function buildWorld(area, scene14) {
   let waterMesh = null;
   if (groundData.water.triangles > 0) {
     waterMesh = new THREE.Mesh(toGeometry(groundData.water), waterMaterial());
+    if (STYLE === "painted") waterMesh.material.color.setHex(PAINTED_WATER);
     scene.add(waterMesh);
   }
   // Stage-14 road ribbons + waterway ribbons (≤ 4 + 1 draw calls).
@@ -279,13 +331,32 @@ function buildWorld(area, scene14) {
           metalness: 0, polygonOffset: true,
           polygonOffsetFactor: -offsets[cls], polygonOffsetUnits: -offsets[cls] }));
       mesh.receiveShadow = true;
+      mesh.userData.roadCls = cls;
       scene.add(mesh);
       sceneRoadMeshes.push(mesh);
     }
     const w = buildWaterRibbons(scene14.water, heightAt, LOOK);
     if (w.triangles > 0) {
       sceneWaterMesh = new THREE.Mesh(toIndexedGeometry(w), waterMaterial());
+      if (STYLE === "painted") sceneWaterMesh.material.color.setHex(PAINTED_WATER);
       scene.add(sceneWaterMesh);
+    }
+  }
+  // Painted road paint (14e, one merged mesh): dashes + yellow centre +
+  // zebras from the ribbon stations. The ground lane paint would double
+  // it, so it sits out in painted scene mode (flat mode keeps it).
+  let sceneMarkingsMesh = null;
+  if (scene14 && STYLE === "painted") {
+    if (markMesh) markMesh.visible = false;
+    const mk = buildRoadMarkings(scene14.roads, heightAt);
+    if (mk.mesh.triangles > 0) {
+      const mat = markingMaterial();
+      mat.polygonOffset = true; // paint wins over ribbons at any range
+      mat.polygonOffsetFactor = -4;
+      mat.polygonOffsetUnits = -4;
+      sceneMarkingsMesh = new THREE.Mesh(toIndexedGeometry(mk.mesh), mat);
+      sceneMarkingsMesh.receiveShadow = true;
+      scene.add(sceneMarkingsMesh);
     }
   }
 
@@ -303,6 +374,8 @@ function buildWorld(area, scene14) {
   for (const [cls, data] of Object.entries(built.detail.walls)) {
     if (data.triangles === 0) continue;
     const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso }));
+    // Painted: warm concrete walls (photo keeps white = today's pixels).
+    mesh.material.color.setRGB(...facadeTintFor(cls, STYLE));
     addLitAttr(mesh);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -315,6 +388,7 @@ function buildWorld(area, scene14) {
   if (built.detail.podium.triangles > 0) {
     podiumMesh = new THREE.Mesh(toGeometry(built.detail.podium),
       facadeMaterial("podium", { aniso: maxAniso }));
+    podiumMesh.material.color.setRGB(...facadeTintFor("podium", STYLE));
     addLitAttr(podiumMesh);
     podiumMesh.castShadow = true;
     podiumMesh.receiveShadow = true;
@@ -324,6 +398,7 @@ function buildWorld(area, scene14) {
       ranges: new Map(built.detail.podium.ranges.map((r) => [r.id, r])) });
   }
   const roofMesh = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso }));
+  roofMesh.material.color.setRGB(...facadeTintFor("roof", STYLE));
   roofMesh.castShadow = true;
   roofMesh.receiveShadow = true;
   scene.add(roofMesh);
@@ -334,9 +409,19 @@ function buildWorld(area, scene14) {
   // --- trees: OSM forest/park placements (scene) or decorative (flat) ---
   const treeMeshes = [];
   let trees = [];
+  let fillTrees = 0;
   const tintColor = new THREE.Color();
   if (scene14) {
     trees = scene14.trees;
+    // Painted: rule-fill street trees along empty roads (가정값, see the
+    // legend note) and seed per-instance leaf colours by sim date.
+    const paintedTrees = STYLE === "painted";
+    if (paintedTrees) {
+      const fill = fillStreetTrees(scene14.roads, scene14.trees,
+        footprintRings(area.buildings, origin));
+      fillTrees = fill.trees.length;
+      if (fillTrees > 0) trees = [...scene14.trees, ...fill.trees];
+    }
     const bySpecies = [[], [], []];
     for (const t of trees) bySpecies[t[3]].push(t);
     bySpecies.forEach((list, species) => {
@@ -350,7 +435,15 @@ function buildWorld(area, scene14) {
         dummy.rotation.set(0, treeRotation(x, z), 0);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
-        mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+        // Conifers stay evergreen (greens only); broadleaf/shrub follow
+        // the sim date into the autumn window. Photo keeps the grey tint.
+        const seed = `${x.toFixed(1)},${z.toFixed(1)}`;
+        if (paintedTrees) {
+          mesh.setColorAt(i, tintColor.setHex(
+            treeColour(seed, species === 0 ? null : treeDateISO)));
+        } else {
+          mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+        }
       });
       mesh.count = list.length;
       mesh.castShadow = true;
@@ -422,6 +515,9 @@ function buildWorld(area, scene14) {
       { seed: area.area || areaId, maxMovers: 0 }),
     { heightAt, fleet });
   scene.add(streetMeshes.group);
+  // 14e: additive lamp halos sit out of the painted depth prepass (they
+  // would punch depth blobs under the override material). Photo ignores it.
+  if (streetMeshes.halo) streetMeshes.halo.userData.noPaintedDepth = true;
 
   // --- ambient crowd: seeded OD pairs on the walk graph (motion) ---
   // Household agents render separately; this crowd never replaces them.
@@ -449,6 +545,74 @@ function buildWorld(area, scene14) {
   const maxHeightM = maxH > 0 || relief > 0
     ? Math.min(600, Math.max(maxH, relief)) : 250;
 
+  // Red aviation beacons (14e) on roof tips ≥ 60 m: one Points cloud,
+  // blinking hard once per 1.5 s, procedural in t. Both styles.
+  let aviationMat = null;
+  {
+    const pts = [];
+    for (const b of area.buildings || []) {
+      const h = Number(b.height_m) || (Number(b.levels) || 0) * 3 || 0;
+      if (!needsAviationLight(h)) continue;
+      const g = b.geometry;
+      if (!g) continue;
+      const polys = g.type === "Polygon" ? [g.coordinates]
+        : g.type === "MultiPolygon" ? g.coordinates : [];
+      const ring = (polys[0] && polys[0][0]) || [];
+      if (ring.length === 0) continue;
+      let sx = 0;
+      let sy = 0;
+      for (const [lon, lat] of ring) {
+        const [x, y] = lonLatToXY(lon, lat, origin);
+        sx += x;
+        sy += y;
+      }
+      const px = sx / ring.length;
+      const py = sy / ring.length;
+      pts.push(px, heightAt(px, -py) + h + 2.5, -py);
+    }
+    if (pts.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      aviationMat = new THREE.PointsMaterial({ color: 0xff2a1e, size: 4,
+        sizeAttenuation: false, transparent: true, opacity: 0,
+        depthWrite: false });
+      const aviation = new THREE.Points(geo, aviationMat);
+      aviation.frustumCulled = false;
+      aviation.userData.noPaintedDepth = true;
+      scene.add(aviation);
+    }
+  }
+
+  // Painted night (14e): ground-plane surfaces lerp toward navy after
+  // dusk; carriageways keep their day asphalt so they read a little
+  // lighter than the ground and lit windows pop. Photo: untouched.
+  const nightMats = [];
+  if (STYLE === "painted") {
+    nightMats.push({ mat: base.material, day: baseDayColor, direct: true });
+    if (terrainMesh) {
+      nightMats.push({ mat: terrainMesh.material, day: LOOK.terrainBase, direct: false });
+    }
+    nightMats.push({ mat: groundMesh.material, day: LOOK.terrainBase, direct: false });
+    for (const m of sceneRoadMeshes) {
+      const cls = m.userData.roadCls;
+      if (cls === "road" || cls === "rail") continue;
+      const day = cls === "foot" ? LOOK.sceneFoot
+        : cls === "cycle" ? LOOK.sceneCycle : LOOK.terrainBase;
+      nightMats.push({ mat: m.material, day, direct: false });
+    }
+  }
+  let lastNightT = -1;
+  function applyPaintedNight(nightF) {
+    if (STYLE !== "painted") return;
+    const t = Math.min(1, Math.max(0, Number(nightF) || 0));
+    if (Math.abs(t - lastNightT) < 0.005) return;
+    lastNightT = t;
+    for (const { mat, day, direct } of nightMats) {
+      if (direct) mat.color.setHex(lerpHex(day, PAINTED_NIGHT_GROUND, t));
+      else mat.color.setRGB(...nightTint(day, PAINTED_NIGHT_GROUND, t));
+    }
+  }
+
   renderCtl.attach(scene, camera, document.getElementById("scene-wrap"));
   // Stage-14 perf log, once per box load (scene-only draw calls/tris).
   const sceneMeasure = renderCtl.measureScene();
@@ -458,18 +622,26 @@ function buildWorld(area, scene14) {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
     dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
-    trees, treeMeshes, streetMeshes, crowd, crowdMeshes, dummy, heightAt,
-    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh,
+    trees, treeMeshes, fillTrees, streetMeshes, crowd, crowdMeshes,
+    dummy, heightAt,
+    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh, sceneMarkingsMesh,
+    nightMats, applyPaintedNight, aviationMat,
   };
 }
 
 // Refit the camera + renderer to the (docked-panel-shrunk) canvas.
-function refitToWrap(camera, renderCtl) {
+function refitToWrap(camera, renderCtl, controls = null) {
   const wrap = document.getElementById("scene-wrap");
   const w = wrap ? wrap.clientWidth : innerWidth;
   const h = wrap ? wrap.clientHeight : innerHeight;
   camera.aspect = Math.max(0.2, w / Math.max(1, h));
   camera.updateProjectionMatrix();
+  // Painted: the zoom clamp is aspect-dependent, so refresh it on refit.
+  if (controls && STYLE === "painted" && camera.userData.clampSpan) {
+    const clamp = zoomClampDistances(camera.userData.clampSpan, CAM.fovDeg, camera.aspect);
+    controls.minDistance = clamp.min;
+    controls.maxDistance = clamp.max;
+  }
   renderCtl.fitContainer();
 }
 
@@ -530,8 +702,10 @@ async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
-    streetMeshes, crowdMeshes, trees, treeMeshes, waterMesh, sceneWaterMesh,
-    dummy, heightAt } = buildWorld(area, scene14);
+    streetMeshes, crowdMeshes, trees, treeMeshes, fillTrees, waterMesh,
+    sceneWaterMesh, sceneMarkingsMesh, dummy, heightAt,
+    applyPaintedNight, aviationMat } = buildWorld(area, scene14,
+      { treeDateISO: TOUR_DATE_ISO });
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
     const [x, y] = lonLatToXY(lon, lat, origin);
@@ -557,7 +731,7 @@ async function bootTour(uiMode = "tour") {
   // test uses the actual building heights (same clamp as the renderer)
   // and the settled camera pose (same offset/aspect/pitch as poseFor);
   // when no azimuth is clear, the occluders fade instead (stage 4).
-  const stopDist0 = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist0 = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   const footprints = footprintsOf(area.buildings, origin);
   const stopTargets = plan.stops.map((s, i) => {
     const wp = legPaths[i].length > 1
@@ -568,7 +742,8 @@ async function bootTour(uiMode = "tour") {
     return { anchor: lonLatToXY(s.lon, s.lat, origin), end: [wp[0], -wp[2]] };
   });
   const stopAzimuths = plan.stops.map((s, i) => {
-    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0);
+    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0,
+      undefined, CAM.pitchDeg);
     const moved = picked.azimuth !== TOUR_AZIMUTH;
     console.log(`[occlusion] stop=${i} ${s.name} azimuth=[${picked.azimuth}] ` +
       `occluders=${picked.occluders}${moved ? " (moved)" : ""}`);
@@ -578,7 +753,7 @@ async function bootTour(uiMode = "tour") {
   // tall host tower when a POI stop sits inside one.
   const stopFades = plan.stops.map((s, i) => {
     const targets = [stopTargets[i].anchor, stopTargets[i].end];
-    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i]));
+    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i], CAM.pitchDeg));
     if (s.kind === "poi") {
       for (const id of hostTowerIds(stopTargets[i].anchor, footprints)) ids.add(id);
     }
@@ -597,7 +772,7 @@ async function bootTour(uiMode = "tour") {
   // The landing and the chat reuse the tour scene as a backdrop; only
   // the tour shows captions, the legend and the area switcher.
   if (uiMode === "tour") {
-    buildUI(area, plan, !!scene14);
+    buildUI(area, plan, !!scene14, fillTrees);
   } else {
     store.set({ area: { id: areaId, label: area.label || areaId } });
     document.title = uiMode === "chat" ? "주거 시뮬레이터 — 대화" : "주거 시뮬레이터";
@@ -611,10 +786,12 @@ async function bootTour(uiMode = "tour") {
   const fillTourLit = makeLitFiller(litMeshes, householdsById);
   let tourEmissive = 0;
   let tourBloom = 0;
+  let tourFramedWidth = null;
   let tourLitDone = false;
   function updateTourSky() {
     const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
+      camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
+    tourFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
@@ -622,6 +799,7 @@ async function bootTour(uiMode = "tour") {
     tourBloom = p.bloom;
     tourEmissive = p.emissive;
     setGlobalNight(p.emissive);
+    applyPaintedNight(p.nightF);
     streetMeshes.setLampGlow(p.emissive);
     // No run in tour mode: light residential windows from the evening
     // estimate (once — the tour sun is static).
@@ -720,7 +898,11 @@ async function bootTour(uiMode = "tour") {
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
     if (archLens) levelCamera();
-    renderCtl.renderFrame({ bloom: tourBloom }, dt);
+    if (sceneMarkingsMesh) {
+      sceneMarkingsMesh.visible = (tourFramedWidth ?? 0) <= MARKINGS_HIDE_M;
+    }
+    if (aviationMat) aviationMat.opacity = aviationBlink(tourTMin * 60);
+    renderCtl.renderFrame({ bloom: tourBloom, framedWidthM: tourFramedWidth }, dt);
     frames++;
     if (frames === 30) {
       console.log(`[scene] area=${areaId} buildings=${area.buildings.length} ` +
@@ -730,7 +912,7 @@ async function bootTour(uiMode = "tour") {
   });
 
   const refitTour = () => {
-    refitToWrap(camera, renderCtl);
+    refitToWrap(camera, renderCtl, controls);
     if (archLens) applyArchLens();
   };
   addEventListener("resize", refitTour);
@@ -744,8 +926,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   const stops = plan.stops;
 
   const schedule = tourSchedule(plan);
-  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
-  const glideDist = distanceForWidth(GLIDE_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
+  const glideDist = distanceForWidth(GLIDE_FRAME_M, CAM.fovDeg, camera.aspect);
   const state = { playing: stops.length > 0, leg: 0, legT: 0, dwell: 0, outro: 0, done: false };
   controls.enabled = !state.playing;
 
@@ -775,8 +957,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
                look: new THREE.Vector3(wp[0], wp[1], wp[2]) };
     }
     const dist = stopDist + (glideDist - stopDist) * (1 - t);
-    const [dox, doy, doz] = tourOffset(dist, undefined, TOUR_AZIMUTH);
-    const [sox, soy, soz] = tourOffset(dist, undefined, stopAzimuths[i] || TOUR_AZIMUTH);
+    const [dox, doy, doz] = tourOffset(dist, CAM.pitchDeg, TOUR_AZIMUTH);
+    const [sox, soy, soz] = tourOffset(dist, CAM.pitchDeg, stopAzimuths[i] || TOUR_AZIMUTH);
     const k = t * t; // ease the azimuth in towards the settled stop
     const ox = dox + (sox - dox) * k;
     const oy = doy + (soy - doy) * k;
@@ -943,8 +1125,10 @@ export const MOTION_NOTE_TOUR_FLAT = "나무는 장식용 모의 표시, 차량�
 export const MOTION_NOTE_SIM_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
 export const MOTION_NOTE_SIM_FLAT = "나무는 장식용 모의 표시, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
 export const MOTION_CONG_SUFFIX = " 역 주변 인파는 실측 혼잡도 기반입니다.";
+// 14e: rule-filled street trees are assumption values, like mock motion.
+export const FILL_TREES_SUFFIX = " 가로수 위치 일부는 규칙으로 채운 값(가정값)입니다.";
 
-function buildUI(area, plan, sceneOn = false) {
+function buildUI(area, plan, sceneOn = false, fillCount = 0) {
   const { resRows, heightRows } = legendRows(area);
   store.set({
     areaOptions: AREAS.map((a) => ({ value: a.id, label: a.label })),
@@ -953,7 +1137,8 @@ function buildUI(area, plan, sceneOn = false) {
       title: "범례",
       resRows,
       heightRows,
-      note: sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT,
+      note: (sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT)
+        + (fillCount > 0 ? FILL_TREES_SUFFIX : ""),
     },
   });
   if (plan.stops.length === 0) store.set({ tourPlaying: false });
@@ -1137,8 +1322,10 @@ async function bootSim() {
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
-    crowd, crowdMeshes, treeMeshes, waterMesh, sceneWaterMesh,
-    wallMeshes, podiumMesh, roofMesh, heightAt } = buildWorld(area, scene14);
+    crowd, crowdMeshes, treeMeshes, fillTrees, waterMesh, sceneWaterMesh,
+    sceneMarkingsMesh, wallMeshes, podiumMesh, roofMesh, heightAt,
+    nightMats, applyPaintedNight, aviationMat } = buildWorld(area, scene14,
+      { treeDateISO: simDateISO(run.meta.start_date, 0) });
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
   // pulse animation when the OS asks for reduced motion.
@@ -1615,6 +1802,7 @@ async function bootSim() {
   // 30-minute granularity. Daytime emissive is off (uNight = 0).
   let simBloom = 0;
   let simEmissive = 0;
+  let simFramedWidth = null;
   let lastLightKey = "";
   let lastLitKey = "";
 
@@ -1622,7 +1810,8 @@ async function bootSim() {
     const m = Math.floor(minute);
     const instant = simInstant(run.meta.start_date, day, m);
     const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
+      camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
+    simFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
@@ -1633,6 +1822,7 @@ async function bootSim() {
     if (key === lastLightKey) return;
     lastLightKey = key;
     setGlobalNight(p.emissive);
+    applyPaintedNight(p.nightF);
     streetMeshes.setLampGlow(p.emissive);
     updateLit(m);
   }
@@ -1646,7 +1836,7 @@ async function bootSim() {
   }
 
   // --- follow camera (2b miniature framing) ---
-  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   let snapFollow = follow > 0;
 
   function followedSample() {
@@ -1680,7 +1870,7 @@ async function bootSim() {
     const hit = followedSample();
     if (!hit) return;
     const [x, y] = lonLatToXY(hit.s.lon, hit.s.lat, origin);
-    const [ox, oy, oz] = tourOffset(stopDist);
+    const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     const pos = new THREE.Vector3(x + ox, oy, -y + oz);
     const look = new THREE.Vector3(x, 2, -y);
     // Snap when far (a fast clock would lag behind); otherwise glide,
@@ -1840,6 +2030,9 @@ async function bootSim() {
   regionalBase.position.y = -0.4;
   regionalBase.visible = false;
   scene.add(regionalBase);
+  if (STYLE === "painted") {
+    nightMats.push({ mat: regionalBase.material, day: LOOK.regionalGround, direct: true });
+  }
 
   async function fetchJson(url) {
     const r = await fetch(url);
@@ -2006,6 +2199,7 @@ async function bootSim() {
     for (const [cls, data] of Object.entries(built.detail.walls)) {
       if (data.triangles === 0) continue;
       const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso2 }));
+      mesh.material.color.setRGB(...facadeTintFor(cls, STYLE));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g.add(mesh);
@@ -2013,11 +2207,14 @@ async function bootSim() {
     if (built.detail.podium.triangles > 0) {
       const mesh = new THREE.Mesh(toGeometry(built.detail.podium),
         facadeMaterial("podium", { aniso: maxAniso2 }));
+      mesh.material.color.setRGB(...facadeTintFor("podium", STYLE));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g.add(mesh);
     }
-    g.add(new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 })));
+    const liteRoof = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 }));
+    liteRoof.material.color.setRGB(...facadeTintFor("roof", STYLE));
+    g.add(liteRoof);
     const [ox, oy] = lonLatToXY(liteOrigin.lon, liteOrigin.lat, origin);
     g.position.set(ox, 0, -oy);
     scene.add(g);
@@ -2190,7 +2387,7 @@ async function bootSim() {
 
   function streetPose(lonLat) {
     const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
-    const [ox, oy, oz] = tourOffset(stopDist);
+    const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     return { pos: new THREE.Vector3(x + ox, oy, -y + oz),
       look: new THREE.Vector3(x, 2, -y) };
   }
@@ -2202,7 +2399,7 @@ async function bootSim() {
     const size = box3.getSize(new THREE.Vector3());
     const radius = Math.max(size.x, size.z) / 2;
     const dist = Math.max(4000, radius * 2.6);
-    const [ox, oy, oz] = tourOffset(dist);
+    const [ox, oy, oz] = tourOffset(dist, CAM.pitchDeg, CAM.azimuth);
     return { pos: new THREE.Vector3(center.x + ox, oy, center.z + oz),
       look: new THREE.Vector3(center.x, 0, center.z), dist };
   }
@@ -2216,7 +2413,8 @@ async function bootSim() {
       : (jf.phase === "descending" ? jf.destLonLat : jf.boardLonLat);
     if (!lonLat) return regionalPose();
     const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
-    const pose = journeyCruisePose([x, -y], camera.aspect);
+    const pose = journeyCruisePose([x, -y], camera.aspect,
+      { fovDeg: CAM.fovDeg, pitchDeg: CAM.cruisePitchDeg, azimuth: CAM.azimuth });
     return { pos: new THREE.Vector3(...pose.pos),
       look: new THREE.Vector3(...pose.look), dist: pose.dist };
   }
@@ -2377,7 +2575,8 @@ async function bootSim() {
   }
 
   // --- sim UI state (published) + actions (UI calls scene) ---
-  simLegendBase = scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT;
+  simLegendBase = (scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT)
+    + (fillTrees > 0 ? FILL_TREES_SUFFIX : "");
   const { resRows, heightRows } = legendRows(area);
   store.set({
     home: homeLabel,
@@ -2809,7 +3008,11 @@ async function bootSim() {
     }
     trackSimViewOffset(camera); // 13e5: stage centre, not canvas centre
     controls.update();
-    renderCtl.renderFrame({ bloom: simBloom }, dt);
+    if (sceneMarkingsMesh) {
+      sceneMarkingsMesh.visible = (simFramedWidth ?? 0) <= MARKINGS_HIDE_M;
+    }
+    if (aviationMat) aviationMat.opacity = aviationBlink(simTMin * 60);
+    renderCtl.renderFrame({ bloom: simBloom, framedWidthM: simFramedWidth }, dt);
     frames++;
     if (frames === 30) {
       console.log(`[sim] area=${run.meta.area} agents=${run.meta.agents} ` +
@@ -2817,7 +3020,7 @@ async function bootSim() {
     }
   });
 
-  const refitSim = () => refitToWrap(camera, renderCtl);
+  const refitSim = () => refitToWrap(camera, renderCtl, controls);
   addEventListener("resize", refitSim);
   new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }

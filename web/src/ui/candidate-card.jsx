@@ -3,7 +3,6 @@
 // place, then OUR decisive extra — the commute and the 30-day life.
 // SSR-safe.
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { TENURE_KO } from "../profile.js";
@@ -55,11 +54,11 @@ const SRC_KO = { official: "공식", estimate: "추정", said: "내가 말한 �
 const SRC_CLS = { official: "ui-src-official", estimate: "ui-src-estimate", said: "ui-src-said", unknown: "" };
 
 export function SourceDot({ source }) {
-  if (!source || source === "unknown") return null;
+  if (!source || source === "unknown" || !SRC_KO[source]) return null;
   return (
-    <span title={SRC_KO[source] || source}>
+    <span title={SRC_KO[source]}>
       <span className={`ui-srcdot ${SRC_CLS[source] || ""}`} aria-hidden="true" />
-      <span style={{ fontSize: 12 }}>{SRC_KO[source]}</span>
+      <Text type="supporting">{SRC_KO[source]}</Text>
     </span>
   );
 }
@@ -127,9 +126,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         <div className="ui-commute ui-num">
           {commute.text} <SourceDot source={commute.source} />
         </div>
-        <div className="ui-cand-badges">
-          {badges.map((b) => <Badge key={b} variant="neutral" label={b} />)}
-        </div>
+        <div className="ui-cand-facts ui-num">{badges.join(" · ")}</div>
         {photo && <div className="ui-cand-credit">{photo.credit}</div>}
         <div className="ui-cand-actions">
           <Button size="sm" variant={picked ? "secondary" : "primary"}

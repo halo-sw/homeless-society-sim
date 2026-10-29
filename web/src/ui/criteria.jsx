@@ -4,7 +4,6 @@
 // scenario (main.js) — never invented here. Editable values send a
 // what-if re-run through the consult agent, like any other what-if.
 import { useEffect, useRef, useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -12,6 +11,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
+import { plainSource } from "./copy.js";
 import { PRIORITY_GROUPS, PRIORITY_METRICS } from "../priorities.js";
 
 function PrioritiesMap() {
@@ -33,14 +33,6 @@ function PrioritiesMap() {
 
 const act = (name, ...args) => store.act(name, ...args);
 
-const SOURCE_VARIANT = {
-  "engine 기본값": "neutral",
-  "고객 입력": "blue",
-  "데이터: OSM": "teal",
-  "데이터: 실거래가": "info",
-  "가정값": "orange",
-};
-
 function CriterionRow({ item, focus }) {
   const ref = useRef(null);
   const [draft, setDraft] = useState({});
@@ -54,13 +46,11 @@ function CriterionRow({ item, focus }) {
   return (
     <div ref={ref} className={focus ? "ui-criterion-focus" : undefined}>
       <VStack gap={1}>
-        <HStack gap={1} vAlign="center" wrap="wrap">
-          {/* 13e4: title only — the internal id stays in `title`. */}
-          <span title={item.id}>
-            <Text>{item.title}</Text>
-          </span>
-          <Badge variant={SOURCE_VARIANT[item.source] || "neutral"} label={item.source} />
-        </HStack>
+        {/* 13e4: title only — the internal id stays in `title`. */}
+        <span title={item.id}>
+          <Text>{item.title}</Text>
+        </span>
+        <Text type="supporting">{plainSource(item.source)}</Text>
         <Text type="supporting">{item.rule}</Text>
         {item.valuesLine && <Text type="supporting" hasTabularNumbers>{item.valuesLine}</Text>}
         {item.affects.length > 0 && (
@@ -74,7 +64,7 @@ function CriterionRow({ item, focus }) {
           <HStack gap={1} vAlign="center" wrap="wrap">
             {overridables.map(([k, v]) => (
               <HStack gap={1} vAlign="center" key={k}>
-                <Text type="supporting">{`${k} (${v.unit})`}</Text>
+                <Text type="supporting">{`${String(k).replace(/_/g, " ")} (${v.unit})`}</Text>
                 <input className="ui-weight" type="number"
                   value={draft[k] !== undefined ? draft[k] : v.value}
                   onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
@@ -114,8 +104,8 @@ export function CriteriaTab({ state }) {
     <VStack gap={2}>
       <PrioritiesMap />
       <Text type="supporting">
-        {`계산 기준 ${doc.items.length}개 · ${doc.doc} v${doc.version}`}
-        {doc.overrides.length > 0 ? ` · 고객님이 바꾼 것 ${doc.overrides.length}개 (${doc.overrides.join(", ")})` : " · 바꾼 것 없음"}
+        {`계산 기준 ${doc.items.length}개`}
+        {doc.overrides.length > 0 ? ` · 고객님이 바꾼 것 ${doc.overrides.length}개` : " · 바꾼 것 없음"}
       </Text>
       {doc.groups.map((g) => (
         <VStack gap={1} key={g.id}>

@@ -2,10 +2,10 @@
    the boot loader. Every overlay is an Astryx component (src/ui/). */
 
 :root {
-  --paper: #fbf7ee;
-  --ink: #3d3227;
-  --accent: #b25a33;
-  --card: rgba(251, 247, 238, 0.92);
+  --paper: #f6f4ef;
+  --ink: #1d1b18;
+  --accent: #2f6fed;
+  --card: rgba(255, 255, 255, 0.92);
 }
 
 * { box-sizing: border-box; }
@@ -13,7 +13,7 @@
 html, body {
   margin: 0;
   height: 100%;
-  font-family: "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  font-family: 'Pretendard Variable', -apple-system, 'Apple SD Gothic Neo', sans-serif;
   color: var(--ink);
   background: var(--paper);
 }
@@ -28,7 +28,7 @@ html, body {
 #vignette {
   position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse at center,
-    transparent 52%, rgba(251, 247, 238, 0.38) 82%, rgba(251, 247, 238, 0.72) 100%);
+    transparent 52%, rgba(246, 244, 239, 0.38) 82%, rgba(246, 244, 239, 0.72) 100%);
 }
 
 #fade {
@@ -40,13 +40,13 @@ html, body {
 #tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .hhtag {
   position: absolute; transform: translate(-50%, -100%);
-  background: rgba(61, 50, 39, 0.88); color: #fbf7ee;
-  font-size: 11px; font-weight: 700; white-space: nowrap;
-  border-radius: 10px; padding: 2px 9px; margin-top: -6px;
+  background: rgba(29, 27, 24, 0.88); color: #f6f4ef;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  border-radius: 8px; padding: 2px 8px; margin-top: -6px;
 }
 
 #loading {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: var(--card); padding: 12px 24px; border-radius: 12px;
-  border: 1px solid rgba(61, 50, 39, 0.15); font-size: 14px;
+  border: 1px solid rgba(30, 25, 20, 0.08); font-size: 14px;
 }

@@ -87,6 +87,16 @@ describe("profile card", () => {
     assert.ok(text.includes(EXAMPLE_PROFILE_LABEL));
     assert.ok(text.includes("출근 상한?") || text.includes("집 크기?"));
   });
+
+  it("summarises said values as chips with a count line and 자세히", () => {
+    const html = render(React.createElement(chat.ProfileCard, { profile }));
+    const text = textOf(html);
+    assert.ok(text.includes("1인"), "household chip");
+    assert.ok(text.includes("판교 출근"), "workplace chip");
+    assert.ok(text.includes("전세 2억 원 이하"), "tenure+budget chip");
+    assert.match(text, /모르는 값 \d+개 — 채우면 더 정확해요/);
+    assert.ok(text.includes("자세히"), "full table disclosure");
+  });
 });
 
 describe("candidates card", () => {
@@ -208,9 +218,12 @@ describe("chat reopen (11b carryover)", () => {
     const src = readFileSync(join(HERE, "..", "src", "main.js"), "utf8");
     assert.ok(src.includes("openChat: () =>"), "openChat action registered");
     assert.ok(src.includes("chatReopenUrl()"), "reopens via /?chat=");
-    const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
-    assert.ok(app.includes('label="대화"'), "TopBar 대화 entry");
+    // 13f-1: the shared bar (topbar.jsx) carries the 대화 entry.
+    const bar = readFileSync(join(HERE, "..", "src", "ui", "topbar.jsx"), "utf8");
+    assert.ok(bar.includes('label: "대화"'), "TopBar 대화 entry");
     // Unconditional: not gated on clock, follow, or night state.
-    assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(app), "not follow-gated");
+    assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(bar), "not follow-gated");
+    const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
+    assert.ok(app.includes("MapTools") && app.includes("TopBar"), "sim/tour render the shared bar");
   });
 });

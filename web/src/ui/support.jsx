@@ -3,7 +3,6 @@
 // commute) plus policy-loan / youth / newly-wed condition comparisons.
 // Row-by-row 대조 only — never "대상입니다".
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -58,10 +57,7 @@ function ynTri(value) {
 function ProgramCard({ program }) {
   return (
     <VStack gap={1}>
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text>{`${program.name}`}</Text>
-        <Badge variant="purple" label={program.org} />
-      </HStack>
+      <Text>{`${program.name} · ${program.org}`}</Text>
       <MetadataList>
         {program.rows.map((r) => (
           <MetadataListItem key={r.condition_id} label={r.condition}>

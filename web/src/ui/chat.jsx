@@ -1,9 +1,10 @@
 // Conversation view (12b, B): the chat replaces the floating agent.
-// Shell from shell-top-nav (AppShell + TopNav: product name, profile
-// chip, 새로 시작), transcript from ai-chat (ChatLayout + message list
-// + composer, chat column ≈440px, work area right). Template sample
-// content (JWT doc, shop items, artifact panel) is removed; the work
-// area is our 3D scene + candidate/result cards.
+// Shell from shell-top-nav (AppShell + the shared TopBar: product
+// name, mode switch, profile chip, 설정 sheet), transcript from
+// ai-chat (ChatLayout + message list + composer, chat column ≈440px,
+// work area right). Template sample content (JWT doc, shop items,
+// artifact panel) is removed; the work area is our 3D scene +
+// candidate/result cards.
 //
 // Every step renders as a message with a data card: ProfileCard (each
 // field with its source), CandidatesCard (preview cards + customer
@@ -18,9 +19,6 @@
 // (?ask=…) carry over with the 기록된 답변 badge.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
-import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
-import { Avatar } from "@astryxdesign/core/Avatar";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -41,9 +39,8 @@ import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
 import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
-import { ModelPanel } from "./model-panel.jsx";
-import { SourcesDrawer } from "./sources.jsx";
-import { AssumptionsPanel } from "./assumptions.jsx";
+import { exampleLine } from "./copy.js";
+import { TopBar } from "./topbar.jsx";
 import { OrbView } from "./orb.jsx";
 import { toast, Toaster } from "./toast.jsx";
 import {
@@ -78,7 +75,7 @@ import {
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
-import { postConsult, loadScenario, formatUsage } from "./consult-client.js";
+import { postConsult, loadScenario } from "./consult-client.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
@@ -101,37 +98,51 @@ const CHIP_STARTER = {
 
 // --- ProfileCard ------------------------------------------------------------------
 
+// Said values as one summary line ("2인 · 강남 출근 · 전세 4억 이하 ·
+// 59㎡ 이상"): household, workplace, tenure+budget, size, commute cap.
+function customerChips(profile) {
+  const rows = fieldRows(profile);
+  const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+  const set = (r) => r && r.text !== "아직" && r.text !== "아직 몰라요";
+  const out = [];
+  if (set(by.members)) out.push(by.members.text);
+  if (set(by.workplaces)) {
+    const v = by.workplaces.value;
+    const known = Array.isArray(v) && v[0] && v[0].resolved;
+    out.push(known ? `${by.workplaces.text} 출근` : by.workplaces.text);
+  }
+  if (set(by.tenure)) {
+    const t = by.tenure.value;
+    const budget = t === "jeonse" ? by.depositMax
+      : t === "wolse" ? by.monthlyMax : t === "trade" ? by.priceMax : null;
+    out.push(set(budget) ? `${by.tenure.text} ${budget.text} 이하` : by.tenure.text);
+  }
+  if (set(by.sizeMin)) out.push(`${by.sizeMin.text} 이상`);
+  if (set(by.commuteMax)) out.push(`출퇴근 ${by.commuteMax.text} 이내`);
+  return out;
+}
+
 export function ProfileCard({ profile, example, onChip }) {
   const rows = fieldRows(profile);
   const chips = missingChips(profile);
+  const said = customerChips(profile);
   return (
     <Card padding={3}>
       <VStack gap={2}>
         <HStack gap={1} vAlign="center">
           <Heading level={4}>고객님 상황</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
         </HStack>
-        <MetadataList>
-          {rows.map((r) => (
-            <MetadataListItem key={r.key} label={r.label}>
-              <VStack gap={0}>
-                <HStack gap={1} vAlign="center" wrap="wrap">
-                  <Text hasTabularNumbers>{r.text}</Text>
-                  {sourceKo(r.source) !== "" && (
-                    <Badge variant={r.source === "asked" ? "neutral" : "blue"}
-                      label={sourceKo(r.source)} />
-                  )}
-                </HStack>
-                {r.note && r.note !== r.label && r.note !== r.text && (
-                  <Text type="supporting">{r.note}</Text>
-                )}
-              </VStack>
-            </MetadataListItem>
-          ))}
-        </MetadataList>
+        {said.length > 0 && (
+          <div className="ui-tags">
+            {said.map((s, i) => (
+              <span key={i} className="ui-tag">{s}</span>
+            ))}
+          </div>
+        )}
         {chips.length > 0 && (
           <VStack gap={1}>
-            <Text type="supporting">빠진 것을 채우면 후보가 더 정확해져요</Text>
+            <Text type="supporting">{`모르는 값 ${chips.length}개 — 채우면 더 정확해요`}</Text>
             <HStack gap={1} vAlign="center" wrap="wrap">
               {chips.map((c) => (
                 <Button key={c.field} size="sm" variant="secondary"
@@ -141,6 +152,28 @@ export function ProfileCard({ profile, example, onChip }) {
             </HStack>
           </VStack>
         )}
+        <details className="ui-section">
+          <summary className="ui-section-head">자세히</summary>
+          <div className="ui-section-body">
+            <MetadataList>
+              {rows.map((r) => (
+                <MetadataListItem key={r.key} label={r.label}>
+                  <VStack gap={0}>
+                    <HStack gap={1} vAlign="center" wrap="wrap">
+                      <Text hasTabularNumbers>{r.text}</Text>
+                      {sourceKo(r.source) !== "" && (
+                        <Text type="supporting">{sourceKo(r.source)}</Text>
+                      )}
+                    </HStack>
+                    {r.note && r.note !== r.label && r.note !== r.text && (
+                      <Text type="supporting">{r.note}</Text>
+                    )}
+                  </VStack>
+                </MetadataListItem>
+              ))}
+            </MetadataList>
+          </div>
+        </details>
       </VStack>
     </Card>
   );
@@ -166,10 +199,10 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>{`집 후보 ${candidates.length}곳`}</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           <span className="ui-panel-spacer" />
           <DropdownMenu
-            button={{ label: HOME_SORT_KO[sort] || sort, variant: "ghost", size: "sm" }}
+            button={{ label: HOME_SORT_KO[sort] || HOME_SORT_KO.commute, variant: "ghost", size: "sm" }}
             menuWidth={220}
             items={HOME_SORTS.map((s) => ({
               label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
@@ -239,7 +272,7 @@ export function SimulationCard({ data, example }) {
         <VStack gap={2}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>30일 살아 보는 중</Heading>
-            {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+            {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           </HStack>
           <ProgressBar label={`살아 보기 진행 중 (${p.done}/${p.total})`}
             value={p.total > 0 ? Math.round((p.done / p.total) * 100) : 0} max={100} />
@@ -266,8 +299,8 @@ export function SimulationCard({ data, example }) {
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>30일 살아 보기 결과</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
-          {data.recorded && <Badge variant="yellow" label="기록된 답변" />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
+          {data.recorded && <Text type="supporting">기록된 답변</Text>}
         </HStack>
         <Text type="supporting">
           {`${labels.map((l) => `${l} ${(data.names || {})[l] || ""}`.trim()).join(" · ")}`
@@ -302,7 +335,7 @@ export function TabCard({ tab }) {
   return (
     <Card padding={3}>
       <VStack gap={2}>
-        <Heading level={4}>{TAB_TITLES[tab] || tab}</Heading>
+        <Heading level={4}>{TAB_TITLES[tab] || "자세히"}</Heading>
         {tab === "jeonse" && <JeonseTab state={state} />}
         {tab === "worthit" && <WorthItTab state={state} />}
         {tab === "support" && <SupportTab state={state} />}
@@ -353,10 +386,10 @@ function CardMsg({ msg, handlers, toolRows }) {
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
   return (
-    <ChatMessage sender="assistant" avatar={<Avatar name="상담" size="md" />}>
+    <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
-          <Badge variant="yellow" label="기록된 답변" />
+          <Text type="supporting">기록된 답변</Text>
         </ChatMessageBubble>
       )}
       <ChatMessageBubble variant="ghost" width="100%">
@@ -420,7 +453,7 @@ export function AgentTourCard() {
         <VStack gap={2}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>상담</Heading>
-            {rec && <Badge variant="yellow" label="기록된 답변" />}
+            {rec && <Text type="supporting">기록된 답변</Text>}
           </HStack>
           {rec ? (
             <VStack gap={1}>
@@ -476,12 +509,10 @@ export function ChatScreen() {
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
   const [error, setError] = useState("");
-  const [usage, setUsage] = useState({ prompt_tokens: 0, completion_tokens: 0, est_usd: 0 });
-  // 13: the loose token line moves into the 모델 panel as a usage log.
+  // 13f: usage lives in the 설정 sheet's 모델 section (usage log).
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
-  const [panel, setPanel] = useState(null); // null | model | sources | assume
   const [serverKeys, setServerKeys] = useState({});
   const [modelErrors, setModelErrors] = useState({});
   const [intake, setIntake] = useState(() => intakeState0());
@@ -847,11 +878,6 @@ export function ChatScreen() {
       appendToolCards(out.messages);
       mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
-      setUsage((u) => ({
-        prompt_tokens: u.prompt_tokens + ((out.usage && out.usage.prompt_tokens) || 0),
-        completion_tokens: u.completion_tokens + ((out.usage && out.usage.completion_tokens) || 0),
-        est_usd: u.est_usd + ((out.usage && out.usage.est_usd) || 0),
-      }));
       // 13: per-turn usage into the 모델 panel log.
       setUsageLog((log) => recordTurn(log, {
         provider, model: provider,
@@ -983,7 +1009,7 @@ export function ChatScreen() {
           recorded: true, tool_calls: calls });
         if (initial.example) {
           pushMsg({ role: "system", kind: "system",
-            content: `예시로 시작했어요 (${initial.example})` });
+            content: exampleLine(initial.example) });
         }
         return;
       }
@@ -997,7 +1023,7 @@ export function ChatScreen() {
       clearTranscript();
       if (initial.example) {
         pushMsg({ role: "system", kind: "system",
-          content: `예시로 시작했어요 (${initial.example})` });
+          content: exampleLine(initial.example) });
       }
       send(initial.message);
       return;
@@ -1073,49 +1099,35 @@ export function ChatScreen() {
         variant="surface"
         contentPadding={0}
         topNav={(
-          <TopNav
-            label="주거 시뮬레이터 대화"
-            heading={(
-              <TopNavHeading heading="주거 시뮬레이터" headingHref="/" />
+          <TopBar mode="chat" summary={summary}
+            extra={(
+              <div className="ui-chat-narrowtabs">
+                <SegmentedControl label="화면 선택" value={view}
+                  onChange={setView} size="sm">
+                  <SegmentedControlItem value="chat" label="대화" />
+                  <SegmentedControlItem value="work" label="화면" />
+                </SegmentedControl>
+              </div>
             )}
-            centerContent={(
-              summary ? <Badge variant="info" label={summary} /> : (
-                <Text type="supporting">상황을 알려주세요</Text>
-              )
-            )}
-            endContent={(
-              <>
-                <div className="ui-chat-narrowtabs">
-                  <SegmentedControl label="화면 선택" value={view}
-                    onChange={setView} size="sm">
-                    <SegmentedControlItem value="chat" label="대화" />
-                    <SegmentedControlItem value="work" label="화면" />
-                  </SegmentedControl>
-                </div>
-                <span className="ui-token ui-num" title="이번 대화 토큰 사용량 (추정)">
-                  {formatUsage(usage)}
-                </span>
-                {IS_DEV && (
-                  <DropdownMenu
-                    button={{ label: provider === "meta" ? "Spark 1.3" : "Spark Open",
-                      variant: "ghost", size: "sm" }}
-                    menuWidth={240}
-                    items={[
-                      { label: "Spark 1.3 (Muse Spark 1.3)", onClick: () => setProvider("meta") },
-                      { label: "Spark Open (Muse Spark Open)", onClick: () => setProvider("baseten") },
-                    ]} />
-                )}
-                <Button size="sm" variant="ghost" label="모델"
-                  onClick={() => setPanel(panel === "model" ? null : "model")} />
-                <Button size="sm" variant="ghost" label="가정 바꾸기"
-                  onClick={() => setPanel(panel === "assume" ? null : "assume")} />
-                <Button size="sm" variant="ghost" label="출처·라이선스"
-                  onClick={() => setPanel(panel === "sources" ? null : "sources")} />
-                <Button size="sm" variant="ghost" label="새로 시작"
-                  onClick={() => { clearTranscript(); window.location.href = "/"; }} />
-              </>
-            )}
-          />
+            settings={{
+              mode: "chat",
+              model: { usageLog, serverKeys, errors: modelErrors },
+              modelExtra: IS_DEV ? (
+                <DropdownMenu
+                  button={{ label: provider === "meta" ? "Spark 1.3" : "Spark Open",
+                    variant: "ghost", size: "sm" }}
+                  menuWidth={240}
+                  items={[
+                    { label: "Spark 1.3 (Muse Spark 1.3)", onClick: () => setProvider("meta") },
+                    { label: "Spark Open (Muse Spark Open)", onClick: () => setProvider("baseten") },
+                  ]} />
+              ) : null,
+              assumptions: { overrides,
+                onSet: (id, v) => setOverrides((o) => setOverride(o, id, v)),
+                onReset: (id) => setOverrides((o) => resetOverride(o, id)) },
+              onIntro: null,
+              onRestart: () => { clearTranscript(); window.location.href = "/"; },
+            }} />
         )}>
         <div className="ui-chat-main">
           <section className="ui-chat-thread" aria-label="대화">
@@ -1173,20 +1185,13 @@ export function ChatScreen() {
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
           <DrawerArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
-            panel={panel} onClosePanel={() => setPanel(null)}
-            usageLog={usageLog} serverKeys={serverKeys} modelErrors={modelErrors}
-            overrides={overrides}
-            onSetOverride={(id, v) => setOverrides((o) => setOverride(o, id, v))}
-            onResetOverride={(id) => setOverrides((o) => resetOverride(o, id))}
             detail={detail} onCloseDetail={() => setDetail(null)}
             photoDeps={handlers.photoDeps} destName={destName}
             tenure={candidatesData?.tenure || "undecided"}
             onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
         </div>
         {viewChip && (
-          <div className="ui-viewchip overlay">
-            <Badge variant="info" label={viewChip} />
-          </div>
+          <div className="ui-viewchip overlay">{viewChip}</div>
         )}
         <Toaster />
       </AppShell>
@@ -1226,13 +1231,12 @@ function StageArea({ orbData, cardHi, onOrbRegion }) {
   );
 }
 
-function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
-  usageLog, serverKeys, modelErrors, overrides, onSetOverride, onResetOverride,
+function DrawerArea({ picks, candidatesData, onRun,
   detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const candidates = (candidatesData && candidatesData.result.candidates) || [];
   const picked = candidates.filter((c) => picks.includes(c.id));
-  const open = Boolean(detail || panel || state.compareOpen || picked.length > 0);
+  const open = Boolean(detail || state.compareOpen || picked.length > 0);
   const detailPhotos = detail
     ? selectPhotosForList([detail], photoDeps || {})[0].photos : null;
   return (
@@ -1253,15 +1257,6 @@ function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
             </VStack>
           </Card>
         )}
-        {panel === "model" && (
-          <ModelPanel usageLog={usageLog} serverKeys={serverKeys}
-            errors={modelErrors} onClose={onClosePanel} />
-        )}
-        {panel === "sources" && <SourcesDrawer onClose={onClosePanel} />}
-        {panel === "assume" && (
-          <AssumptionsPanel overrides={overrides}
-            onSet={onSetOverride} onReset={onResetOverride} onClose={onClosePanel} />
-        )}
         {picked.length > 0 && (
           <Card padding={3}>
             <VStack gap={1}>
@@ -1275,7 +1270,7 @@ function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
           </Card>
         )}
         <CompareCard state={state} />
-        {!detail && !panel && picked.length === 0 && !state.compareOpen && (
+        {!detail && picked.length === 0 && !state.compareOpen && (
           <EmptyState isCompact title="대화에서 집을 고르면"
             description="여기에 고른 집과 비교·돈·안심·매물 탭이 열려요." />
         )}

@@ -1,12 +1,13 @@
 // Post-processing chain (browser; three.js EffectComposer).
 //
-// high:   Render → SAO → Bloom → Tilt-shift → Grade → Output
-// medium: Render → Bloom → Tilt-shift → Grade → Output
-// low:    direct render (no composer).
+// photo high:   Render → SAO → Bloom → Tilt-shift → Grade → Output
+// photo medium: Render → Bloom → Tilt-shift → Grade → Output
+// painted high/medium: Render → Outline+AO → Kuwahara → Bloom → Grade → Output
+// low (both styles): direct render (no composer).
 // Bloom strength follows the sky (lit windows / lamps at night and
 // dusk, off by day). Tilt-shift is the mild vertical-DOF
-// miniature-photo feel (?tilt=0 disables); grain is off by default
-// (?grain=1 enables). CSM was considered for the large spans and
+// miniature-photo feel (?tilt=0 disables, photo only); grain is off by
+// default (?grain=1 enables). CSM was considered for the large spans and
 // rejected: one target-following shadow frustum (render/rig.js) is
 // cheaper and robust under SwiftShader.
 
@@ -19,6 +20,8 @@ import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { qualitySettings } from "./quality.js";
 import { DEFAULT_LOOK } from "./look.js";
+import { KuwaharaShader, PaintedPass, kuwaharaRadiusFor, outlineStrengthFor,
+  paintedPixelFactor } from "./painted.js";
 
 const TiltShiftShader = {
   uniforms: {
@@ -103,9 +106,14 @@ const GradeShader = {
 // Pure chain spec: the single source of truth for pass order, mirrored
 // by build() below and asserted in tests (output last, SAO before bloom,
 // SAO only with zero MSAA samples — the ANGLE Metal black-frame fix).
-export function postChainSpec(level, { saoOff = false } = {}) {
+// Painted (14e) replaces SAO with its own outline+AO pass and drops
+// tilt-shift; style defaults to photo so old callers keep today's chain.
+export function postChainSpec(level, { saoOff = false, style = "photo" } = {}) {
   const s = qualitySettings(level);
   if (!s.composer) return ["render"];
+  if (style === "painted") {
+    return ["render", "outline", "kuwahara", "bloom", "grade", "output"];
+  }
   const chain = ["render"];
   if (s.sao && !saoOff) chain.push("sao");
   chain.push("bloom", "tilt", "grade", "output");
@@ -150,6 +158,9 @@ export function createPost(renderer, scene, camera, opts = {}) {
     tilt: opts.tilt !== false,
     grain: opts.grain === true,
     saoOff: opts.sao === false, // ?sao=0 escape hatch
+    style: opts.style === "painted" ? "painted" : "photo",
+    pxParam: opts.px ?? null, // ?px= main-pass pixel factor override
+    framedWidthM: null, // live framing (outline fade); set via update()
     // Stage 11: bloom threshold above window brightness (only lamps
     // bloom) and grade saturation, both from the look table (?look=).
     bloomThreshold: Number.isFinite(opts.bloomThreshold)
@@ -158,19 +169,25 @@ export function createPost(renderer, scene, camera, opts = {}) {
       ? opts.gradeSaturation : DEFAULT_LOOK.gradeSaturation,
     composer: null,
     sao: null,
+    paintedPass: null,
+    kuwahara: null,
     bloom: null,
     tiltPass: null,
     grade: null,
     time: 0,
+    postLogged: false,
   };
 
   function build() {
     const s = qualitySettings(state.level);
-    const spec = postChainSpec(state.level, { saoOff: state.saoOff });
+    const spec = postChainSpec(state.level,
+      { saoOff: state.saoOff, style: state.style });
     state.spec = spec;
     if (!s.composer) {
       state.composer = null;
       state.sao = null;
+      state.paintedPass = null;
+      state.kuwahara = null;
       state.bloom = null;
       state.tiltPass = null;
       state.grade = null;
@@ -182,8 +199,29 @@ export function createPost(renderer, scene, camera, opts = {}) {
         rt.samples = s.composerSamples;
       }
     }
+    const painted = state.style === "painted";
+    if (painted) {
+      // Pixel crispness: the main pass renders at 1/pixelFactor and the
+      // final quad upscales with nearest filtering (?px=1 disables).
+      const pf = paintedPixelFactor(state.level, state.pxParam);
+      state.pixelFactor = pf;
+      composer.setPixelRatio(Math.max(0.2, renderer.getPixelRatio() / pf));
+      for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+        rt.texture.magFilter = THREE.NearestFilter;
+        rt.texture.minFilter = THREE.NearestFilter;
+      }
+    }
     composer.addPass(new RenderPass(scene, camera));
-    if (spec.includes("sao")) {
+    if (painted) {
+      const outline = new PaintedPass(scene, camera);
+      outline.setOutlineStrength(outlineStrengthFor(state.framedWidthM));
+      state.paintedPass = outline;
+      state.sao = null;
+      composer.addPass(outline);
+      const kuwahara = new ShaderPass(KuwaharaShader(kuwaharaRadiusFor(state.level)));
+      state.kuwahara = kuwahara;
+      composer.addPass(kuwahara);
+    } else if (spec.includes("sao")) {
       const sao = new SAOPass(scene, camera);
       sao.params.saoIntensity = 0.35;
       sao.params.saoScale = 2.5;
@@ -199,10 +237,14 @@ export function createPost(renderer, scene, camera, opts = {}) {
       state.bloomThreshold);
     state.bloom = bloom;
     composer.addPass(bloom);
-    const tiltPass = new ShaderPass(TiltShiftShader);
-    tiltPass.enabled = state.tilt && s.tiltShift;
-    state.tiltPass = tiltPass;
-    composer.addPass(tiltPass);
+    if (!painted) {
+      const tiltPass = new ShaderPass(TiltShiftShader);
+      tiltPass.enabled = state.tilt && s.tiltShift;
+      state.tiltPass = tiltPass;
+      composer.addPass(tiltPass);
+    } else {
+      state.tiltPass = null; // no tilt-shift in the painted style
+    }
     const grade = new ShaderPass(GradeShader);
     grade.uniforms.grain.value = state.grain ? 0.045 : 0.0;
     grade.uniforms.saturation.value = state.gradeSaturation;
@@ -229,16 +271,33 @@ export function createPost(renderer, scene, camera, opts = {}) {
       if (flags.tilt !== undefined) state.tilt = flags.tilt;
       if (flags.grain !== undefined) state.grain = flags.grain;
       if (flags.sao !== undefined) state.saoOff = flags.sao === false;
+      if (flags.style !== undefined) state.style = flags.style;
+      if (flags.px !== undefined) state.pxParam = flags.px;
       const old = state.composer;
       build();
       if (old && old !== state.composer) old.dispose();
     },
     setSize(w, h) {
-      if (state.composer) state.composer.setSize(w, h);
-    },
-    update({ bloom = 0 } = {}, dt = 0.016) {
-      state.time += dt;
       if (!state.composer) return;
+      state.composer.setSize(w, h);
+      // Kuwahara is a plain ShaderPass (no setSize of its own): track the
+      // effective buffer size so taps stay 1 px under pixelation.
+      if (state.kuwahara) {
+        const pr = renderer.getPixelRatio() / (state.pixelFactor || 1);
+        state.kuwahara.uniforms.resolution.value.set(
+          Math.max(2, Math.round(w * pr)), Math.max(2, Math.round(h * pr)));
+      }
+    },
+    update({ bloom = 0, framedWidthM = null } = {}, dt = 0.016) {
+      state.time += dt;
+      if (framedWidthM !== null && framedWidthM !== undefined) {
+        state.framedWidthM = framedWidthM;
+      }
+      if (!state.composer) return;
+      if (state.paintedPass) {
+        state.paintedPass.setOutlineStrength(
+          outlineStrengthFor(state.framedWidthM));
+      }
       if (state.bloom) {
         const clamped = clampBloom(bloom);
         state.bloom.strength = clamped;
@@ -247,8 +306,22 @@ export function createPost(renderer, scene, camera, opts = {}) {
       if (state.grade) state.grade.uniforms.time.value = state.time % 100;
     },
     render() {
-      if (state.composer) state.composer.render();
-      else renderer.render(scene, camera);
+      if (!state.composer) {
+        renderer.render(scene, camera);
+        return;
+      }
+      // Painted GPU budget log (14e): once, dev only.
+      const dev = typeof import.meta !== "undefined" && import.meta.env
+        && import.meta.env.DEV;
+      if (state.style === "painted" && dev && !state.postLogged) {
+        const t0 = performance.now();
+        state.composer.render();
+        const ms = performance.now() - t0;
+        state.postLogged = true;
+        console.log(`[post] style=painted passes=${state.spec.join("+")} ms=${ms.toFixed(1)}`);
+        return;
+      }
+      state.composer.render();
     },
   };
 }

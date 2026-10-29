@@ -1,7 +1,6 @@
 // 생활비 + 삶의 질 tabs (React, Astryx). Rendered inside the compare
 // card in sim mode. Data comes from <scenario>-money.json (CLI) plus
 // agent merges for home C — never computed from thin air here.
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
@@ -12,11 +11,12 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
+import { SourceBadge, GroupBadges } from "./source-badge.jsx";
 import { Gloss } from "./gloss.jsx";
 import { glossaryTerms } from "./glossary.js";
 import { monthlyHousingLabel, BURDEN_PLAIN_LABEL, BURDEN_PLAIN_NOTE,
   REMAINING_PLAIN_LABEL, HOW_CALCULATED } from "./copy.js";
-import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
+import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex } from "../money/format.js";
 import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { congestionPeakLine } from "../engine/journey.js";
 import { MONEY_CATEGORY_KO } from "../money/timeline.js";
@@ -36,10 +36,7 @@ const HOME_COLORS = { A: "#b25a33", B: "#4a7ba7", C: "#7ba05b" };
 const TENURES = ["매매", "전세", "월세", "공공임대"];
 
 function SrcBadge({ source }) {
-  return (
-    <Badge variant={source === "graph" ? "teal" : source === "rtms" ? "blue" : source === "housing_api" ? "purple" : "orange"}
-      label={badgeFor(source)} />
-  );
+  return <SourceBadge source={source} />;
 }
 
 export function tenureOf(state, label, doc) {
@@ -297,27 +294,25 @@ function QolHome({ label, doc, tenure, active }) {
   const time = h.qol_time || {};
   const conv = h.qol_convenience || {};
   const fat = h.qol_fatigue || null;
+  const groupSources = ["graph", "scenario",
+    sel && sel.housing.source,
+    fat && fat.peak_congestion_ctx && fat.peak_congestion_ctx.source].filter(Boolean);
   return (
     <VStack gap={1}>
       <Heading level={4}>{`홈 ${label} · ${h.complex_name || ""}`}</Heading>
+      <HStack gap={1} vAlign="center">
+        <Text type="supporting">출처</Text>
+        <GroupBadges sources={groupSources} />
+      </HStack>
       <MetadataList>
         <MetadataListItem label="하루 출퇴근에 쓰는 시간">
-          <HStack gap={1} vAlign="center">
-            <Text hasTabularNumbers>{fmtMinutes(time.commute_minutes_per_day)}</Text>
-            <SrcBadge source="graph" />
-          </HStack>
+          <Text hasTabularNumbers>{fmtMinutes(time.commute_minutes_per_day)}</Text>
         </MetadataListItem>
         <MetadataListItem label="저녁에 집에서 보내는 시간">
-          <HStack gap={1} vAlign="center">
-            <Text hasTabularNumbers>{fmtMinutes(time.evening_at_home_minutes_per_day)}</Text>
-            <SrcBadge source="scenario" />
-          </HStack>
+          <Text hasTabularNumbers>{fmtMinutes(time.evening_at_home_minutes_per_day)}</Text>
         </MetadataListItem>
         <MetadataListItem label={monthlyHousingLabel(tenure)}>
-          <HStack gap={1} vAlign="center">
-            <Text hasTabularNumbers>{sel ? fmtWon(sel.housing.monthly_won, { monthly: true }) : "–"}</Text>
-            {sel && <SrcBadge source={sel.housing.source} />}
-          </HStack>
+          <Text hasTabularNumbers>{sel ? fmtWon(sel.housing.monthly_won, { monthly: true }) : "–"}</Text>
         </MetadataListItem>
         <MetadataListItem label={`${BURDEN_PLAIN_LABEL} / ${REMAINING_PLAIN_LABEL}`}>
           <Text hasTabularNumbers>
@@ -328,42 +323,23 @@ function QolHome({ label, doc, tenure, active }) {
         {fat && (
           <>
             <MetadataListItem label="회사 도착할 때 피곤한 정도">
-              <HStack gap={1} vAlign="center">
-                <Text hasTabularNumbers>{fmtIndex(fat.arrival_work_avg)}</Text>
-                <SrcBadge source="scenario" />
-              </HStack>
+              <Text hasTabularNumbers>{fmtIndex(fat.arrival_work_avg)}</Text>
             </MetadataListItem>
             <MetadataListItem label="퇴근해서 집에 왔을 때 피곤한 정도">
-              <HStack gap={1} vAlign="center">
-                <Text hasTabularNumbers>{fmtIndex(fat.after_home_avg)}</Text>
-                <SrcBadge source="scenario" />
-              </HStack>
+              <Text hasTabularNumbers>{fmtIndex(fat.after_home_avg)}</Text>
             </MetadataListItem>
             <MetadataListItem label="30일 평균 피곤한 정도">
-              <HStack gap={1} vAlign="center">
-                <Text hasTabularNumbers>{fmtIndex(fat.avg_30d)}</Text>
-                <SrcBadge source="scenario" />
-              </HStack>
+              <Text hasTabularNumbers>{fmtIndex(fat.avg_30d)}</Text>
             </MetadataListItem>
             <MetadataListItem label="만원 지하철에 탄 시간">
-              <HStack gap={1} vAlign="center">
-                <Text hasTabularNumbers>{fmtMinutes(fat.crowded_min)}</Text>
-                <SrcBadge source="scenario" />
-              </HStack>
+              <Text hasTabularNumbers>{fmtMinutes(fat.crowded_min)}</Text>
             </MetadataListItem>
             <MetadataListItem label="출근길 가장 붐비는 순간">
-              <HStack gap={1} vAlign="center" wrap="wrap">
-                {fat.peak_congestion_pct === null || fat.peak_congestion_pct === undefined ? (
-                  <Text type="supporting">지하철 탑승 없음</Text>
-                ) : (
-                  <>
-                    <Text hasTabularNumbers>{congestionPeakLine(fat.peak_congestion_ctx)}</Text>
-                    <Badge variant="neutral"
-                      label={fat.peak_congestion_ctx && fat.peak_congestion_ctx.source === "서울교통공사" ? "실측" : "가정값"} />
-                  </>
-                )}
-                <SrcBadge source="scenario" />
-              </HStack>
+              {fat.peak_congestion_pct === null || fat.peak_congestion_pct === undefined ? (
+                <Text type="supporting">지하철 탑승 없음</Text>
+              ) : (
+                <Text hasTabularNumbers>{congestionPeakLine(fat.peak_congestion_ctx)}</Text>
+              )}
             </MetadataListItem>
           </>
         )}
@@ -382,7 +358,6 @@ function QolHome({ label, doc, tenure, active }) {
                 <Text type="supporting" hasTabularNumbers>{`${ko} ${conv[k] ?? 0}`}</Text>
               </span>
             ))}
-            <SrcBadge source="graph" />
           </HStack>
         </MetadataListItem>
       </MetadataList>

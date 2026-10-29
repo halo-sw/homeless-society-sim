@@ -25,6 +25,8 @@
 //   terrainWater / terrainRock: stage-14 land-mask + slope colours.
 // - sceneRoad / sceneFoot / sceneCycle / sceneRail: stage-14 ribbon
 //   colours. All colours are decimal sRGB ints like regionalGround.
+// - sceneRoadMinor: residential/service ribbon tone (major roads keep
+//   sceneRoad). Equals sceneRoad in the photo default.
 
 export const DEFAULT_LOOK = {
   fogStreetNear: 2.5,
@@ -39,23 +41,55 @@ export const DEFAULT_LOOK = {
   nightLitCap: 0.35,
   nightGain: 0.85,
   bloomThreshold: 0.9,
-  corridorDarken: 0.82,
-  corridorRoofLift: 1.12,
+  corridorDarken: 0.74,
+  corridorRoofLift: 1.2,
   lineOpacity: 1,
-  regionalGround: 0xa9a68e,
-  regionalWater: 0x5b8fc4,
-  regionalRoad: 0x6e6a5e,
-  terrainBase: 0xc9c2a6,
+  regionalGround: 0xbcb096,
+  regionalWater: 0x3a8fd4,
+  regionalRoad: 0x7d7668,
+  terrainBase: 0xd2c9a9,
   terrainGrass: 0xbccb9c,
   terrainForest: 0x6f9a5e,
   terrainScrub: 0xc2c27e,
-  terrainWater: 0x93bcd6,
+  terrainWater: 0x4d9fd6,
   terrainRock: 0xa09a8c,
-  sceneRoad: 0x959a9e,
+  sceneRoad: 0x8a8276,
+  sceneRoadMinor: 0x8a8276,
   sceneFoot: 0xe9e3d5,
   sceneCycle: 0xb97a5e,
   sceneRail: 0x55555c,
 };
+
+// Stage 14e painted style: overrides on top of DEFAULT_LOOK (never blue
+// roads, warm beige ground, deep greens, calm water). Picked by ?style=
+// (painted is the default); ?look= still overrides on top of these.
+export const PAINTED_LOOK = {
+  fogStreetNear: 4,
+  fogStreetFar: 9,
+  fogRegionalNear: 4,
+  fogRegionalFar: 9,
+  gradeSaturation: 1.2,
+  regionalGround: 0xcfc4ad,
+  regionalWater: 0x3f6f8f,
+  regionalRoad: 0x5b5d60,
+  terrainBase: 0xcfc4ad,
+  terrainGrass: 0x8a9a5b,
+  terrainForest: 0x5d7040,
+  terrainScrub: 0x9a8f5a,
+  terrainWater: 0x3f6f8f,
+  sceneRoad: 0x5b5d60,
+  sceneRoadMinor: 0x6c6e70,
+  sceneFoot: 0xd9d3c7,
+  sceneCycle: 0xa0705a,
+};
+
+// Painted night albedos (stage 14e): the ground plane goes dark
+// navy-grey while carriageways keep their day asphalt, so roads read a
+// little lighter than the ground and lit windows pop. Applied as a
+// material tint/colours lerp in main.js (painted style only).
+export const PAINTED_NIGHT_GROUND = 0x1d2330;
+export const PAINTED_NIGHT_ROAD = 0x39415a;
+export const PAINTED_WATER = 0x3f6f8f;
 
 export const LOOK_KEYS = Object.keys(DEFAULT_LOOK);
 
@@ -89,16 +123,20 @@ export function parseLookParam(text) {
   return { values, unknown, invalid };
 }
 
-// Merge `?look=` overrides over the defaults. Accepts a query string,
-// a URLSearchParams, or nothing (defaults).
-export function resolveLook(search) {
+// Merge `?look=` overrides over the style base. Accepts a query string,
+// a URLSearchParams, or nothing. `style` ("painted" | "photo") defaults
+// to the ?style= param (painted when absent); an explicit style wins.
+// ?look= always overrides on top of the style base.
+export function resolveLook(search, style = null) {
   const params = search instanceof URLSearchParams
     ? search
     : new URLSearchParams(typeof search === "string" ? search : "");
+  const st = style ?? (params.get("style") === "photo" ? "photo" : "painted");
+  const base = st === "photo" ? DEFAULT_LOOK : { ...DEFAULT_LOOK, ...PAINTED_LOOK };
   const raw = params.get("look");
-  if (!raw) return { ...DEFAULT_LOOK };
+  if (!raw) return { ...base };
   const { values } = parseLookParam(raw);
-  return { ...DEFAULT_LOOK, ...values };
+  return { ...base, ...values };
 }
 
 function num(v, fallback) {
@@ -139,4 +177,47 @@ export function capLitFraction(frac, look = DEFAULT_LOOK) {
   const cap = num(l.nightLitCap, DEFAULT_LOOK.nightLitCap);
   if (!(cap > 0)) return 0;
   return Math.min(1, Math.min(n, cap));
+}
+
+// Mix two 0xRRGGBB colours (t clamped to 0..1, smoothstepped): the
+// painted night lerp for plain-colour materials (no map).
+export function lerpHex(h1, h2, t) {
+  const k = smooth01(t);
+  const r = Math.round(lerpChan((h1 >> 16) & 255, (h2 >> 16) & 255, k));
+  const g = Math.round(lerpChan((h1 >> 8) & 255, (h2 >> 8) & 255, k));
+  const b = Math.round(lerpChan(h1 & 255, h2 & 255, k));
+  return (r << 16) | (g << 8) | b;
+}
+
+function lerpChan(a, b, k) {
+  return a + (b - a) * k;
+}
+
+function smooth01(t) {
+  const c = Math.min(1, Math.max(0, Number(t) || 0));
+  return c * c * (3 - 2 * c);
+}
+
+// Linear-space material tint multiplier that carries a mapped or
+// vertex-coloured surface from its day albedo (dayHex reference) to
+// nightHex at full night: white at t=0, lin(night)/lin(day) per channel
+// at t=1. Applied via Color.setRGB (working-space values), so the
+// effective albedo lands exactly on nightHex.
+export function nightTint(dayHex, nightHex, t) {
+  const k = smooth01(t);
+  const chan = (d, n) => {
+    const dl = srgbLin(d);
+    const target = dl > 0 ? srgbLin(n) / dl : 0;
+    return 1 + (target - 1) * k;
+  };
+  return [
+    chan((dayHex >> 16) & 255, (nightHex >> 16) & 255),
+    chan((dayHex >> 8) & 255, (nightHex >> 8) & 255),
+    chan(dayHex & 255, nightHex & 255),
+  ];
+}
+
+function srgbLin(u8) {
+  const c = Math.min(1, Math.max(0, u8 / 255));
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }

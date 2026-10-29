@@ -43,7 +43,7 @@ const SRC_KO = {
 };
 
 export function shareSourceKo(source) {
-  return SRC_KO[source] || source || "–";
+  return SRC_KO[source] || "가정값";
 }
 
 const num = (v) => {
