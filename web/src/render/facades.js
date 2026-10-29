@@ -21,7 +21,7 @@
 // at-home residents / agents in the building — the same stage-3 data the
 // old glow quads used). Daytime emissive is off (uNight = 0).
 
-import { APARTMENT_FAMILIES, HOUSE_WALL, MIXED_WALL, NON_RESIDENTIAL, hashString } from "../palette.js";
+import { APARTMENT_FAMILIES, HOUSE_WALL, MIXED_WALL, NON_RESIDENTIAL, hashString, hashUnit } from "../palette.js";
 
 export const TEX_SIZE = 512;
 export const FLOOR_H_M = 3.0;
@@ -173,6 +173,47 @@ export function eveningHomeFraction(minute) {
   return 0.7; // toward midnight
 }
 
+// Stage 14e floors switch off in seeded whole-floor bands as the lit
+// fraction falls through the night (deterministic in floor + minute, so
+// scrubbing the timeline never flickers): each tile row owns a distinct
+// threshold band, permuted by floor seed, with small guard gaps between
+// bands so floors step off crisply. Overall the tile stays ~uniform, so
+// a lit fraction f still lights ~f of the windows.
+export function floorBand(facadeClass, row, rows) {
+  const n = Math.max(1, Math.round(rows) || 1);
+  const r = Math.min(n - 1, Math.max(0, Math.round(row) || 0));
+  const keys = [];
+  for (let k = 0; k < n; k++) {
+    keys.push([hashUnit(hashString(`floor:${facadeClass}:${k}`), 5), k]);
+  }
+  keys.sort((a, b) => a[0] - b[0]);
+  return keys.findIndex(([, k]) => k === r);
+}
+
+export function floorWindowThreshold(facadeClass, row, rows, rand01) {
+  const n = Math.max(1, Math.round(rows) || 1);
+  const band = floorBand(facadeClass, row, n);
+  const j = Math.min(1, Math.max(0, Number(rand01) || 0));
+  return Math.floor(Math.min(1, (band + 0.05 + j * 0.9) / n) * 255);
+}
+
+// Red aviation beacons on roof tips ≥ 60 m: one hard blink per 1.5 s,
+// procedural in t (seconds) — the same t always gives the same state.
+export const AVIATION_MIN_M = 60;
+export const AVIATION_PERIOD_S = 1.5;
+export const AVIATION_FLASH_S = 0.12;
+
+export function needsAviationLight(heightM) {
+  return (Number(heightM) || 0) >= AVIATION_MIN_M;
+}
+
+export function aviationBlink(tSec) {
+  const t = Number(tSec);
+  if (!Number.isFinite(t)) return 0;
+  const phase = ((t % AVIATION_PERIOD_S) + AVIATION_PERIOD_S) % AVIATION_PERIOD_S;
+  return phase < AVIATION_FLASH_S ? 1 : 0;
+}
+
 // --- tiny deterministic PRNG (local mulberry32; no shared state) ---
 
 export function rng32(seed) {
@@ -299,7 +340,8 @@ function synthApartment(seed) {
       paintWindow(buf.map, rng, wx, wy, ww, wh, tint);
       fillRect(buf.map, wx - 2, wy + wh + 2, wx + ww + 2, wy + wh + 4, [200, 192, 178, 255]);
       paintRoughWindow(buf.rough, wx, wy, ww, wh);
-      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+        floorWindowThreshold("apartment", r, tile.rows, rng()));
     }
   }
   return buf;
@@ -339,7 +381,8 @@ function synthHouse(seed) {
       paintWindow(buf.map, rng, wx, wy, ww, wh,
         [(rng() - 0.5) * 20, (rng() - 0.5) * 18, (rng() - 0.5) * 14]);
       paintRoughWindow(buf.rough, wx, wy, ww, wh);
-      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+        floorWindowThreshold("house", r, tile.rows, rng()));
     }
   }
   return buf;
@@ -373,7 +416,8 @@ function synthMixed(seed) {
       paintWindow(buf.map, rng, wx, wy, ww, wh,
         [(rng() - 0.5) * 30, (rng() - 0.5) * 26, (rng() - 0.5) * 20]);
       paintRoughWindow(buf.rough, wx, wy, ww, wh);
-      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+        floorWindowThreshold("mixed", r, tile.rows, rng()));
     }
   }
   return buf;
@@ -414,7 +458,8 @@ function synthNone(seed) {
           }
         }
         paintEmissiveWindow(buf.emissive, x + 1, y0,
-          Math.min(mullX - 2, TEX_SIZE - x - 1), y1 - y0, Math.floor(rng() * 256));
+          Math.min(mullX - 2, TEX_SIZE - x - 1), y1 - y0,
+          floorWindowThreshold("none", r, tile.rows, rng()));
       }
     }
     // Glass is smooth everywhere on a curtain wall.
@@ -437,7 +482,8 @@ function synthNone(seed) {
         paintWindow(buf.map, rng, wx, wy, ww, wh,
           [(rng() - 0.5) * 24, (rng() - 0.5) * 22, (rng() - 0.5) * 18]);
         paintRoughWindow(buf.rough, wx, wy, ww, wh);
-        paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+        paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+          floorWindowThreshold("none", r, tile.rows, rng()));
       }
     }
   }
@@ -464,7 +510,7 @@ function synthPodium(seed) {
       [(rng() - 0.5) * 20, (rng() - 0.5) * 18, (rng() - 0.5) * 14]);
     paintRoughWindow(buf.rough, x0, glassTop, x1 - x0, glassBot - glassTop);
     paintEmissiveWindow(buf.emissive, x0, glassTop, x1 - x0, glassBot - glassTop,
-      Math.floor(rng() * 256));
+      floorWindowThreshold("podium", 0, 1, rng()));
     // Stall riser + mullions + fascia strip.
     fillRect(buf.map, x0, glassBot, x1, TEX_SIZE, [150, 144, 134, 255]);
     fillRect(buf.map, c * bayW - 1, glassTop, c * bayW + 1, glassBot, [80, 78, 76, 255]);

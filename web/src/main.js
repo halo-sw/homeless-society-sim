@@ -34,7 +34,7 @@ import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
-import { eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
+import { aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
 import { PAINTED_NIGHT_GROUND, PAINTED_WATER, capLitFraction, lerpHex, nightTint, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
@@ -545,6 +545,44 @@ function buildWorld(area, scene14, opts = {}) {
   const maxHeightM = maxH > 0 || relief > 0
     ? Math.min(600, Math.max(maxH, relief)) : 250;
 
+  // Red aviation beacons (14e) on roof tips ≥ 60 m: one Points cloud,
+  // blinking hard once per 1.5 s, procedural in t. Both styles.
+  let aviationMat = null;
+  {
+    const pts = [];
+    for (const b of area.buildings || []) {
+      const h = Number(b.height_m) || (Number(b.levels) || 0) * 3 || 0;
+      if (!needsAviationLight(h)) continue;
+      const g = b.geometry;
+      if (!g) continue;
+      const polys = g.type === "Polygon" ? [g.coordinates]
+        : g.type === "MultiPolygon" ? g.coordinates : [];
+      const ring = (polys[0] && polys[0][0]) || [];
+      if (ring.length === 0) continue;
+      let sx = 0;
+      let sy = 0;
+      for (const [lon, lat] of ring) {
+        const [x, y] = lonLatToXY(lon, lat, origin);
+        sx += x;
+        sy += y;
+      }
+      const px = sx / ring.length;
+      const py = sy / ring.length;
+      pts.push(px, heightAt(px, -py) + h + 2.5, -py);
+    }
+    if (pts.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      aviationMat = new THREE.PointsMaterial({ color: 0xff2a1e, size: 4,
+        sizeAttenuation: false, transparent: true, opacity: 0,
+        depthWrite: false });
+      const aviation = new THREE.Points(geo, aviationMat);
+      aviation.frustumCulled = false;
+      aviation.userData.noPaintedDepth = true;
+      scene.add(aviation);
+    }
+  }
+
   // Painted night (14e): ground-plane surfaces lerp toward navy after
   // dusk; carriageways keep their day asphalt so they read a little
   // lighter than the ground and lit windows pop. Photo: untouched.
@@ -587,7 +625,7 @@ function buildWorld(area, scene14, opts = {}) {
     trees, treeMeshes, fillTrees, streetMeshes, crowd, crowdMeshes,
     dummy, heightAt,
     ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh, sceneMarkingsMesh,
-    nightMats, applyPaintedNight,
+    nightMats, applyPaintedNight, aviationMat,
   };
 }
 
@@ -666,7 +704,7 @@ async function bootTour(uiMode = "tour") {
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
     streetMeshes, crowdMeshes, trees, treeMeshes, fillTrees, waterMesh,
     sceneWaterMesh, sceneMarkingsMesh, dummy, heightAt,
-    applyPaintedNight } = buildWorld(area, scene14,
+    applyPaintedNight, aviationMat } = buildWorld(area, scene14,
       { treeDateISO: TOUR_DATE_ISO });
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
@@ -863,6 +901,7 @@ async function bootTour(uiMode = "tour") {
     if (sceneMarkingsMesh) {
       sceneMarkingsMesh.visible = (tourFramedWidth ?? 0) <= MARKINGS_HIDE_M;
     }
+    if (aviationMat) aviationMat.opacity = aviationBlink(tourTMin * 60);
     renderCtl.renderFrame({ bloom: tourBloom, framedWidthM: tourFramedWidth }, dt);
     frames++;
     if (frames === 30) {
@@ -1285,7 +1324,7 @@ async function bootSim() {
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
     crowd, crowdMeshes, treeMeshes, fillTrees, waterMesh, sceneWaterMesh,
     sceneMarkingsMesh, wallMeshes, podiumMesh, roofMesh, heightAt,
-    nightMats, applyPaintedNight } = buildWorld(area, scene14,
+    nightMats, applyPaintedNight, aviationMat } = buildWorld(area, scene14,
       { treeDateISO: simDateISO(run.meta.start_date, 0) });
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
@@ -2972,6 +3011,7 @@ async function bootSim() {
     if (sceneMarkingsMesh) {
       sceneMarkingsMesh.visible = (simFramedWidth ?? 0) <= MARKINGS_HIDE_M;
     }
+    if (aviationMat) aviationMat.opacity = aviationBlink(simTMin * 60);
     renderCtl.renderFrame({ bloom: simBloom, framedWidthM: simFramedWidth }, dt);
     frames++;
     if (frames === 30) {
