@@ -15,7 +15,7 @@ import { makeDecider } from "./decisions.js";
 import { homeOf, parseScenario, resolveHome } from "./scenario.js";
 import { planAgent, round1, round2 } from "./routines.js";
 
-export const ENGINE_VERSION = "sim-engine/7";
+export const ENGINE_VERSION = "sim-engine/8";
 
 export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const scenario = parseScenario(scenarioJson);

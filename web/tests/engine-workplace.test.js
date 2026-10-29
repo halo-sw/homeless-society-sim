@@ -347,8 +347,11 @@ describe("place derivation on the real graph + network", () => {
     // A's peak boarding equals the highest leg reading on the real data.
     assert.deepEqual(runA.totals.per_member.h1.fatigue.peak_congestion,
       peakReadingOf(runA, "h1"));
-    assert.equal(runA.totals.household.fatigue_peak_congestion_pct,
-      peakReadingOf(runA, "h1").pct);
+    // The household peak is the highest member peak (whoever boards it).
+    const peakH2 = peakReadingOf(runA, "h2");
+    const peakAll = peakH2 && peakH2.pct > peakReadingOf(runA, "h1").pct
+      ? peakH2 : peakReadingOf(runA, "h1");
+    assert.equal(runA.totals.household.fatigue_peak_congestion_pct, peakAll.pct);
     // B: the workplace is a 16-minute walk — no rides at all.
     assert.ok(!runB.aways.some((a) => a.kind === "ride"), "B walks, never rides");
     const bWork = runB.aways.find((a) => a.agent === "h1" && a.kind === "work");

@@ -7,7 +7,11 @@
 //  chosen_by, ...extras}. chosen_by is "rule" (default), "hook" (a
 // decide() call), "model" (judged by a Meta model), "rule_fallback"
 // (the judge rejected the model's output and used the rule), or
-// "replay" (a decisions file; zero hook calls).
+// "replay" (a decisions file; zero hook calls). decided_by is the
+// customer-facing maker: "일정" for rule / rule_fallback /
+// replay-of-rule, "에이전트" for model / hook / replay-of-model.
+// Replays restore the stored decided_by verbatim; files written before
+// the field existed infer it from the stored chosen_by.
 //
 // The rule default is the fastest option with a stable tie-break on
 // the option key — except park_or_home, whose default comes from the
@@ -38,8 +42,16 @@ export const KNOWN_CHOICE_MODES = new Set([
 // else is rejected (fail fast, keep replay byte-exact).
 const EXTRA_FIELDS = new Set([
   "reason_ko", "reason_en", "provider", "model", "usage",
-  "latency_ms", "fallback_cause", "rejected",
+  "latency_ms", "fallback_cause", "rejected", "decided_by",
 ]);
+
+export const DECIDED_BY_RULE = "일정";
+export const DECIDED_BY_AGENT = "에이전트";
+
+// Customer-facing maker for a live (non-replay) choice.
+export function decidedByFor(chosenBy) {
+  return chosenBy === "model" || chosenBy === "hook" ? DECIDED_BY_AGENT : DECIDED_BY_RULE;
+}
 
 export function ruleDefault(options) {
   const sorted = [...options].sort((a, b) => (a.minutes - b.minutes) || (a.key < b.key ? -1 : 1));
@@ -86,7 +98,7 @@ function checkKey(id, keys, key) {
 
 const SHELL_FIELDS = new Set([
   "id", "agent", "day", "minute", "kind", "options", "default_key",
-  "chosen_key", "plan",
+  "chosen_key", "plan", "wish",
 ]);
 
 function takeExtras(id, source, out) {
@@ -110,6 +122,10 @@ function checkExtra(id, k, v) {
   if (k === "reason_ko" || k === "reason_en" || k === "provider"
       || k === "model" || k === "fallback_cause") {
     if (!isStr) throw new Error(`decision ${id}: ${k} wants a string`);
+  } else if (k === "decided_by") {
+    if (v !== DECIDED_BY_RULE && v !== DECIDED_BY_AGENT) {
+      throw new Error(`decision ${id}: decided_by wants "일정" or "에이전트"`);
+    }
   } else if (k === "latency_ms") {
     if (!Number.isFinite(v)) throw new Error(`decision ${id}: latency_ms wants a number`);
   } else if (k === "usage") {
@@ -185,6 +201,9 @@ export function makeDecider({ decide = null, decisions = null } = {}) {
         // "hook" marks a decide() call in the run that wrote the file;
         // the replay made zero hook calls, so it must not survive.
         if (rec.chosen_by === "hook") rec.chosen_by = "replay";
+        // New files carry decided_by verbatim (via takeExtras); old
+        // files infer it from the stored provenance.
+        if (!("decided_by" in rec)) rec.decided_by = decidedByFor(entry.chosen_by);
         stats.replayed++;
         return rec;
       }
@@ -197,12 +216,14 @@ export function makeDecider({ decide = null, decisions = null } = {}) {
           rec.chosen_key = norm.chosen_key;
           rec.plan = norm.plan;
           rec.chosen_by = "hook";
+          rec.decided_by = DECIDED_BY_AGENT;
           return rec;
         }
         if (typeof answer === "string") {
           checkKey(id, keys, answer);
           rec.chosen_key = answer;
           rec.chosen_by = "hook";
+          rec.decided_by = DECIDED_BY_AGENT;
           return rec;
         }
         if (answer && typeof answer === "object") {
@@ -223,11 +244,15 @@ export function makeDecider({ decide = null, decisions = null } = {}) {
           }
           rec.chosen_by = "hook";
           takeExtras(id, answer, rec);
+          // Live derivation is authoritative: it follows the final
+          // chosen_by (model/hook → 에이전트, rule_fallback → 일정).
+          rec.decided_by = decidedByFor(rec.chosen_by);
           return rec;
         }
         throw new Error(`decision ${id}: hook returned ${JSON.stringify(answer)}`);
       }
-      const rec = { id, ...shell, chosen_key: shell.default_key, chosen_by: "rule" };
+      const rec = { id, ...shell, chosen_key: shell.default_key, chosen_by: "rule",
+        decided_by: DECIDED_BY_RULE };
       if (multi) rec.plan = shell.default_key === WEEKEND_HOME ? [] : [shell.default_key];
       stats.ruled++;
       return rec;

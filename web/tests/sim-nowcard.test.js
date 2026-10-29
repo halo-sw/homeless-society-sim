@@ -146,7 +146,8 @@ describe("tickerFor", () => {
 
 describe("nowCard fatigue", () => {
   function journeyRun() {
-    const scen = tinyScenario({ days: 1, background: 0, seed: 7 });
+    // Seed 2 boards at 07:xx in the 90 % slot (standing room).
+    const scen = tinyScenario({ days: 1, background: 0, seed: 2 });
     scen.household.members[0].work.destination_station = "직장역";
     return simulate(tinyArea(), scen, "A", { region: tinyRegion() });
   }
@@ -204,7 +205,8 @@ describe("nowCard fatigue", () => {
 
 describe("ride card (stage 9c)", () => {
   function rideScenario() {
-    return tinyScenario({ days: 1, background: 0, seed: 7,
+    // Seed 2 boards in the 90 % slot (standing room).
+    return tinyScenario({ days: 1, background: 0, seed: 2,
       household: { members: [
         { id: "m1", label: "구성원 1", role: "adult", workdays: ["Mon"],
           work: { type: "station_ride", station_name: "중앙역", ride_minutes: 20,

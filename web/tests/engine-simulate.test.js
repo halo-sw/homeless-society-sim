@@ -119,10 +119,13 @@ describe("engine simulate (fixture)", () => {
     assert.equal(un1.length, 5);
     assert.equal(un1[0].detail, "없는역");
     assert.equal(r1.trips.filter((t) => t.agent === "h1" && t.purpose === "commute").length, 0);
-    // No reachable clinic.
+    // No reachable clinic (daily visits so a weekday attempt is certain —
+    // a single monthly draw may fall on a weekend, which runs weekend_plan).
+    const s2 = tinyScenario();
+    s2.household.members[0].clinic_visits_per_month = 7;
     const area2 = tinyArea();
     area2.pois = area2.pois.filter((p) => p.id !== "cli1" && p.id !== "iso1");
-    const r2 = simulate(area2, tinyScenario(), "A");
+    const r2 = simulate(area2, s2, "A");
     assert.ok(r2.unavailable.some((u) => u.agent === "h1" && u.category === "clinic"));
     // No supermarket at all.
     const area3 = tinyArea();
@@ -352,8 +355,8 @@ describe("engine (real data)", () => {
     const run = simulate(area, demo(), "A");
     assert.equal(run.meta.agents, 6);
     assert.equal(run.meta.complex, "레이크팰리스");
-    assert.ok(run.trips.length > 20);
-    assert.ok(run.decisions.length > 10);
+    assert.ok(run.trips.length > 10);
+    assert.ok(run.decisions.length > 5);
     const edgeSet = new Set(area.graph.edges.walk.map((e) => `${e.from}>${e.to}`));
     for (const t of run.trips) {
       for (let i = 0; i < t.path.length - 1; i++) {

@@ -17,7 +17,7 @@ import { canon } from "../src/engine/canonical.js";
 import { CRITERIA_DOC_NAME, CRITERIA_VERSION, moneyOptsFromCriteria, resolveCriteria } from "../src/engine/criteria.js";
 import { parseScenario } from "../src/engine/scenario.js";
 import { loadDestArea } from "../src/engine/destload.js";
-import { simulate } from "../src/engine/simulate.js";
+import { engineMetrics, runPaired } from "../src/engine/paired.js";
 import { Router } from "../src/engine/graph.js";
 import { createCsvBackend } from "../src/money/rtms.js";
 import { referencePrice } from "../src/money/prices.js";
@@ -161,13 +161,18 @@ async function readAreaMeta(areaId) {
   }
   return metaCache.get(areaId);
 }
+const prepByLabel = {};
+const routersByLabel = {};
+const pairedAreas = {};
+const pairedDestAreas = {};
 for (const h of scenario.homes) {
   const area = areasById[h.area];
   const router = new Router(area.graph);
+  routersByLabel[h.label] = router;
+  pairedAreas[h.label] = area;
   const destArea = await loadDestArea({ scenario, network: region && region.network,
     homeArea: area, listAreas, readAreaMeta, loadArea });
-  const run = simulate(area, structuredClone(scenarioRaw), h.label,
-    { ...(region ? { region } : {}), ...(destArea ? { destArea } : {}) });
+  if (destArea) pairedDestAreas[h.label] = destArea;
   // Price reference: parcel+name match, name-only fallback (< 3 rows).
   const district = AREA_RTMS_DISTRICT[h.area];
   const rows = district ? await rtmsFor(district) : [];
@@ -199,6 +204,52 @@ for (const h of scenario.homes) {
     }
     return { price_won: null, deposit_won: null, monthly_rent_won: null, source: "rtms" };
   };
+  prepByLabel[h.label] = { home: h, area, parcelHits, nameHits, used,
+    matchMethod, areaM2, reference, priceInputs };
+}
+// Paired repeats across all homes (same 10 seeds by default); run 1
+// feeds the per-home fields below, every run feeds runs_summary.
+const spendOptsBase = {
+  transit_fare_won: A.transit_fare_won, basket_won: A.basket_won,
+  maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
+  household_monthly_net_won: net.household_monthly_net_won,
+  pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+};
+const housingFor = (label, tenure) => {
+  if (tenure === "공공임대") return null;
+  const prep = prepByLabel[label];
+  const pi = prep.priceInputs(tenure);
+  const hasPrice = [pi.price_won, pi.deposit_won, pi.monthly_rent_won].some((v) => Number.isFinite(v));
+  if (!hasPrice) return null;
+  return { pi, housing: tenureCost({ tenure, ...pi,
+    cash_won: scenario.money.cash_won,
+    loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years, source: pi.source }) };
+};
+const paired = runPaired(pairedAreas, scenarioRaw, {
+  ...(region ? { region } : {}),
+  ...(Object.keys(pairedDestAreas).length > 0 ? { destAreas: pairedDestAreas } : {}),
+  summarize: (run, label) => {
+    const m = engineMetrics(run);
+    const spend = moneyTimeline(run, scenario, { ...spendOptsBase, housing_monthly_won: 0 });
+    m.grocery_won = -spend.totals_by_category.grocery;
+    m.transit_won = -spend.totals_by_category.transit;
+    const rem = {};
+    for (const tenure of TENURES) {
+      const hh = housingFor(label, tenure);
+      if (!hh) continue;
+      const tl = moneyTimeline(run, scenario, { ...spendOptsBase,
+        housing_monthly_won: hh.housing.monthly_won, tenure, housing_source: hh.pi.source });
+      rem[tenure] = tl.remaining_won;
+    }
+    m.remaining_won_per_month = rem;
+    return m;
+  },
+});
+for (const h of scenario.homes) {
+  const { area, parcelHits, nameHits, used, matchMethod, areaM2, reference, priceInputs } =
+    prepByLabel[h.label];
+  const router = routersByLabel[h.label];
+  const run = paired.runs[0][h.label];
   const byTenure = {};
   for (const tenure of TENURES) {
     if (tenure === "공공임대") {
@@ -376,6 +427,8 @@ const doc = {
   criteria: { doc: CRITERIA_DOC_NAME, version: CRITERIA_VERSION, overrides: crit.overridden },
   default_tenure: scenario.money.tenure,
   homes,
+  run_seeds: paired.seeds,
+  runs_summary: paired.summary,
   assumptions9b,
   support_rentals: supportRentals,
   public_listings: publicListings,

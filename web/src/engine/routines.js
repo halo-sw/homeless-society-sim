@@ -282,8 +282,8 @@ export function planAgent(agent, day, ctx) {
     collect.unavailable.push(rec);
   }
 
-  function decide(kind, minute, options, default_key) {
-    const rec = decider.resolve({ agent: agent.key, day, minute, kind, options, default_key }, seq++);
+  function decide(kind, minute, options, default_key, extra = {}) {
+    const rec = decider.resolve({ agent: agent.key, day, minute, kind, options, default_key, ...extra }, seq++);
     collect.decisions.push(rec);
     return rec;
   }
@@ -772,7 +772,8 @@ export function planAgent(agent, day, ctx) {
     if (options.length > 0) {
       options.push({ key: WEEKEND_HOME, label: "집에서 휴식", minutes: 0, distance_m: 0 });
       const catsOnly = options.filter((o) => o.key !== WEEKEND_HOME);
-      const rec = decide("weekend_plan", minute, options, ruleDefault(catsOnly));
+      const wish = (schedule.weekendWishes && schedule.weekendWishes.get(day)) || WEEKEND_HOME;
+      const rec = decide("weekend_plan", minute, options, ruleDefault(catsOnly), { wish });
       let depart = minute;
       for (const key of rec.plan) {
         const cat = weekendCats.find((c) => c.key === key);

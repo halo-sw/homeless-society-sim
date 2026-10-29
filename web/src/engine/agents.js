@@ -9,6 +9,7 @@
 
 import { intBelow, shuffled, streamFor } from "./prng.js";
 import { criterionDefault, defaultFlat, resolveCriteria } from "./criteria.js";
+import { WEEKDAYS, weekdayOf } from "./scenario.js";
 
 // Defaults alias the criteria file (C-walk-speed, C-neighbour); per-run
 // code uses the resolved flat values threaded through buildAgents and
@@ -154,27 +155,41 @@ export function buildAgents(area, scenario, home, homeNode, router, flat = null)
   return agents;
 }
 
-// Weekly/monthly schedule + per-day departure jitter, all drawn up
-// front from the agent's own stream (fixed order, never shifted by
-// hook choices). Returns {errands: {cat: Set(days)},
-// parkDays: Set, clinicDays: Set, departJitter: [mins], ...}.
+// Weekend wishes: what the agent feels like on a weekend day, drawn
+// home-independently (uniform over the weekend categories + staying
+// home). Recorded on the weekend_plan decision as context; the rule
+// default stays the fastest reachable category, so wishes never move a
+// trip by themselves.
+export const WEEKEND_WISH_KEYS = ["park", "supermarket", "convenience", "clinic", "home"];
+
+// Weekly/monthly schedule + per-day departure jitter + weekend wishes,
+// all drawn up front (before any routing) from independent streams
+// keyed by (seed, agent, week/day, purpose) — never one shared stream.
+// Home-independent draws therefore cannot drift between homes A and B:
+// the same (seed, agent) always sees the same errand days, park days,
+// jitter and wishes, whatever the routes look like. Returns {errands:
+// {cat: Set(days)}, parkDays: Set, clinicDays: Set, departJitter:
+// [mins], weekendWishes: Map(day -> wish key)}.
 export function planSchedule(agent, scenario, flat = null) {
   const F = flat || resolveCriteria(scenario).flat;
-  const rng = streamFor(scenario.seed, agent.key);
+  const seed = scenario.seed;
+  const key = agent.key;
   const days = scenario.days;
   const errands = { supermarket: new Set(), convenience: new Set() };
   const parkDays = new Set();
   const weeks = Math.ceil(days / 7);
   for (let w = 0; w < weeks; w++) {
     for (const cat of ["supermarket", "convenience"]) {
+      const rng = streamFor(seed, `${key}:w${w}:${cat}`);
       const k = Math.min(7, agent.errands_per_week[cat]);
       for (const wd of shuffled(rng, [0, 1, 2, 3, 4, 5, 6]).slice(0, k)) {
         const d = w * 7 + wd;
         if (d < days) errands[cat].add(d);
       }
     }
+    const rngPark = streamFor(seed, `${key}:w${w}:park`);
     const kp = Math.min(7, agent.park_walks_per_week);
-    for (const wd of shuffled(rng, [0, 1, 2, 3, 4, 5, 6]).slice(0, kp)) {
+    for (const wd of shuffled(rngPark, [0, 1, 2, 3, 4, 5, 6]).slice(0, kp)) {
       const d = w * 7 + wd;
       if (d < days) parkDays.add(d);
     }
@@ -182,12 +197,24 @@ export function planSchedule(agent, scenario, flat = null) {
   const clinicDays = new Set();
   const kc = Math.min(days, agent.clinic_visits_per_month);
   const allDays = Array.from({ length: days }, (_, d) => d);
-  for (const d of shuffled(rng, allDays).slice(0, kc)) clinicDays.add(d);
+  const rngClinic = streamFor(seed, `${key}:clinic`);
+  for (const d of shuffled(rngClinic, allDays).slice(0, kc)) clinicDays.add(d);
   // Morning departure jitter per day (0..59 min past the 07:30/08:00
-  // anchors), drawn in day order.
+  // anchors), each day from its own stream.
   const span = F.jitter_max - F.jitter_min + 1;
-  const departJitter = Array.from({ length: days }, () => F.jitter_min + intBelow(rng, span));
-  return { errands, parkDays, clinicDays, departJitter };
+  const departJitter = Array.from({ length: days }, (_, d) => {
+    const rng = streamFor(seed, `${key}:${d}:jitter`);
+    return F.jitter_min + intBelow(rng, span);
+  });
+  // Weekend wishes, one per Sat/Sun, each from its own stream.
+  const weekendWishes = new Map();
+  for (let d = 0; d < days; d++) {
+    const weekday = WEEKDAYS[weekdayOf(scenario.start_date, d)];
+    if (weekday !== "Sat" && weekday !== "Sun") continue;
+    const rng = streamFor(seed, `${key}:${d}:weekend`);
+    weekendWishes.set(d, WEEKEND_WISH_KEYS[intBelow(rng, WEEKEND_WISH_KEYS.length)]);
+  }
+  return { errands, parkDays, clinicDays, departJitter, weekendWishes };
 }
 
 export { shuffled };
