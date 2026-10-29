@@ -181,6 +181,10 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 .ui-landing-body { position: absolute; inset: 0; overflow: auto; }
 .ui-landing-body h1, .ui-landing-body h2 { color: #fff; }
 .ui-landing-body p { color: rgba(255, 255, 255, 0.88); }
+/* ---------- 13e3-2: landing footer readable on the map ---------- */
+.ui-landing-foot p, .ui-landing-foot span, .ui-landing-foot button {
+  color: rgba(255, 255, 255, 0.88);
+}
 
 /* ---------- 12b: chat shell ---------- */
 .ui-chat { position: absolute; inset: 0; display: flex; }

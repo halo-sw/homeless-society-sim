@@ -135,10 +135,12 @@ export function Landing() {
                       </VStack>
                     </ClickableCard>
                   </Grid>
-                  <HStack gap={2} vAlign="center" wrap="wrap">
-                    <Text type="supporting">{COVERAGE_LINE}</Text>
-                    <SourcesPopover />
-                  </HStack>
+                  <div className="ui-landing-foot">
+                    <HStack gap={2} vAlign="center" wrap="wrap">
+                      <Text type="supporting">{COVERAGE_LINE}</Text>
+                      <SourcesPopover />
+                    </HStack>
+                  </div>
                 </VStack>
               </VStack>
             </LayoutContent>
