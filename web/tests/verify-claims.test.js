@@ -2,15 +2,21 @@
 //
 // A tiny hand-made run (3 trips, 1 decision) backs every number; the
 // expected values below are computed by hand from that fixture.
+//
+// Stage 16b: engine values are the household's door-to-door numbers —
+// C01/N01 average one-way (walk + ride) / one-way commutes over
+// commuting household members, other purposes average household trips
+// only. A tiny door-to-door run and real-build values (skipped when
+// data/build/sim is missing) pin the formula.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadGroundTruth } from "../src/verify/checklist.js";
 import { engineValue, meanMinutes, monthlyTotal, textNumbers,
-  checkNumberClaims } from "../src/verify/numbers.js";
+  checkNumberClaims, householdMembers, commuteOneWayMinutes } from "../src/verify/numbers.js";
 import { awayId, evidenceIndex, checkEvidence } from "../src/verify/evidence.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -50,7 +56,7 @@ function sentence(o) {
 
 describe("engineValue", () => {
   const run = tinyRun();
-  it("C01 is the all-member commute mean (30)", () => {
+  it("C01 is the household door-to-door one-way mean (30)", () => {
     assert.deepEqual(engineValue("C01", run), { value: 30, unit: "분" });
   });
   it("N01 is the per-member commute mean", () => {
@@ -58,6 +64,9 @@ describe("engineValue", () => {
       { value: 25, unit: "분" });
     assert.deepEqual(engineValue("N01", run, { member: "m2" }),
       { value: 35, unit: "분" });
+  });
+  it("N01 without a member gives null (flagged as missing member)", () => {
+    assert.equal(engineValue("N01", run), null);
   });
   it("C05 reads errand trips; missing purposes give null", () => {
     assert.deepEqual(engineValue("C05", run), { value: 10, unit: "분" });
@@ -218,5 +227,106 @@ describe("checkEvidence", () => {
         claims: [{ field: "commute_minutes", value: 30, unit: "분" }] }),
     ] };
     assert.deepEqual(checkEvidence(report, run, young), { failures: [] });
+  });
+});
+
+describe("household door-to-door values (16b)", () => {
+  // One member, walk 10 + ride 30 + walk 5 out, the same back:
+  // (30 + 60) / 2 one-way commutes = 45.
+  function doorToDoorRun() {
+    return {
+      agents: [{ key: "h1", household: true }],
+      totals: { per_member: { h1: { commute_walk_minutes: 30,
+        commute_ride_minutes: 60 } } },
+      trips: [
+        { id: "t1", agent: "h1", day: 0, purpose: "commute", minutes: 10,
+          depart_min: 480 },
+        { id: "t2", agent: "h1", day: 0, purpose: "commute", minutes: 5,
+          depart_min: 505 },
+        { id: "t3", agent: "h1", day: 0, purpose: "commute", minutes: 5,
+          depart_min: 1080 },
+        { id: "t4", agent: "h1", day: 0, purpose: "commute", minutes: 10,
+          depart_min: 1105 },
+      ],
+      aways: [
+        { agent: "h1", day: 0, kind: "ride", start_min: 515,
+          detail: { ride: { minutesTotal: 30 } } },
+        { agent: "h1", day: 0, kind: "ride", start_min: 1090,
+          detail: { ride: { minutesTotal: 30 } } },
+      ],
+      decisions: [],
+    };
+  }
+  it("walk 10 + ride 30 + walk 5 out and back gives C01 45", () => {
+    const run = doorToDoorRun();
+    assert.equal(commuteOneWayMinutes(run, "h1"), 45);
+    assert.deepEqual(engineValue("C01", run), { value: 45, unit: "분" });
+    assert.deepEqual(engineValue("N01", run, { member: "h1" }),
+      { value: 45, unit: "분" });
+  });
+  it("members without a commute are skipped, not averaged as zero", () => {
+    const run = doorToDoorRun();
+    run.agents.push({ key: "h2", household: true });
+    run.totals.per_member.h2 = { commute_walk_minutes: 0,
+      commute_ride_minutes: 0 };
+    assert.equal(commuteOneWayMinutes(run, "h2"), null);
+    assert.deepEqual(engineValue("C01", run), { value: 45, unit: "분" });
+  });
+  it("householdMembers excludes simulated neighbours", () => {
+    assert.deepEqual(householdMembers(tinyRun()), ["m1", "m2"]);
+    const flagged = { agents: [{ key: "h1", household: true },
+      { key: "b01", household: false }], trips: [], aways: [] };
+    assert.deepEqual(householdMembers(flagged), ["h1"]);
+    const prefixed = { agents: [{ key: "h1" }, { key: "b02" }],
+      totals: { per_member: { h1: {}, b02: {} } }, trips: [], aways: [] };
+    assert.deepEqual(householdMembers(prefixed), ["h1"]);
+  });
+  it("neighbour trips never leak into purpose means or C01", () => {
+    const run = {
+      agents: [{ key: "h1", household: true },
+        { key: "b01", household: false }],
+      trips: [
+        { id: "t1", agent: "h1", day: 0, purpose: "errand", minutes: 10,
+          depart_min: 600 },
+        { id: "t2", agent: "b01", day: 0, purpose: "errand", minutes: 100,
+          depart_min: 600 },
+        { id: "t3", agent: "b01", day: 0, purpose: "commute", minutes: 5,
+          depart_min: 500 },
+      ],
+      aways: [],
+      decisions: [],
+    };
+    assert.deepEqual(engineValue("C05", run), { value: 10, unit: "분" });
+    assert.equal(engineValue("C01", run), null); // h1 does not commute
+  });
+});
+
+describe("real-build engine values (16b)", () => {
+  const SIM = join(HERE, "..", "..", "data", "build", "sim");
+  const loadRun = (name) => {
+    const p = join(SIM, name);
+    if (!existsSync(p)) return null; // built data is not committed
+    return JSON.parse(readFileSync(p, "utf-8"));
+  };
+  it("demo-two-homes-A C01 is 42.7", () => {
+    const run = loadRun("demo-two-homes-A.json");
+    if (!run) return;
+    assert.deepEqual(engineValue("C01", run), { value: 42.7, unit: "분" });
+  });
+  it("demo-two-homes-B C01 is 16.5", () => {
+    const run = loadRun("demo-two-homes-B.json");
+    if (!run) return;
+    assert.deepEqual(engineValue("C01", run), { value: 16.5, unit: "분" });
+  });
+  it("persona-newlywed-couple-B N01 h1 is 46.5", () => {
+    const run = loadRun("persona-newlywed-couple-B.json");
+    if (!run) return;
+    assert.deepEqual(engineValue("N01", run, { member: "h1" }),
+      { value: 46.5, unit: "분" });
+  });
+  it("persona-dual-income-child-A C01 is 42.7 (neighbours excluded)", () => {
+    const run = loadRun("persona-dual-income-child-A.json");
+    if (!run) return;
+    assert.deepEqual(engineValue("C01", run), { value: 42.7, unit: "분" });
   });
 });

@@ -1,4 +1,4 @@
-// Stage 16a part 3: deterministic claim checks (pure, no DOM / network).
+// Stage 16b part 2: deterministic claim checks (pure, no DOM / network).
 //
 // For verify:"deterministic" items with engine supported|partial, a
 // report claim's value is recomputed from the run and compared within
@@ -7,11 +7,18 @@
 // from the judge guards (not copied): ordinals, list markers and Korean
 // counters are skipped there.
 //
-// Engine values (all from the run, except C02 which sums the report
-// home's listing fields — the run carries no money):
-//   C01       mean minutes of purpose=commute trips (all members)
-//   N01       mean minutes of purpose=commute trips for claim.member
-//   C05/F01/F03/P02/F05/M02  mean minutes of purpose=errand/school/park/park/clinic/clinic
+// Engine values are the household's door-to-door numbers — simulated
+// neighbours (b01…b60) are never averaged in:
+//   C01       mean over commuting household members of one-way
+//             door-to-door minutes: (commute_walk + commute_ride) /
+//             one-way commutes, where one-way commutes are distinct
+//             (day, am|pm) halves among the member's purpose=commute
+//             trips and kind=ride aways (am = before 12:00). Walk and
+//             ride totals come from totals.per_member; runs without
+//             totals fall back to summing the member's own trips/aways.
+//   N01       the same one-way value for claim.member
+//   C05/F01/F03/P02/F05/M02  mean minutes of purpose=errand/school/
+//             park/park/clinic/clinic trips by household members only
 //   C02       home.monthly_won + maintenance_won_month + utilities_won_month
 // Items with engine:"none" are never checked here (미지원, handled by
 // loop.js) — never failed, never passed.
@@ -30,10 +37,51 @@ const ITEM_PURPOSE = {
 const round1 = (n) => Math.round(n * 10) / 10;
 const fmtWon = (n) => Number(n).toLocaleString("ko-KR");
 
-export function meanMinutes(trips, purpose, member = null) {
+// Household members: keys of run.totals.per_member that are not
+// simulated neighbours. The run's own agent flag (household, or
+// background) wins when an agent entry matches the key; otherwise the
+// b-prefix convention (b01…b60) applies. Runs without totals fall back
+// to flagged agent entries.
+export function householdMembers(run) {
+  const flagByKey = new Map();
+  for (const a of (run && run.agents) || []) {
+    if (!a || typeof a !== "object") continue;
+    let background = null;
+    if (a.background !== undefined && a.background !== null) {
+      background = !!a.background;
+    } else if (a.household !== undefined && a.household !== null) {
+      background = !a.household;
+    }
+    if (background === null) continue;
+    for (const k of [a.key, a.id, a.agent]) {
+      if (k !== undefined && k !== null && !flagByKey.has(String(k))) {
+        flagByKey.set(String(k), background);
+      }
+    }
+  }
+  const isHousehold = (k) => (flagByKey.has(k) ? !flagByKey.get(k)
+    : !k.startsWith("b"));
+  const pm = run && run.totals && run.totals.per_member;
+  if (pm && typeof pm === "object" && Object.keys(pm).length > 0) {
+    return Object.keys(pm).filter((k) => isHousehold(String(k)));
+  }
+  const out = [];
+  for (const a of (run && run.agents) || []) {
+    if (!a || typeof a !== "object") continue;
+    const k = a.key ?? a.id ?? a.agent;
+    if (k === undefined || k === null) continue;
+    if (isHousehold(String(k)) && !out.includes(String(k))) out.push(String(k));
+  }
+  return out;
+}
+
+export function meanMinutes(trips, purpose, member = null, onlyAgents = null) {
+  const set = (onlyAgents === null || onlyAgents === undefined)
+    ? null : new Set(onlyAgents);
   const mins = (trips || [])
     .filter((t) => t && t.purpose === purpose
-      && (member === null || t.agent === member)
+      && (member === null || member === undefined || t.agent === member)
+      && (set === null || set.has(t.agent))
       && Number.isFinite(t.minutes))
     .map((t) => t.minutes);
   if (mins.length === 0) return null;
@@ -49,6 +97,62 @@ export function monthlyTotal(home) {
   return Math.round(parts.reduce((a, b) => a + b, 0));
 }
 
+// Minutes of one ride away: new runs carry detail.ride.minutesTotal,
+// older runs detail.rides.out/back.minutesTotal.
+function rideAwayMinutes(a) {
+  const d = (a && a.detail) || {};
+  if (d.ride && Number.isFinite(d.ride.minutesTotal)) return d.ride.minutesTotal;
+  const rides = d.rides;
+  if (rides && typeof rides === "object") {
+    let n = 0;
+    let any = false;
+    for (const half of [rides.out, rides.back]) {
+      if (half && Number.isFinite(half.minutesTotal)) {
+        n += half.minutesTotal;
+        any = true;
+      }
+    }
+    if (any) return n;
+  }
+  if (Number.isFinite(d.ride_minutes)) return d.ride_minutes;
+  return 0;
+}
+
+const AM_END_MINUTES = 720; // 12:00
+
+// One member's one-way door-to-door commute, or null when the member
+// has no commute halves (no purpose=commute trip or kind=ride away).
+export function commuteOneWayMinutes(run, member) {
+  const halves = new Set();
+  for (const t of (run && run.trips) || []) {
+    if (!t || t.purpose !== "commute" || t.agent !== member) continue;
+    const tm = t.depart_min ?? t.arrive_min ?? 0;
+    halves.add(`${t.day}|${tm < AM_END_MINUTES ? "am" : "pm"}`);
+  }
+  for (const a of (run && run.aways) || []) {
+    if (!a || a.kind !== "ride" || a.agent !== member) continue;
+    const tm = a.start_min ?? a.end_min ?? 0;
+    halves.add(`${a.day}|${tm < AM_END_MINUTES ? "am" : "pm"}`);
+  }
+  if (halves.size === 0) return null;
+  const pm = run && run.totals && run.totals.per_member
+    && run.totals.per_member[member];
+  let walk = pm ? pm.commute_walk_minutes : undefined;
+  let ride = pm ? pm.commute_ride_minutes : undefined;
+  if (!Number.isFinite(walk)) {
+    walk = ((run && run.trips) || [])
+      .filter((t) => t && t.purpose === "commute" && t.agent === member
+        && Number.isFinite(t.minutes))
+      .reduce((n, t) => n + t.minutes, 0);
+  }
+  if (!Number.isFinite(ride)) {
+    ride = ((run && run.aways) || [])
+      .filter((a) => a && a.kind === "ride" && a.agent === member)
+      .reduce((n, a) => n + rideAwayMinutes(a), 0);
+  }
+  return round1((walk + ride) / halves.size);
+}
+
 // Engine value for one deterministic item, or null when the run/home
 // has nothing to check against. Returns { value, unit }.
 export function engineValue(itemId, run, opts = {}) {
@@ -57,10 +161,25 @@ export function engineValue(itemId, run, opts = {}) {
     const total = monthlyTotal(home);
     return total === null ? null : { value: total, unit: "원" };
   }
+  if (itemId === "C01") {
+    const vals = [];
+    for (const m of householdMembers(run)) {
+      const v = commuteOneWayMinutes(run, m);
+      if (v !== null) vals.push(v);
+    }
+    if (vals.length === 0) return null;
+    return { value: round1(vals.reduce((a, b) => a + b, 0) / vals.length),
+      unit: "분" };
+  }
+  if (itemId === "N01") {
+    if (member === null || member === undefined) return null;
+    const v = commuteOneWayMinutes(run, member);
+    return v === null ? null : { value: v, unit: "분" };
+  }
   const purpose = ITEM_PURPOSE[itemId];
   if (!purpose) return null;
-  const mean = meanMinutes(run && run.trips, purpose,
-    itemId === "N01" ? member : null);
+  const mean = meanMinutes(run && run.trips, purpose, null,
+    householdMembers(run));
   return mean === null ? null : { value: mean, unit: "분" };
 }
 

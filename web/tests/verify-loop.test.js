@@ -4,10 +4,14 @@
 // clinic 15) and scripted drafts; every coverage number below is
 // computed by hand from the young_family support map
 // (supported must C01/C02/F01, should C05/F03/F05 — total weight 12).
+//
+// Stage 16b: a real-build check pins the household door-to-door C01 —
+// 43.6분 passes, the old neighbour-averaged 10.3분 fails (skipped when
+// data/build/sim is missing).
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { loadGroundTruth } from "../src/verify/checklist.js";
@@ -164,5 +168,26 @@ describe("runVerifyLoop", () => {
     assert.equal(un.result.status, "미지원");
     assert.equal(un.handoff, null);
     assert.equal(reviseCalls, 0);
+  });
+});
+
+describe("real-build report check (16b)", () => {
+  it("dual-income-child-A: 43.6분 passes, 10.3분 fails on C01", () => {
+    const p = join(HERE, "..", "..", "data", "build", "sim",
+      "persona-dual-income-child-A.json");
+    if (!existsSync(p)) return; // built data is not committed
+    const run = JSON.parse(readFileSync(p, "utf-8"));
+    const report = (value) => ({ persona: "young_family", home: HOME,
+      sentences: [
+        sentence("s1", "C01", `통근은 평균 ${value}분이에요`, [min(value)]),
+      ] });
+    const ok = verifyReport(report(43.6), run, "young_family",
+      { groundTruth: GT });
+    assert.deepEqual(ok.failures.filter((f) => f.kind === "number"), []);
+    const bad = verifyReport(report(10.3), run, "young_family",
+      { groundTruth: GT });
+    const numberFailures = bad.failures.filter((f) => f.kind === "number");
+    assert.equal(numberFailures.length, 1);
+    assert.equal(numberFailures[0].item_id, "C01");
   });
 });
