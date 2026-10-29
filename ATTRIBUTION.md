@@ -74,3 +74,7 @@ link to this file or the sources above.
   `scenarios/assumptions/kr-jeonse-checklist.json`의 문맥줄은 국토교통부
   자료를 인용한 2025-03-10 SBS Biz 보도(피해자 27,372명, 20·30대
   20,432명 ≈ 74.6 %)에서 가져왔으며 출처 URL과 함께 기록한다.
+
+## Wikimedia Commons (neighbourhood photos, stage 12)
+
+`scenarios/places/commons-photos.json` lists freely licensed, geotagged photos from Wikimedia Commons (CC0, public domain, CC BY, CC BY-SA) near the 11 areas, fetched 2026-10-29 with the MediaWiki API. The repository stores only the manifest (title, author, licence, link, coordinates). Thumbnails load from upload.wikimedia.org. Every photo shown in the app carries its author, licence and a link to its Commons page. These photos show the neighbourhood, never a specific listing.
