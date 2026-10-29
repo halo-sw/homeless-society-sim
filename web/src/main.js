@@ -53,6 +53,9 @@ import { treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint 
 import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
 import { MAX_PEDS_HIGH, buildCrowd, pedCapFor, stationCongestionScale } from "./motion/pedestrians.js";
 import { buildCrowdMeshes } from "./render/crowd.js";
+import { buildTrainTable } from "./motion/trains.js";
+import { buildTrainPulse } from "./render/trainpulse.js";
+import { INTERSTATION_CSV_URL, parseInterstationCsv } from "./transit/schedule.js";
 
 // 12a: the area list comes from the built data/build/areas-index.json
 // (id, label, center, bbox, station, size) — never a hard-coded array.
@@ -925,8 +928,14 @@ function legendRows(area) {
   return { resRows, heightRows };
 }
 
-export const TREE_NOTE_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 인물·차량은 장식용 모의 표시입니다";
-export const TREE_NOTE_FLAT = "나무·인물은 장식용 모의 표시입니다";
+// 14b: ambient movers are rule-made mock motion (가정값), never
+// observed traffic. Near-station crowds add the 실측 suffix when the
+// congestion table backs them (sim only; tour loads no region data).
+export const MOTION_NOTE_TOUR_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 차량·인물은 규칙으로 만든 모의 움직임(가정값)입니다";
+export const MOTION_NOTE_TOUR_FLAT = "나무는 장식용 모의 표시, 차량·인물은 규칙으로 만든 모의 움직임(가정값)입니다";
+export const MOTION_NOTE_SIM_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
+export const MOTION_NOTE_SIM_FLAT = "나무는 장식용 모의 표시, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
+export const MOTION_CONG_SUFFIX = " 역 주변 인파는 실측 혼잡도 기반입니다.";
 
 function buildUI(area, plan, sceneOn = false) {
   const { resRows, heightRows } = legendRows(area);
@@ -937,7 +946,7 @@ function buildUI(area, plan, sceneOn = false) {
       title: "범례",
       resRows,
       heightRows,
-      note: sceneOn ? TREE_NOTE_SCENE : TREE_NOTE_FLAT,
+      note: sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT,
     },
   });
   if (plan.stops.length === 0) store.set({ tourPlaying: false });
@@ -1864,6 +1873,8 @@ async function bootSim() {
   let congKey = "";
   let congScale = 1;
   let congLabel = "가정값";
+  let simLegendBase = "";
+  let congNoteBacked = false;
   function refreshCongestion() {
     const key = `${day}:${Math.floor(minute / 30)}:${regionCongestion ? 1 : 0}`;
     if (key === congKey) return;
@@ -1873,7 +1884,50 @@ async function bootSim() {
       station: area.station && area.station.name, minute });
     congScale = hit.scale;
     congLabel = hit.hasData ? "실측 혼잡도 기반" : "가정값";
+    if (hit.hasData !== congNoteBacked && simLegendBase) {
+      congNoteBacked = hit.hasData;
+      const cur = store.getState().legend;
+      if (cur) {
+        store.set({ legend: { ...cur,
+          note: simLegendBase + (hit.hasData ? MOTION_CONG_SUFFIX : "") } });
+      }
+    }
   }
+
+  // 14b: schedule-driven train pulse (sim only). Network + schedule
+  // load lazily; the marker appears once both arrive.
+  let regionSchedule = null;
+  let trainTable = null;
+  let trainPulse = null;
+  async function ensureSchedule() {
+    if (regionSchedule !== null) return regionSchedule;
+    try {
+      const r = await fetch(INTERSTATION_CSV_URL);
+      if (!r.ok) throw new Error(`schedule ${r.status}`);
+      regionSchedule = parseInterstationCsv(await r.text());
+    } catch {
+      regionSchedule = null;
+    }
+    return regionSchedule;
+  }
+  async function ensureTrains() {
+    if (trainPulse || !area.station) return;
+    await ensureRegion();
+    const sched = await ensureSchedule();
+    if (!regionNetwork || !sched) return;
+    trainTable = buildTrainTable({ network: regionNetwork, schedule: sched,
+      station: area.station.name, seed: run.meta.area });
+    if (trainTable.runs.length === 0) {
+      trainTable = null;
+      return;
+    }
+    const [sx, sy] = lonLatToXY(area.station.lon, area.station.lat, origin);
+    trainPulse = buildTrainPulse(trainTable,
+      { x: sx, y: heightAt(sx, -sy) + 0.4, z: -sy, reduced: REDUCED });
+    scene.add(trainPulse.group);
+  }
+  ensureRegion();
+  ensureTrains();
 
   function networkStopCoords() {
     const out = new Map();
@@ -2314,6 +2368,7 @@ async function bootSim() {
   }
 
   // --- sim UI state (published) + actions (UI calls scene) ---
+  simLegendBase = scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT;
   const { resRows, heightRows } = legendRows(area);
   store.set({
     home: homeLabel,
@@ -2325,7 +2380,7 @@ async function bootSim() {
       resRows: resRows.filter((r) => Object.values(RES_LABELS).includes(r.label)),
       heightRows: [],
       simNote: `시뮬레이션 주민 ${run.meta.agents}명 (가구 ${run.meta.household}명 + 이웃 ${run.meta.background}명) · 엔진 재생`,
-      note: scene14 ? TREE_NOTE_SCENE : TREE_NOTE_FLAT,
+      note: simLegendBase,
     },
     follow,
     followOptions: [{ value: "0", label: "자유 시점" },
@@ -2723,7 +2778,9 @@ async function bootSim() {
     refreshCongestion();
     const simPed = crowdMeshes.update(simTMin,
       { congScale, cap: pedCapFor(renderCtl.quality) });
+    if (trainPulse) trainPulse.update(simTMin);
     logMotion(simTMin, { cars: simVeh.active, peds: simPed.active,
+      trains: trainTable ? trainTable.trains : 0,
       ms: simVeh.ms + simPed.ms });
     updateLighting();
     paintFollow(dt, false);

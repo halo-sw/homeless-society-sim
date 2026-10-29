@@ -21,6 +21,7 @@
 
 import { normalizeStation } from "../engine/journey.js";
 
+export const INTERSTATION_CSV_URL = "/scenarios/transit/seoul-metro-interstation.csv";
 export const SCHEDULE_SOURCE_LABEL = "서울교통공사 표준 운행시간";
 export const SCHEDULE_FILE_NOTE =
   "서울교통공사 역간거리 및 소요시간 (OA-12034, 공공누리 1유형, 기준일 2024-03-25)";
