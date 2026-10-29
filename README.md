@@ -75,9 +75,21 @@ Every line of product code, every test and every pipeline script in this reposit
 | 3D scene | `web/src/render/`, `web/src/main.js` | three.js 0.170: PBR facades from data, sky and sun for Seoul, night lights driven by the residents who are at home |
 | UI | `web/src/ui/` | React 19 + **Astryx** (Meta's design system) |
 
-Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the coding agent that wrote the repo). Muse Spark Open runs are planned once inference credits arrive.
+Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the coding agent that wrote the repo) and **Muse Spark Open** (`meta-models/muse-spark-open-1026` on Baseten, an open-weight model). The provider is one switch (`--provider meta|baseten`).
 
-Tests: 581 `node --test` tests (including a headless sim-mode smoke test, a server-render smoke test of the whole React UI and a plain-words scan) and 168 `pytest` tests.
+**Spark 1.3 vs Spark Open on the same household (2026-10-29, `reasoning_effort` low, files in [`scenarios/decisions/compare-1029/`](scenarios/decisions/compare-1029/)):**
+
+| | Spark 1.3 | Spark Open |
+|---|---|---|
+| Decisions (A + B) | 154, all answered, 0 guard fallbacks | 154, all answered, 0 guard fallbacks |
+| Same choice where both met the same decision point | 120 of 139 (86 %) | |
+| Different from the rule default (of 154) | 75 | 72 |
+| Average latency per call | 3.7 s | 2.7 s |
+| Output tokens (A + B) | 140k | 96k |
+
+Where they differ it is mostly which shop to stop at after work (15 of 19). Without a reasoning limit Spark Open spent its whole 2,000-token budget thinking on 116 of 154 calls; with `reasoning_effort: low` it answered every one.
+
+Tests: 636 `node --test` tests (including a headless sim-mode smoke test, a server-render smoke test of the whole React UI and a plain-words scan) and 168 `pytest` tests.
 
 ## Run it
 
@@ -110,7 +122,7 @@ OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장
 
 ## Known issues
 
-- Found on the real GPU after stage 10b (2026-10-29): the floating agent panel can overlap the compare card and the listings tab; some tab labels and header buttons are truncated; the share card shows too few A/B figures; the day and regional views are still hazy and night lights are still bright. A polish stage is next.
+- Stage 11 and 11b (2026-10-29, checked on the real GPU) fixed the floating panel overlap, truncated labels, the empty share card, the grey ride view (all 65 corridor tiles now load, with a base map) and the blown-out night towers. The "물어보기" button can still disappear at night while following a person.
 - `?q=high` renders black on Apple GPUs (ANGLE Metal); the app detects this and falls back to medium.
 - The payroll rates in `scenarios/assumptions/kr-payroll.json` and the ownership costs (취득세, 중개수수료, 재산세…) are marked `needs_confirmation` and are listed as "아직 계산에 넣지 않은 것" until filled from official pages.
 - Subway ride minutes are customer input (an assumption), not a timetable. 신분당선 has no public congestion data, so it uses a stated 70 % assumption.
@@ -133,7 +145,8 @@ OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장
 | 9c | Per-home commute, the ride as a trip, calmer cards | [`09c-RESULT`](briefs/09c-RESULT.md) |
 | 10 | Plain words, floating Astryx agent, listing check, public notices, share card, demo tour | [`10-RESULT`](briefs/10-RESULT.md) |
 | 10b | Fix: React snapshot loop, tour NaN, render smoke test | [`10-RESULT`](briefs/10-RESULT.md#stage-10b--whole-ui-react-loop--tour-nan-muse) |
+| 11–11b | Agent panel placement, full labels, share card with A/B numbers, look table, ride base map | [`11-RESULT`](briefs/11-RESULT.md) |
 
 ## Roadmap (until 11-04)
 
-9a → 9b → 9c → 10 (done) → UI polish (floating panel placement, truncation, fuller share card, less haze) → a Spark 1.3 vs Spark Open comparison of the same 198 decisions → a small San Francisco / Menlo Park neighbourhood → a 3-minute video.
+Next: start from the customer's own words (a prompt over the map, then a chat), find candidate homes from real transactions across 11 areas (성동, 송파, 강남, 강동, 위례, 판교, 성남, 정자, 분당, 미금, 수지) with real neighbourhood photos, and a clearer day timeline → feature freeze → a 3-minute video.
