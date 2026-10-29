@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { GLIDE_FRAME_M, HOST_FADE_MIN_M, JOURNEY_CRUISE_PITCH_DEG, PAINTED_FOV_DEG, PAINTED_MIN_FRAME_M, PAINTED_PITCH_DEG, STOP_AZIMUTHS, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, TOUR_PITCH_DEG, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, resolveStyle, sightOcclusion, tourOffset, zoomClampDistances } from "../src/camera.js";
+import { GLIDE_FRAME_M, HOST_FADE_MIN_M, JOURNEY_CRUISE_PITCH_DEG, PAINTED_FOV_DEG, PAINTED_GLIDE_FRAME_M, PAINTED_MIN_FRAME_M, PAINTED_PITCH_DEG, PAINTED_STOP_FRAME_M, STOP_AZIMUTHS, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, TOUR_PITCH_DEG, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, resolveStyle, sightOcclusion, tourFrameWidths, tourOffset, zoomClampDistances } from "../src/camera.js";
 
 describe("camera", () => {
   it("stays in the miniature brief ranges", () => {
@@ -8,6 +8,15 @@ describe("camera", () => {
     assert.ok(TOUR_PITCH_DEG >= 40 && TOUR_PITCH_DEG <= 50, `pitch ${TOUR_PITCH_DEG}`);
     assert.ok(STOP_FRAME_M >= 250 && STOP_FRAME_M <= 350, `stop ${STOP_FRAME_M}`);
     assert.ok(GLIDE_FRAME_M >= 400 && GLIDE_FRAME_M <= 600, `glide ${GLIDE_FRAME_M}`);
+  });
+
+  it("frames a neighbourhood in painted, keeps photo widths (14f)", () => {
+    assert.equal(PAINTED_STOP_FRAME_M, 450);
+    assert.equal(PAINTED_GLIDE_FRAME_M, 700);
+    assert.deepEqual(tourFrameWidths("painted"), { stop: 450, glide: 700 });
+    assert.deepEqual(tourFrameWidths("photo"),
+      { stop: STOP_FRAME_M, glide: GLIDE_FRAME_M });
+    assert.deepEqual(tourFrameWidths(undefined), { stop: 450, glide: 700 });
   });
 
   it("round-trips frame width and distance", () => {

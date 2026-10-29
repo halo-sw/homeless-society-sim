@@ -90,6 +90,7 @@ describe("look parsing (?look=key:value,…)", () => {
       fogRegionalNear: 4,
       fogRegionalFar: 9,
       gradeSaturation: 1.2,
+      corridorDarken: 1, // 14f: no photo darkening on corridor tiles
       regionalGround: 0xcfc4ad,
       regionalWater: 0x3f6f8f,
       regionalRoad: 0x5b5d60,
@@ -178,6 +179,11 @@ describe("painted fog + night (14e)", () => {
       assert.ok(r.near >= 4 * d, `regional near ${r.near} >= 4×${d}`);
       assert.ok(r.far >= 9 * d, `regional far ${r.far} >= 9×${d}`);
     }
+  });
+
+  it("lifts the corridor darkening in painted only (14f)", () => {
+    assert.equal(resolveLook("", "painted").corridorDarken, 1);
+    assert.equal(resolveLook("", "photo").corridorDarken, 0.74);
   });
 
   it("grades painted frames at 1.2 saturation", () => {

@@ -44,6 +44,16 @@ export function cameraStyle(style) {
   };
 }
 
+// Tour frame widths per style (14f): painted frames a neighbourhood, not
+// one tower — stops (POI close-ups too) span ≥ 450 m, the default glide
+// view 700 m, like the HypeSeoul reference. Photo keeps 300/500.
+export const PAINTED_STOP_FRAME_M = 450;
+export const PAINTED_GLIDE_FRAME_M = 700;
+export function tourFrameWidths(style) {
+  if (style === "photo") return { stop: STOP_FRAME_M, glide: GLIDE_FRAME_M };
+  return { stop: PAINTED_STOP_FRAME_M, glide: PAINTED_GLIDE_FRAME_M };
+}
+
 // ?style=painted (default) vs ?style=photo (today's look, unchanged).
 export function resolveStyle(search) {
   const params = search instanceof URLSearchParams

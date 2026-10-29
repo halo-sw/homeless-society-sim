@@ -69,6 +69,11 @@ export const PAINTED_LOOK = {
   fogRegionalNear: 4,
   fogRegionalFar: 9,
   gradeSaturation: 1.2,
+  // 14f: lift the photo corridor darkening (0.74 → grey blocks) — the
+  // tile walls/roofs (≈ #c9c2b3 / lighter caps) already sit on the painted
+  // wall/roof split, and outlines now separate the blocks. Base-map
+  // ground/water/roads below already carry the painted targets.
+  corridorDarken: 1,
   regionalGround: 0xcfc4ad,
   regionalWater: 0x3f6f8f,
   regionalRoad: 0x5b5d60,
