@@ -1,13 +1,18 @@
 // Decorative street meshes (browser; three.js).
 //
-// Instanced parked cars + slow movers and street lamps from the pure
-// render/streetlife.js placement. Movers ping-pong along their road
-// segments (update(t) rewrites only their instances); lamp heads glow
-// at night via setLampGlow (driven by the sky emissive gate).
+// Instanced parked cars + procedural vehicles and street lamps. Parked
+// cars and lamps come from the pure render/streetlife.js placement;
+// moving vehicles come from the motion/ fleet (updateVehicles(tMin)
+// evaluates the pure state and rewrites only their instances). Lamp
+// heads glow at night via setLampGlow (driven by the sky emissive
+// gate). Without a fleet the legacy ping-pong movers still work.
 
 import * as THREE from "three";
 import { sampleMover } from "./streetlife.js";
+import { allocVehicleState, vehiclesAt } from "../motion/vehicles.js";
 import { carBodyMaterial, carGlassMaterial, lampHeadMaterial, lampPoleMaterial } from "./textures.js";
+
+const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 export const LAMP_POLE_H = 8;
 
@@ -24,7 +29,7 @@ export function lampGlowFor(v) {
   return { head: k * LAMP_HEAD_GAIN, haloOpacity: k * LAMP_HALO_OPACITY, visible: k > 0.01 };
 }
 
-export function buildStreetMeshes(streetlife, { heightAt = null } = {}) {
+export function buildStreetMeshes(streetlife, { heightAt = null, fleet = null } = {}) {
   const group = new THREE.Group();
   const dummy = new THREE.Object3D();
   const { cars, movers, lamps } = streetlife;
@@ -35,7 +40,7 @@ export function buildStreetMeshes(streetlife, { heightAt = null } = {}) {
   bodyGeo.translate(0, 0.75, 0);
   const glassGeo = new THREE.BoxGeometry(2.3, 0.62, 1.7);
   glassGeo.translate(-0.2, 1.45, 0);
-  const total = cars.length + movers.length;
+  const total = cars.length + (fleet ? fleet.maxActive : movers.length);
   const bodyMesh = new THREE.InstancedMesh(bodyGeo, carBodyMaterial(), Math.max(total, 1));
   const glassMesh = new THREE.InstancedMesh(glassGeo, carGlassMaterial(), Math.max(total, 1));
   const col = new THREE.Color();
@@ -55,14 +60,16 @@ export function buildStreetMeshes(streetlife, { heightAt = null } = {}) {
   glassMesh.count = total;
   bodyMesh.castShadow = true;
   if (bodyMesh.instanceColor) bodyMesh.instanceColor.needsUpdate = true;
-  movers.forEach((m, k) => {
-    bodyMesh.setColorAt(cars.length + k, col.setHex(m.color));
-  });
-  if (bodyMesh.instanceColor) bodyMesh.instanceColor.needsUpdate = true;
+  if (!fleet) {
+    movers.forEach((m, k) => {
+      bodyMesh.setColorAt(cars.length + k, col.setHex(m.color));
+    });
+    if (bodyMesh.instanceColor) bodyMesh.instanceColor.needsUpdate = true;
+  }
   group.add(bodyMesh, glassMesh);
 
   function updateMovers(t) {
-    if (movers.length === 0) return;
+    if (fleet || movers.length === 0) return;
     movers.forEach((m, k) => {
       const s = sampleMover(m, t);
       const i = cars.length + k;
@@ -73,6 +80,31 @@ export function buildStreetMeshes(streetlife, { heightAt = null } = {}) {
     glassMesh.instanceMatrix.needsUpdate = true;
   }
   updateMovers(0);
+
+  // 14b: procedural fleet — pure state evaluated at sim minute tMin.
+  // Vehicle slots sit after the parked cars; count follows the hour.
+  const vState = fleet ? allocVehicleState(Math.max(fleet.maxActive, 1)) : null;
+  function updateVehicles(tMin, cap = Infinity) {
+    if (!fleet) return { active: movers.length, ms: 0 };
+    const t0 = nowMs();
+    const n = vehiclesAt(fleet, tMin, vState, cap);
+    for (let w = 0; w < n; w++) {
+      const i = cars.length + w;
+      dummy.position.set(vState.data[w * 4], vState.data[w * 4 + 1], vState.data[w * 4 + 2]);
+      dummy.rotation.set(0, vState.data[w * 4 + 3], 0);
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      bodyMesh.setMatrixAt(i, dummy.matrix);
+      glassMesh.setMatrixAt(i, dummy.matrix);
+      bodyMesh.setColorAt(i, col.setHex(fleet.vehicles[vState.ids[w]].color));
+    }
+    bodyMesh.count = cars.length + n;
+    glassMesh.count = cars.length + n;
+    bodyMesh.instanceMatrix.needsUpdate = true;
+    glassMesh.instanceMatrix.needsUpdate = true;
+    if (bodyMesh.instanceColor) bodyMesh.instanceColor.needsUpdate = true;
+    return { active: n, ms: nowMs() - t0 };
+  }
 
   // --- street lamps: pole + glowing head + halo points ---
   // Heads alone are sub-pixel at stop framing, so each lamp also gets an
@@ -112,8 +144,9 @@ export function buildStreetMeshes(streetlife, { heightAt = null } = {}) {
 
   return {
     group, bodyMesh, glassMesh, poleMesh, headMesh, halo,
-    parked: cars.length, moverCount: movers.length, lampCount: lamps.length,
-    updateMovers,
+    parked: cars.length, moverCount: fleet ? fleet.maxActive : movers.length,
+    lampCount: lamps.length, fleetSlots: fleet ? fleet.maxActive : 0,
+    updateMovers, updateVehicles,
     setLampGlow(v) {
       const g = lampGlowFor(v);
       headMat.emissiveIntensity = g.head;

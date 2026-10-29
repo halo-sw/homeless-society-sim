@@ -49,6 +49,8 @@ import { loadScene, toTypedMesh } from "./scene/load.js";
 import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
 import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
 import { treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
+// Stage 14b: procedural motion — pure state (motion/) evaluated at sim time.
+import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
 
 // 12a: the area list comes from the built data/build/areas-index.json
 // (id, label, center, bbox, station, size) — never a hard-coded array.
@@ -403,10 +405,16 @@ function buildWorld(area, scene14) {
     }
   }
 
-  // --- decorative street life: parked/moving cars + lamps (see legend) ---
+  // --- street life: parked cars + lamps (decorative) + fleet (motion) ---
+  const fleet = buildFleet({
+    segments: scene14 ? sceneSegments(scene14.roads)
+      : areaSegments(area.roads, origin),
+    seed: area.area || areaId, heightAt, maxVehicles: MAX_VEHICLES_HIGH,
+  });
   const streetMeshes = buildStreetMeshes(
-    placeStreetlife(area.roads, origin, { seed: area.area || areaId }),
-    { heightAt });
+    placeStreetlife(area.roads, origin,
+      { seed: area.area || areaId, maxMovers: 0 }),
+    { heightAt, fleet });
   scene.add(streetMeshes.group);
 
   // Real household counts per building (register API) for the night
@@ -457,6 +465,18 @@ function refitToWrap(camera, renderCtl) {
 // as paintTag; cached so updateProjectionMatrix runs only when the
 // layout actually changes (drawer mounts after boot, hence per-frame
 // tracking instead of a one-shot refit).
+// 14b: motion heartbeat — counts + eval ms, once a second in dev.
+let lastMotionLog = 0;
+function logMotion(tMin, { cars = 0, peds = 0, trains = 0, ms = 0 } = {}) {
+  if (!import.meta.env.DEV) return;
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  if (now - lastMotionLog < 1000) return;
+  lastMotionLog = now;
+  const hh = String(Math.floor(tMin / 60) % 24).padStart(2, "0");
+  const mm = String(Math.floor(tMin % 60)).padStart(2, "0");
+  console.log(`[motion] t=${hh}:${mm} cars=${cars} peds=${peds} trains=${trains} ms=${ms.toFixed(1)}`);
+}
+
 let simViewCache = null;
 function trackSimViewOffset(camera) {
   const canvasEl = document.getElementById("scene");
@@ -685,7 +705,9 @@ async function bootTour(uiMode = "tour") {
     const t = clock.elapsedTime;
     player.update(dt);
     updateWalkers(walkerMesh, walkers, area.graph.nodes, origin, t, dummy, heightAt);
-    streetMeshes.updateMovers(t);
+    const tourTMin = tourMinute + t / 60;
+    const tourVeh = streetMeshes.updateVehicles(tourTMin, vehicleCapFor(renderCtl.quality));
+    logMotion(tourTMin, { cars: tourVeh.active, ms: tourVeh.ms });
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
     if (archLens) levelCamera();
@@ -2692,7 +2714,9 @@ async function bootSim() {
       }
     }
     placeAgents(day, minute);
-    streetMeshes.updateMovers(t);
+    const simTMin = day * 1440 + minute;
+    const simVeh = streetMeshes.updateVehicles(simTMin, vehicleCapFor(renderCtl.quality));
+    logMotion(simTMin, { cars: simVeh.active, ms: simVeh.ms });
     updateLighting();
     paintFollow(dt, false);
     paintHighlightFrame();
