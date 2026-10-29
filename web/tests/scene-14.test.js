@@ -4,7 +4,7 @@ import { flatHeightAt, makeHeightAt, seatOnTerrain, slopeAt } from "../src/scene
 import { MASK_SIZE, buildTerrainMesh, isMaskedKind, maskClassFor,
   paintLandMask, sceneToMask } from "../src/scene/terrain.js";
 import { buildRoadMarkings, buildRoadMeshes, buildWaterRibbons,
-  findRoadCrossings, hasYellowCentre, lanesOf, resamplePoints,
+  findRoadCrossings, hasYellowCentre, hexToLinearRgb, lanesOf, resamplePoints,
   roadMaterialClass, roadOrder, roadTone, specWidth } from "../src/scene/roads.js";
 import { LEAF_AUTUMN, LEAF_GREENS, broadleafGeometry, coniferGeometry,
   fillStreetTrees, inAutumnWindow, patchDepthFragment, patchDepthVertex,
@@ -158,9 +158,9 @@ describe("scene roads", () => {
       { k: "residential", n: null, w: 6, br: 0, p: [[0, 30], [4, 30]] },
     ], () => 0, painted);
     // Same merged mesh; per-ribbon vertex colours carry the tone.
-    const hex = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
-    const major = hex(painted.sceneRoad);
-    const minor = hex(painted.sceneRoadMinor);
+    // 17b: vertex colours are linear working-space values.
+    const major = hexToLinearRgb(painted.sceneRoad);
+    const minor = hexToLinearRgb(painted.sceneRoadMinor);
     const [r0, g0, b0] = meshes.road.colors.slice(0, 3);
     assert.ok(Math.abs(r0 - major[0]) < 1e-6 && Math.abs(g0 - major[1]) < 1e-6
       && Math.abs(b0 - major[2]) < 1e-6, "first ribbon is arterial asphalt");
@@ -329,9 +329,9 @@ describe("painted road paint (14e)", () => {
     for (let i = 1; i < mesh.positions.length; i += 3) ys.push(mesh.positions[i]);
     assert.ok(Math.min(...ys) >= 0.089);
     assert.ok(Math.max(...ys) > 1.0);
-    // Both paint colours land in the merged mesh.
+    // Both paint colours land in the merged mesh (17b: linear values).
     const has = (hex) => {
-      const t = [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+      const t = hexToLinearRgb(hex);
       for (let i = 0; i < mesh.colors.length; i += 3) {
         if (Math.abs(mesh.colors[i] - t[0]) < 1e-6
             && Math.abs(mesh.colors[i + 1] - t[1]) < 1e-6

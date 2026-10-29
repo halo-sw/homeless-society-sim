@@ -194,6 +194,13 @@ export function capLitFraction(frac, look = DEFAULT_LOOK) {
   return Math.min(1, Math.min(n, cap));
 }
 
+// Rec.601 luma of an sRGB hex in 0..255 levels (the same weights as the
+// grade shader): 17b separation checks read through this helper.
+export function srgbLumaU8(hex) {
+  const h = Number(hex) || 0;
+  return 0.299 * ((h >> 16) & 255) + 0.587 * ((h >> 8) & 255) + 0.114 * (h & 255);
+}
+
 // Mix two 0xRRGGBB colours (t clamped to 0..1, smoothstepped): the
 // painted night lerp for plain-colour materials (no map).
 export function lerpHex(h1, h2, t) {

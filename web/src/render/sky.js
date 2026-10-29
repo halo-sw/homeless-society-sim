@@ -39,18 +39,22 @@ function mixHex(h1, h2, t) {
 // (hemiSkyDay #b8cfe4, B−R = 44) and every standard material also takes
 // blue diffuse IBL from the PMREM sky capture — with full-strength
 // shadows, shade reads blue and roads/towers go blue-grey. Painted days
-// use warm neutral fill, a warm haze fog, ≤45 % shadows and no sky IBL.
+// use warm neutral fill, a warm haze fog, soft shadows and no sky IBL.
+// 17b: the laptop capture still read shaded walls near-black, so shadows
+// soften to 30 % and the day hemisphere fill gains ×1.35.
 export const PAINTED_LIGHT = {
   hemiSky: 0xf2ece0,
   hemiGround: 0xb9ad98,
   fog: 0xe2d8c4,
-  shadowStrength: 0.45,
+  shadowStrength: 0.3,
+  hemiBoost: 1.35,
 };
 
 // Painted override over skyParams (pure): hemi/fog colours blend to the
 // warm rig by daylight so dawn/dusk stay continuous (full warm at dayF 1,
-// untouched photo colours at night); shadows cap at 45 % and the blue
-// sky environment switches off. Bloom/emissive/nightF/phase pass through.
+// untouched photo colours at night); shadows sit at 30 %, the fill gains
+// the boost by day, and the blue sky environment switches off.
+// Bloom/emissive/nightF/phase pass through.
 export function paintedSkyParams(p) {
   const dayF = Math.min(1, Math.max(0, Number(p.dayF) || 0));
   return {
@@ -58,9 +62,21 @@ export function paintedSkyParams(p) {
     hemiSky: mixHex(p.hemiSky, PAINTED_LIGHT.hemiSky, dayF),
     hemiGround: mixHex(p.hemiGround, PAINTED_LIGHT.hemiGround, dayF),
     fogColor: mixHex(p.fogColor, PAINTED_LIGHT.fog, dayF),
+    hemiIntensity: (Number(p.hemiIntensity) || 0)
+      * (1 + (PAINTED_LIGHT.hemiBoost - 1) * dayF),
     shadowStrength: PAINTED_LIGHT.shadowStrength,
     envIntensity: 0,
   };
+}
+
+// Diffuse irradiance on one wall in cast shadow vs the same wall in sun:
+// the sun term scales by (1−shadow) while the hemisphere fill stays, so
+// the ratio is (S×(1−s)+H)/(S+H). 17b acceptance: ≥ 0.55 at 14:00.
+export function shadeSunRatio(sunI, hemiI, shadow) {
+  const s = Math.max(0, Number(sunI) || 0);
+  const h = Math.max(0, Number(hemiI) || 0);
+  const k = Math.min(1, Math.max(0, Number(shadow) || 0));
+  return s + h > 0 ? (s * (1 - k) + h) / (s + h) : 1;
 }
 
 export const SKY_COLORS = {

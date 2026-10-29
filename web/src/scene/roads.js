@@ -106,8 +106,21 @@ export function resamplePoints(points, step) {
   return out;
 }
 
+// 17b: vertex colours are consumed raw (linear working space), so palette
+// sRGB hexes must be linearized here — pushing sRGB 0..1 straight lifted
+// the painted asphalt (#5b5d60 → ~#a2a4a7 on screen) into the beige ground.
+export function srgbToLinear(u8) {
+  const c = Math.min(1, Math.max(0, u8 / 255));
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+export function hexToLinearRgb(hex) {
+  return [srgbToLinear((hex >> 16) & 255),
+    srgbToLinear((hex >> 8) & 255), srgbToLinear(hex & 255)];
+}
+
 function hexRgb(hex) {
-  return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+  return hexToLinearRgb(hex);
 }
 
 function makeSink() {
