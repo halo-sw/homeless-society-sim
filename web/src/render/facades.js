@@ -21,7 +21,7 @@
 // at-home residents / agents in the building — the same stage-3 data the
 // old glow quads used). Daytime emissive is off (uNight = 0).
 
-import { hashString } from "../palette.js";
+import { APARTMENT_FAMILIES, HOUSE_WALL, MIXED_WALL, NON_RESIDENTIAL, hashString } from "../palette.js";
 
 export const TEX_SIZE = 512;
 export const FLOOR_H_M = 3.0;
@@ -38,6 +38,72 @@ export const FACADE_TILES = {
   roof: { w: 8.0, h: 8.0, cols: 4, rows: 4 }, // membrane seams every 2 m
 };
 export const PODIUM_H_M = 4.2;
+
+// Painted wall/roof targets (stage 14e, sRGB): warm light concrete
+// walls with roofs one step lighter, so the two separate at a glance.
+// Applied as a material tint (photo keeps white = today's pixels). The
+// shader multiplies map × vertex colour × material colour in linear
+// space, so the tint compensates both the baked tile base (mirroring
+// the paintWall calls in synth*) and the typical vertex colour from
+// palette.js (vertex colours are used raw, without sRGB decoding).
+export const FACADE_WALL_BASE = {
+  apartment: [238, 230, 214],
+  house: [240, 234, 220],
+  mixed: [226, 220, 208],
+  none: [214, 208, 196],
+  podium: [206, 200, 190],
+  roof: [226, 224, 220],
+};
+export const PAINTED_WALL = [201, 196, 187]; // #c9c4bb
+export const PAINTED_ROOF = [221, 216, 206]; // #ddd8ce
+
+function hexToRgb255(hex) {
+  return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+}
+
+function meanHex(hexes) {
+  const out = [0, 0, 0];
+  for (const h of hexes) {
+    const c = hexToRgb255(h);
+    out[0] += c[0];
+    out[1] += c[1];
+    out[2] += c[2];
+  }
+  return out.map((v) => v / hexes.length);
+}
+
+// Typical vertex colour per facade class (sRGB 0..255 ints): apartment
+// families average out (per-complex variation stays); the single roof
+// mesh targets the apartment-slab majority, so red tile roofs keep their
+// hue, lifted; podium bands share their building's wall colour.
+export const FACADE_VERTEX_REF = {
+  apartment: meanHex(APARTMENT_FAMILIES.map((f) => f.wall)),
+  house: hexToRgb255(HOUSE_WALL),
+  mixed: hexToRgb255(MIXED_WALL),
+  none: hexToRgb255(NON_RESIDENTIAL),
+  podium: meanHex([MIXED_WALL, NON_RESIDENTIAL]),
+  roof: meanHex(APARTMENT_FAMILIES.map((f) => f.roof)),
+};
+
+export function srgbToLinear(u8) {
+  const c = Math.min(1, Math.max(0, u8 / 255));
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+// [r, g, b] linear-space material tint multiplier for one facade class +
+// style: tint × lin(tile base) × vertex/255 lands on lin(target) for the
+// typical building of that class (per-building vertex variation stays).
+export function facadeTintFor(facadeClass, style) {
+  if (style !== "painted") return [1, 1, 1];
+  const base = FACADE_WALL_BASE[facadeClass];
+  const vref = FACADE_VERTEX_REF[facadeClass];
+  if (!base || !vref) return [1, 1, 1];
+  const target = facadeClass === "roof" ? PAINTED_ROOF : PAINTED_WALL;
+  return [0, 1, 2].map((i) => {
+    const denom = srgbToLinear(base[i]) * (vref[i] / 255);
+    return denom > 0 ? srgbToLinear(target[i]) / denom : 1;
+  });
+}
 
 // Facade class for a building's walls (residential classes map 1:1).
 export function facadeTileFor(residential) {

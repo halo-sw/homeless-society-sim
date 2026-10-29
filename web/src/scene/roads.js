@@ -59,6 +59,14 @@ export function roadMaterialClass(k) {
   return "road";
 }
 
+// Painted ribbon tone: arterials keep the dark asphalt, minor streets go
+// one step lighter (same merged mesh, per-ribbon vertex colours).
+const MAJOR_ROAD_CLASSES = new Set(["motorway", "trunk", "primary", "secondary"]);
+
+export function roadTone(k) {
+  return MAJOR_ROAD_CLASSES.has(baseClass(k)) ? "major" : "minor";
+}
+
 export function resamplePoints(points, step) {
   if (points.length < 2 || !(step > 0)) return points.map((p) => [...p]);
   const cum = [0];
@@ -144,7 +152,8 @@ export function buildRoadMeshes(roads, heightAt, look) {
   const sinks = { road: makeSink(), foot: makeSink(), cycle: makeSink(),
                   rail: makeSink() };
   const rgb = {
-    road: hexRgb(look.sceneRoad), foot: hexRgb(look.sceneFoot),
+    road: hexRgb(look.sceneRoad), roadMinor: hexRgb(look.sceneRoadMinor ?? look.sceneRoad),
+    foot: hexRgb(look.sceneFoot),
     cycle: hexRgb(look.sceneCycle), rail: hexRgb(look.sceneRail),
   };
   const stats = { roads: 0, skippedTunnel: 0, bridges: 0, byClass: {},
@@ -167,7 +176,8 @@ export function buildRoadMeshes(roads, heightAt, look) {
       const lift = ROAD_LIFT + roadOrder(road.k) * ORDER_STEP + micro;
       stations = pts.map((p) => [p[0], p[1], heightAt(p[0], p[1]) + lift]);
     }
-    stats.triangles += pushRibbon(sinks[cls], stations, road.w / 2, rgb[cls]);
+    const tone = cls === "road" && roadTone(road.k) === "minor" ? rgb.roadMinor : rgb[cls];
+    stats.triangles += pushRibbon(sinks[cls], stations, road.w / 2, tone);
     stats.roads++;
     stats.byClass[cls] = (stats.byClass[cls] || 0) + 1;
   });

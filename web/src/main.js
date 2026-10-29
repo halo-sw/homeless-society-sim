@@ -34,9 +34,9 @@ import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
-import { eveningHomeFraction, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
+import { eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
-import { capLitFraction, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
+import { PAINTED_NIGHT_GROUND, PAINTED_WATER, capLitFraction, lerpHex, nightTint, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -241,9 +241,12 @@ function buildWorld(area, scene14) {
   document.getElementById("vignette").style.display = "none";
 
   // --- ground: base plane + merged layer + paint + water skin ---
+  // Painted: the fringe matches the warm ground so the box edge never
+  // shows a grey ring; photo keeps today's darker fringe.
+  const baseDayColor = STYLE === "painted" ? LOOK.terrainBase : BASE_GROUND;
   const base = new THREE.Mesh(
     new THREE.PlaneGeometry(span * 1.5, span * 1.5),
-    new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 })
+    new THREE.MeshStandardMaterial({ color: baseDayColor, roughness: 1, metalness: 0 })
   );
   base.rotation.x = -Math.PI / 2;
   base.position.set(cx, scene14 ? demMin - 1 : -0.05, -cy);
@@ -281,6 +284,7 @@ function buildWorld(area, scene14) {
   let waterMesh = null;
   if (groundData.water.triangles > 0) {
     waterMesh = new THREE.Mesh(toGeometry(groundData.water), waterMaterial());
+    if (STYLE === "painted") waterMesh.material.color.setHex(PAINTED_WATER);
     scene.add(waterMesh);
   }
   // Stage-14 road ribbons + waterway ribbons (≤ 4 + 1 draw calls).
@@ -296,12 +300,14 @@ function buildWorld(area, scene14) {
           metalness: 0, polygonOffset: true,
           polygonOffsetFactor: -offsets[cls], polygonOffsetUnits: -offsets[cls] }));
       mesh.receiveShadow = true;
+      mesh.userData.roadCls = cls;
       scene.add(mesh);
       sceneRoadMeshes.push(mesh);
     }
     const w = buildWaterRibbons(scene14.water, heightAt, LOOK);
     if (w.triangles > 0) {
       sceneWaterMesh = new THREE.Mesh(toIndexedGeometry(w), waterMaterial());
+      if (STYLE === "painted") sceneWaterMesh.material.color.setHex(PAINTED_WATER);
       scene.add(sceneWaterMesh);
     }
   }
@@ -320,6 +326,8 @@ function buildWorld(area, scene14) {
   for (const [cls, data] of Object.entries(built.detail.walls)) {
     if (data.triangles === 0) continue;
     const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso }));
+    // Painted: warm concrete walls (photo keeps white = today's pixels).
+    mesh.material.color.setRGB(...facadeTintFor(cls, STYLE));
     addLitAttr(mesh);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -332,6 +340,7 @@ function buildWorld(area, scene14) {
   if (built.detail.podium.triangles > 0) {
     podiumMesh = new THREE.Mesh(toGeometry(built.detail.podium),
       facadeMaterial("podium", { aniso: maxAniso }));
+    podiumMesh.material.color.setRGB(...facadeTintFor("podium", STYLE));
     addLitAttr(podiumMesh);
     podiumMesh.castShadow = true;
     podiumMesh.receiveShadow = true;
@@ -341,6 +350,7 @@ function buildWorld(area, scene14) {
       ranges: new Map(built.detail.podium.ranges.map((r) => [r.id, r])) });
   }
   const roofMesh = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso }));
+  roofMesh.material.color.setRGB(...facadeTintFor("roof", STYLE));
   roofMesh.castShadow = true;
   roofMesh.receiveShadow = true;
   scene.add(roofMesh);
@@ -466,6 +476,36 @@ function buildWorld(area, scene14) {
   const maxHeightM = maxH > 0 || relief > 0
     ? Math.min(600, Math.max(maxH, relief)) : 250;
 
+  // Painted night (14e): ground-plane surfaces lerp toward navy after
+  // dusk; carriageways keep their day asphalt so they read a little
+  // lighter than the ground and lit windows pop. Photo: untouched.
+  const nightMats = [];
+  if (STYLE === "painted") {
+    nightMats.push({ mat: base.material, day: baseDayColor, direct: true });
+    if (terrainMesh) {
+      nightMats.push({ mat: terrainMesh.material, day: LOOK.terrainBase, direct: false });
+    }
+    nightMats.push({ mat: groundMesh.material, day: LOOK.terrainBase, direct: false });
+    for (const m of sceneRoadMeshes) {
+      const cls = m.userData.roadCls;
+      if (cls === "road" || cls === "rail") continue;
+      const day = cls === "foot" ? LOOK.sceneFoot
+        : cls === "cycle" ? LOOK.sceneCycle : LOOK.terrainBase;
+      nightMats.push({ mat: m.material, day, direct: false });
+    }
+  }
+  let lastNightT = -1;
+  function applyPaintedNight(nightF) {
+    if (STYLE !== "painted") return;
+    const t = Math.min(1, Math.max(0, Number(nightF) || 0));
+    if (Math.abs(t - lastNightT) < 0.005) return;
+    lastNightT = t;
+    for (const { mat, day, direct } of nightMats) {
+      if (direct) mat.color.setHex(lerpHex(day, PAINTED_NIGHT_GROUND, t));
+      else mat.color.setRGB(...nightTint(day, PAINTED_NIGHT_GROUND, t));
+    }
+  }
+
   renderCtl.attach(scene, camera, document.getElementById("scene-wrap"));
   // Stage-14 perf log, once per box load (scene-only draw calls/tris).
   const sceneMeasure = renderCtl.measureScene();
@@ -477,6 +517,7 @@ function buildWorld(area, scene14) {
     dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
     trees, treeMeshes, streetMeshes, crowd, crowdMeshes, dummy, heightAt,
     ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh,
+    nightMats, applyPaintedNight,
   };
 }
 
@@ -554,7 +595,7 @@ async function bootTour(uiMode = "tour") {
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
     streetMeshes, crowdMeshes, trees, treeMeshes, waterMesh, sceneWaterMesh,
-    dummy, heightAt } = buildWorld(area, scene14);
+    dummy, heightAt, applyPaintedNight } = buildWorld(area, scene14);
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
     const [x, y] = lonLatToXY(lon, lat, origin);
@@ -646,6 +687,7 @@ async function bootTour(uiMode = "tour") {
     tourBloom = p.bloom;
     tourEmissive = p.emissive;
     setGlobalNight(p.emissive);
+    applyPaintedNight(p.nightF);
     streetMeshes.setLampGlow(p.emissive);
     // No run in tour mode: light residential windows from the evening
     // estimate (once — the tour sun is static).
@@ -1162,7 +1204,8 @@ async function bootSim() {
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
     crowd, crowdMeshes, treeMeshes, waterMesh, sceneWaterMesh,
-    wallMeshes, podiumMesh, roofMesh, heightAt } = buildWorld(area, scene14);
+    wallMeshes, podiumMesh, roofMesh, heightAt,
+    nightMats, applyPaintedNight } = buildWorld(area, scene14);
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
   // pulse animation when the OS asks for reduced motion.
@@ -1657,6 +1700,7 @@ async function bootSim() {
     if (key === lastLightKey) return;
     lastLightKey = key;
     setGlobalNight(p.emissive);
+    applyPaintedNight(p.nightF);
     streetMeshes.setLampGlow(p.emissive);
     updateLit(m);
   }
@@ -1864,6 +1908,9 @@ async function bootSim() {
   regionalBase.position.y = -0.4;
   regionalBase.visible = false;
   scene.add(regionalBase);
+  if (STYLE === "painted") {
+    nightMats.push({ mat: regionalBase.material, day: LOOK.regionalGround, direct: true });
+  }
 
   async function fetchJson(url) {
     const r = await fetch(url);
@@ -2030,6 +2077,7 @@ async function bootSim() {
     for (const [cls, data] of Object.entries(built.detail.walls)) {
       if (data.triangles === 0) continue;
       const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso2 }));
+      mesh.material.color.setRGB(...facadeTintFor(cls, STYLE));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g.add(mesh);
@@ -2037,11 +2085,14 @@ async function bootSim() {
     if (built.detail.podium.triangles > 0) {
       const mesh = new THREE.Mesh(toGeometry(built.detail.podium),
         facadeMaterial("podium", { aniso: maxAniso2 }));
+      mesh.material.color.setRGB(...facadeTintFor("podium", STYLE));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g.add(mesh);
     }
-    g.add(new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 })));
+    const liteRoof = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 }));
+    liteRoof.material.color.setRGB(...facadeTintFor("roof", STYLE));
+    g.add(liteRoof);
     const [ox, oy] = lonLatToXY(liteOrigin.lon, liteOrigin.lat, origin);
     g.position.set(ox, 0, -oy);
     scene.add(g);

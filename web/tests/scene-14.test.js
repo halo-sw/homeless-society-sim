@@ -4,7 +4,7 @@ import { flatHeightAt, makeHeightAt, seatOnTerrain, slopeAt } from "../src/scene
 import { MASK_SIZE, buildTerrainMesh, isMaskedKind, maskClassFor,
   paintLandMask, sceneToMask } from "../src/scene/terrain.js";
 import { buildRoadMeshes, buildWaterRibbons, resamplePoints,
-  roadMaterialClass, roadOrder, specWidth } from "../src/scene/roads.js";
+  roadMaterialClass, roadOrder, roadTone, specWidth } from "../src/scene/roads.js";
 import { broadleafGeometry, coniferGeometry, patchDepthFragment,
   patchDepthVertex, shrubGeometry, treeRotation, treeTint,
   treeTriangleCount } from "../src/scene/trees3d.js";
@@ -141,6 +141,37 @@ describe("scene roads", () => {
     assert.ok(Math.max(...ys) >= 10 + 1.0);
     // Ribbon triangle count: 5 segments × 2.
     assert.equal(meshes.foot.triangles, 10);
+  });
+  it("paints arterials dark and minor streets lighter (14e two-tone)", () => {
+    assert.equal(roadTone("primary"), "major");
+    assert.equal(roadTone("secondary"), "major");
+    assert.equal(roadTone("motorway"), "major");
+    assert.equal(roadTone("trunk_link"), "major");
+    assert.equal(roadTone("tertiary"), "minor");
+    assert.equal(roadTone("residential"), "minor");
+    assert.equal(roadTone("service"), "minor");
+    const painted = resolveLook("", "painted");
+    const { meshes } = buildRoadMeshes([
+      { k: "primary", n: null, w: 16, br: 0, p: [[0, 0], [4, 0]] },
+      { k: "residential", n: null, w: 6, br: 0, p: [[0, 30], [4, 30]] },
+    ], () => 0, painted);
+    // Same merged mesh; per-ribbon vertex colours carry the tone.
+    const hex = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
+    const major = hex(painted.sceneRoad);
+    const minor = hex(painted.sceneRoadMinor);
+    const [r0, g0, b0] = meshes.road.colors.slice(0, 3);
+    assert.ok(Math.abs(r0 - major[0]) < 1e-6 && Math.abs(g0 - major[1]) < 1e-6
+      && Math.abs(b0 - major[2]) < 1e-6, "first ribbon is arterial asphalt");
+    const tail = meshes.road.colors.slice(-3);
+    assert.ok(Math.abs(tail[0] - minor[0]) < 1e-6 && Math.abs(tail[1] - minor[1]) < 1e-6
+      && Math.abs(tail[2] - minor[2]) < 1e-6, "last ribbon is the lighter minor tone");
+    // Photo keeps one tone: minor equals major.
+    const photo = buildRoadMeshes([
+      { k: "primary", n: null, w: 16, br: 0, p: [[0, 0], [4, 0]] },
+      { k: "residential", n: null, w: 6, br: 0, p: [[0, 30], [4, 30]] },
+    ], () => 0, { ...DEFAULT_LOOK });
+    assert.deepEqual([...photo.meshes.road.colors.slice(0, 3)],
+      [...photo.meshes.road.colors.slice(-3)]);
   });
   it("winds ribbon triangles upward", () => {
     const { meshes } = buildRoadMeshes(

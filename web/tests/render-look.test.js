@@ -3,7 +3,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LOOK, capLitFraction, parseLookParam, regionalFogRange,
+import { DEFAULT_LOOK, PAINTED_LOOK, PAINTED_NIGHT_GROUND, capLitFraction, lerpHex, nightTint, parseLookParam, regionalFogRange,
   resolveLook, streetFogRange } from "../src/render/look.js";
 
 describe("look parsing (?look=key:value,…)", () => {
@@ -20,16 +20,24 @@ describe("look parsing (?look=key:value,…)", () => {
     assert.deepEqual(parseLookParam("  ").values, {});
   });
 
-  it("resolves ?look= over the defaults (string or URLSearchParams)", () => {
-    assert.deepEqual(resolveLook(""), DEFAULT_LOOK);
-    assert.deepEqual(resolveLook(null), DEFAULT_LOOK);
-    assert.deepEqual(resolveLook(new URLSearchParams("")), DEFAULT_LOOK);
+  it("resolves ?look= over the style base (string or URLSearchParams)", () => {
+    // 14e: painted is the default style; photo keeps the old defaults.
+    const painted = { ...DEFAULT_LOOK, ...PAINTED_LOOK };
+    assert.deepEqual(resolveLook(""), painted);
+    assert.deepEqual(resolveLook(null), painted);
+    assert.deepEqual(resolveLook(new URLSearchParams("")), painted);
+    assert.deepEqual(resolveLook("", "photo"), DEFAULT_LOOK);
+    assert.deepEqual(resolveLook("?style=photo"), DEFAULT_LOOK);
+    assert.deepEqual(resolveLook("?style=painted"), painted);
     const r = resolveLook("?mode=sim&look=fogStreetFar:8,nightGain:0.9");
     assert.equal(r.fogStreetFar, 8);
     assert.equal(r.nightGain, 0.9);
-    assert.equal(r.fogStreetNear, DEFAULT_LOOK.fogStreetNear);
+    assert.equal(r.fogStreetNear, PAINTED_LOOK.fogStreetNear);
+    const rp = resolveLook("?style=photo&look=fogStreetFar:8");
+    assert.equal(rp.fogStreetFar, 8);
+    assert.equal(rp.fogStreetNear, DEFAULT_LOOK.fogStreetNear);
     const s = resolveLook(new URLSearchParams("look=nope:1"));
-    assert.deepEqual(s, DEFAULT_LOOK);
+    assert.deepEqual(s, painted);
   });
 
   it("pins the default table (deliberate values, see 11-RESULT.md)", () => {
@@ -59,6 +67,7 @@ describe("look parsing (?look=key:value,…)", () => {
       terrainWater: 0x4d9fd6,
       terrainRock: 0xa09a8c,
       sceneRoad: 0x8a8276,
+      sceneRoadMinor: 0x8a8276,
       sceneFoot: 0xe9e3d5,
       sceneCycle: 0xb97a5e,
       sceneRail: 0x55555c,
@@ -68,9 +77,40 @@ describe("look parsing (?look=key:value,…)", () => {
   it("accepts base-map colours as decimal ?look= overrides", () => {
     const r = resolveLook("?look=regionalWater:6000000");
     assert.equal(r.regionalWater, 6000000);
-    assert.equal(r.regionalGround, DEFAULT_LOOK.regionalGround);
+    assert.equal(r.regionalGround, PAINTED_LOOK.regionalGround);
+    const p = resolveLook("?style=photo&look=regionalWater:6000000");
+    assert.equal(p.regionalWater, 6000000);
+    assert.equal(p.regionalGround, DEFAULT_LOOK.regionalGround);
   });
-});
+
+  it("pins the painted overrides (14e daytime targets, sRGB)", () => {
+    assert.deepEqual(PAINTED_LOOK, {
+      fogStreetNear: 4,
+      fogStreetFar: 9,
+      fogRegionalNear: 4,
+      fogRegionalFar: 9,
+      gradeSaturation: 1.2,
+      regionalGround: 0xcfc4ad,
+      regionalWater: 0x3f6f8f,
+      regionalRoad: 0x5b5d60,
+      terrainBase: 0xcfc4ad,
+      terrainGrass: 0x8a9a5b,
+      terrainForest: 0x5d7040,
+      terrainScrub: 0x9a8f5a,
+      terrainWater: 0x3f6f8f,
+      sceneRoad: 0x5b5d60,
+      sceneRoadMinor: 0x6c6e70,
+      sceneFoot: 0xd9d3c7,
+      sceneCycle: 0xa0705a,
+    });
+    // Painted roads are never blue: red and green lead blue.
+    for (const h of [PAINTED_LOOK.sceneRoad, PAINTED_LOOK.sceneRoadMinor]) {
+      const r = (h >> 16) & 255;
+      const g = (h >> 8) & 255;
+      const b = h & 255;
+      assert.ok(r >= b && g >= b, `road ${h.toString(16)} not blue`);
+    }
+  });
 
 describe("fog ranges", () => {
   it("starts street fog at ≥2.5× the framed width", () => {
@@ -104,5 +144,52 @@ describe("night lit-fraction cap", () => {
     assert.equal(capLitFraction(NaN), 0);
     assert.equal(capLitFraction(null), 0);
     assert.equal(capLitFraction(0.9, { ...DEFAULT_LOOK, nightLitCap: 0.2 }), 0.2);
+  });
+});
+
+describe("painted fog + night (14e)", () => {
+  it("fades only the far edge: near ≥ 4×, far ≥ 9×", () => {
+    const look = resolveLook("", "painted");
+    for (const w of [150, 300, 3500]) {
+      const r = streetFogRange(w, look);
+      assert.ok(r.near >= 4 * w, `street near ${r.near} >= 4×${w}`);
+      assert.ok(r.far >= 9 * w, `street far ${r.far} >= 9×${w}`);
+    }
+    for (const d of [500, 4000, 20000]) {
+      const r = regionalFogRange(d, look);
+      assert.ok(r.near >= 4 * d, `regional near ${r.near} >= 4×${d}`);
+      assert.ok(r.far >= 9 * d, `regional far ${r.far} >= 9×${d}`);
+    }
+  });
+
+  it("grades painted frames at 1.2 saturation", () => {
+    assert.equal(resolveLook("", "painted").gradeSaturation, 1.2);
+    assert.equal(resolveLook("", "photo").gradeSaturation, 1.12);
+  });
+
+  it("mixes plain colours for the night lerp", () => {
+    assert.equal(PAINTED_NIGHT_GROUND, 0x1d2330);
+    assert.equal(lerpHex(0xcfc4ad, PAINTED_NIGHT_GROUND, 0), 0xcfc4ad);
+    assert.equal(lerpHex(0xcfc4ad, PAINTED_NIGHT_GROUND, 1), PAINTED_NIGHT_GROUND);
+    const mid = lerpHex(0x000000, 0xffffff, 0.5);
+    assert.ok(Math.abs(((mid >> 16) & 255) - 128) <= 1);
+    assert.equal(lerpHex(0x111111, 0x222222, -1), 0x111111);
+    assert.equal(lerpHex(0x111111, 0x222222, 2), 0x222222);
+  });
+
+  it("tints mapped surfaces white by day, night albedo at full night", () => {
+    assert.deepEqual(nightTint(0xcfc4ad, PAINTED_NIGHT_GROUND, 0), [1, 1, 1]);
+    const full = nightTint(0xcfc4ad, PAINTED_NIGHT_GROUND, 1);
+    // Linear-space round trip: tint × lin(day) == lin(night).
+    const lin = (u) => {
+      const c = u / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    const day = [0xcf, 0xc4, 0xad];
+    const night = [0x1d, 0x23, 0x30];
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.abs(full[i] * lin(day[i]) - lin(night[i])) < 1e-9, `chan ${i}`);
+      assert.ok(full[i] > 0 && full[i] < 1, `darkens chan ${i}`);
+    }
   });
 });
