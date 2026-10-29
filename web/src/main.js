@@ -17,6 +17,7 @@ import { placeTag, simViewOffset, tagBoxBlocked } from "./stage-tags.js";
 import { commuteSegments, corridorFor, journeyBanner, journeyCameraState, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
+import { pickMoments } from "./engine/moments.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
 import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
@@ -2678,6 +2679,33 @@ async function bootSim() {
     paintStripB();
   }
 
+  // 17-3: 살아 보니 — three moments from the 30-day runs, published
+  // once both runs are in (the drawer seeks to them; followIndex
+  // resolves the member key to the follow slot, 0 = time only).
+  async function paintMoments() {
+    try {
+      const other = await ensureOtherRun();
+      if (!other) {
+        store.set({ moments: [] });
+        return;
+      }
+      const pair = [
+        [run.meta.home || homeLabel, run],
+        [other.meta.home || otherRunLabel, other],
+      ].sort((x, y) => (String(x[0]) < String(y[0]) ? -1 : 1));
+      const picked = pickMoments(pair[0][1], pair[1][1], { max: 3 });
+      store.set({ moments: picked.map((m) => {
+        const idx = household.findIndex((a) => a.key === m.agent);
+        const member = idx >= 0 ? household[idx] : null;
+        return { ...m,
+          followIndex: idx >= 0 ? idx + 1 : 0,
+          agentLabel: member ? (member.label || member.key) : m.agent };
+      }) });
+    } catch {
+      store.set({ moments: [] });
+    }
+  }
+
   async function paintCompare() {
     store.set({ compareLoading: true });
     // A custom run compares its in-memory runs (no CLI files exist).
@@ -2938,6 +2966,8 @@ async function bootSim() {
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
+  // 17-3: 살아 보니 moments (async: waits for the other home's run).
+  paintMoments();
   // 12b: the floating agent is gone — ?agent=1 (incl. the tour's agent
   // step) shows the tour card, and the chat answers from there on.
   // ?share=1 opens the result card.

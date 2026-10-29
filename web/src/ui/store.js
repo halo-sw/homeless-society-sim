@@ -34,6 +34,7 @@ export const INITIAL_STATE = {
   moneyTenure: {}, // {A: "전세", ...} UI-selected tenure per home
   moneyCandidates: [], // recommend_public_rental results (agent) for "C로 추가"
   priorityWeights: null, // {explicit, weights} published by the 내 기준 tab (share card bars)
+  moments: null, // 살아 보니 picks [{kind, home, agent, day, minute, sentence, evidence, ...}] or []
   legend: null, // {title, resRows, heightRows, note, simNote?}
   loading: "지역을 불러오는 중…",
   ready: false,

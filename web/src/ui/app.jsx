@@ -525,10 +525,45 @@ function MyScoreRow({ state }) {
   );
 }
 
+// 17-3: 살아 보니 — three one-line moments from the 30 days, open by
+// default. Tap seeks the timeline to that moment and follows the
+// member (existing seek actions; data-* attrs pin the target).
+function MomentsSection({ state }) {
+  const moments = state.moments;
+  if (!moments || moments.length === 0) return null;
+  const seek = (m) => {
+    act("setDay", m.day);
+    act("setMinute", m.minute);
+    if (m.followIndex > 0) act("setFollow", m.followIndex);
+  };
+  return (
+    <details className="ui-section" open data-testid="section-moments">
+      <summary className="ui-section-head">살아 보니</summary>
+      <div className="ui-section-body">
+        <VStack gap={1}>
+          {moments.map((m) => (
+            <button key={`${m.kind}:${m.evidence.type}:${m.evidence.id}`}
+              type="button" className="ui-moment"
+              data-day={m.day} data-minute={m.minute}
+              data-follow={m.followIndex || 0}
+              onClick={() => seek(m)}
+              aria-label={`${m.dayLabel} ${m.timeLabel} ${m.sentence}`}>
+              <span className="ui-moment-when">{`${m.dayLabel} ${m.timeLabel}`}</span>
+              <span className="ui-moment-text">{m.sentence}</span>
+              <span className="ui-tag">근거 ✓</span>
+            </button>
+          ))}
+        </VStack>
+      </div>
+    </details>
+  );
+}
+
 export function SimDrawer({ state }) {
   return (
     <div className="ui-drawer13f2">
       <MyScoreRow state={state} />
+      <MomentsSection state={state} />
       <SimHero state={state} />
       <details className="ui-section" open data-testid="section-today">
         <summary className="ui-section-head">오늘</summary>

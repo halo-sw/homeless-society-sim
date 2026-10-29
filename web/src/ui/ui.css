@@ -704,6 +704,15 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-groupbar-label { width: 1.2em; font-size: var(--ui-t14); }
 .ui-groupbar-num { min-width: 3em; text-align: right; font-size: var(--ui-t12);
   color: var(--ui-ink2); font-variant-numeric: tabular-nums; }
+/* ---------- 17-3: 살아 보니 moment cards ---------- */
+.ui-moment { display: flex; gap: var(--ui-s8); align-items: baseline; width: 100%;
+  text-align: left; background: var(--ui-card); border: 1px solid var(--ui-border);
+  border-radius: var(--ui-r-card); padding: var(--ui-s8) var(--ui-s12); cursor: pointer;
+  font: inherit; color: inherit; }
+.ui-moment-when { flex: none; font-size: var(--ui-t12); color: var(--ui-ink2);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ui-moment-text { flex: 1 1 auto; font-size: var(--ui-t14); min-width: 0; }
+.ui-moment .ui-tag { flex: none; }
 /* Card-less sections, 1px dividers, no nested cards. */
 .ui-section { border-top: 1px solid var(--ui-border); }
 .ui-section-head {
