@@ -5,7 +5,7 @@
 // server stores no conversations and no files — only derived run artifacts
 // in a bounded in-memory cache (runs are deterministic and re-runnable).
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { providerConfig } from "../judge/providers.js";
 import { judgeHome } from "../judge/run.js";
@@ -117,13 +117,34 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
   };
   const loadHousing = async () => {
     if (housingCache) return housingCache;
-    // Dev snapshot first (orchestrator-fetched, gitignored, never served);
-    // live API when the key is set.
+    // Dev snapshots first (orchestrator-fetched, gitignored, never
+    // served): every snapshot_*.json merges into one view, newest file
+    // wins per complex id. Live API when the key is set.
     if (rawDir) {
       try {
-        const raw = await readFile(join(rawDir, "public_housing", "snapshot_3districts.json"), "utf8");
-        housingCache = normalizeSnapshot(JSON.parse(raw));
-        return housingCache;
+        const dir = join(rawDir, "public_housing");
+        const files = (await readdir(dir)).filter((f) => f.startsWith("snapshot_") && f.endsWith(".json")).sort();
+        if (files.length > 0) {
+          const byComplex = new Map();
+          const byNotice = new Map();
+          let fetchedAt = null;
+          for (const file of files) {
+            const doc = JSON.parse(await readFile(join(dir, file), "utf8"));
+            const norm = normalizeSnapshot(doc);
+            // Sorted file order: later files win per id (newest last).
+            if (norm.fetched_at) fetchedAt = norm.fetched_at;
+            for (const c of norm.complexes) byComplex.set(`${c.source}|${c.id}`, c);
+            for (const n of norm.notices) byNotice.set(`${n.source}|${n.id}`, n);
+          }
+          const merged = {
+            fetched_at: fetchedAt,
+            complexes: [...byComplex.values()],
+            notices: [...byNotice.values()],
+          };
+          merged.snapshot_files = files;
+          housingCache = merged;
+          return housingCache;
+        }
       } catch { /* fall through to the API */ }
     }
     const key = process.env[HOUSING_KEY_ENV];
@@ -132,6 +153,34 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     const [complexes, notices] = await Promise.all([api.complexes(), api.notices()]);
     housingCache = normalizeSnapshot({ fetched_at: new Date().toISOString(), complexes, notices });
     return housingCache;
+  };
+  let homesCache = null;
+  const loadHomes = async () => {
+    if (!homesCache) {
+      homesCache = JSON.parse(await readFile(join(dataDir, "homes-index.json"), "utf8"));
+    }
+    return homesCache;
+  };
+  let photosCache = null;
+  const loadPhotos = async () => {
+    if (!photosCache) {
+      photosCache = JSON.parse(await readFile(join(scenDir, "places", "commons-photos.json"), "utf8"));
+    }
+    return photosCache;
+  };
+  let areasIndexCache = null;
+  const loadAreasIndex = async () => {
+    if (!areasIndexCache) {
+      areasIndexCache = JSON.parse(await readFile(join(dataDir, "areas-index.json"), "utf8"));
+    }
+    return areasIndexCache;
+  };
+  let stationBoxesCache = null;
+  const loadStationBoxes = async () => {
+    if (!stationBoxesCache) {
+      stationBoxesCache = JSON.parse(await readFile(join(dataDir, "station-boxes.json"), "utf8"));
+    }
+    return stationBoxesCache;
   };
   const assumptionCache = new Map();
   const ASSUMPTION_ALLOWLIST = new Set([
@@ -186,6 +235,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         loadSafety: () => loadSafetyFs(dataDir),
         loadPersona: (id) => loadPersonaFs(scenDir, id),
         loadAssumption,
+        loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes,
         fetchImpl,
       });
       res.setHeader("Content-Type", "application/json");

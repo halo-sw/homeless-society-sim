@@ -49,12 +49,21 @@ def build_area(area_id: str, raw_pbf: Path, build_dir: Path,
                osmium_bin: str | None, overwrite: bool) -> dict:
     from . import extract as extract_mod
     from . import osm_parse
+    from .areas import is_station_box
 
     started = time.time()
-    if area_id not in AREA_IDS:
-        raise KeyError(f"unknown area {area_id!r}; choose from {list(AREA_IDS)}")
+    if area_id not in AREA_IDS and not is_station_box(area_id):
+        raise KeyError(f"unknown area {area_id!r}; choose from {list(AREA_IDS)}, st-<station>, or station:*")
     area_dir = build_dir / area_id
     area_dir.mkdir(parents=True, exist_ok=True)
+
+    # Station boxes are incremental: skip when the manifest matches.
+    manifest_sig = _box_signature(area_id, build_dir, raw_pbf)
+    if (manifest_sig is not None and not overwrite
+            and _manifest_matches(area_dir, manifest_sig)):
+        return {"area": area_id, "area_dir": str(area_dir),
+                "skipped": True, "reason": "manifest matches (same inputs)",
+                "seconds": round(time.time() - started, 1), "stages": []}
 
     ext = extract_mod.ensure_extract(area_id, raw_pbf, build_dir,
                                      osmium_bin=osmium_bin,
@@ -72,9 +81,115 @@ def build_area(area_id: str, raw_pbf: Path, build_dir: Path,
         stages.append(result)
         if result["status"] == "ok" and name == "validate" and result.get("failed"):
             break
-    return {"area": area_id, "area_dir": str(area_dir),
-            "osm_json": str(osm_path),
-            "seconds": round(time.time() - started, 1), "stages": stages}
+    summary = {"area": area_id, "area_dir": str(area_dir),
+               "osm_json": str(osm_path),
+               "seconds": round(time.time() - started, 1), "stages": stages}
+    if is_station_box(area_id):
+        _record_box_build(area_id, build_dir, raw_pbf, summary)
+    return summary
+
+
+def _box_signature(area_id: str, build_dir: Path,
+                   raw_pbf: Path) -> dict | None:
+    """Input signature for a station box, or None for legacy areas."""
+    from .areas import is_station_box
+    from .boxes import REGION_EXTRACT_DIR, load_boxes, manifest_signature
+
+    if not is_station_box(area_id):
+        return None
+    boxes = load_boxes(build_dir)
+    if not boxes:
+        return None
+    station = area_id[len("st-"):]
+    hit = next((b for b in boxes.get("boxes", [])
+                if b.get("station") == station), None)
+    if hit is None or hit.get("lon") is None:
+        return None
+    region = hit.get("region")
+    source = (build_dir / REGION_EXTRACT_DIR / f"{region}.osm.pbf"
+              if region else raw_pbf)
+    if not source.exists():
+        source = raw_pbf
+    try:
+        return manifest_signature(hit, source)
+    except (LookupError, OSError):
+        return None
+
+
+def _manifest_matches(area_dir: Path, sig: dict) -> bool:
+    from .boxes import manifest_matches
+
+    return manifest_matches(area_dir, sig)
+
+
+def _record_box_build(area_id: str, build_dir: Path, raw_pbf: Path,
+                      summary: dict) -> None:
+    """Write the box manifest + per-box time/size report entry."""
+    from .boxes import (dir_size_bytes, update_boxes_report, write_areas_index,
+                        write_manifest)
+
+    area_dir = build_dir / area_id
+    sig = _box_signature(area_id, build_dir, raw_pbf)
+    size = dir_size_bytes(area_dir)
+    if sig is not None:
+        write_manifest(area_dir, sig, {"seconds": summary["seconds"],
+                                       "size_bytes": size})
+    update_boxes_report(build_dir, {"box": area_id,
+                                    "seconds": summary["seconds"],
+                                    "size_bytes": size,
+                                    "failed": bool(_stage_failed(
+                                        summary["stages"]))})
+    write_areas_index(build_dir)
+
+
+def expand_area_patterns(patterns: list[str], build_dir: Path) -> list[str]:
+    """Expand --areas patterns: ids, ``station:*``, ``region:<id>``.
+
+    ``station:*`` selects every discovered station box;
+    ``region:<id>`` selects that region's boxes. Unknown ids raise
+    KeyError; duplicates collapse (order kept).
+    """
+    from .areas import is_station_box
+    from .boxes import box_id_of, load_boxes
+
+    out: list[str] = []
+    for pat in patterns:
+        pat = pat.strip()
+        if not pat:
+            continue
+        if pat == "station:*":
+            boxes = load_boxes(build_dir)
+            if not boxes:
+                raise KeyError("station:* needs data/build/station-boxes.json "
+                               "(run `pipeline boxes` first)")
+            for box in boxes.get("boxes", []):
+                if box.get("lon") is not None:
+                    out.append(box_id_of(box["station"]))
+                else:
+                    print(f"skip {box.get('station')}: no OSM coordinates",
+                          file=sys.stderr)
+        elif pat.startswith("region:"):
+            region = pat[len("region:"):]
+            boxes = load_boxes(build_dir)
+            if not boxes:
+                raise KeyError(f"{pat} needs data/build/station-boxes.json "
+                               "(run `pipeline boxes` first)")
+            for box in boxes.get("boxes", []):
+                if box.get("region") == region and box.get("lon") is not None:
+                    out.append(box_id_of(box["station"]))
+        elif pat in AREA_IDS or is_station_box(pat):
+            out.append(pat)
+        else:
+            raise KeyError(f"unknown area {pat!r}; choose from "
+                           f"{list(AREA_IDS)}, st-<station>, station:*, "
+                           "or region:<id>")
+    seen: set[str] = set()
+    ordered = []
+    for area_id in out:
+        if area_id not in seen:
+            seen.add(area_id)
+            ordered.append(area_id)
+    return ordered
 
 
 def build_all(raw_pbf: Path, build_dir: Path, osmium_bin: str | None,
@@ -127,15 +242,43 @@ def cmd_build(args) -> int:
         for message in failures:
             print(f"VALIDATION FAILED: {message}", file=sys.stderr)
         return 1 if failures else 0
-    if not args.area:
-        print("error: pass --area <id> or --all", file=sys.stderr)
+    # Comma-separated --areas: st-판교,station:*,region:bundang,pangyo.
+    patterns = [args.area] if args.area else []
+    if args.areas:
+        patterns += args.areas.split(",")
+    if not patterns:
+        print("error: pass --area <id>, --areas <patterns> or --all",
+              file=sys.stderr)
         return 2
-    result = build_area(args.area, raw_pbf, build_dir, args.osmium,
-                        args.overwrite)
-    print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
-    failures = _stage_failed(result["stages"])
+    area_ids = expand_area_patterns(patterns, build_dir)
+    if len(area_ids) == 1:
+        result = build_area(area_ids[0], raw_pbf, build_dir, args.osmium,
+                            args.overwrite)
+        print(json.dumps(result, indent=2, sort_keys=True,
+                         ensure_ascii=False))
+        failures = _stage_failed(result.get("stages", []))
+        for message in failures:
+            print(f"VALIDATION FAILED: {message}", file=sys.stderr)
+        return 1 if failures else 0
+    from .boxes import write_areas_index
+
+    results = {}
+    for area_id in area_ids:
+        try:
+            results[area_id] = build_area(area_id, raw_pbf, build_dir,
+                                          args.osmium, args.overwrite)
+        except (FileNotFoundError, LookupError, KeyError,
+                RuntimeError) as exc:
+            results[area_id] = {"area": area_id, "error": str(exc)}
+    write_areas_index(build_dir)
+    print(json.dumps(results, indent=2, sort_keys=True,
+                     ensure_ascii=False))
+    failures = [m for r in results.values()
+                for m in _stage_failed(r.get("stages", []))]
+    failures += [f"{a}: {r['error']}" for a, r in results.items()
+                 if "error" in r]
     for message in failures:
-        print(f"VALIDATION FAILED: {message}", file=sys.stderr)
+        print(f"BUILD FAILED: {message}", file=sys.stderr)
     return 1 if failures else 0
 
 
@@ -194,6 +337,50 @@ def cmd_safety(args) -> int:
     return 0
 
 
+def cmd_regions(args) -> int:
+    from .regions import run_build
+
+    summary = run_build(raw_pbf=Path(args.raw),
+                        build_dir=Path(args.build_dir),
+                        osmium_bin=args.osmium or "osmium",
+                        refresh=args.refresh)
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
+def cmd_boxes(args) -> int:
+    from .boxes import run_discovery, write_areas_index
+
+    if args.index_only:
+        summary = write_areas_index(Path(args.build_dir))
+        print(json.dumps(summary, indent=2, sort_keys=True,
+                         ensure_ascii=False))
+        return 0
+    summary = run_discovery(raw_pbf=Path(args.raw),
+                            build_dir=Path(args.build_dir),
+                            regions_path=Path(args.regions)
+                            if args.regions else None,
+                            osmium_bin=args.osmium or "osmium",
+                            overwrite=args.overwrite,
+                            max_boxes=args.max_boxes)
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
+def cmd_homes(args) -> int:
+    from .homes import run_build
+
+    summary = run_build(raw_dir=Path(args.raw_dir),
+                        build_dir=Path(args.build_dir),
+                        regions_path=Path(args.regions)
+                        if args.regions else None,
+                        photos_path=Path(args.photos)
+                        if args.photos else None,
+                        limit=args.limit)
+    print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
 def cmd_register_fill(args) -> int:
     from .register_api import (DEFAULT_CACHE_DIR, RegisterApiError,
                                fill_area)
@@ -224,8 +411,11 @@ def build_parser() -> argparse.ArgumentParser:
                                      description="Area data pipeline")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    b = sub.add_parser("build", help="build one area or all areas")
-    b.add_argument("--area", choices=list(AREA_IDS), default=None)
+    b = sub.add_parser("build", help="build one area, a pattern list, or all areas")
+    b.add_argument("--area", default=None,
+                   help="one area id (legacy id or st-<station>)")
+    b.add_argument("--areas", default=None,
+                   help="comma-separated ids/patterns: st-판교, station:*, region:bundang")
     b.add_argument("--all", action="store_true")
     b.add_argument("--raw", default=str(DEFAULT_RAW_PBF))
     b.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
@@ -279,6 +469,41 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
     s.add_argument("--raw-dir", default="data/raw")
     s.set_defaults(func=cmd_safety)
+
+    g = sub.add_parser("regions",
+                       help="resolve the 9 search regions, write data/build/regions.json")
+    g.add_argument("--raw", default=str(DEFAULT_RAW_PBF))
+    g.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    g.add_argument("--osmium", default="osmium")
+    g.add_argument("--refresh", action="store_true",
+                   help="rebuild cached prefilters/relation files even when fresh")
+    g.set_defaults(func=cmd_regions)
+
+    x = sub.add_parser("boxes",
+                       help="discover station scene boxes (region extracts clipped once)")
+    x.add_argument("--raw", default=str(DEFAULT_RAW_PBF))
+    x.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    x.add_argument("--regions", default=None,
+                   help="regions.json path (default: <build-dir>/regions.json)")
+    x.add_argument("--osmium", default="osmium")
+    x.add_argument("--overwrite", action="store_true",
+                   help="re-clip region extracts even when cached")
+    x.add_argument("--max-boxes", type=int, default=60)
+    x.add_argument("--index-only", action="store_true",
+                   help="only rewrite data/build/areas-index.json from built dirs")
+    x.set_defaults(func=cmd_boxes)
+
+    h = sub.add_parser("homes",
+                       help="build data/build/homes-index.json from RTMS + register + boxes")
+    h.add_argument("--raw-dir", default="data/raw")
+    h.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    h.add_argument("--regions", default=None,
+                   help="regions.json path (default: <build-dir>/regions.json)")
+    h.add_argument("--photos", default=None,
+                   help="commons-photos.json path (default: scenarios/places/commons-photos.json)")
+    h.add_argument("--limit", type=int, default=None,
+                   help="debug: stop after N RTMS rows per file")
+    h.set_defaults(func=cmd_homes)
 
     r = sub.add_parser("register-fill",
                        help="fill inferred heights via the 건축HUB title API")

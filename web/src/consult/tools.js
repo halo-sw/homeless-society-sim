@@ -23,6 +23,7 @@ import { buildPlaces, stationsByName, nearestReachable } from "../engine/places.
 import { ADULT_MPS } from "../engine/agents.js";
 import { costUsd } from "../judge/run.js";
 import { MONEY_TOOL_DEFS, MONEY_HANDLERS } from "./tools-money.js";
+import { SEARCH_TOOL_DEFS, SEARCH_HANDLERS } from "./tools-search.js";
 import { PRIORITY_GROUPS, PRIORITY_METRICS, validateWeights } from "../priorities.js";
 import { safetyView } from "../safety.js";
 import { educationCounts, schoolRoute } from "../education.js";
@@ -107,7 +108,7 @@ export const TOOL_DEFS = [
         id: str("Criterion id, e.g. C-shop-dwell (see list_criteria)."),
       }, required: ["id"] } } },
   { type: "function", function: { name: "list_areas",
-    description: "The built areas available today (only these four).",
+    description: "The built scene boxes available today (from the built areas index).",
     parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "list_complexes",
     description: "Named apartment complexes in an area, with building counts.",
@@ -223,6 +224,7 @@ export const TOOL_DEFS = [
 ];
 
 for (const def of MONEY_TOOL_DEFS) TOOL_DEFS.push(def);
+for (const def of SEARCH_TOOL_DEFS) TOOL_DEFS.push(def);
 
 export const TOOL_NAMES = new Set(TOOL_DEFS.map((t) => t.function.name));
 
@@ -270,6 +272,10 @@ export function createSession(opts) {
     loadSafety: opts.loadSafety || null,
     loadPersona: opts.loadPersona || null,
     loadAssumption: opts.loadAssumption || null,
+    loadHomes: opts.loadHomes || null,
+    loadPhotos: opts.loadPhotos || null,
+    loadAreasIndex: opts.loadAreasIndex || null,
+    loadStationBoxes: opts.loadStationBoxes || null,
     provider: opts.provider || "meta",
     fetchImpl: opts.fetchImpl || null,
     museRunsPrior: opts.museRunsPrior || 0,
@@ -280,9 +286,30 @@ function areaLabel(areaId) {
   return (CONSULT_AREAS.find((a) => a.id === areaId) || {}).label || areaId;
 }
 
+async function cachedIndexAreas(session) {
+  if (session.loadAreasIndex && !session._areasIndex) {
+    try {
+      const doc = await session.loadAreasIndex();
+      session._areasIndex = (doc && doc.areas) || [];
+    } catch {
+      session._areasIndex = [];
+    }
+  }
+  return session._areasIndex || [];
+}
+
+async function knownArea(session, areaId) {
+  if (CONSULT_AREAS.some((a) => a.id === areaId)) return true;
+  if (session.loadAreasIndex) {
+    return (await cachedIndexAreas(session)).some((a) => a.id === areaId);
+  }
+  // No index loader (tests, old servers): station boxes load directly.
+  return typeof areaId === "string" && areaId.startsWith("st-");
+}
+
 async function needArea(session, areaId) {
-  if (!CONSULT_AREAS.some((a) => a.id === areaId)) {
-    throw new Error(`unknown area ${JSON.stringify(areaId)} — call list_areas first (only the four built areas exist today)`);
+  if (!(await knownArea(session, areaId))) {
+    throw new Error(`unknown area ${JSON.stringify(areaId)} — call list_areas first`);
   }
   return session.loadArea(areaId);
 }
@@ -425,8 +452,8 @@ async function update_scenario(session, patch) {
   // Homes must resolve against real data: known area + verbatim complex.
   const warnings = [];
   for (const h of parsed.homes) {
-    if (!CONSULT_AREAS.some((a) => a.id === h.area)) {
-      return { ok: false, errors: [`homes: unknown area ${JSON.stringify(h.area)} — only ${CONSULT_AREAS.map((a) => a.id).join(", ")} exist today`] };
+    if (!(await knownArea(session, h.area))) {
+      return { ok: false, errors: [`homes: unknown area ${JSON.stringify(h.area)} — call list_areas to pick a real one`] };
     }
     try {
       const area = await needArea(session, h.area);
@@ -510,7 +537,17 @@ function explain_criterion(session, args) {
   };
 }
 
-function list_areas() {
+async function list_areas(session) {
+  // 12a: the built areas index when the server has it, else the four
+  // legacy areas (tests, old servers).
+  if (session && session.loadAreasIndex) {
+    const areas = await cachedIndexAreas(session);
+    if (areas.length > 0) {
+      return { ok: true,
+        areas: areas.map((a) => ({ id: a.id, label: a.label })),
+        note: "3D로 살아 볼 수 있는 상자(1.2 km 역세권) 목록이다." };
+    }
+  }
   return { ok: true, areas: clone(CONSULT_AREAS),
     note: "오늘 고를 수 있는 지역은 이 4곳뿐이다. 전국 생성은 다음 단계다." };
 }
@@ -1062,11 +1099,26 @@ function set_priorities(session, args) {
     note: "고객님이 정한 비중으로 기록했다. 비교 화면의 내 기준으로 보기에 그대로 보인다." };
 }
 
+async function safetyKeyFor(session, areaId) {
+  // Legacy areas and region ids pass through; station boxes resolve to
+  // their region via station-boxes.json.
+  if (CONSULT_AREAS.some((a) => a.id === areaId)) return areaId;
+  if (session.loadStationBoxes && String(areaId).startsWith("st-")) {
+    try {
+      const doc = await session.loadStationBoxes();
+      const hit = (doc.boxes || []).find(
+        (b) => `st-${b.station}` === areaId);
+      if (hit && hit.region) return hit.region;
+    } catch {
+      // fall through to the region-id attempt below
+    }
+  }
+  return areaId;
+}
+
 async function get_safety(session, args) {
   const areaId = String(args.area || "");
-  if (!CONSULT_AREAS.some((a) => a.id === areaId)) {
-    return fail(`unknown area ${JSON.stringify(areaId)} — call list_areas first`);
-  }
+  if (!areaId) return fail("area is required — call list_areas first");
   if (!session.loadSafety) {
     return fail("safety statistics are unavailable on this server (pipeline safety not built)");
   }
@@ -1076,7 +1128,8 @@ async function get_safety(session, args) {
   } catch (err) {
     return fail(`cannot load safety statistics: ${String((err && err.message) || err).slice(0, 200)}`);
   }
-  const view = safetyView(doc, areaId);
+  const key = await safetyKeyFor(session, areaId);
+  const view = safetyView(doc, key);
   if (view.missing) return fail(view.missing);
   return { ok: true, ...view };
 }
@@ -1137,6 +1190,7 @@ const HANDLERS = {
   apply_persona, get_priorities, set_priorities, get_safety, get_education,
   define_term,
   ...MONEY_HANDLERS,
+  ...SEARCH_HANDLERS,
 };
 
 export async function callTool(session, name, args) {

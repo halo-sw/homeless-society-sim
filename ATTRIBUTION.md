@@ -29,9 +29,11 @@ remains ODbL-covered, and register-derived building attributes require the
 register attribution above. When the simulator displays a map or scene, show
 “© OpenStreetMap contributors · GIS건물통합정보 (국토교통부/VWorld)” with a
 link to this file or the sources above.
-* **국토교통부 실거래가 공개시스템 (RTMS, stage 6)** — apartment /
+* **국토교통부 실거래가 공개시스템 (RTMS, stage 6; 9 districts in 12a)** — apartment /
   rowhouse / officetel trade + rent CSVs for 송파구 · 성동구 ·
-  성남시 분당구, 2025-10-28…2026-10-27 (`data/raw/rtms/`, not
+  성남시 분당구 (stage 6) plus 강남구 · 강동구 · 성남시 수정구 ·
+  중원구 · 용인시 수지구 · 하남시 (stage 12a), all
+  2025-10-28…2026-10-27 (`data/raw/rtms/`, not
   committed): <https://rt.molit.go.kr>. Reference use only, no legal
   effect, contract-date basis; for public statistics use the official
   stats. Shown on screen with every price reference.

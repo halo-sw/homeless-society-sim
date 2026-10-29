@@ -1,8 +1,30 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DEMO_TOUR_STEPS, DEMO_TOUR_TOTAL_SECS, tourStepFromSearch,
   tourStepUrl, tourSkipUrl, recordedReplyFor,
   RECORDED_AGENT_REPLIES } from "../src/ui/demotour.js";
+import { extract_profile } from "../src/profile.js";
+import { find_homes } from "../src/homes.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = join(HERE, "..", "..");
+
+async function realBuild() {
+  try {
+    const [index, network, photos] = await Promise.all([
+      readFile(join(REPO, "data", "build", "homes-index.json"), "utf8"),
+      readFile(join(REPO, "data", "build", "region", "network.json"), "utf8"),
+      readFile(join(REPO, "scenarios", "places", "commons-photos.json"), "utf8"),
+    ]);
+    return { index: JSON.parse(index), network: JSON.parse(network),
+      photos: JSON.parse(photos) };
+  } catch {
+    return null;
+  }
+}
 
 describe("demo tour step machine", () => {
   it("covers the briefed arc in order with one caption line each", () => {
@@ -70,5 +92,45 @@ describe("demo tour step machine", () => {
     assert.ok((rec.tools || []).length > 0);
     assert.equal(recordedReplyFor("nope"), null);
     assert.ok(Object.keys(RECORDED_AGENT_REPLIES).length >= 1);
+  });
+
+  it("serves the 12a profile-search reply with real index numbers", () => {
+    const rec = recordedReplyFor("profile_search");
+    assert.ok(rec);
+    assert.match(rec.q, /판교로 출근하는 신입/);
+    assert.match(rec.a, /예시로 찾아봤어요/);
+    assert.match(rec.a, /2,917곳 중 6곳/);
+    assert.match(rec.a, /오피스텔·빌라/);
+    assert.match(rec.a, /하우징허브.*1\.69억/);
+    assert.match(rec.a, /오라타워.*1\.25억/);
+    assert.match(rec.a, /승차 미확인/);
+    assert.match(rec.a, /3D로 살아 보기 가능/);
+    assert.deepEqual(rec.tools.map((t) => t.name),
+      ["extract_profile", "find_homes"]);
+  });
+
+  it("recorded profile-search numbers match the real build", async (t) => {
+    const build = await realBuild();
+    if (!build) {
+      t.skip("data/build absent (operator runs the 12a pipeline first)");
+      return;
+    }
+    const stations = new Set();
+    for (const line of build.network.lines || []) {
+      for (const s of line.stops || []) {
+        if (s.name) stations.add(String(s.name).replace(/역$/, ""));
+      }
+    }
+    const rec = recordedReplyFor("profile_search");
+    const ex = extract_profile(rec.q, null, { stations: [...stations] });
+    assert.equal(ex.ok, true);
+    const r = find_homes(ex.profile, build.index,
+      { network: build.network, photos: build.photos, limit: 6 });
+    assert.equal(r.total_matching, 2917);
+    assert.deepEqual(r.candidates.map((c) => c.name), [
+      "하우징허브", "양지빌라A동(449-10)", "오라타워", "브라운스톤천호",
+      "동인 레반트 오피스텔", "(1-25)",
+    ]);
+    assert.ok(r.candidates.every((c) => c.scene));
   });
 });

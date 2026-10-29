@@ -11,7 +11,8 @@
 //     the same normaliser and is tested with a stub fetch.
 // Cancelled deals (해제사유발생일 non-empty, API 해제여부=O) are excluded.
 
-export const RTMS_DISTRICTS = ["songpa", "seongdong", "bundang"];
+export const RTMS_DISTRICTS = ["songpa", "seongdong", "bundang", "gangnam",
+  "gangdong", "sujeong", "jungwon", "suji", "hanam"];
 export const RTMS_TYPES = ["apt", "rowhouse", "officetel"];
 export const RTMS_DEALS = ["trade", "rent"];
 

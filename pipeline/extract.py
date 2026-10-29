@@ -92,22 +92,28 @@ def ensure_extract(area_id: str, raw_pbf: Path = DEFAULT_RAW_PBF,
                    overwrite: bool = False,
                    area: AreaDef | None = None) -> dict:
     """Resolve the area (OSM lookup) and clip the national PBF to it."""
-    from .areas import write_area_def
+    from .areas import is_station_box, write_area_def
 
-    if area_id not in AREA_IDS:
-        raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)}")
+    if area_id not in AREA_IDS and not is_station_box(area_id):
+        raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)} or st-<station>")
     binary = find_osmium(osmium_bin)
     raw_pbf, build_dir = Path(raw_pbf), Path(build_dir)
     if not raw_pbf.exists():
         raise FileNotFoundError(f"national extract not found: {raw_pbf}")
 
     if area is None:
-        from .areas import build_candidate_extract, scan_candidates
+        if is_station_box(area_id):
+            from .areas import resolve_station_box
 
-        cand = build_candidate_extract(raw_pbf,
-                                       build_dir / "_cache" / CANDIDATE_FILE,
-                                       osmium_bin=binary, refresh=overwrite)
-        area = resolve_area(area_id, raw_pbf, hits=scan_candidates(cand))
+            area = resolve_station_box(area_id, build_dir, raw_pbf,
+                                       osmium_bin=binary)
+        else:
+            from .areas import build_candidate_extract, scan_candidates
+
+            cand = build_candidate_extract(raw_pbf,
+                                           build_dir / "_cache" / CANDIDATE_FILE,
+                                           osmium_bin=binary, refresh=overwrite)
+            area = resolve_area(area_id, raw_pbf, hits=scan_candidates(cand))
 
     adir = area_dir(build_dir, area_id)
     extract_path = adir / EXTRACT_FILE
@@ -123,13 +129,38 @@ def ensure_extract(area_id: str, raw_pbf: Path = DEFAULT_RAW_PBF,
     write_area_def(area, adir / AREA_DEF_FILE)
     if area.kind == "bbox":
         assert area.bbox is not None
-        clip_bbox(binary, raw_pbf, area.bbox, extract_path)
+        clip_bbox(binary, _clip_source(area_id, build_dir, raw_pbf),
+                  area.bbox, extract_path)
     else:
         assert area.boundary is not None
         boundary_file = build_dir / "_cache" / BOUNDARY_FILE
         clip_polygon(binary, raw_pbf, boundary_file, extract_path)
     return {"area": area.to_dict(), "extract": str(extract_path),
             "cached": False}
+
+
+def _clip_source(area_id: str, build_dir: Path, raw_pbf: Path) -> Path:
+    """Clip station boxes from their region extract (clipped once).
+
+    Falls back to the national PBF when the region extract is absent
+    (e.g. a box built before discovery ran for its region).
+    """
+    from .areas import is_station_box
+    from .boxes import REGION_EXTRACT_DIR, load_boxes, station_of
+
+    if not is_station_box(area_id):
+        return raw_pbf
+    boxes = load_boxes(build_dir)
+    region = None
+    if boxes:
+        hit = next((b for b in boxes.get("boxes", [])
+                    if b.get("station") == station_of(area_id)), None)
+        region = hit.get("region") if hit else None
+    if region:
+        cand = build_dir / REGION_EXTRACT_DIR / f"{region}.osm.pbf"
+        if cand.exists():
+            return cand
+    return raw_pbf
 
 
 def ensure_boundary_file(osmium_bin: str, raw_pbf: Path, build_dir: Path,
@@ -155,8 +186,10 @@ def ensure_buffered_extract(area_id: str, raw_pbf: Path = DEFAULT_RAW_PBF,
     """
     import json
 
-    if area_id not in AREA_IDS:
-        raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)}")
+    from .areas import is_station_box
+
+    if area_id not in AREA_IDS and not is_station_box(area_id):
+        raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)} or st-<station>")
     binary = find_osmium(osmium_bin)
     raw_pbf, build_dir = Path(raw_pbf), Path(build_dir)
     adir = area_dir(build_dir, area_id)

@@ -24,6 +24,11 @@ DEFAULT_BUILD_DIR = REPO_ROOT / "data" / "build"
 
 AREA_IDS = ("pangyo", "seongsu", "songpa", "songpa-jamsil")
 
+# Stage 12a station scene boxes: ids are "st-<station>" (e.g. "st-판교").
+# They are dynamic (see pipeline.boxes station-boxes.json), so they are
+# validated by prefix, not by membership in AREA_IDS.
+STATION_BOX_PREFIX = "st-"
+
 # Station name lookups for the 1.2 km scene boxes. Korean subway stations in
 # OSM are usually named without the 역 suffix (판교, 성수, 잠실); related bus
 # stops and stop areas carry the full ...역 name, so both are matched and the
@@ -251,6 +256,68 @@ def resolve_area(area_id: str, raw_pbf: str | Path = DEFAULT_RAW_PBF,
     bbox = bbox_from_center(lon, lat)
     return AreaDef(id=area_id, label=label, kind="bbox", bbox=bbox,
                    center=(lon, lat), station=station, boundary=None)
+
+
+def is_station_box(area_id: str) -> bool:
+    return area_id.startswith(STATION_BOX_PREFIX)
+
+
+def resolve_station_box(area_id: str,
+                        build_dir: str | Path = DEFAULT_BUILD_DIR,
+                        raw_pbf: str | Path = DEFAULT_RAW_PBF,
+                        osmium_bin: str = "osmium") -> AreaDef:
+    """Resolve a stage-12a ``st-<station>`` scene box.
+
+    Coordinates come from ``station-boxes.json`` (the discovery run);
+    when the station is absent there, fall back to an OSM name lookup
+    of ``<station>역`` / ``<station>``. Either way the box is the same
+    1.2 km ``bbox`` kind as the legacy station areas.
+    """
+    from .boxes import box_coords, load_boxes
+
+    if not is_station_box(area_id):
+        raise KeyError(f"not a station box {area_id!r}")
+    station = area_id[len(STATION_BOX_PREFIX):]
+    boxes = load_boxes(build_dir)
+    hit = None
+    if boxes:
+        hit = next((b for b in boxes.get("boxes", [])
+                    if b.get("station") == station), None)
+    if hit is not None:
+        lon, lat = box_coords(hit)
+        info = {"name": station, "lon": lon, "lat": lat,
+                "osm_kind": hit.get("osm_kind"), "osm_id": hit.get("osm_id")}
+    else:
+        info = _lookup_station_by_name(station, raw_pbf,
+                                       osmium_bin=osmium_bin)
+        lon, lat = info["lon"], info["lat"]
+    bbox = bbox_from_center(lon, lat)
+    return AreaDef(id=area_id, label=f"{station}역 인근", kind="bbox",
+                   bbox=bbox, center=(lon, lat), station=info,
+                   boundary=None)
+
+
+def _lookup_station_by_name(station: str, raw_pbf: str | Path,
+                            osmium_bin: str = "osmium") -> dict:
+    """OSM lookup of one station name (fallback when discovery is stale)."""
+    import tempfile
+
+    names = (f"{station}역", station)
+    handler = _CandidateScan(set(names))
+    with tempfile.TemporaryDirectory(prefix="station-box-") as tmp:
+        dst = Path(tmp) / "candidates.osm.pbf"
+        expr = "nwr/name=" + ",".join(names)
+        import subprocess
+
+        proc = subprocess.run(
+            [osmium_bin, "tags-filter", str(raw_pbf), expr,
+             "-o", str(dst), "-O", "--no-progress"],
+            capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"osmium tags-filter failed: {proc.stderr.strip()}")
+        handler.apply_file(str(dst), locations=True)
+    return _pick_station(handler.hits, names)
 
 
 def write_area_def(area: AreaDef, path: str | Path) -> Path:

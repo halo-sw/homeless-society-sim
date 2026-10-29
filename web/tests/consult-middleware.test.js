@@ -175,7 +175,13 @@ describe("consult dev middleware", () => {
       assert.equal(payload.toolCalls[0].name, "list_areas");
       assert.equal(payload.toolCalls[0].ok, true);
       const toolMsg = payload.messages.find((m) => m.role === "tool");
-      assert.equal(JSON.parse(toolMsg.content).areas.length, 4);
+      // 12a: the list comes from the built areas index (grows with the
+      // box builds), and always carries the four legacy areas.
+      const areas = JSON.parse(toolMsg.content).areas;
+      assert.ok(areas.length >= 4);
+      for (const id of ["pangyo", "seongsu", "songpa", "songpa-jamsil"]) {
+        assert.ok(areas.some((a) => a.id === id && a.label), id);
+      }
       assert.equal(payload.reply, "네 곳이 준비되어 있다");
     } finally {
       globalThis.fetch = savedFetch;

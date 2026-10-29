@@ -36,6 +36,36 @@ export const AREA_RTMS_DISTRICT = {
   "pangyo": "bundang",
 };
 
+// 12a: station boxes resolve to their region's RTMS district via
+// station-boxes.json (region -> first district file set).
+export const REGION_RTMS_DISTRICT = {
+  seongdong: "seongdong",
+  "songpa-gu": "songpa",
+  gangnam: "gangnam",
+  gangdong: "gangdong",
+  bundang: "bundang",
+  sujeong: "sujeong",
+  jungwon: "jungwon",
+  suji: "suji",
+  wirye: "songpa",
+};
+
+export async function rtmsDistrictForArea(session, areaId) {
+  if (AREA_RTMS_DISTRICT[areaId]) return AREA_RTMS_DISTRICT[areaId];
+  if (session && session.loadStationBoxes && String(areaId).startsWith("st-")) {
+    try {
+      const doc = await session.loadStationBoxes();
+      const hit = (doc.boxes || []).find((b) => `st-${b.station}` === areaId);
+      if (hit && hit.region && REGION_RTMS_DISTRICT[hit.region]) {
+        return REGION_RTMS_DISTRICT[hit.region];
+      }
+    } catch {
+      // fall through to null
+    }
+  }
+  return null;
+}
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -159,7 +189,7 @@ async function price_reference(session, args) {
   const areaId = String(args.area || "");
   const complexName = String(args.complex || "");
   if (!areaId || !complexName) return fail("pass area (built area id) and complex (verbatim complex name)");
-  const district = AREA_RTMS_DISTRICT[areaId];
+  const district = await rtmsDistrictForArea(session, areaId);
   if (!district) return fail(`no RTMS district for area ${JSON.stringify(areaId)}`);
   let area;
   try {
@@ -709,7 +739,7 @@ async function jeonse_check(session, args) {
   const areaId = String(args.area || "");
   const complexName = String(args.complex || "");
   if (!areaId || !complexName) return fail("pass area (built area id) and complex (verbatim complex name)");
-  const district = AREA_RTMS_DISTRICT[areaId];
+  const district = await rtmsDistrictForArea(session, areaId);
   if (!district) return fail(`no RTMS district for area ${JSON.stringify(areaId)}`);
   let area;
   try {
@@ -917,7 +947,7 @@ async function check_listing(session, args) {
       note: `${located.error}. 같은 단지 실거래 비교는 지은 지역에서만 돼요. 체크리스트는 전세 점검 탭에서 볼 수 있어요.` };
   }
   const areaId = located.areaId;
-  const district = areaId ? AREA_RTMS_DISTRICT[areaId] : null;
+  const district = areaId ? await rtmsDistrictForArea(session, areaId) : null;
   if (!district) {
     return { ok: true, listing_check: true, deal_type: deal,
       complex: complexName || null, address: address || null,

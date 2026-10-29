@@ -493,6 +493,11 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
       lines.push(`- ${r.home} ${r.tenure}: 실수령 ${fmtWon(r.monthly_net_won, { monthly: true })}, 매달 집에 드는 돈 ${fmtWon(r.housing.monthly_won, { monthly: true })}, 월급에서 집에 나가는 비율 ${r.timeline.burden_ratio === null ? "–" : fmtPct(r.timeline.burden_ratio)}, 집값과 생활비를 내고 남는 돈 ${fmtWon(r.timeline.remaining_won, { monthly: true })}`);
     } else if (Number.isFinite(r.monthly_net_won) && r.deductions) {
       lines.push(`- ${r.estimated ? "추정 " : ""}실수령액: ${fmtWon(r.monthly_net_won, { monthly: true })} (세전 ${fmtWon(r.monthly_gross_won, { monthly: true })})`);
+    } else if (Array.isArray(r.candidates) && r.candidates[0] && r.candidates[0].tenures) {
+      for (const c of r.candidates.slice(0, 5)) {
+        const t = c.tenures[0] || {};
+        lines.push(`- ${c.name}(${c.kind} ${t.bucket_center_m2 || "?"}㎡): 중간 ${fmtWon(t.median_won)} (${t.deals || 0}건, 실거래) · ${c.commute_ko || ""}`);
+      }
     } else if (Array.isArray(r.candidates)) {
       for (const c of r.candidates.slice(0, 5)) {
         lines.push(`- ${c.address}: ${c.exclusive_area_m2}㎡ 보증금 ${fmtWon(c.deposit_won)} / 월 ${fmtWon(c.monthly_rent_won)}${c.commute_minutes !== null ? `, 통근 ${fmtMinutes(c.commute_minutes)}` : ""} (공공임대)`);

@@ -52,6 +52,44 @@ CAT1_ORDER = [
 ]
 
 
+def region_safety_spec() -> list[dict]:
+    """Region id -> safety (column, level) pairs (from regions spec)."""
+    from .regions import REGION_SPECS
+
+    return [{"id": spec["id"], "label": spec["label"],
+             "safety": [{"column": col, "level": lvl}
+                        for col, lvl in spec["safety"]]}
+            for spec in REGION_SPECS]
+
+
+def build_region_safety(raw_csv: str | Path) -> dict[str, dict]:
+    """Per-region safety views. 위례 keeps one view per 관할 (never merged).
+
+    Raises ValueError when the CSV lacks a needed column (same strictness
+    as :func:`build_safety`); :func:`run_build` reports the skip instead
+    of failing the area views.
+    """
+    parsed = load_crime_csv(raw_csv)
+    needed = {entry["column"] for spec in region_safety_spec()
+              for entry in spec["safety"]}
+    missing = sorted(needed - set(parsed["columns"]))
+    if missing:
+        raise ValueError(f"safety: CSV lacks region columns {missing}")
+    out: dict[str, dict] = {}
+    for spec in region_safety_spec():
+        parts = {entry["column"]: _area_view(entry["column"], entry["level"],
+                                             parsed["rows"])
+                 for entry in spec["safety"]}
+        if len(parts) == 1:
+            column = next(iter(parts))
+            out[spec["id"]] = {"label": spec["label"], **parts[column]}
+        else:
+            out[spec["id"]] = {"label": spec["label"], "parts": parts,
+                               "note": ("관할이 여러 개라 통계를 합치지 않습니다. "
+                                        "각 관할 수치를 따로 보세요.")}
+    return out
+
+
 def _to_int(text: str, where: str) -> int:
     token = (text or "").strip().replace(",", "")
     try:
@@ -155,10 +193,19 @@ def run_build(raw_csv: str | Path | None = None,
         raise FileNotFoundError(
             f"safety CSV not found: {raw_csv} (operator-provided, gitignored)")
     doc = build_safety(raw_csv, Path(raw_dir) / "safety")
+    try:
+        doc["regions"] = build_region_safety(raw_csv)
+        regions_note = None
+    except ValueError as exc:
+        doc["regions"] = {}
+        regions_note = str(exc)
+    doc["regions_note"] = regions_note
     out = Path(build_dir) / "region" / "safety.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
                    encoding="utf-8")
     return {"file": str(out),
             "areas": sorted(doc["areas"]),
+            "regions": sorted(doc["regions"]),
+            "regions_note": regions_note,
             "total_rows": sum(len(v["by_cat2"]) for v in doc["areas"].values())}

@@ -22,6 +22,7 @@ import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDec
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 import { assignWalkers, sampleWalker } from "./walkers.js";
+import { areasOrFallback, FALLBACK_AREAS } from "./areas-index.js";
 import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
 import { loadAgentOpen } from "./ui/agent-float.js";
@@ -38,12 +39,20 @@ import { placeStreetlife } from "./render/streetlife.js";
 import { buildStreetMeshes } from "./render/streetmeshes.js";
 import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, setNightGain, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
 
-const AREAS = [
-  { id: "pangyo", label: "판교" },
-  { id: "seongsu", label: "성수" },
-  { id: "songpa", label: "송파구" },
-  { id: "songpa-jamsil", label: "잠실" },
-];
+// 12a: the area list comes from the built data/build/areas-index.json
+// (id, label, center, bbox, station, size) — never a hard-coded array.
+// The scene still loads only the selected box (fetchArea below).
+// Loaded at boot (no top-level await: the build target forbids it).
+let AREAS = FALLBACK_AREAS;
+async function loadAreasList() {
+  const loaded = await areasOrFallback((url) =>
+    fetch(url).then((r) => {
+      if (!r.ok) throw new Error(`areas-index ${r.status}`);
+      return r.json();
+    }));
+  AREAS = loaded.areas;
+  return loaded;
+}
 const DEFAULT_AREA = "songpa-jamsil";
 const HEIGHT_LABELS = {
   osm_height: "OSM 높이", osm_levels: "OSM 층수", register_height: "대장 높이",
@@ -1579,6 +1588,12 @@ async function bootSim() {
 
   async function areaBbox(areaId) {
     if (areaBboxes.has(areaId)) return areaBboxes.get(areaId);
+    // 12a: bboxes ride on the areas index — no area.json fetch needed.
+    const indexed = AREAS.find((a) => a.id === areaId);
+    if (indexed && indexed.bbox) {
+      areaBboxes.set(areaId, indexed.bbox);
+      return indexed.bbox;
+    }
     try {
       const doc = await fetchJson(`/data/${areaId}/area.json`);
       areaBboxes.set(areaId, doc.bbox || null);
@@ -2326,5 +2341,7 @@ async function bootSim() {
   new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }
 
-if (PARAMS.get("mode") === "sim") bootSim();
-else bootTour();
+loadAreasList().then(() => {
+  if (PARAMS.get("mode") === "sim") bootSim();
+  else bootTour();
+});

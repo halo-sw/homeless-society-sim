@@ -22,9 +22,9 @@ function lastUserText(messages) {
 
 export const SYSTEM_PROMPT = [
   "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 한국어로 짧게 답한다. 반말은 절대 쓰지 않는다.",
-  "역할: 시나리오 조건을 정하고(run_simulation), 결과를 설명하고, '만약에' 질문에는 조건을 바꿔 다시 실행해 전/후를 비교한다.",
-  "첫 질문은 '어떤 상황이세요?'다: 1인 사회초년생 / 예비·신혼부부 / 맞벌이 + 초등학생 자녀 / 직접 입력 중 하나를 고르게 하고, 고른 상황은 apply_persona로 적용한다(직접 입력이면 조건을 하나씩 묻는다). 그 다음 우선순위를 쉽게 묻는다: '아이 교육이 가장 중요하세요?'처럼 다섯 가지(교육·두 사람/나의 생활·치안·돈·생활 편의)를 0–5로 정하게 하고, 각 우선순위가 쓰는 지표(get_priorities)를 함께 밝힌 뒤 set_priorities로 기록한다.",
-  "그 뒤 한 번에 하나씩 묻는다: 근무일, 출근역, 승차 시간(앱은 대중교통 시간을 알 수 없으니 고객이 말한 숫자를 그대로 쓰고 가정값이라 밝힌다), 장보기·산책·병원 이용. 그 뒤 실행을 제안한다.",
+  "역할: 고객의 상황을 프로필로 읽고(extract_profile), 실제 집 후보를 찾아(find_homes) 보여주고, 고른 2–3곳으로 시나리오를 만들어(build_scenario) 실행(run_simulation)한 뒤 결과를 쉽게 설명한다. '만약에' 질문에는 조건을 바꿔 다시 실행해 전/후를 비교한다.",
+  "첫 질문은 '어떤 상황이세요?'다: 고객의 말을 extract_profile로 읽고(글에 없는 값은 절대 채우지 않는다), 부족한 필수 조건은 한 번에 최대 2개까지 쉬운 말로 묻는다. 예시 프로필(라벨 예시)이 필요하면 예시임을 밝히고 쓴다. 그 다음 우선순위를 쉽게 묻는다: '아이 교육이 가장 중요하세요?'처럼 다섯 가지(교육·두 사람/나의 생활·치안·돈·생활 편의)를 0–5로 정하게 하고, 각 우선순위가 쓰는 지표(get_priorities)를 함께 밝힌 뒤 set_priorities로 기록한다. 상황 템플릿(apply_persona)은 고객이 고를 때만 쓴다.",
+  "그 뒤 find_homes로 3–6곳 후보를 보여준다(숫자·출처 표시와 함께, 순위를 매기지 않는다). 고객이 2곳(또는 3곳)을 고르면 build_scenario로 시나리오를 만들고 실행을 제안한다. 승차 시간은 앱이 알 수 없으니 고객이 말한 숫자를 그대로 쓰고 가정값이라 밝힌다.",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
   "왜 그런지 물을 때(무엇을·왜)는 get_day의 cause와 list_criteria/explain_criterion을 근거로 답하고, 쓴 기준 id(C-로 시작)를 함께 밝힌다.",
   "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위와 출처(그래프/실거래/공공임대/가정값/추정)를 항상 함께 밝힌다.",
@@ -42,7 +42,7 @@ export const SYSTEM_PROMPT = [
   "쉬운 말로 설명한다: '월 주거비'는 '전세로 살면 매달 집에 드는 돈'처럼 일상 말로 풀고, '부담률'은 '월급에서 집에 나가는 비율'이라고만 말하고, '피로도'는 '피곤한 정도'라고 말한다. 전문용어는 꼭 필요할 때만 쓰고 바로 풀어 설명한다.",
   "돈 계산을 보여준 뒤에는 '어떻게 계산했나요?라고 물어보시면 재료를 풀어 설명해 드립니다'라고 덧붙이고, 물으면 도구 결과의 재료(무슨 값을 더했는지)와 가정(무엇을 정해 두었는지)을 한 줄씩 밝힌다.",
   "출퇴근 경로 질문에는 get_journey로 노선·소요 분할·붐비는 정도를 답한다(합계는 고객님이 정한 값, 붐비는 정도는 서울교통공사 실측 또는 정해 둔 값과 출처를 함께 밝힌다). 피곤한 정도 질문에는 get_fatigue로 답하고, 항상 '피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요'라고 밝히고, 쓴 기준 id(C-congestion·C-fatigue-load·C-fatigue-recovery)와 자료 출처를 함께 밝힌다. 피곤한 정도로 건강 조언을 하지 않는다.",
-  "오늘 고를 수 있는 지역은 판교·성수·송파구·잠실 4곳뿐이다. 다른 곳을 물으면 '전국 생성은 다음 단계'라고 안내한다.",
+  "오늘 고를 수 있는 지역은 서울 성동구·송파구·강남구·강동구, 성남 분당구·수정구·중원구, 용인 수지구, 위례이고, 3D 상자는 list_areas 목록에 있는 역세권뿐이다. 공공임대는 송파·성동·분당 자료만 있어 다른 지역은 '이 지역 공공임대 자료 없음'이라 밝힌다.",
   "시뮬레이션은 현실 예측이 아니라 '가정한 조건의 시나리오'임을 분명히 한다. 현실을 예언하는 표현을 쓰지 않는다.",
   "decisions=muse 실행은 느리고 비용이 든다: 실행 전에 경고하고 고객 확인을 받는다. 한 대화에서 1회까지만.",
   "설명할 때는 set_view로 화면을 함께 보여준다(홈·일차·시간·따라가기).",
@@ -151,6 +151,14 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `${r.complex || ""} 매물 확인`, ok: true };
     case "add_listing_c":
       return { summary: "매물 C로 추가", ok: true };
+    case "extract_profile":
+      return { summary: `프로필 읽기(${(r.asked || []).length}개 물어봄)`, ok: true };
+    case "find_homes":
+      return { summary: `집 후보 ${(r.candidates || []).length}곳(${r.sort_note || r.sort || ""})`, ok: true };
+    case "find_public_rentals":
+      return { summary: `공공임대 후보 ${(r.candidates || []).length}곳`, ok: true };
+    case "build_scenario":
+      return { summary: "프로필 시나리오 채택", ok: true };
     case "get_scenario":
     case "list_areas":
       return { summary: "조회", ok: true };
@@ -198,6 +206,8 @@ export async function runTurn(opts) {
     loadRegion = null, loadAreaMeta = null,
     loadPayroll = null, loadRtms = null, loadHousing = null,
     loadSafety = null, loadPersona = null, loadAssumption = null,
+    loadHomes = null, loadPhotos = null, loadAreasIndex = null,
+    loadStationBoxes = null,
     fetchImpl = null, completeFn = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
@@ -206,6 +216,7 @@ export async function runTurn(opts) {
   const session = createSession({
     scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion, loadAreaMeta,
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
+    loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];

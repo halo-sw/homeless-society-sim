@@ -73,8 +73,25 @@ export function tourSkipUrl(search) {
 }
 
 // Recorded agent replies for the tour (no key present). Numbers are the
-// real demo-two-homes build values; UI labels them 기록된 답변.
+// real build values (demo-two-homes; 12a example search below); UI
+// labels them 기록된 답변.
 export const RECORDED_AGENT_REPLIES = {
+  profile_search: {
+    q: "판교로 출근하는 신입, 연봉 4천, 모은 돈 5천, 전세 2억 이하",
+    tools: [
+      { name: "extract_profile", ok: true, summary: "프로필 읽기(2개 물어봄)", ms: 3 },
+      { name: "find_homes", ok: true, summary: "집 후보 6곳(정렬: 출퇴근 짧은 순)", ms: 61 },
+    ],
+    a: [
+      "예시로 찾아봤어요 (전세 2억 이하, 2,917곳 중 6곳, 출퇴근 짧은 순).",
+      "이 예산엔 아파트보다 오피스텔·빌라가 나옵니다.",
+      "하우징허브(빌라·강동, 20㎡): 중간 1.69억, 3건. 암사역사공원 도보 1분 이내, 판교까지 환승 2회(복정·정자). 3D로 살아 보기 가능.",
+      "양지빌라A동(빌라·강동, 40㎡): 중간 1.39억, 1건. 암사역사공원 도보 1분 이내, 판교까지 환승 2회. 3D로 살아 보기 가능.",
+      "오라타워(오피스텔·중원, 40㎡): 중간 1.25억, 2건. 모란 도보 1분 이내, 판교까지 환승 1회(정자). 3D로 살아 보기 가능.",
+      "브라운스톤천호(오피스텔·강동, 30㎡): 중간 2.00억, 1건. 천호 도보 1분 이내, 판교까지 환승 2회. 3D로 살아 보기 가능.",
+      "기차·지하철을 타는 시간은 고객님이 알려주셔야 채워져요 (승차 미확인). 2곳을 고르시면 30일 살아 보기를 실행해 드려요.",
+    ].join("\n"),
+  },
   switch: {
     q: "B로 바꾸면 어떻게 달라져?",
     tools: [{ name: "compare", ok: true, summary: "비교(12개 지표)", ms: 41 }],
