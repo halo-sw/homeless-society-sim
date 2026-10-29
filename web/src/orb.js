@@ -144,25 +144,109 @@ export function slabDepth(mapWidth) {
   return Math.max(mapWidth * 0.02, 0.01);
 }
 
-// Fit the camera to the shapes' bounds with ORB_FIT_MARGIN margin,
-// centred. Returns the world-space centre, the fitted width/depth
-// (margin included) and the distance that frames them at fovDeg.
-export function fitOrbView(shapes, aspect = 16 / 9, fovDeg = 42) {
-  let bounds = null;
-  for (const s of shapes || []) {
-    const r = shapeProjectedBounds(s);
-    bounds = bounds ? {
-      x0: Math.min(bounds.x0, r.x0), z0: Math.min(bounds.z0, r.z0),
-      x1: Math.max(bounds.x1, r.x1), z1: Math.max(bounds.z1, r.z1),
-    } : { ...r };
+// ---- 13e4: fit to the PROJECTED bounds, not the world bounds ----
+// The camera looks down the tilted dir (0, 7.5, 9), so a ground-plane
+// unit in z compresses to ~0.64 units on screen; fitting the raw
+// world depth left ~70 % of the stage empty. Solve for the distance
+// (and centre) whose NDC box fills ORB_FIT_FILL of the shorter side.
+// Camera basis (three.js lookAt, up +Y): right = +X, up = (0, vz, -vy),
+// forward-to-target = -(0, vy, vz). Must match ui/orb.jsx viewDir.
+export const ORB_VIEW_DIR = { y: 7.5, z: 9 };
+export const ORB_FIT_FILL = 0.84;
+
+function orbCameraTilt() {
+  const len = Math.hypot(ORB_VIEW_DIR.y, ORB_VIEW_DIR.z) || 1;
+  return { vy: ORB_VIEW_DIR.y / len, vz: ORB_VIEW_DIR.z / len };
+}
+
+// All four ground corners of every shape bbox, in world x/z.
+export function shapeCorners(shapes) {
+  const list = (shapes && shapes.length > 0) ? shapes : [null];
+  const corners = [];
+  for (const s of list) {
+    const b = (s && s.bbox) || ORB_DEFAULT_BBOX;
+    const [xa, za] = projectLonLat(b[0], b[3]);
+    const [xb, zb] = projectLonLat(b[2], b[1]);
+    corners.push([xa, za], [xb, za], [xa, zb], [xb, zb]);
   }
-  if (!bounds) bounds = shapeProjectedBounds(null);
-  const cx = (bounds.x0 + bounds.x1) / 2;
-  const cz = (bounds.z0 + bounds.z1) / 2;
-  const width = Math.max(bounds.x1 - bounds.x0, 0.4) * (1 + ORB_FIT_MARGIN);
-  const depth = Math.max(bounds.z1 - bounds.z0, 0.4) * (1 + ORB_FIT_MARGIN);
+  return corners;
+}
+
+function ndcBounds(corners, cx, cz, d, aspect, tanF, vy, vz) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [px, pz] of corners) {
+    const dz = pz - cz;
+    const depth = Math.max(d - dz * vz, d * 0.1, 1e-3);
+    const nx = (px - cx) / (depth * tanF * aspect);
+    const ny = (-dz * vy) / (depth * tanF);
+    if (nx < x0) x0 = nx;
+    if (nx > x1) x1 = nx;
+    if (ny < y0) y0 = ny;
+    if (ny > y1) y1 = ny;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+// Fill of each axis as a fraction of the shorter container side:
+// NDC half-range 1 maps to half of W (resp. H), so scale by side/S.
+function fillsFor(box, aspect) {
+  const w = aspect, h = 1, s = Math.min(w, h);
+  const fillX = ((box.x1 - box.x0) / 2) * (w / s);
+  const fillY = ((box.y1 - box.y0) / 2) * (h / s);
+  return { fillX, fillY, fill: Math.max(fillX, fillY) };
+}
+
+// Fit the camera to the shapes' PROJECTED bounds at the current
+// camera angle and container aspect, centred, filling ORB_FIT_FILL
+// of the shorter side. Returns the world-space centre, the fitted
+// width/depth (margin included, for slab sizing) and the distance.
+export function fitOrbView(shapes, aspect = 16 / 9, fovDeg = 42) {
+  const corners = shapeCorners(shapes);
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const [px, pz] of corners) {
+    if (px < x0) x0 = px;
+    if (px > x1) x1 = px;
+    if (pz < z0) z0 = pz;
+    if (pz > z1) z1 = pz;
+  }
+  let cx = (x0 + x1) / 2;
+  let cz = (z0 + z1) / 2;
+  const width = Math.max(x1 - x0, 0.4) * (1 + ORB_FIT_MARGIN);
+  const depth = Math.max(z1 - z0, 0.4) * (1 + ORB_FIT_MARGIN);
   const halfFov = (fovDeg * Math.PI) / 360;
-  const fitH = (depth / 2) / Math.tan(halfFov);
-  const fitW = (width / 2) / (Math.tan(halfFov) * aspect);
-  return { center: [cx, cz], width, depth, distance: Math.max(fitH, fitW) };
+  const tanF = Math.tan(halfFov);
+  const { vy, vz } = orbCameraTilt();
+  // Seed with the old world-space estimate, then iterate in NDC:
+  // rescale distance to the target fill, re-centre the NDC box.
+  let d = Math.max((depth / 2) / tanF, (width / 2) / (tanF * aspect));
+  d = Math.max(d, 0.5);
+  for (let i = 0; i < 12; i++) {
+    const box = ndcBounds(corners, cx, cz, d, aspect, tanF, vy, vz);
+    const { fill } = fillsFor(box, aspect);
+    if (!(fill > 1e-9)) break;
+    d = Math.min(Math.max((d * fill) / ORB_FIT_FILL, 0.5), 500);
+    const ncx = (box.x0 + box.x1) / 2;
+    const ncy = (box.y0 + box.y1) / 2;
+    cx += ncx * d * tanF * aspect;
+    cz -= (ncy * d * tanF) / (vy || 1);
+  }
+  return { center: [cx, cz], width, depth, distance: d };
+}
+
+// Projected (NDC) bounds of the fitted view: centre offset in NDC
+// units (half-range 1, so ±0.05 is ±5 %) and per-axis fill as a
+// fraction of the shorter container side.
+export function projectedOrbBounds(shapes, aspect = 16 / 9, fovDeg = 42) {
+  const view = fitOrbView(shapes, aspect, fovDeg);
+  const halfFov = (fovDeg * Math.PI) / 360;
+  const tanF = Math.tan(halfFov);
+  const { vy, vz } = orbCameraTilt();
+  const box = ndcBounds(shapeCorners(shapes), view.center[0], view.center[1],
+    view.distance, aspect, tanF, vy, vz);
+  const { fillX, fillY, fill } = fillsFor(box, aspect);
+  return {
+    nx0: box.x0, ny0: box.y0, nx1: box.x1, ny1: box.y1,
+    centerX: (box.x0 + box.x1) / 2, centerY: (box.y0 + box.y1) / 2,
+    fillX, fillY, fill,
+  };
 }

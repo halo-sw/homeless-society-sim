@@ -39,8 +39,10 @@ export function OrbView({ data, onRegion, highlightKey }) {
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0xf4f1ea);
       const orb = dataRef.current || { shapes: [], points: [], dots: [] };
-      // 13e2: fit the camera to the shapes' bounds (8 % margin, centred).
-      const view = fitOrbView(orb.shapes, W / H, 42);
+      // 13e4: fit the camera to the PROJECTED bounds (84 % of the
+      // shorter side, centred); re-fitted on resize below.
+      let view = fitOrbView(orb.shapes, W / H, 42);
+      let fitDist = view.distance;
       const centerV = new THREE.Vector3(view.center[0], 0, view.center[1]);
       const viewDir = new THREE.Vector3(0, 7.5, 9).normalize();
       const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 200);
@@ -159,7 +161,7 @@ export function OrbView({ data, onRegion, highlightKey }) {
         if (ft.length > 120) ft.shift();
         if (idle) rotY += (dt / 1000) * 0.12; // slow drift
         root.rotation.y = rotY;
-        camera.position.sub(centerV).setLength(view.distance / zoom).add(centerV);
+        camera.position.sub(centerV).setLength(fitDist / zoom).add(centerV);
         camera.lookAt(centerV);
         // Card hover highlight: pulse the matching dot.
         const hi = hiRef.current;
@@ -207,6 +209,10 @@ export function OrbView({ data, onRegion, highlightKey }) {
         const h = mount.clientHeight || 420;
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
+        // 13e4: re-fit the projected bounds to the new aspect.
+        view = fitOrbView(orb.shapes, w / h, 42);
+        centerV.set(view.center[0], 0, view.center[1]);
+        fitDist = view.distance;
         camera.updateProjectionMatrix();
       };
       // 13e2: size the renderer from the container, not the window.

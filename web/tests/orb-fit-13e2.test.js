@@ -2,8 +2,8 @@
 // label centroids, thin slabs.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fitOrbView, labelCentroids, projectLonLat, shapeCentroid,
-  slabDepth, ORB_FIT_MARGIN } from "../src/orb.js";
+import { fitOrbView, labelCentroids, projectLonLat, projectedOrbBounds,
+  shapeCentroid, slabDepth, ORB_FIT_MARGIN } from "../src/orb.js";
 
 const SHAPES = [
   { id: "seongdong", label: "성동", bbox: [127.0, 37.5, 127.08, 37.55] },
@@ -18,22 +18,36 @@ describe("13e2 orb camera fit", () => {
     assert.ok(Math.abs(z - 7.2) < 1e-9, `z=${z}`);
   });
 
-  it("centres on the shapes' bounds with 8 % margin", () => {
+  // 13e4 supersedes the 13e2 "exact world centre" contract: the tilted
+  // camera compresses z on screen, so the camera now centres the
+  // PROJECTED box (brief 13e4-1). World width/depth keep the 8 %
+  // margin (slab sizing still uses them).
+  it("centres the projected box, keeps 8 % world margin", () => {
     assert.equal(ORB_FIT_MARGIN, 0.08);
     const view = fitOrbView(SHAPES, 16 / 9, 42);
     // Raw bounds: lon 127.0..127.16 -> x -4.8..4.8 (width 9.6);
-    // lat 37.45..37.55 -> z 4.2..10.2 (depth 6, centre 7.2).
-    assert.ok(Math.abs(view.center[0] - 0) < 1e-9, `cx=${view.center[0]}`);
-    assert.ok(Math.abs(view.center[1] - 7.2) < 1e-9, `cz=${view.center[1]}`);
+    // lat 37.45..37.55 -> z 4.2..10.2 (depth 6).
     assert.ok(Math.abs(view.width - 9.6 * 1.08) < 1e-9, `w=${view.width}`);
     assert.ok(Math.abs(view.depth - 6 * 1.08) < 1e-9, `d=${view.depth}`);
     assert.ok(Number.isFinite(view.distance) && view.distance > 0, "distance");
+    const p = projectedOrbBounds(SHAPES, 16 / 9, 42);
+    assert.ok(Math.abs(p.centerX) <= 0.05, `centerX=${p.centerX}`);
+    assert.ok(Math.abs(p.centerY) <= 0.05, `centerY=${p.centerY}`);
+    assert.ok(Math.abs(p.fill - 0.84) < 0.02, `fill=${p.fill}`);
   });
 
-  it("frames wider viewports from closer", () => {
-    const narrow = fitOrbView(SHAPES, 1, 42);
+  // 13e4: distance adapts so the projected fill stays 84 % — aspects
+  // limited by the same axis share one distance; a portrait viewport
+  // (other axis limiting) frames from farther.
+  it("keeps 84 % fill across aspects, portrait frames from farther", () => {
+    for (const aspect of [1, 1000 / 811, 16 / 9]) {
+      const p = projectedOrbBounds(SHAPES, aspect, 42);
+      assert.ok(Math.abs(p.fill - 0.84) < 0.02, `a=${aspect} fill=${p.fill}`);
+    }
+    const portrait = fitOrbView(SHAPES, 0.6, 42);
     const wide = fitOrbView(SHAPES, 16 / 9, 42);
-    assert.ok(wide.distance < narrow.distance, `${wide.distance} < ${narrow.distance}`);
+    assert.ok(portrait.distance > wide.distance,
+      `${portrait.distance} > ${wide.distance}`);
   });
 
   it("falls back to the default bbox with no shapes", () => {
