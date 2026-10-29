@@ -387,13 +387,15 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:50"), follow: 1 });
     const html = renderCase(patch,
       "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1");
-    assert.ok(html.includes("2호선 잠실→강남 (9분, 혼잡 91% 실측)"), "ride step");
+    // 13f2: steps live in the drawer's 오늘 list (source word → badge).
+    assert.ok(html.includes("2호선 잠실→강남 (9분, 혼잡 91%)"), "ride step");
     assert.ok(html.includes("강남 환승 4분"), "transfer step");
     assert.ok(html.includes("이전 이동"), "prev trip");
     assert.ok(html.includes("다음 이동"), "next trip");
     assert.ok(html.includes("08:21–08:35 걷기"), "walk segment title");
     assert.ok(html.includes("30일 고르기"), "month strip");
-    assert.ok(html.includes("A·B 하루 같이 보기"), "strip compare toggle");
+    assert.ok(html.includes("ui-bar13f2-row"), "one-row bar");
+    assert.ok(html.includes("더 보기"), "overflow menu");
     assert.ok(html.includes("재생"), "playback stays");
   });
 

@@ -37,7 +37,7 @@ import { congestionBand, congestionPeakLine } from "../engine/journey.js";
 import { criterionTitle } from "../engine/criteria.js";
 import { chipDisplay, tickerDisplay } from "../nowcard.js";
 import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
-import { ActivityIcon } from "./timeline.jsx";
+import { ActivityIcon, ActivityLegend } from "./timeline.jsx";
 
 function useStore() {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -658,6 +658,12 @@ function LegendCard({ state, onClose }) {
             </div>
           ))}
           {legend.simNote && <Text type="supporting">{legend.simNote}</Text>}
+          {state.mode === "sim" && (
+            <VStack gap={1}>
+              <Text type="supporting">하루 색깔</Text>
+              <ActivityLegend />
+            </VStack>
+          )}
           <Text type="supporting">{legend.note}</Text>
         </VStack>
       </Card>
