@@ -8,7 +8,7 @@
 
 import { solarPosition } from "../lighting.js";
 import { daylightFactor, duskFactor } from "../sim.js";
-import { streetFogRange } from "./look.js";
+import { paintedFogRange, streetFogRange } from "./look.js";
 
 export const PHASES = ["day", "golden", "blue", "night"];
 
@@ -33,6 +33,34 @@ function mixHex(h1, h2, t) {
   const g = Math.round(lerp((h1 >> 8) & 255, (h2 >> 8) & 255, t));
   const b = Math.round(lerp(h1 & 255, h2 & 255, t));
   return (r << 16) | (g << 8) | b;
+}
+
+// Stage 14f painted light rig (sRGB): the photo hemisphere fill is blue
+// (hemiSkyDay #b8cfe4, B−R = 44) and every standard material also takes
+// blue diffuse IBL from the PMREM sky capture — with full-strength
+// shadows, shade reads blue and roads/towers go blue-grey. Painted days
+// use warm neutral fill, a warm haze fog, ≤45 % shadows and no sky IBL.
+export const PAINTED_LIGHT = {
+  hemiSky: 0xf2ece0,
+  hemiGround: 0xb9ad98,
+  fog: 0xe2d8c4,
+  shadowStrength: 0.45,
+};
+
+// Painted override over skyParams (pure): hemi/fog colours blend to the
+// warm rig by daylight so dawn/dusk stay continuous (full warm at dayF 1,
+// untouched photo colours at night); shadows cap at 45 % and the blue
+// sky environment switches off. Bloom/emissive/nightF/phase pass through.
+export function paintedSkyParams(p) {
+  const dayF = Math.min(1, Math.max(0, Number(p.dayF) || 0));
+  return {
+    ...p,
+    hemiSky: mixHex(p.hemiSky, PAINTED_LIGHT.hemiSky, dayF),
+    hemiGround: mixHex(p.hemiGround, PAINTED_LIGHT.hemiGround, dayF),
+    fogColor: mixHex(p.fogColor, PAINTED_LIGHT.fog, dayF),
+    shadowStrength: PAINTED_LIGHT.shadowStrength,
+    envIntensity: 0,
+  };
 }
 
 export const SKY_COLORS = {
@@ -103,6 +131,15 @@ export function skyParams(lat, lon, date, minute) {
 // the stop framing itself stays crisp (1.5× read milky), and ends at 6×
 // so the skyline melts into the sky colour. Pure; the rig applies it per
 // frame. Factors live in the look table (render/look.js).
-export function fogRangeFor(framedWidthM, look) {
+// Stage 14f: painted style measures from the camera distance instead — at
+// the 10° FOV the camera sits ~3.6× the framed width away, so a pure
+// width multiple starts fog just behind the target and tints the frame.
+// Photo passes no opts and keeps the width multiples exactly.
+export function fogRangeFor(framedWidthM, look, { style = "photo", camDistM = null } = {}) {
+  const hasDist = camDistM !== null && camDistM !== undefined && camDistM !== ""
+    && Number.isFinite(Number(camDistM));
+  if (style === "painted" && hasDist) {
+    return paintedFogRange(camDistM, framedWidthM);
+  }
   return streetFogRange(framedWidthM, look);
 }

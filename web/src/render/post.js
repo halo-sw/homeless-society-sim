@@ -2,7 +2,7 @@
 //
 // photo high:   Render → SAO → Bloom → Tilt-shift → Grade → Output
 // photo medium: Render → Bloom → Tilt-shift → Grade → Output
-// painted high/medium: Render → Outline+AO → Kuwahara → Bloom → Grade → Output
+// painted high/medium: Render → AO → Kuwahara → Outline → Bloom → Grade → Output
 // low (both styles): direct render (no composer).
 // Bloom strength follows the sky (lit windows / lamps at night and
 // dusk, off by day). Tilt-shift is the mild vertical-DOF
@@ -106,18 +106,59 @@ const GradeShader = {
 // Pure chain spec: the single source of truth for pass order, mirrored
 // by build() below and asserted in tests (output last, SAO before bloom,
 // SAO only with zero MSAA samples — the ANGLE Metal black-frame fix).
-// Painted (14e) replaces SAO with its own outline+AO pass and drops
+// Painted replaces SAO with its own AO + outline passes and drops
 // tilt-shift; style defaults to photo so old callers keep today's chain.
+// 14f: AO runs before Kuwahara (low-frequency, survives it) and edges
+// after (1 px lines are high-variance outliers the Kuwahara selector
+// would erase) — so Kuwahara reads the post-AO colour and the 1 px edge
+// lands on the smoothed frame at full strength.
 export function postChainSpec(level, { saoOff = false, style = "photo" } = {}) {
   const s = qualitySettings(level);
   if (!s.composer) return ["render"];
   if (style === "painted") {
-    return ["render", "outline", "kuwahara", "bloom", "grade", "output"];
+    return ["render", "ao", "kuwahara", "outline", "bloom", "grade", "output"];
   }
   const chain = ["render"];
   if (s.sao && !saoOff) chain.push("sao");
   chain.push("bloom", "tilt", "grade", "output");
   return chain;
+}
+
+// Painted debug views (14f, pure routing): ?debug=albedo renders the scene
+// unlit with the palette colours (palette-vs-lighting split), ?debug=depth
+// shows the linear depth the outlines read, ?debug=outline the edge mask.
+// Painted only — any other style or value resolves to null (normal frame).
+export function resolvePostDebug(search, style) {
+  if (style !== "painted") return null;
+  const params = search instanceof URLSearchParams
+    ? search
+    : new URLSearchParams(typeof search === "string" ? search : "");
+  const d = params.get("debug");
+  return d === "albedo" || d === "depth" || d === "outline" ? d : null;
+}
+
+// Unlit palette sweep for ?debug=albedo: every standard material becomes
+// an unlit basic with the same map/colour/vertex-colours, so the frame
+// shows the palette with no sun, fill, IBL or shadows. Idempotent per
+// material (swapped meshes read back as basic), so late journey tiles
+// join on the next frame; the flag is static, nothing restores.
+export function albedoSweep(scene) {
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const multi = Array.isArray(o.material);
+    const mats = multi ? o.material : [o.material];
+    let changed = false;
+    const next = mats.map((m) => {
+      if (!m || !m.isMeshStandardMaterial) return m;
+      changed = true;
+      return new THREE.MeshBasicMaterial({
+        color: m.color ? m.color.clone() : 0xffffff,
+        map: m.map || null,
+        vertexColors: !!m.vertexColors,
+      });
+    });
+    if (changed) o.material = multi ? next : next[0];
+  });
 }
 
 // Pure framebuffer uniformity check for the black-frame guard: true when
@@ -159,6 +200,8 @@ export function createPost(renderer, scene, camera, opts = {}) {
     grain: opts.grain === true,
     saoOff: opts.sao === false, // ?sao=0 escape hatch
     style: opts.style === "painted" ? "painted" : "photo",
+    debug: opts.debug === "albedo" || opts.debug === "depth" || opts.debug === "outline"
+      ? opts.debug : null, // ?debug= painted-only debug view
     pxParam: opts.px ?? null, // ?px= main-pass pixel factor override
     framedWidthM: null, // live framing (outline fade); set via update()
     // Stage 11: bloom threshold above window brightness (only lamps
@@ -169,7 +212,9 @@ export function createPost(renderer, scene, camera, opts = {}) {
       ? opts.gradeSaturation : DEFAULT_LOOK.gradeSaturation,
     composer: null,
     sao: null,
-    paintedPass: null,
+    aoPass: null, // painted AO (before Kuwahara; owns the depth prepass)
+    edgePass: null, // painted edges (after Kuwahara; shares AO depth)
+    debugPass: null, // lazy ?debug=depth|outline instance (any quality)
     kuwahara: null,
     bloom: null,
     tiltPass: null,
@@ -186,7 +231,8 @@ export function createPost(renderer, scene, camera, opts = {}) {
     if (!s.composer) {
       state.composer = null;
       state.sao = null;
-      state.paintedPass = null;
+      state.aoPass = null;
+      state.edgePass = null;
       state.kuwahara = null;
       state.bloom = null;
       state.tiltPass = null;
@@ -213,14 +259,19 @@ export function createPost(renderer, scene, camera, opts = {}) {
     }
     composer.addPass(new RenderPass(scene, camera));
     if (painted) {
-      const outline = new PaintedPass(scene, camera);
-      outline.setOutlineStrength(outlineStrengthFor(state.framedWidthM));
-      state.paintedPass = outline;
+      const ao = new PaintedPass(scene, camera);
+      ao.setOutlineStrength(0); // AO only — edges run after Kuwahara
+      state.aoPass = ao;
       state.sao = null;
-      composer.addPass(outline);
+      composer.addPass(ao);
       const kuwahara = new ShaderPass(KuwaharaShader(kuwaharaRadiusFor(state.level)));
       state.kuwahara = kuwahara;
       composer.addPass(kuwahara);
+      const edge = new PaintedPass(scene, camera, { shareDepthFrom: ao });
+      edge.setAOStrength(0); // edges only, on the smoothed frame
+      edge.setOutlineStrength(outlineStrengthFor(state.framedWidthM));
+      state.edgePass = edge;
+      composer.addPass(edge);
     } else if (spec.includes("sao")) {
       const sao = new SAOPass(scene, camera);
       sao.params.saoIntensity = 0.35;
@@ -294,8 +345,8 @@ export function createPost(renderer, scene, camera, opts = {}) {
         state.framedWidthM = framedWidthM;
       }
       if (!state.composer) return;
-      if (state.paintedPass) {
-        state.paintedPass.setOutlineStrength(
+      if (state.edgePass) {
+        state.edgePass.setOutlineStrength(
           outlineStrengthFor(state.framedWidthM));
       }
       if (state.bloom) {
@@ -306,6 +357,21 @@ export function createPost(renderer, scene, camera, opts = {}) {
       if (state.grade) state.grade.uniforms.time.value = state.time % 100;
     },
     render() {
+      // ?debug=albedo: unlit palette straight to the screen (no composer).
+      if (state.debug === "albedo") {
+        albedoSweep(scene);
+        renderer.render(scene, camera);
+        return;
+      }
+      // ?debug=depth|outline: linear depth / edge mask fullscreen, at any
+      // quality (the debug pass runs its own prepass, no composer).
+      if (state.debug === "depth" || state.debug === "outline") {
+        if (!state.debugPass) state.debugPass = new PaintedPass(scene, camera);
+        state.debugPass.setOutlineStrength(
+          outlineStrengthFor(state.framedWidthM));
+        state.debugPass.renderDebug(renderer, state.debug);
+        return;
+      }
       if (!state.composer) {
         renderer.render(scene, camera);
         return;

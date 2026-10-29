@@ -69,6 +69,11 @@ export const PAINTED_LOOK = {
   fogRegionalNear: 4,
   fogRegionalFar: 9,
   gradeSaturation: 1.2,
+  // 14f: lift the photo corridor darkening (0.74 → grey blocks) — the
+  // tile walls/roofs (≈ #c9c2b3 / lighter caps) already sit on the painted
+  // wall/roof split, and outlines now separate the blocks. Base-map
+  // ground/water/roads below already carry the painted targets.
+  corridorDarken: 1,
   regionalGround: 0xcfc4ad,
   regionalWater: 0x3f6f8f,
   regionalRoad: 0x5b5d60,
@@ -154,6 +159,16 @@ export function streetFogRange(framedWidthM, look = DEFAULT_LOOK) {
     near: w * num(l.fogStreetNear, DEFAULT_LOOK.fogStreetNear),
     far: w * num(l.fogStreetFar, DEFAULT_LOOK.fogStreetFar),
   };
+}
+
+// Painted fog from the camera distance, not the framed width: at the 10°
+// painted FOV the camera sits ~3.6× the framed width away, so a pure
+// width-multiple starts fog just behind the target and tints the frame.
+// near = camDist + 2×width, far = camDist + 6×width. Photo unchanged.
+export function paintedFogRange(camDistM, framedWidthM) {
+  const d = Math.max(0, num(camDistM, 0));
+  const w = Math.max(50, num(framedWidthM, 300));
+  return { near: d + 2 * w, far: d + 6 * w };
 }
 
 // Regional fog from the live camera-to-target distance (not altitude):

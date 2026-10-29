@@ -7,7 +7,7 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourOffset, zoomClampDistances } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -37,7 +37,7 @@ import { customRunId, loadCustomRun } from "./chat/idb.js";
 // the rig/material builders (night emissive via aLit, not glow quads).
 import { aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
-import { PAINTED_NIGHT_GROUND, PAINTED_WATER, capLitFraction, lerpHex, nightTint, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
+import { PAINTED_NIGHT_GROUND, PAINTED_WATER, capLitFraction, lerpHex, nightTint, paintedFogRange, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -233,8 +233,6 @@ function buildWorld(area, scene14, opts = {}) {
   const renderer = renderCtl.renderer;
   const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const scene = new THREE.Scene();
-  const streetFog0 = streetFogRange(span, LOOK);
-  scene.fog = new THREE.Fog(FOG_DAY, streetFog0.near, streetFog0.far);
   setNightGain(LOOK.nightGain);
   const wrap0 = document.getElementById("scene-wrap");
   const aspect0 = wrap0 && wrap0.clientHeight > 0
@@ -245,6 +243,12 @@ function buildWorld(area, scene14, opts = {}) {
   // must cover at least 2× that distance.
   camera.far = Math.max(span * 8, homeDist * 2);
   camera.updateProjectionMatrix();
+  // 14f: painted fog measures from the camera distance (the narrow FOV
+  // parks the camera ~3.6× the framed width away); photo keeps multiples.
+  const streetFog0 = STYLE === "painted"
+    ? paintedFogRange(homeDist, span)
+    : streetFogRange(span, LOOK);
+  scene.fog = new THREE.Fog(FOG_DAY, streetFog0.near, streetFog0.far);
   const [hox, hoy, hoz] = tourOffset(homeDist, CAM.pitchDeg, CAM.azimuth);
   camera.position.set(cx + hox, hoy + ground0, -cy + hoz);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -732,7 +736,7 @@ async function bootTour(uiMode = "tour") {
   // test uses the actual building heights (same clamp as the renderer)
   // and the settled camera pose (same offset/aspect/pitch as poseFor);
   // when no azimuth is clear, the occluders fade instead (stage 4).
-  const stopDist0 = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
+  const stopDist0 = distanceForWidth(tourFrameWidths(STYLE).stop, CAM.fovDeg, camera.aspect);
   const footprints = footprintsOf(area.buildings, origin);
   const stopTargets = plan.stops.map((s, i) => {
     const wp = legPaths[i].length > 1
@@ -790,13 +794,14 @@ async function bootTour(uiMode = "tour") {
   let tourFramedWidth = null;
   let tourLitDone = false;
   function updateTourSky() {
-    const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
+    const camDist = camera.position.distanceTo(controls.target);
+    const framedWidth = frameWidthFor(camDist, CAM.fovDeg, camera.aspect);
     tourFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
-      shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM, look: LOOK });
+      shadowSpan: 240, envKey: "tour", framedWidth, camDistM: camDist,
+      style: STYLE, maxHeightM, look: LOOK });
     tourBloom = p.bloom;
     tourEmissive = p.emissive;
     setGlobalNight(p.emissive);
@@ -927,8 +932,9 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   const stops = plan.stops;
 
   const schedule = tourSchedule(plan);
-  const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
-  const glideDist = distanceForWidth(GLIDE_FRAME_M, CAM.fovDeg, camera.aspect);
+  const frameW = tourFrameWidths(STYLE); // painted: 450 m stops, 700 m glide
+  const stopDist = distanceForWidth(frameW.stop, CAM.fovDeg, camera.aspect);
+  const glideDist = distanceForWidth(frameW.glide, CAM.fovDeg, camera.aspect);
   const state = { playing: stops.length > 0, leg: 0, legT: 0, dwell: 0, outro: 0, done: false };
   controls.enabled = !state.playing;
 
@@ -952,8 +958,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     const wp = [0, 1, 2].map((k) => path[i0][k] + (path[i1][k] - path[i0][k]) * f);
     const ahead = path[Math.min(path.length - 1, i1 + 2)];
     if (archLens) {
-      const frameW = STOP_FRAME_M + (GLIDE_FRAME_M - STOP_FRAME_M) * (1 - t);
-      const ap = archLensPose(frameW, camera.aspect, stopAzimuths[i] || TOUR_AZIMUTH);
+      const archW = frameW.stop + (frameW.glide - frameW.stop) * (1 - t);
+      const ap = archLensPose(archW, camera.aspect, stopAzimuths[i] || TOUR_AZIMUTH);
       return { pos: new THREE.Vector3(wp[0] + ap.dirX * ap.horiz, wp[1] + ap.vert, wp[2] + ap.dirZ * ap.horiz),
                look: new THREE.Vector3(wp[0], wp[1], wp[2]) };
     }
@@ -1810,13 +1816,14 @@ async function bootSim() {
   function updateLighting() {
     const m = Math.floor(minute);
     const instant = simInstant(run.meta.start_date, day, m);
-    const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
+    const camDist = camera.position.distanceTo(controls.target);
+    const framedWidth = frameWidthFor(camDist, CAM.fovDeg, camera.aspect);
     simFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
-      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM, look: LOOK });
+      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth,
+      camDistM: camDist, style: STYLE, maxHeightM, look: LOOK });
     simBloom = p.bloom;
     simEmissive = p.emissive;
     const key = `${day}:${m}`;

@@ -12,6 +12,7 @@ import {
   AUTO_DROP_FPS, AUTO_DROP_FRAMES, parseQuality, qualitySettings, shouldDropToLow,
 } from "./quality.js";
 import { resolveLook } from "./look.js";
+import { resolvePostDebug } from "./post.js";
 import { resolveStyle } from "../camera.js";
 
 export const STAT_FRAMES = [30, 120];
@@ -28,6 +29,7 @@ export function createRenderer({ canvas, params }) {
   const grain = search.get("grain") === "1";
   const sao = search.get("sao") !== "0";
   const style = resolveStyle(search); // ?style=painted (default) | photo
+  const debug = resolvePostDebug(search, style); // ?debug= painted-only view
   const px = search.get("px"); // ?px= painted pixel-factor override
   const look = resolveLook(search); // ?look=key:value,… (stage 11)
 
@@ -64,7 +66,7 @@ export function createRenderer({ canvas, params }) {
       camera = nextCamera;
       container = nextContainer;
       post = createPost(renderer, scene, camera, { quality, tilt, grain, sao,
-        style, px, bloomThreshold: look.bloomThreshold,
+        style, debug, px, bloomThreshold: look.bloomThreshold,
         gradeSaturation: look.gradeSaturation });
       ctl.fitContainer();
     },
@@ -157,6 +159,6 @@ export function createRenderer({ canvas, params }) {
   };
 
   ctl.applyPixelRatio();
-  console.log(`[render] initial quality=${quality} style=${style} px=${px ?? "auto"} tilt=${tilt} grain=${grain} sao=${sao}`);
+  console.log(`[render] initial quality=${quality} style=${style} debug=${debug ?? "off"} px=${px ?? "auto"} tilt=${tilt} grain=${grain} sao=${sao}`);
   return ctl;
 }

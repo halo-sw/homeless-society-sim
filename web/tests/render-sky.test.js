@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { dayPhase, skyParams } from "../src/render/sky.js";
+import { PAINTED_LIGHT, dayPhase, fogRangeFor, paintedSkyParams, skyParams } from "../src/render/sky.js";
 
 // Seoul, autumn (the capture dates).
 const LAT = 37.55;
@@ -78,5 +78,50 @@ describe("Seoul sky parameters", () => {
 
   it("is deterministic", () => {
     assert.deepEqual(at("16:30", 990), at("16:30", 990));
+  });
+});
+
+describe("painted light rig (14f: warm, never blue)", () => {
+  const blueLead = (h) => (h & 255) - ((h >> 16) & 255); // B−R in sRGB
+  it("pins the warm rig (sky/ground/fog near-neutral, shadows ≤ 45 %)", () => {
+    assert.equal(PAINTED_LIGHT.hemiSky, 0xf2ece0);
+    assert.equal(PAINTED_LIGHT.hemiGround, 0xb9ad98);
+    assert.equal(PAINTED_LIGHT.fog, 0xe2d8c4);
+    assert.ok(PAINTED_LIGHT.shadowStrength <= 0.45);
+  });
+  it("resolves warm neutral fill at 14:00, no sky IBL", () => {
+    const rig = paintedSkyParams(at("14:00", 840));
+    assert.equal(rig.phase, "day");
+    for (const k of ["hemiSky", "hemiGround", "fogColor"]) {
+      assert.ok(blueLead(rig[k]) <= 10, `${k} #${rig[k].toString(16)} warm`);
+    }
+    assert.ok(rig.shadowStrength <= 0.45);
+    assert.equal(rig.envIntensity, 0);
+    // Timing/phase pass through untouched.
+    const base = at("14:00", 840);
+    for (const k of ["phase", "sunColor", "bloom", "emissive", "nightF", "dayF"]) {
+      assert.equal(rig[k], base[k], k);
+    }
+  });
+  it("leaves night colours alone (the override blends by daylight)", () => {
+    const base = at("22:00", 1320);
+    const rig = paintedSkyParams(base);
+    assert.equal(rig.hemiSky, base.hemiSky);
+    assert.equal(rig.fogColor, base.fogColor);
+    assert.equal(rig.envIntensity, 0);
+  });
+});
+
+describe("fog range routing (14f)", () => {
+  it("uses camera-distance fog for painted, width multiples for photo", () => {
+    assert.deepEqual(fogRangeFor(300, null, { style: "painted", camDistM: 1070 }),
+      { near: 1670, far: 2870 });
+    // Photo: defaults and explicit style both keep the 2.5×/6× multiples.
+    assert.deepEqual(fogRangeFor(300), { near: 750, far: 1800 });
+    assert.deepEqual(fogRangeFor(300, null, { style: "photo", camDistM: 1070 }),
+      { near: 750, far: 1800 });
+    // Painted without a camera distance falls back to the multiples.
+    assert.deepEqual(fogRangeFor(300, null, { style: "painted" }),
+      { near: 750, far: 1800 });
   });
 });

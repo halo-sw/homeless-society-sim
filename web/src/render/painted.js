@@ -1,6 +1,6 @@
 // Painted-look post passes (stage 14e, browser; three.js EffectComposer).
 //
-// Painted chain: render → outline+AO → kuwahara → bloom → grade → output.
+// Painted chain: render → AO → kuwahara → outline → bloom → grade → output.
 // The outline/AO pass renders its own packed-depth prepass (RGBADepthPacking
 // override, no MSAA — the ANGLE Metal black-frame rule), then darkens
 // silhouette/roof edges (35 %, never black) and occluded pixels (≤40 %).
@@ -12,9 +12,54 @@ import * as THREE from "three";
 import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 
 // Outlines fade with distance: full strength at high zoom, gone once the
-// framed width passes 3 km so the wide view does not turn to noise.
+// framed width passes 5 km. The regional journey view (~3.5 km) keeps
+// ~45 % edges so corridor blocks still separate (14f; was 3 km = none).
 export const OUTLINE_FADE_START_M = 1500;
-export const OUTLINE_FADE_END_M = 3000;
+export const OUTLINE_FADE_END_M = 5000;
+
+// Edge + AO response (14f, single source of truth — the GLSL below
+// interpolates these, and the pure mirrors underneath are unit-tested).
+// Edges start at a 0.8 % depth step (a 10 m silhouette step at 1 km) and
+// saturate at 6 %; facade detail (a 0.3 m slab at 535 m ≈ 0.06 %) stays
+// far below. AO eps/scale track the pixel footprint, not the distance —
+// the 14e eps (0.05 + c×0.005) sat at 5 m+ in tour range and swallowed
+// every ~1 m contact shadow, so AO read as zero everywhere.
+export const EDGE_LO = 0.008;
+export const EDGE_HI = 0.06;
+export const EDGE_DARKEN = 0.35;
+export const AO_DARKEN = 0.4;
+export const AO_EPS_BASE = 0.05;
+export const AO_EPS_K = 0.0006;
+export const AO_SCL_BASE = 0.5;
+export const AO_SCL_K = 0.002;
+
+// Relative |Laplacian| of view depth (metres over metres).
+export function lapDepth(c, n, s, e, w) {
+  return Math.abs(4 * c - n - s - e - w) / Math.max(c, 1);
+}
+
+function smoothstepJS(lo, hi, x) {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+}
+
+// Outline strength 0..1 for a centre depth + 4 neighbours (mirrors GLSL).
+export function outlineEdge(c, n, s, e, w) {
+  return smoothstepJS(EDGE_LO, EDGE_HI, lapDepth(c, n, s, e, w));
+}
+
+// AO tolerance/scale at view depth c (metres), and one occlusion tap.
+export function aoEps(c) {
+  return AO_EPS_BASE + c * AO_EPS_K;
+}
+
+export function aoScale(c) {
+  return AO_SCL_BASE + c * AO_SCL_K;
+}
+
+export function aoTap(c, d) {
+  return Math.min(1, Math.max(0, (c - d - aoEps(c)) / aoScale(c)));
+}
 
 // Main-pass downscale on painted high (?px= overrides; ?px=1 disables).
 export const PAINTED_PIXEL_HIGH = 1.5;
@@ -54,6 +99,13 @@ const PaintedVert = /* glsl */`
 // Depth comes from the pass's own packed prepass (tDepth), linearised to
 // view metres; edges use the Laplacian (second derivative), so smooth
 // slopes stay clean while silhouettes and roof edges pop.
+//
+// 14f: the chain runs this shader TWICE — AO before Kuwahara, edges
+// after (outlineStrength/aoStrength gate each term). A 1 px dark line is
+// a high-variance outlier to the least-variance Kuwahara selector, so
+// edges drawn before it weaken ~4× (axis-aligned) or vanish (diagonal);
+// AO is low-frequency and survives. Thresholds/constants come from the
+// JS consts above (single source of truth).
 export const OutlineAOShader = {
   uniforms: {
     tDiffuse: { value: null },
@@ -62,6 +114,7 @@ export const OutlineAOShader = {
     cameraFar: { value: 1000 },
     resolution: { value: new THREE.Vector2(1024, 1024) },
     outlineStrength: { value: 1 },
+    aoStrength: { value: 1 },
   },
   vertexShader: PaintedVert,
   fragmentShader: /* glsl */`
@@ -72,6 +125,7 @@ export const OutlineAOShader = {
     uniform float cameraFar;
     uniform vec2 resolution;
     uniform float outlineStrength;
+    uniform float aoStrength;
     varying vec2 vUv;
 
     // View-space depth in metres (positive distance from the camera).
@@ -94,13 +148,87 @@ export const OutlineAOShader = {
       float e = viewDepth(vUv + vec2(px.x, 0.0));
       float w = viewDepth(vUv - vec2(px.x, 0.0));
       float lap = abs(4.0 * c - n - s - e - w) / max(c, 1.0);
-      float edge = smoothstep(0.02, 0.12, lap) * outlineStrength * shape;
-      col *= 1.0 - 0.35 * edge;
+      float edge = smoothstep(${EDGE_LO}, ${EDGE_HI}, lap) * outlineStrength * shape;
+      col *= 1.0 - ${EDGE_DARKEN} * edge;
       // AO: 8 directions x 2 radii (3 px, 6 px); a nearer neighbour
-      // occludes, scaled by distance. Darkens at most 40 %.
+      // occludes. Footprint-scaled eps/scale (see aoEps/aoScale), so
+      // contact shadows read at any camera distance. Darkens ≤ 40 %.
       float occ = 0.0;
-      float eps = 0.05 + c * 0.005;
-      float scl = 1.0 + c * 0.02;
+      float eps = ${AO_EPS_BASE} + c * ${AO_EPS_K};
+      float scl = ${AO_SCL_BASE} + c * ${AO_SCL_K};
+      for (int i = 0; i < 8; i++) {
+        float a = float(i) * 0.7853982;
+        vec2 dir = vec2(cos(a), sin(a));
+        float d3 = viewDepth(vUv + dir * 3.0 * px);
+        float d6 = viewDepth(vUv + dir * 6.0 * px);
+        occ += 0.6 * clamp((c - d3 - eps) / scl, 0.0, 1.0);
+        occ += 0.4 * clamp((c - d6 - eps) / scl, 0.0, 1.0);
+      }
+      occ = clamp(occ / 8.0, 0.0, 1.0) * shape * aoStrength;
+      col *= 1.0 - ${AO_DARKEN} * occ;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+};
+
+// Fullscreen debug views (?debug=depth|outline, 14f): the linear depth
+// the outlines read (near black → far white), and the edge mask itself
+// (white edges on black, occluded pixels red-tinted). Both run the same
+// packed prepass as the main shader, straight to the screen.
+const DebugDepthGLSL = /* glsl */`
+  #include <packing>
+  uniform sampler2D tDepth;
+  uniform float cameraNear;
+  uniform float cameraFar;
+  varying vec2 vUv;
+  float viewDepth(vec2 uv) {
+    float d = unpackRGBAToDepth(texture2D(tDepth, uv));
+    return -perspectiveDepthToViewZ(d, cameraNear, cameraFar);
+  }
+`;
+
+export const DebugDepthShader = {
+  uniforms: {
+    tDepth: { value: null },
+    cameraNear: { value: 1 },
+    cameraFar: { value: 1000 },
+  },
+  vertexShader: PaintedVert,
+  fragmentShader: DebugDepthGLSL + /* glsl */`
+    void main() {
+      float c = viewDepth(vUv);
+      float t = clamp((c - cameraNear) / max(cameraFar - cameraNear, 1.0), 0.0, 1.0);
+      gl_FragColor = vec4(vec3(t), 1.0);
+    }
+  `,
+};
+
+export const DebugEdgeShader = {
+  uniforms: {
+    tDepth: { value: null },
+    cameraNear: { value: 1 },
+    cameraFar: { value: 1000 },
+    resolution: { value: new THREE.Vector2(1024, 1024) },
+    outlineStrength: { value: 1 },
+  },
+  vertexShader: PaintedVert,
+  fragmentShader: DebugDepthGLSL + /* glsl */`
+    uniform vec2 resolution;
+    uniform float outlineStrength;
+    void main() {
+      vec2 px = 1.0 / resolution;
+      float c = viewDepth(vUv);
+      float sky = step(0.999999, unpackRGBAToDepth(texture2D(tDepth, vUv)));
+      float shape = 1.0 - sky;
+      float n = viewDepth(vUv + vec2(0.0, px.y));
+      float s = viewDepth(vUv - vec2(0.0, px.y));
+      float e = viewDepth(vUv + vec2(px.x, 0.0));
+      float w = viewDepth(vUv - vec2(px.x, 0.0));
+      float lap = abs(4.0 * c - n - s - e - w) / max(c, 1.0);
+      float edge = smoothstep(${EDGE_LO}, ${EDGE_HI}, lap) * outlineStrength * shape;
+      float occ = 0.0;
+      float eps = ${AO_EPS_BASE} + c * ${AO_EPS_K};
+      float scl = ${AO_SCL_BASE} + c * ${AO_SCL_K};
       for (int i = 0; i < 8; i++) {
         float a = float(i) * 0.7853982;
         vec2 dir = vec2(cos(a), sin(a));
@@ -110,8 +238,7 @@ export const OutlineAOShader = {
         occ += 0.4 * clamp((c - d6 - eps) / scl, 0.0, 1.0);
       }
       occ = clamp(occ / 8.0, 0.0, 1.0) * shape;
-      col *= 1.0 - 0.40 * occ;
-      gl_FragColor = vec4(col, 1.0);
+      gl_FragColor = vec4(vec3(edge) + vec3(occ * 0.7, 0.0, 0.0), 1.0);
     }
   `,
 };
@@ -166,13 +293,24 @@ export function KuwaharaShader(radius) {
 // shadows skipped — the colour pass already solved them this frame), then
 // the fullscreen outline/AO shader. Objects flagged userData.noPaintedDepth
 // (lamp halos, aviation dots) sit out of the depth render.
+//
+// 14f: the painted chain holds TWO instances — AO before Kuwahara, edges
+// after (see the shader note). The edge instance shares the AO pass's
+// depth target ({ shareDepthFrom }) so the prepass still runs once per
+// frame; outlineStrength/aoStrength gate each term per instance.
 export class PaintedPass extends Pass {
-  constructor(scene, camera) {
+  constructor(scene, camera, { shareDepthFrom = null } = {}) {
     super();
     this.needsSwap = true;
     this.scene = scene;
     this.camera = camera;
-    this.depthTarget = new THREE.WebGLRenderTarget(2, 2, { samples: 0 });
+    if (shareDepthFrom) {
+      this.depthTarget = shareDepthFrom.depthTarget;
+      this.ownsDepth = false;
+    } else {
+      this.depthTarget = new THREE.WebGLRenderTarget(2, 2, { samples: 0 });
+      this.ownsDepth = true;
+    }
     this.depthOverride = new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking,
     });
@@ -186,12 +324,36 @@ export class PaintedPass extends Pass {
     });
     this.fsQuad = new FullScreenQuad(this.material);
     this.hidden = [];
+    // Fullscreen debug quads (?debug=depth|outline), one material each.
+    this.depthDebug = {
+      uniforms: THREE.UniformsUtils.clone(DebugDepthShader.uniforms),
+      quad: null,
+    };
+    this.depthDebug.quad = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: this.depthDebug.uniforms,
+      vertexShader: DebugDepthShader.vertexShader,
+      fragmentShader: DebugDepthShader.fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+    }));
+    this.edgeDebug = {
+      uniforms: THREE.UniformsUtils.clone(DebugEdgeShader.uniforms),
+      quad: null,
+    };
+    this.edgeDebug.quad = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: this.edgeDebug.uniforms,
+      vertexShader: DebugEdgeShader.vertexShader,
+      fragmentShader: DebugEdgeShader.fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+    }));
   }
 
   setSize(w, h) {
     const W = Math.max(2, Math.round(w));
     const H = Math.max(2, Math.round(h));
-    this.depthTarget.setSize(W, H);
+    // The shared target is the owner's to resize (same size either way).
+    if (this.ownsDepth) this.depthTarget.setSize(W, H);
     this.uniforms.resolution.value.set(W, H);
   }
 
@@ -199,7 +361,11 @@ export class PaintedPass extends Pass {
     this.uniforms.outlineStrength.value = k;
   }
 
-  render(renderer, writeBuffer, readBuffer) {
+  setAOStrength(k) {
+    this.uniforms.aoStrength.value = k;
+  }
+
+  renderDepthPrepass(renderer) {
     const scene = this.scene;
     const camera = this.camera;
     // Depth prepass (packed RGBA, no shadow-map work).
@@ -229,6 +395,13 @@ export class PaintedPass extends Pass {
     scene.overrideMaterial = prevOverride;
     scene.background = prevBackground;
     renderer.shadowMap.autoUpdate = shadows;
+  }
+
+  render(renderer, writeBuffer, readBuffer) {
+    const camera = this.camera;
+    // The edge instance reuses the AO pass's prepass (same frame, same
+    // camera — the composer runs the AO instance first).
+    if (this.ownsDepth) this.renderDepthPrepass(renderer);
     // Outline + AO over the colour buffer.
     this.uniforms.tDiffuse.value = readBuffer.texture;
     this.uniforms.tDepth.value = this.depthTarget.texture;
@@ -239,10 +412,33 @@ export class PaintedPass extends Pass {
     this.fsQuad.render(renderer);
   }
 
+  // Fullscreen debug view (?debug=depth|outline): own prepass at the live
+  // drawing-buffer size, then the debug shader straight to the screen —
+  // no composer, so it works at every quality level.
+  renderDebug(renderer, mode) {
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.setSize(size.x, size.y);
+    this.renderDepthPrepass(renderer);
+    const dbg = mode === "outline" ? this.edgeDebug : this.depthDebug;
+    dbg.uniforms.tDepth.value = this.depthTarget.texture;
+    dbg.uniforms.cameraNear.value = this.camera.near;
+    dbg.uniforms.cameraFar.value = this.camera.far;
+    if (dbg.uniforms.resolution) {
+      dbg.uniforms.resolution.value.set(size.x, size.y);
+    }
+    if (dbg.uniforms.outlineStrength) {
+      dbg.uniforms.outlineStrength.value = this.uniforms.outlineStrength.value;
+    }
+    renderer.setRenderTarget(null);
+    dbg.quad.render(renderer);
+  }
+
   dispose() {
-    this.depthTarget.dispose();
+    if (this.ownsDepth) this.depthTarget.dispose();
     this.depthOverride.dispose();
     this.material.dispose();
     this.fsQuad.dispose();
+    this.depthDebug.quad.dispose();
+    this.edgeDebug.quad.dispose();
   }
 }

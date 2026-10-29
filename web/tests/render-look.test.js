@@ -3,7 +3,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LOOK, PAINTED_LOOK, PAINTED_NIGHT_GROUND, capLitFraction, lerpHex, nightTint, parseLookParam, regionalFogRange,
+import { DEFAULT_LOOK, PAINTED_LOOK, PAINTED_NIGHT_GROUND, capLitFraction, lerpHex, nightTint, paintedFogRange, parseLookParam, regionalFogRange,
   resolveLook, streetFogRange } from "../src/render/look.js";
 
 describe("look parsing (?look=key:value,…)", () => {
@@ -90,6 +90,7 @@ describe("look parsing (?look=key:value,…)", () => {
       fogRegionalNear: 4,
       fogRegionalFar: 9,
       gradeSaturation: 1.2,
+      corridorDarken: 1, // 14f: no photo darkening on corridor tiles
       regionalGround: 0xcfc4ad,
       regionalWater: 0x3f6f8f,
       regionalRoad: 0x5b5d60,
@@ -122,6 +123,21 @@ describe("fog ranges", () => {
     assert.deepEqual(streetFogRange(null), { near: 750, far: 1800 });
     const r = streetFogRange(300, { ...DEFAULT_LOOK, fogStreetNear: 3 });
     assert.deepEqual(r, { near: 900, far: 1800 });
+  });
+
+  it("measures painted fog from the camera distance (14f: near = d+2w, far = d+6w)", () => {
+    // Tour stop framing: 300 m wide at ~1070 m out — fog must start well
+    // behind the target (old 4×-width near sat just behind it and tinted
+    // the whole frame at the 10° painted FOV).
+    assert.deepEqual(paintedFogRange(1070, 300), { near: 1670, far: 2870 });
+    assert.deepEqual(paintedFogRange(6400, 1800), { near: 10000, far: 17200 });
+    for (const [d, w] of [[500, 150], [2500, 700], [12000, 3500]]) {
+      const r = paintedFogRange(d, w);
+      assert.ok(r.near > d, `near ${r.near} beyond the target at ${d}`);
+      assert.ok(r.far > r.near, "far beyond near");
+    }
+    assert.deepEqual(paintedFogRange(null, null), { near: 600, far: 1800 });
+    assert.deepEqual(paintedFogRange(-50, 300), { near: 600, far: 1800 });
   });
 
   it("derives regional fog from the camera distance with far ≥ 6×", () => {
@@ -163,6 +179,11 @@ describe("painted fog + night (14e)", () => {
       assert.ok(r.near >= 4 * d, `regional near ${r.near} >= 4×${d}`);
       assert.ok(r.far >= 9 * d, `regional far ${r.far} >= 9×${d}`);
     }
+  });
+
+  it("lifts the corridor darkening in painted only (14f)", () => {
+    assert.equal(resolveLook("", "painted").corridorDarken, 1);
+    assert.equal(resolveLook("", "photo").corridorDarken, 0.74);
   });
 
   it("grades painted frames at 1.2 saturation", () => {
