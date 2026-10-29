@@ -81,3 +81,63 @@ F05/M02는 clinic 이동으로 대조한다.
 - `cd web && node --test tests/verify-*.test.js`: 76 pass, 0 fail.
 - `npm test`: 1000 pass, 1 fail — `share.test.js`의 "result card on the real demo build" 1건으로,
   다른 단계의 변경 때문이며 verify 파일과는 무관하다(verify를 import하는 건 verify 테스트뿐).
+
+## 16b — 오케스트레이터 최종 검증 수정 (2026-10-30)
+
+16a를 Python 참조·실제 30일 런과 대조한 결과의 두 회귀를 수정. 브랜치 `verify-16a` 계속.
+
+### 1. 한글 매칭: 참조와 같은 substring + exclude + 페르소나 타이브레이크
+
+- 통단어 규칙은 1음절 한글 키워드로 복귀, 2음절 이상은 Python 참조와 같은 substring
+  ("층간소음", "까지", "미끄럼" 모두 적중).
+- 열린 감사 구멍은 데이터로 차단: `ground_truth.json`에 항목별 `exclude` 추가
+  (F05·M02 `["병원비"]`, F02 `["투자"]`, C09 `["아침 식사", "아침 메뉴"]`).
+  사용자 id·라벨·키워드·가중치·합격 조건은 불변.
+- 타이브레이크: 공통 should와 페르소나 항목이 한 라인을 놓고 충돌하면 페르소나 항목이
+  차지 ("유모차로 엘리베이터…" → F04, "욕실 낙상 위험" → M03). 공통 must는 여전히
+  페르소나 should를 이긴다 ("층간소음이 심한지" → C03). "엘리베이터 대기" young_family는
+  C09 → F04로 변경.
+
+자연 체크리스트 (Python vs JS, `web/tests/fixtures/verify-natural.json`):
+
+| persona | Python passed / must / weighted | JS passed / must / weighted |
+|---|---|---|
+| young_family | true / 1.0 / 0.88 | true / 1.0 / 0.8 |
+| newlywed_couple | false / 1.0 / 0.73 | false / 1.0 / 0.73 |
+| multigen_family | false / 1.0 / 0.79 | false / 1.0 / 0.75 |
+| pet_owner | false / 1.0 / 0.75 | false / 1.0 / 0.75 |
+| remote_worker | false / 1.0 / 0.75 | false / 1.0 / 0.75 |
+
+JS weighted가 낮은 것은 일대일 매칭 탓으로 전부 0.1 이내
+(young: F06이 3번 라인을 C03에, C09가 7번 라인을 F04에 내줌, −0.08;
+multigen: C09, −0.04; 나머지 3종은 Python과 동일).
+16a 감사 트랩은 전부 여전히 미적중 (병원비·안전한 투자·아침 식사 메뉴는 exclude로,
+향후·방향·짐작·parking·recall·부정·샐러드는 기존 규칙으로).
+"주차장(parking)"은 주차로 C09에 적중하는데 Python 참조와 동일하다
+(주차는 C09의 정당한 키워드이고, 트랩이던 F03 "park"는 여전히 차단).
+
+### 2. 엔진값: 가구 door-to-door
+
+- 가구원 = `totals.per_member` 키 중 시뮬레이션 이웃 제외 (run의 `household`/`background`
+  플래그 우선, 없으면 `b` 접두사).
+- C01 = 통근하는 가구원의 편도 door-to-door 평균
+  (`commute_walk_minutes + commute_ride_minutes` / 편도 통근 수),
+  편도 = 해당 구성원의 `purpose: "commute"` 이동과 `kind: "ride"` 외출이 찍힌
+  (day, 오전|오후) distinct (오전 = 12:00 이전). N01은 구성원별 동일 값.
+  C05/F01/F03/F05/M02/P02는 가구원 이동만 평균.
+- 실측: `demo-two-homes-A` C01 42.7, `demo-two-homes-B` C01 16.5,
+  `persona-newlywed-couple-B` N01 h1 46.5, `persona-dual-income-child-A` C01 42.7.
+  손계산 러티니 (도보 10 + 지하철 30 + 도보 5 편도, 왕복) → C01 45.
+- `verifyReport`로 dual-income-child-A에 C01 43.6분 주장 → 숫자 실패 없음,
+  10.3분(이웃 평균 시절 값) 주장 → 숫자 실패 1건.
+
+### 매치하지 못한 것
+
+- 없음. 자연 체크리스트 5종 전부 passed·must 일치, weighted 0.1 이내.
+  엔진값 4종 전부 정확히 일치.
+
+### 테스트
+
+- `cd web && node --test tests/verify-*.test.js`: 99 pass, 0 fail.
+- `npm test`: 1023 pass, 1 fail — stage 15의 `share.test.js`
+  "result card on the real demo build" 1건만이며 verify와 무관.
