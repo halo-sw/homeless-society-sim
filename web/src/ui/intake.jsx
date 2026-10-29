@@ -21,34 +21,48 @@ function SaidBadge({ said }) {
   return <Badge variant="blue" label={SAID_VALUE_BADGE} />;
 }
 
-function Stepper({ value, min, max, step, unit, onChange }) {
+function Stepper({ value, min, max, step, unit, placeholder, startValue, onChange }) {
+  // 13e2: value may be null (not said yet) — show the placeholder and
+  // let the first press land on startValue instead of inventing a number.
+  const clamp = (n) => Math.min(max, Math.max(min, n));
+  const bump = (dir) => {
+    if (value === null || value === undefined) {
+      onChange(clamp(startValue ?? min));
+      return;
+    }
+    onChange(clamp(value + dir * step));
+  };
   return (
     <HStack gap={1} vAlign="center">
-      <Button size="sm" variant="secondary" label="−"
-        onClick={() => onChange(Math.max(min, value - step))} />
-      <Text hasTabularNumbers>{`${value}${unit || ""}`}</Text>
-      <Button size="sm" variant="secondary" label="+"
-        onClick={() => onChange(Math.min(max, value + step))} />
+      <Button size="sm" variant="secondary" label="−" onClick={() => bump(-1)} />
+      {value === null || value === undefined ? (
+        <Text type="supporting">{placeholder || "아직 몰라요"}</Text>
+      ) : (
+        <Text hasTabularNumbers>{`${value}${unit || ""}`}</Text>
+      )}
+      <Button size="sm" variant="secondary" label="+" onClick={() => bump(1)} />
     </HStack>
   );
 }
 
 function IncomeStep({ value, onChange }) {
-  const v = value || { kind: "annual", amount: 40000000 };
-  const [kind, setKind] = useState(v.kind);
-  const [amount, setAmount] = useState(v.amount);
+  const [kind, setKind] = useState((value && value.kind) || "annual");
+  const [amount, setAmount] = useState(value ? value.amount ?? null : null);
   const commit = (k, a) => onChange({ kind: k, amount: a });
   return (
     <VStack gap={2}>
       <HStack gap={1}>
         <Button size="sm" variant={kind === "annual" ? "primary" : "secondary"}
-          label="연봉" onClick={() => { setKind("annual"); commit("annual", amount); }} />
+          label="연봉" onClick={() => { setKind("annual"); if (amount !== null) commit("annual", amount); }} />
         <Button size="sm" variant={kind === "monthly" ? "primary" : "secondary"}
-          label="세후 월급" onClick={() => { setKind("monthly"); commit("monthly", amount); }} />
+          label="세후 월급" onClick={() => { setKind("monthly"); if (amount !== null) commit("monthly", amount); }} />
       </HStack>
-      <Stepper value={Math.round(amount / 10000)} min={0} max={20000} step={100}
-        unit="만 원" onChange={(man) => { setAmount(man * 10000); commit(kind, man * 10000); }} />
-      <Text type="supporting" hasTabularNumbers>{fmtWon(amount)}</Text>
+      <Stepper value={amount === null ? null : Math.round(amount / 10000)} min={0} max={20000} step={100}
+        unit="만 원" placeholder="예: 4,000만 원" startValue={4000}
+        onChange={(man) => { setAmount(man * 10000); commit(kind, man * 10000); }} />
+      {amount !== null && (
+        <Text type="supporting" hasTabularNumbers>{fmtWon(amount)}</Text>
+      )}
     </VStack>
   );
 }
@@ -96,33 +110,34 @@ function AreasStep({ value, onChange }) {
 }
 
 function LivingStep({ value, onChange }) {
-  const [amount, setAmount] = useState(value ?? 1500000);
+  const [amount, setAmount] = useState(value ?? null);
   return (
     <VStack gap={1}>
-      <Stepper value={Math.round(amount / 10000)} min={0} max={1000} step={10}
-        unit="만 원" onChange={(man) => { setAmount(man * 10000); onChange(man * 10000); }} />
-      <Text type="supporting" hasTabularNumbers>{`한 달 ${fmtWon(amount)}`}</Text>
+      <Stepper value={amount === null ? null : Math.round(amount / 10000)} min={0} max={1000} step={10}
+        unit="만 원" placeholder="예: 150만 원" startValue={150}
+        onChange={(man) => { setAmount(man * 10000); onChange(man * 10000); }} />
+      <Text type="supporting" hasTabularNumbers>{amount === null ? "한 달 생활비를 정해주세요" : `한 달 ${fmtWon(amount)}`}</Text>
     </VStack>
   );
 }
 
 function CommuteStep({ value, onChange }) {
-  const v = value || { maxMin: 40, mode: "transit" };
-  const [maxMin, setMaxMin] = useState(v.maxMin);
-  const [mode, setMode] = useState(v.mode);
+  const [maxMin, setMaxMin] = useState(value ? value.maxMin ?? null : null);
+  const [mode, setMode] = useState((value && value.mode) || "transit");
   const commit = (m, md) => onChange({ maxMin: m, mode: md });
   return (
     <VStack gap={2}>
       <HStack gap={1} vAlign="center">
         <Text type="supporting">최대</Text>
         <Stepper value={maxMin} min={10} max={120} step={5} unit="분"
+          placeholder="예: 40분" startValue={40}
           onChange={(n) => { setMaxMin(n); commit(n, mode); }} />
       </HStack>
       <div className="ui-intake-row">
         {COMMUTE_MODES.map((m) => (
           <Button key={m.id} size="sm"
             variant={mode === m.id ? "primary" : "secondary"}
-            label={m.label} onClick={() => { setMode(m.id); commit(maxMin, m.id); }} />
+            label={m.label} onClick={() => { setMode(m.id); if (maxMin !== null) commit(maxMin, m.id); }} />
         ))}
       </div>
     </VStack>
@@ -132,9 +147,9 @@ function CommuteStep({ value, onChange }) {
 function BudgetStep({ value, onChange }) {
   const v = value || { tenure: "jeonse", unknown: true };
   const [tenure, setTenure] = useState(v.tenure || "jeonse");
-  const [deposit, setDeposit] = useState(v.depositMax ?? 300000000);
-  const [monthly, setMonthly] = useState(v.monthlyMax ?? 1000000);
-  const [price, setPrice] = useState(v.priceMax ?? 600000000);
+  const [deposit, setDeposit] = useState(v.depositMax ?? null);
+  const [monthly, setMonthly] = useState(v.monthlyMax ?? null);
+  const [price, setPrice] = useState(v.priceMax ?? null);
   const [unknown, setUnknown] = useState(v.unknown !== false
     && v.depositMax == null && v.monthlyMax == null && v.priceMax == null);
   const commit = (t, d, m, p, u) => onChange(
@@ -153,29 +168,33 @@ function BudgetStep({ value, onChange }) {
       {!unknown && tenure !== "wolse" && tenure !== "trade" && (
         <HStack gap={1} vAlign="center">
           <Text type="supporting">보증금 상한</Text>
-          <Stepper value={Math.round(deposit / 100000000 * 10) / 10} min={0} max={20} step={0.5}
-            unit="억" onChange={(eok) => { setDeposit(eok * 100000000); commit(tenure, eok * 100000000, monthly, price, false); }} />
+          <Stepper value={deposit === null ? null : Math.round(deposit / 100000000 * 10) / 10} min={0} max={20} step={0.5}
+            unit="억" placeholder="예: 3억" startValue={3}
+            onChange={(eok) => { setDeposit(eok * 100000000); commit(tenure, eok * 100000000, monthly, price, false); }} />
         </HStack>
       )}
       {!unknown && tenure === "wolse" && (
         <VStack gap={1}>
           <HStack gap={1} vAlign="center">
             <Text type="supporting">보증금</Text>
-            <Stepper value={Math.round(deposit / 10000)} min={0} max={20000} step={500}
-              unit="만" onChange={(man) => { setDeposit(man * 10000); commit(tenure, man * 10000, monthly, price, false); }} />
+            <Stepper value={deposit === null ? null : Math.round(deposit / 10000)} min={0} max={20000} step={500}
+              unit="만" placeholder="예: 5,000만" startValue={5000}
+              onChange={(man) => { setDeposit(man * 10000); commit(tenure, man * 10000, monthly, price, false); }} />
           </HStack>
           <HStack gap={1} vAlign="center">
             <Text type="supporting">월세</Text>
-            <Stepper value={Math.round(monthly / 10000)} min={0} max={500} step={10}
-              unit="만" onChange={(man) => { setMonthly(man * 10000); commit(tenure, deposit, man * 10000, price, false); }} />
+            <Stepper value={monthly === null ? null : Math.round(monthly / 10000)} min={0} max={500} step={10}
+              unit="만" placeholder="예: 100만" startValue={100}
+              onChange={(man) => { setMonthly(man * 10000); commit(tenure, deposit, man * 10000, price, false); }} />
           </HStack>
         </VStack>
       )}
       {!unknown && tenure === "trade" && (
         <HStack gap={1} vAlign="center">
           <Text type="supporting">매매가 상한</Text>
-          <Stepper value={Math.round(price / 100000000 * 10) / 10} min={0} max={30} step={0.5}
-            unit="억" onChange={(eok) => { setPrice(eok * 100000000); commit(tenure, deposit, monthly, eok * 100000000, false); }} />
+          <Stepper value={price === null ? null : Math.round(price / 100000000 * 10) / 10} min={0} max={30} step={0.5}
+            unit="억" placeholder="예: 6억" startValue={6}
+            onChange={(eok) => { setPrice(eok * 100000000); commit(tenure, deposit, monthly, eok * 100000000, false); }} />
         </HStack>
       )}
     </VStack>
