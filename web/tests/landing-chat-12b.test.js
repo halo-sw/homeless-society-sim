@@ -87,6 +87,16 @@ describe("profile card", () => {
     assert.ok(text.includes(EXAMPLE_PROFILE_LABEL));
     assert.ok(text.includes("출근 상한?") || text.includes("집 크기?"));
   });
+
+  it("summarises said values as chips with a count line and 자세히", () => {
+    const html = render(React.createElement(chat.ProfileCard, { profile }));
+    const text = textOf(html);
+    assert.ok(text.includes("1인"), "household chip");
+    assert.ok(text.includes("판교 출근"), "workplace chip");
+    assert.ok(text.includes("전세 2억 원 이하"), "tenure+budget chip");
+    assert.match(text, /모르는 값 \d+개 — 채우면 더 정확해요/);
+    assert.ok(text.includes("자세히"), "full table disclosure");
+  });
 });
 
 describe("candidates card", () => {

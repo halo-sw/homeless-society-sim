@@ -98,9 +98,34 @@ const CHIP_STARTER = {
 
 // --- ProfileCard ------------------------------------------------------------------
 
+// Said values as one summary line ("2인 · 강남 출근 · 전세 4억 이하 ·
+// 59㎡ 이상"): household, workplace, tenure+budget, size, commute cap.
+function customerChips(profile) {
+  const rows = fieldRows(profile);
+  const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+  const set = (r) => r && r.text !== "아직" && r.text !== "아직 몰라요";
+  const out = [];
+  if (set(by.members)) out.push(by.members.text);
+  if (set(by.workplaces)) {
+    const v = by.workplaces.value;
+    const known = Array.isArray(v) && v[0] && v[0].resolved;
+    out.push(known ? `${by.workplaces.text} 출근` : by.workplaces.text);
+  }
+  if (set(by.tenure)) {
+    const t = by.tenure.value;
+    const budget = t === "jeonse" ? by.depositMax
+      : t === "wolse" ? by.monthlyMax : t === "trade" ? by.priceMax : null;
+    out.push(set(budget) ? `${by.tenure.text} ${budget.text} 이하` : by.tenure.text);
+  }
+  if (set(by.sizeMin)) out.push(`${by.sizeMin.text} 이상`);
+  if (set(by.commuteMax)) out.push(`출퇴근 ${by.commuteMax.text} 이내`);
+  return out;
+}
+
 export function ProfileCard({ profile, example, onChip }) {
   const rows = fieldRows(profile);
   const chips = missingChips(profile);
+  const said = customerChips(profile);
   return (
     <Card padding={3}>
       <VStack gap={2}>
@@ -108,26 +133,16 @@ export function ProfileCard({ profile, example, onChip }) {
           <Heading level={4}>고객님 상황</Heading>
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
         </HStack>
-        <MetadataList>
-          {rows.map((r) => (
-            <MetadataListItem key={r.key} label={r.label}>
-              <VStack gap={0}>
-                <HStack gap={1} vAlign="center" wrap="wrap">
-                  <Text hasTabularNumbers>{r.text}</Text>
-                  {sourceKo(r.source) !== "" && (
-                    <Text type="supporting">{sourceKo(r.source)}</Text>
-                  )}
-                </HStack>
-                {r.note && r.note !== r.label && r.note !== r.text && (
-                  <Text type="supporting">{r.note}</Text>
-                )}
-              </VStack>
-            </MetadataListItem>
-          ))}
-        </MetadataList>
+        {said.length > 0 && (
+          <div className="ui-tags">
+            {said.map((s, i) => (
+              <span key={i} className="ui-tag">{s}</span>
+            ))}
+          </div>
+        )}
         {chips.length > 0 && (
           <VStack gap={1}>
-            <Text type="supporting">빠진 것을 채우면 후보가 더 정확해져요</Text>
+            <Text type="supporting">{`모르는 값 ${chips.length}개 — 채우면 더 정확해요`}</Text>
             <HStack gap={1} vAlign="center" wrap="wrap">
               {chips.map((c) => (
                 <Button key={c.field} size="sm" variant="secondary"
@@ -137,6 +152,28 @@ export function ProfileCard({ profile, example, onChip }) {
             </HStack>
           </VStack>
         )}
+        <details className="ui-section">
+          <summary className="ui-section-head">자세히</summary>
+          <div className="ui-section-body">
+            <MetadataList>
+              {rows.map((r) => (
+                <MetadataListItem key={r.key} label={r.label}>
+                  <VStack gap={0}>
+                    <HStack gap={1} vAlign="center" wrap="wrap">
+                      <Text hasTabularNumbers>{r.text}</Text>
+                      {sourceKo(r.source) !== "" && (
+                        <Text type="supporting">{sourceKo(r.source)}</Text>
+                      )}
+                    </HStack>
+                    {r.note && r.note !== r.label && r.note !== r.text && (
+                      <Text type="supporting">{r.note}</Text>
+                    )}
+                  </VStack>
+                </MetadataListItem>
+              ))}
+            </MetadataList>
+          </div>
+        </details>
       </VStack>
     </Card>
   );

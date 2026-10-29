@@ -175,8 +175,8 @@ export function MapTools({ state, legendOpen, onLegend }) {
       ) : (
         <>
           <HStack gap={1} vAlign="center">
-            <Text type="supporting">지역:</Text>
-            <Selector label="지역 선택" value={state.area.id}
+            <Text type="supporting">지역</Text>
+            <Selector label="지역" isLabelHidden value={state.area.id}
               onChange={(v) => store.act("selectArea", v)}
               options={state.areaOptions} hasSearch size="sm" />
           </HStack>

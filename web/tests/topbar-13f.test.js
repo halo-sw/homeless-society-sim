@@ -83,7 +83,8 @@ describe("13f-1 shared top bar (SSR, no DOM)", () => {
         areaOptions, tourPlaying: true },
       legendOpen: false, onLegend: () => {},
     }));
-    assert.ok(html.includes("지역:"), "area select prefix");
+    assert.ok(html.includes("지역"), "area select prefix");
+    assert.ok(!html.includes("지역 선택"), "one label only");
     assert.ok(html.includes("송파·잠실"), "current area label");
     assert.ok(html.includes("일시정지"), "pause while playing");
     assert.ok(html.includes("범례"), "legend toggle");
