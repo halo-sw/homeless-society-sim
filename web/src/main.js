@@ -37,7 +37,7 @@ import { customRunId, loadCustomRun } from "./chat/idb.js";
 // the rig/material builders (night emissive via aLit, not glow quads).
 import { PAINTED_ROOF_HEX, PAINTED_WALL_HEX, aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight, tourOfficeFraction } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
-import { PAINTED_NIGHT_GROUND, PAINTED_NIGHT_ROAD_GLOW, PAINTED_NIGHT_ROAD_WARM, PAINTED_NIGHT_WALL, PAINTED_WATER, capLitFraction, lerpHex, nightTint, paintedFogRange, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
+import { PAINTED_NIGHT_GROUND, PAINTED_NIGHT_ROAD_LIT, PAINTED_NIGHT_ROAD_WARM, PAINTED_NIGHT_WALL, PAINTED_WATER, capLitFraction, lerpHex, nightEmissiveHex, nightTint, paintedFogRange, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -599,12 +599,15 @@ function buildWorld(area, scene14, opts = {}) {
     }
   }
 
-  // Painted night (14e, 17b): ground-plane surfaces lerp toward navy
-  // after dusk; carriageways keep a warm lamp-lit band plus a faint warm
-  // emissive (moonlight alone would leave them black), walls/roofs a dark
-  // slate, so lit windows pop without the blocks going black. Entries
-  // carry their own night target; `base` composes with an existing day
-  // tint (facades) instead of overwriting it. Photo: untouched.
+  // Painted night (14e, 17b, 17c): ground-plane surfaces lerp toward
+  // navy after dusk; carriageways keep a warm lamp-lit band, walls/roofs
+  // a dark slate, so lit windows pop without the blocks going black.
+  // Entries carry their own night target; `base` composes with an
+  // existing day tint (facades) instead of overwriting it. 17c: every
+  // entry also self-lights to its night albedo — moonlight leaves the
+  // diffuse near black (the GPU capture read ground AND glow-roads as
+  // black), so the emissive carries the authored night colour.
+  // Photo: untouched.
   const nightMats = [];
   if (STYLE === "painted") {
     nightMats.push({ mat: base.material, day: baseDayColor, direct: true });
@@ -616,7 +619,7 @@ function buildWorld(area, scene14, opts = {}) {
       const cls = m.userData.roadCls;
       if (cls === "road") {
         nightMats.push({ mat: m.material, day: LOOK.sceneRoad, direct: false,
-          night: PAINTED_NIGHT_ROAD_WARM, glow: PAINTED_NIGHT_ROAD_GLOW });
+          night: PAINTED_NIGHT_ROAD_WARM, glow: PAINTED_NIGHT_ROAD_LIT });
         continue;
       }
       if (cls === "rail") continue;
@@ -651,8 +654,8 @@ function buildWorld(area, scene14, opts = {}) {
         if (base) mat.color.setRGB(base[0] * k[0], base[1] * k[1], base[2] * k[2]);
         else mat.color.setRGB(...k);
       }
-      if (glow !== undefined && mat.emissive) {
-        mat.emissive.setHex(lerpHex(0x000000, glow, t));
+      if (mat.emissive) {
+        mat.emissive.setHex(lerpHex(0x000000, nightEmissiveHex({ night, glow }), t));
       }
     }
   }

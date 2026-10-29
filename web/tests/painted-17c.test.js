@@ -4,7 +4,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { deltaE76, gradePixel, hexToU8, resolvePaintedPixel } from "../src/render/chain.js";
-import { GRADE_LUMA, GRADE_WARM } from "../src/render/look.js";
+import { GRADE_LUMA, GRADE_WARM, PAINTED_NIGHT_GROUND, PAINTED_NIGHT_ROAD_GLOW,
+  PAINTED_NIGHT_ROAD_LIT, PAINTED_NIGHT_ROAD_WARM, PAINTED_NIGHT_WALL,
+  nightEmissiveHex } from "../src/render/look.js";
+import { hexToLinearRgb } from "../src/palette.js";
 import { toneMappingFor } from "../src/render/renderer.js";
 
 // Songpa-jamsil box centre (data bbox): the demo home-A area.
@@ -86,5 +89,72 @@ describe("17c-1 grade mirror + output transform", () => {
     assert.equal(toneMappingFor("painted"), THREE.LinearToneMapping);
     assert.equal(toneMappingFor("photo"), THREE.AgXToneMapping);
     assert.equal(toneMappingFor(""), THREE.AgXToneMapping);
+  });
+});
+
+// Tour ?time=21:00: stop framing over the jamsil box.
+const NIGHT_2100 = { date: new Date("2026-10-15T21:00:00+09:00"), minute: 1260,
+  lat: LAT, lon: LON, camDistM: 1600, framedWidthM: 450, fog: "painted" };
+
+describe("17c-2 night ground and roads visible", () => {
+  it("self-lights entries to their own night albedo (glow wins)", () => {
+    assert.equal(nightEmissiveHex({}), PAINTED_NIGHT_GROUND);
+    assert.equal(nightEmissiveHex({ night: PAINTED_NIGHT_WALL }),
+      PAINTED_NIGHT_WALL);
+    assert.equal(nightEmissiveHex({ night: PAINTED_NIGHT_ROAD_WARM, glow: PAINTED_NIGHT_ROAD_LIT }),
+      PAINTED_NIGHT_ROAD_LIT);
+  });
+
+  it("adds the lamp-lit road emissive in linear space", () => {
+    // ROAD_LIT ≈ warm + glow (linear add); ±1.5 levels rounding slack.
+    const warm = hexToLinearRgb(PAINTED_NIGHT_ROAD_WARM);
+    const glow = hexToLinearRgb(PAINTED_NIGHT_ROAD_GLOW);
+    const lit = hexToLinearRgb(PAINTED_NIGHT_ROAD_LIT);
+    const linToU8 = (l) => {
+      const c = Math.min(1, Math.max(0, l));
+      const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+      return s * 255;
+    };
+    warm.forEach((w, i) => {
+      assert.ok(Math.abs(linToU8(w + glow[i]) - linToU8(lit[i])) <= 1.5,
+        `channel ${i}: warm+glow vs ROAD_LIT`);
+    });
+    const [r, , b] = hexToU8(PAINTED_NIGHT_ROAD_LIT);
+    assert.ok(r > b, "lamp-lit road is warm");
+  });
+
+  it("renders the 21:00 ground at navy, each channel ±8", () => {
+    const g = resolvePaintedPixel(PAINTED_NIGHT_GROUND,
+      { ...NIGHT_2100, emissiveHex: nightEmissiveHex({}) });
+    const want = hexToU8(PAINTED_NIGHT_GROUND);
+    g.rgb.forEach((c, i) => {
+      assert.ok(Math.abs(c - want[i]) <= 8, `ground ${g.rgb} vs navy ${want}`);
+    });
+  });
+
+  it("renders night roads lighter and warmer than the ground (≥ 10)", () => {
+    const g = resolvePaintedPixel(PAINTED_NIGHT_GROUND,
+      { ...NIGHT_2100, emissiveHex: nightEmissiveHex({}) });
+    const d = resolvePaintedPixel(PAINTED_NIGHT_ROAD_WARM, { ...NIGHT_2100,
+      emissiveHex: nightEmissiveHex(
+        { night: PAINTED_NIGHT_ROAD_WARM, glow: PAINTED_NIGHT_ROAD_LIT }) });
+    const diff = lumaU8(d.rgb) - lumaU8(g.rgb);
+    assert.ok(diff >= 10, `road ${d.rgb} vs ground ${g.rgb}: +${diff.toFixed(1)}`);
+    assert.ok(d.rgb[0] - d.rgb[2] > g.rgb[0] - g.rgb[2], "roads warmer");
+  });
+
+  it("holds unlit night walls ≥ 15 levels above the ground", () => {
+    const g = resolvePaintedPixel(PAINTED_NIGHT_GROUND,
+      { ...NIGHT_2100, emissiveHex: nightEmissiveHex({}) });
+    const w = resolvePaintedPixel(PAINTED_NIGHT_WALL, { ...NIGHT_2100, normalY: 0,
+      emissiveHex: nightEmissiveHex({ night: PAINTED_NIGHT_WALL }) });
+    const diff = lumaU8(w.rgb) - lumaU8(g.rgb);
+    assert.ok(diff >= 15, `wall ${w.rgb} vs ground ${g.rgb}: +${diff.toFixed(1)}`);
+  });
+
+  it("applies no fog at the night stop distance (fog exonerated)", () => {
+    const g = resolvePaintedPixel(PAINTED_NIGHT_GROUND,
+      { ...NIGHT_2100, emissiveHex: nightEmissiveHex({}) });
+    assert.equal(g.fogF, 0);
   });
 });

@@ -110,8 +110,24 @@ export const PAINTED_NIGHT_GROUND = 0x1d2330;
 export const PAINTED_NIGHT_ROAD = 0x39415a;
 export const PAINTED_NIGHT_ROAD_WARM = 0x4a4136;
 export const PAINTED_NIGHT_ROAD_GLOW = 0x2a2118;
+// 17c: lamp-lit road emissive = warm band + glow, added in LINEAR space
+// (lin(0x4a4136) + lin(0x2a2118) → sRGB (85, 74, 61)). The moonlit
+// diffuse is ~zero, so the emissive IS the road's night colour.
+export const PAINTED_NIGHT_ROAD_LIT = 0x554a3d;
 export const PAINTED_NIGHT_WALL = 0x3a4152;
 export const PAINTED_WATER = 0x3f6f8f;
+
+// Night self-lit emissive target for a painted nightMats-style entry
+// ({night?, glow?}): an explicit glow wins (roads), else the entry's
+// own night albedo, else the navy ground. 17c: moonlight leaves every
+// diffuse near black, so night surfaces carry their authored colour as
+// emissive and render at the palette. Lit windows are untouched (their
+// emissive comes from the facade occupancy patch, not this table).
+export function nightEmissiveHex(entry = {}) {
+  if (entry && entry.glow !== undefined) return entry.glow;
+  if (entry && entry.night !== undefined) return entry.night;
+  return PAINTED_NIGHT_GROUND;
+}
 
 export const LOOK_KEYS = Object.keys(DEFAULT_LOOK);
 
