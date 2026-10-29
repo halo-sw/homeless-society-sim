@@ -1,62 +1,61 @@
-# Stage 16a — Built-in report verification, pure core (brief for Muse)
+# Stage 16a — Built-in verification on the user's ground truth (brief for Muse)
 
-Agent mode, rules in `AGENTS.md`. Sandbox: no network, no keys. **No sub-agents.** Branch `verify-16a`. Commit after each part (`git add -A web/src/verify web/tests && git commit -m "16a: …"`).
+Agent mode, rules in `AGENTS.md`. Sandbox: no network, no keys. **No sub-agents.** Branch `verify-16a`. Commit after each part (`git add -A web/src/verify web/tests scenarios/verify && git commit -m "16a: …"`).
 
-**Create new files only**, in `web/src/verify/` and `web/tests/verify-*.test.js`. Do not modify any existing file. Two other stages are changing the UI, render, engine and money files at the same time.
+**Create new files only**, in `web/src/verify/` and `web/tests/verify-*.test.js`, plus edits to `scenarios/verify/ground_truth.json` where part 1 says. Do not modify any other existing file. Two other stages are changing UI, render, engine and money files at the same time.
 
-Read only these, once each, before the first edit:
-- `docs/hackathon-checklist.md` section 7 (the design this stage implements)
-- `web/src/engine/simulate.js:20-170` (the run shape: `trips`, `aways`, `decisions`, per-agent and household totals such as `commute_ride_minutes`, `errands_done`, `park_visits`)
-- `web/src/engine/paired.js:35-50` (`engineMetrics`)
-- `web/src/engine/decisions.js:1-60` (decision log fields: `decided_by`, `reason_ko`, `ref_ids`)
-- `web/src/judge/guards.js` (reuse its number extraction; do not copy-paste, import it)
+The user wrote the ground truth and a reference scorer:
+- `scenarios/verify/ground_truth.json`: 9 common items + 5 personas (5–6 items each), `must`/`should`, weights 3/1, `verify: deterministic | judge`, acceptance must 100 % and weighted ≥ 0.8, 3 retries then the user.
+- `tools/verify_checklist.py`: the reference scorer (keyword match). Treat it as the spec for scoring; your JS must give the same numbers on clean input.
 
-The first edit should land within 7 tool calls.
+Read these once each before the first edit: the two files above, `docs/hackathon-checklist.md` section 7, `web/src/engine/simulate.js:20-170` (run shape: `trips` with `purpose` commute/errand/park/clinic/school, `aways`, `decisions`, per-agent totals), `web/src/engine/decisions.js:1-60` (`decided_by`, `reason_ko`, `ref_ids`), `web/src/judge/guards.js` (import its number extraction; do not copy it). First edit within 8 tool calls.
 
-Principle: verification is not a tool the agent may skip. It sits inside the function that emits the report. Everything here is pure (no DOM, no three.js, no network), deterministic, and takes plain objects.
+Everything is pure (no DOM, no three.js, no network), deterministic, plain objects in and out.
 
-## 1. Report shape and number check
-- `web/src/verify/report.js`:
-  - A report is `{ home, household_type, sentences: [{ id, text_ko, claims: [{ metric, value, unit }], evidence: [ref_id…] }] }`.
-  - `validateReportShape(report)` → list of problems (missing ids, empty text, unknown metric).
-- `web/src/verify/numbers.js`:
-  - `METRICS`: the metrics a sentence may claim, each mapped to how the engine computes it from a run (e.g. `commute_minutes_per_day`, `commute_km_per_day`, `fare_won_per_trip`, `transit_spend_won_month`, `errands_done`, `park_visits`, `home_evening_minutes`). Take the formulas from `engineMetrics` and the run totals; do not invent new ones. Where a metric needs money data the run does not carry, accept it as an input argument.
-  - `checkNumbers(report, run, { tolerance })` → for each claim: `{ sentence_id, metric, claimed, engine, ok, reason_ko }`. Default tolerance: exact for counts, ±1 for minutes, ±1 % for won.
-  - Also flag numbers that appear in `text_ko` but not in `claims` (use the guards' number extraction): reason "근거 없는 숫자".
-- Tests: a matching report passes; an off-by-10-minutes claim fails with a Korean reason; a stray number in the text is caught.
-- Commit `16a: report shape + number check`.
+## Audit results from the orchestrator (fix these)
+Measured by running the reference scorer on all five personas (2026-10-29):
+1. **False positives from short keywords.** "향후 이사 계획" and "방향 감각" cover C04 (keyword "향"). "짐작" covers C07 ("짐"). "주차장(parking)" covers F03 ("park"). "recall" covers R02 ("call"). "안전한 투자" covers F02 ("안전"). "아침 식사 메뉴" covers C09. "병원비" covers F05/M02.
+2. **Negation counts as coverage.** "소음은 확인하지 않았어요" covers C03.
+3. **One line can cover many items.** "엘리베이터 대기" covers C09, F04 and M01 at once. A single line that lists one keyword per item passes every persona at 100 %.
+4. Overlaps per persona: young_family C03~F06, C09~F04 · remote_worker C03~R02, C04~R05 · newlywed C01~N01, C06~N03 · multigen C09~M01/M03/M04, M03~M04.
 
-## 2. Evidence check
-- `web/src/verify/evidence.js`:
-  - `evidenceIndex(run)` → a Set of every ref id the run can back: trip ids, away ids, decision ids, plus the `ref_ids` inside decisions.
-  - `checkEvidence(report, run)` → per sentence: `{ sentence_id, ok, missing: [...] }`. A sentence with no evidence, or with an id not in the index, fails with "근거 없는 문장".
-- Tests with a tiny hand-made run object (3 trips, 1 decision).
-- Commit `16a: evidence check`.
+## 1. Ground truth: engine support map
+- Our engine cannot back every item yet. Add to each item in `ground_truth.json` an `engine` field: `"supported"`, `"partial"` or `"none"`, plus `engine_source` (what backs it), using exactly this table (the orchestrator checked the code):
+  - supported: C01 (commute trips), N01 (per-member commute), C05 (errand trips), F03 / P02 (park trips)
+  - partial: C02 (전세 money timeline; 월세·관리비 only when the listing has them), F01 (`school` trips; daycare is the child's school anchor), F05 / M02 (`clinic` trips)
+  - none: every other item (no listing field for orientation, elevator, step-free, internet, pets, rooms; no event kinds noise, late_return, storage, move_in, maintenance_issue, morning_routine, child_outing, work_session, delivery, elder_outing, daily_routine)
+- Add `persona_map`: `young_family → scenarios/personas/dual-income-child.json`, `newlywed_couple → newlywed-couple.json`; `remote_worker`, `multigen_family`, `pet_owner` → null (no scenario yet). Add `single_firstjob` as an alias of the common items only, for `single-firstjob.json`.
+- Keep the user's ids, labels, weights and acceptance unchanged.
+- Commit `16a: ground truth engine map`.
 
-## 3. Coverage against a ground-truth checklist
-- `web/src/verify/checklist.js`: `CHECKLISTS` keyed by household type: `single` (사회초년생), `couple` (예비 부부), `family` (자녀 가족). Each item: `{ id, label_ko, metrics: [...], required: true|false }`. Examples:
-  - all: 출퇴근 시간, 출퇴근 혼잡, 교통비, 장보기 동선, 저녁 여유 시간, 공원·산책
-  - couple: 두 사람 출퇴근 균형
-  - family: 등원·등교 거리, 아이 동반 장보기
-  - Only items the engine can back with a metric or an event kind. If an item has no engine source today, keep it with `metrics: []` and `status: "엔진 미지원"`; it never counts toward coverage.
-- `web/src/verify/coverage.js`:
-  - `coverage(report, run, type)` → `{ covered: [ids], missing: [ids], unsupported: [ids], ratio }`. An item is covered when at least one sentence claims one of its metrics **and** passes both the number and evidence checks.
-  - `PASS_RATIO = 0.8` (exported, adjustable).
-- Tests: 3 of 6 supported items → 0.5; 5 of 6 → 0.83 → pass.
-- Commit `16a: checklist coverage`.
+## 2. Checklist scorer (JS port + the audit fixes)
+- `web/src/verify/checklist.js`:
+  - `loadGroundTruth(json, persona)` and `scoreChecklist(persona, agentItems, { judge })` → `{ passed, must_coverage, weighted_coverage, covered, missing, feedback_ko }`, same numbers as `tools/verify_checklist.py` on clean input.
+  - Fixes:
+    - Keywords of 1 Korean syllable or ≤ 4 Latin letters only match as a whole word (Korean: the syllable followed by a particle or space, e.g. "남향", "향이" yes, "향후", "방향" no; Latin: `\b…\b`). Put the rule in one function, tested.
+    - Negation guard: an agent item containing 않, 안 했, 못, 없이, 제외, "skip", "not" next to the keyword does not cover it.
+    - One-to-one matching: each agent item covers at most one ground-truth item (greedy by priority must → should, then by keyword length). A line that lists many keywords counts once.
+  - `judge` is an injected async function for unmatched items (Muse Spark later); default none.
+- Tests: the clean labels of each persona pass at 1.0 (parity with the Python numbers, hard-code them); every false positive in the audit list above no longer covers; the one-line keyword salad fails; negation fails.
+- Commit `16a: checklist scorer`.
 
-## 4. The verify loop (no model call here)
+## 3. Report claim checks
+- A report is `{ persona, home, sentences: [{ id, text_ko, item_id, claims: [{ field, value, unit, member? }], evidence: [ref_id…] }] }`.
+- `web/src/verify/numbers.js`: for `verify: "deterministic"` items with `engine: supported|partial`, compute the engine value from the run and compare with the item's `rule` tolerance (C01/N01 ±5 min, C05/F01/F03/P02 ±2 min, F05/M02 ±3 min, C02 exact won). Numbers in `text_ko` with no claim → "근거 없는 숫자".
+- `web/src/verify/evidence.js`: `evidenceIndex(run)` (trip, away, decision ids and decisions' `ref_ids`); a `judge` item's sentence needs at least one evidence id from the index, else "근거 없는 문장". The judge model call itself is injected later.
+- Items with `engine: "none"` are reported as `미지원` and are never counted as covered or as failed. When a `must` item is `none`, the result says "엔진이 아직 확인할 수 없는 필수 항목" and acceptance uses the supported must items only. Never claim a pass on an unsupported must item.
+- Tests with a tiny hand-made run (3 trips, 1 decision).
+- Commit `16a: claim checks`.
+
+## 4. Verify loop
 - `web/src/verify/loop.js`:
-  - `verifyReport(report, run, type, opts)` → `{ pass, ratio, failures: [{ sentence_id, kind, reason_ko }], feedback_ko }`. `feedback_ko` is the short Korean text a writer agent gets back for a retry (which sentences to fix and why, which checklist items are missing).
-  - `runVerifyLoop({ draft, revise, run, type, maxAttempts = 3 })`:
-    - `draft` is the first report; `revise(report, feedback_ko, attempt)` is an injected async function (the model writer lives elsewhere, later).
-    - Verify, then revise with the feedback, until pass or `maxAttempts`.
-    - Returns `{ final, attempts: [{ attempt, ratio, pass, failures }], handoff }`. After 3 fails, `handoff` is `{ ask_user: true, question_ko }` asking the user to confirm the unclear condition; otherwise null.
-  - The attempt log is what the demo shows: "검증 실패: 근거 없는 문장 2개, 커버리지 50%" → 67 % → 83 % 통과.
-- Tests with a fake `revise` that fixes one problem per attempt: ratios 0.5 → 0.67 → 0.83, pass on attempt 3; a `revise` that never fixes → `handoff.ask_user` after 3.
+  - `verifyReport(report, run, persona)` → `{ pass, must_coverage, weighted_coverage, unsupported, failures: [{ sentence_id, item_id, kind, reason_ko }], feedback_ko }`.
+  - `runVerifyLoop({ draft, revise, run, persona, maxRetries })`, `maxRetries` from the ground truth (3). After the last fail: `handoff = { ask_user: true, question_ko }` (`on_fail_after_retries: "escalate_to_user"`).
+  - Returns the attempt log for the demo: "검증 실패: 근거 없는 문장 2개, 커버리지 50%" → 67 % → 83 % 통과.
+- Tests with a fake `revise` that fixes one problem per attempt, and one that never fixes (handoff).
 - Commit `16a: verify loop`.
 
 ## End
-- Run `cd web && node --test tests/verify-*.test.js 2>&1 | tail -6` and `npm test 2>&1 | tail -6` (one failure in `share.test.js` may come from another stage; say so if it is the only one).
-- Write `briefs/16a-RESULT.md`: files, exported functions, the metric table, and a sample `attempts` log.
+- `cd web && node --test tests/verify-*.test.js 2>&1 | tail -6` and `npm test 2>&1 | tail -6` (one `share.test.js` failure may come from another stage; say so if it is the only one).
+- `briefs/16a-RESULT.md`: files, exports, the support map per persona (how many must/should items are supported), parity numbers vs Python, and a sample attempt log.
 - Commit.
