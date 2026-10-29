@@ -5,7 +5,7 @@
 // underneath. Keyboard: ←/→ previous/next trip, space play/pause
 // (ignored while typing). Reduced motion: no auto-advance pulses —
 /// the strip is direct manipulation only.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -234,10 +234,11 @@ export function timelineKeyHandler({ routeOutings, minute, togglePlay, setMinute
   };
 }
 
-export function TimelineBar({ state }) {
+export function TimelineBar({ state, compact = true }) {
   const { clock } = state;
   const minute = Math.floor(clock.minute);
   const day = clock.day;
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -255,6 +256,7 @@ export function TimelineBar({ state }) {
   }, []);
 
   const jump = (m) => act("setMinute", Math.max(0, Math.min(1439, Math.round(m))));
+  const showFull = !compact || expanded;
   return (
     <div className="ui-simbar overlay">
       <Card>
@@ -270,24 +272,32 @@ export function TimelineBar({ state }) {
               onClick={() => act("toggleCompare")} />
             <ToggleButton size="sm" label="A·B 하루 같이 보기" isPressed={!!state.stripCompare}
               onPressedChange={() => act("toggleStripCompare")} />
+            {compact && (
+              <Button size="sm" variant="ghost" label={expanded ? "30일 닫기" : "30일 보기"}
+                onClick={() => setExpanded(!expanded)} />
+            )}
           </HStack>
-          <RouteSteps route={state.routeSteps} minute={minute}
-            onStep={jump} onPrev={jump} onNext={jump} />
-          <DayStrip segments={state.dayStrip && state.dayStrip.segments}
-            ticks={state.simTicks} minute={minute}
-            label={state.stripCompare && state.dayStripB ? `${state.home} · 따라가는 구성원` : ""}
-            onJump={jump} />
-          {state.stripCompare && state.dayStripB && (
-            <DayStrip segments={state.dayStripB.segments} ticks={[]}
-              minute={minute} label={`${state.dayStripB.home} · 같은 시각`}
+          <div className="ui-tl-compact">
+            <RouteSteps route={state.routeSteps} minute={minute}
+              onStep={jump} onPrev={jump} onNext={jump} />
+            <DayStrip segments={state.dayStrip && state.dayStrip.segments}
+              ticks={state.simTicks} minute={minute}
+              label={state.stripCompare && state.dayStripB ? `${state.home} · 따라가는 구성원` : ""}
               onJump={jump} />
-          )}
-          <ActivityLegend />
-          <MonthStrip days={state.monthStrip} selected={day}
-            onDay={(d) => act("setDay", d)} />
-          <SegControl label="따라가기" value={String(state.follow)}
-            onChange={(v) => act("setFollow", Number(v))}
-            items={state.followOptions} />
+            {state.stripCompare && state.dayStripB && (
+              <DayStrip segments={state.dayStripB.segments} ticks={[]}
+                minute={minute} label={`${state.dayStripB.home} · 같은 시각`}
+                onJump={jump} />
+            )}
+          </div>
+          <div hidden={!showFull}>
+            <ActivityLegend />
+            <MonthStrip days={state.monthStrip} selected={day}
+              onDay={(d) => act("setDay", d)} />
+            <SegControl label="따라가기" value={String(state.follow)}
+              onChange={(v) => act("setFollow", Number(v))}
+              items={state.followOptions} />
+          </div>
         </VStack>
       </Card>
     </div>

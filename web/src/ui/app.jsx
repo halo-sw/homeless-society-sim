@@ -30,6 +30,7 @@ import { JeonseTab } from "./jeonse.jsx";
 import { SupportTab } from "./support.jsx";
 import { ListingsTab } from "./listings.jsx";
 import { ShareDialog } from "./share.jsx";
+import { SourcesDrawer } from "./sources.jsx";
 import { DemoTour } from "./DemoTour.jsx";
 import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent, badgeFor } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
@@ -57,7 +58,7 @@ function SegControl({ label, value, onChange, items, size }) {
   );
 }
 
-function TopBar({ state }) {
+function TopBar({ state, onSources }) {
   const isSim = state.mode === "sim";
   return (
     <div className="ui-topbar">
@@ -92,6 +93,8 @@ function TopBar({ state }) {
               {/* 12b: the floating agent is gone — the chat reopens from
                   here at any hour, with the transcript kept. */}
               <Button size="sm" label="대화" onClick={() => act("openChat")} />
+              <Button size="sm" variant="ghost" label="출처"
+                onClick={() => onSources && onSources()} />
             </HStack>
           </HStack>
         </Card>
@@ -635,51 +638,60 @@ function agentAsked() {
 
 export function App() {
   const state = useStore();
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   if (!state.ready) return null;
   if (state.mode === "landing") {
-    return (
-      <>
-        <Landing />
-        <AttrLine state={state} />
-      </>
-    );
+    return <Landing />;
   }
   if (state.mode === "chat") {
+    return <ChatScreen />;
+  }
+  const isSim = state.mode === "sim";
+  if (!isSim) {
     return (
       <>
-        <ChatScreen />
-        <AttrLine state={state} />
+        <TopBar state={state} onSources={() => setSourcesOpen(true)} />
+        <CaptionCard state={state} />
+        <LegendCard state={state} />
+        {agentAsked() && <AgentTourCard />}
+        {sourcesOpen && (
+          <div className="ui-intro overlay">
+            <SourcesDrawer onClose={() => setSourcesOpen(false)} />
+          </div>
+        )}
+        {state.viewChip && (
+          <div className="ui-viewchip overlay">
+            <Badge variant="info" label={state.viewChip} />
+          </div>
+        )}
       </>
     );
   }
-  const isSim = state.mode === "sim";
   return (
-    <>
-      <TopBar state={state} />
-      {isSim && <TimelineBar state={state} />}
-      {!isSim && <CaptionCard state={state} />}
-      {isSim && (
-        <div className="ui-simleft overlay">
-          <NowCard state={state} />
-          <JourneyCard state={state} />
-          <JudgeLogCard state={state} />
-          {/* The legend joins the left stack in sim mode (stage 9c): one
-              scrolling column, so cards never overlap. */}
-          <LegendCard state={state} />
-        </div>
-      )}
-      {isSim && <IntroCard state={state} />}
-      {isSim && <CompareCard state={state} />}
-      {!isSim && <LegendCard state={state} />}
+    <div className="ui-sim13">
+      <div className="ui-sim13-top">
+        <TopBar state={state} onSources={() => setSourcesOpen(true)} />
+      </div>
+      <div className="ui-sim13-stage">
+        <TimelineBar state={state} compact />
+      </div>
+      <div className="ui-sim13-drawer overlay">
+        <NowCard state={state} />
+        <JourneyCard state={state} />
+        <JudgeLogCard state={state} />
+        <LegendCard state={state} />
+        <CompareCard state={state} />
+        {sourcesOpen && <SourcesDrawer onClose={() => setSourcesOpen(false)} />}
+      </div>
+      <IntroCard state={state} />
       {agentAsked() && <AgentTourCard />}
-      <AttrLine state={state} />
       {state.viewChip && (
         <div className="ui-viewchip overlay">
           <Badge variant="info" label={state.viewChip} />
         </div>
       )}
-      {isSim && <ShareDialog />}
-      {isSim && <DemoTour />}
-    </>
+      <ShareDialog />
+      <DemoTour />
+    </div>
   );
 }

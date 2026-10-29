@@ -473,3 +473,77 @@ body.printing-share #share-print { display: block !important; padding: 24px;
   display: flex; gap: 4px; align-items: center; overflow-x: auto; white-space: nowrap;
   font-size: 12px; padding-bottom: 2px;
 }
+
+/* ---------- 13d: chat 3-column shell (thread 440 / stage / drawer 0-360) ---------- */
+.ui-chat-stage {
+  flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #101318;
+}
+.ui-chat-stage-body { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
+.ui-chat-drawer {
+  flex: none; width: 360px; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden;
+  background: rgba(255, 253, 248, 0.98);
+  border-left: 1px solid var(--border, #d8d2c4);
+  padding: 12px;
+}
+.ui-chat-drawer[data-open="false"] {
+  width: 0; min-width: 0; padding: 0; border-left: none; overflow: hidden;
+}
+.ui-chat-drawer-inner { display: flex; flex-direction: column; gap: 12px; min-width: 300px; }
+.ui-token { font-size: 12px; white-space: nowrap; color: rgba(61, 50, 39, 0.72); }
+@media (max-width: 1099px) {
+  .ui-chat-stage { display: none; }
+  .ui-chat-narrow-work .ui-chat-stage { display: flex; }
+  .ui-chat-drawer { display: none; }
+  .ui-chat-drawer[data-open="true"] {
+    display: block; position: absolute; z-index: 40; left: 0; right: 0; bottom: 0;
+    width: auto; max-height: 52%; border-left: none;
+    border-top: 1px solid var(--border, #d8d2c4); border-radius: 12px 12px 0 0;
+  }
+}
+
+/* ---------- 13d: sim grid (stage + drawer, timeline docked, no overlap) ---------- */
+.ui-sim13 {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-areas: "top top" "stage drawer";
+}
+.ui-sim13-top { grid-area: top; min-width: 0; }
+.ui-sim13-top .ui-topbar { position: static; padding: 8px 12px; }
+.ui-sim13-top .ui-topbar-inner { max-width: none; }
+.ui-sim13-stage {
+  grid-area: stage; min-width: 0; min-height: 0; position: relative;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  pointer-events: none; padding: 0 12px 12px;
+}
+.ui-sim13-stage .ui-simbar {
+  position: static; width: auto; max-width: none; max-height: 40vh;
+  transform: none; pointer-events: auto; overflow-y: auto;
+}
+.ui-sim13-drawer {
+  grid-area: drawer; min-width: 0; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  background: rgba(255, 253, 248, 0.98);
+  border-left: 1px solid var(--border, #d8d2c4);
+  padding: 12px; display: flex; flex-direction: column; gap: 12px;
+}
+.ui-sim13-drawer .ui-nowcard,
+.ui-sim13-drawer .ui-journey,
+.ui-sim13-drawer .ui-judgelog,
+.ui-sim13-drawer .ui-legend,
+.ui-sim13-drawer .ui-compare {
+  position: static; width: auto; max-width: none; max-height: none;
+  transform: none; overflow: visible;
+}
+.ui-sim13 .ui-attr { display: none; }
+@media (max-width: 1099px) {
+  .ui-sim13 {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "stage" "drawer";
+  }
+  .ui-sim13-drawer { border-left: none; border-top: 1px solid var(--border, #d8d2c4); max-height: 32vh; }
+}

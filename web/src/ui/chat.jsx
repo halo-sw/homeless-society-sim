@@ -1089,6 +1089,9 @@ export function ChatScreen() {
                     <SegmentedControlItem value="work" label="화면" />
                   </SegmentedControl>
                 </div>
+                <span className="ui-token ui-num" title="이번 대화 토큰 사용량 (추정)">
+                  {formatUsage(usage)}
+                </span>
                 {IS_DEV && (
                   <DropdownMenu
                     button={{ label: provider === "meta" ? "Spark 1.3" : "Spark Open",
@@ -1152,81 +1155,128 @@ export function ChatScreen() {
               ))}
             </div>
           </section>
-          <section className="ui-chat-work" aria-label="작업 영역">
-            <WorkArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
-              panel={panel} onClosePanel={() => setPanel(null)}
-              usageLog={usageLog} serverKeys={serverKeys} modelErrors={modelErrors}
-              overrides={overrides}
-              onSetOverride={(id, v) => setOverrides((o) => setOverride(o, id, v))}
-              onResetOverride={(id) => setOverrides((o) => resetOverride(o, id))}
-              orbData={buildOrbData({
-                regions: dataRef.current?.regionsDoc || { regions: [] },
-                stations: [],
-                homes: dataRef.current?.index?.homes || [],
-                candidates: candidatesData?.result?.candidates || [],
-                manifest: dataRef.current?.manifest || null,
-                rentalCoverage: {},
-              })}
-              cardHi={cardHi}
-              onOrbRegion={(regionId) => {
-                setOrbFilter(regionId);
-                toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
-              }}
-              detail={detail} onCloseDetail={() => setDetail(null)}
-              photoDeps={handlers.photoDeps} destName={destName}
-              tenure={candidatesData?.tenure || "undecided"}
-              onLive={handleTogglePick} onJeonse={handleJeonse} />
-          </section>
+          <StageArea
+            orbData={buildOrbData({
+              regions: dataRef.current?.regionsDoc || { regions: [] },
+              stations: [],
+              homes: dataRef.current?.index?.homes || [],
+              candidates: candidatesData?.result?.candidates || [],
+              manifest: dataRef.current?.manifest || null,
+              rentalCoverage: {},
+            })}
+            cardHi={cardHi}
+            onOrbRegion={(regionId) => {
+              setOrbFilter(regionId);
+              toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
+            }} />
+          <DrawerArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
+            panel={panel} onClosePanel={() => setPanel(null)}
+            usageLog={usageLog} serverKeys={serverKeys} modelErrors={modelErrors}
+            overrides={overrides}
+            onSetOverride={(id, v) => setOverrides((o) => setOverride(o, id, v))}
+            onResetOverride={(id) => setOverrides((o) => resetOverride(o, id))}
+            detail={detail} onCloseDetail={() => setDetail(null)}
+            photoDeps={handlers.photoDeps} destName={destName}
+            tenure={candidatesData?.tenure || "undecided"}
+            onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
         </div>
         {viewChip && (
           <div className="ui-viewchip overlay">
             <Badge variant="info" label={viewChip} />
           </div>
         )}
+        <Toaster />
       </AppShell>
     </div>
   );
 }
 
-function WorkArea({ picks, candidatesData, onRun }) {
+function StageArea({ orbData, cardHi, onOrbRegion }) {
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const shapes = (orbData && orbData.shapes) || [];
+  return (
+    <section className="ui-chat-stage" aria-label="중심 무대">
+      <div style={{ padding: "8px 12px", background: "rgba(255,253,248,0.98)",
+        borderBottom: "1px solid var(--border, #d8d2c4)" }}>
+        <Text type="supporting">
+          {`지금 보는 장면 · ${state.area.label || state.area.id || "서울·경기 동남부"}`}
+          {" · "}
+          {shapes.length > 0 ? `지역 ${shapes.length}곳` : "지역을 불러오는 중…"}
+        </Text>
+      </div>
+      <div className="ui-chat-stage-body">
+        {shapes.length > 0 ? (
+          <OrbView data={orbData} onRegion={onOrbRegion} highlightKey={cardHi} />
+        ) : (
+          <div style={{ padding: 16 }}>
+            <Card padding={3}>
+              <VStack gap={1}>
+                <Heading level={4}>서울·경기 동남부</Heading>
+                <Text type="supporting">대화에서 조건을 말하면 후보 지역이 여기에 표시돼요.</Text>
+                <Text type="supporting">판교 · 분당 · 강남 · 송파 · 위례 · 수지 · 성동 · 강동</Text>
+              </VStack>
+            </Card>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
+  usageLog, serverKeys, modelErrors, overrides, onSetOverride, onResetOverride,
+  detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const candidates = (candidatesData && candidatesData.result.candidates) || [];
   const picked = candidates.filter((c) => picks.includes(c.id));
+  const open = Boolean(detail || panel || state.compareOpen || picked.length > 0);
+  const detailPhotos = detail
+    ? selectPhotosForList([detail], photoDeps || {})[0].photos : null;
   return (
-    <VStack gap={2} className="ui-chat-workcol">
-      <Card padding={3}>
-        <VStack gap={1}>
-          <Heading level={4}>지금 보는 장면</Heading>
-          <Text type="supporting">{state.area.label || state.area.id || "장면을 불러오는 중…"}</Text>
-          <Text type="supporting">후보 카드의 ’3D로 살아 보기’로 장면을 바꿔요</Text>
-        </VStack>
-      </Card>
-      {picked.length > 0 && (
-        <Card padding={3}>
-          <VStack gap={1}>
-            <Heading level={4}>{`고른 집 ${picked.length}곳`}</Heading>
-            {picked.map((c) => (
-              <Text key={c.id}>{c.name}</Text>
-            ))}
-            <Button size="sm" label="이 집들로 살아 보기"
-              isDisabled={picked.length < 2} onClick={onRun} />
-          </VStack>
-        </Card>
-      )}
-      {!state.compareOpen && (
-        <Card padding={3}>
-          <VStack gap={1}>
-            <Text>비교·돈·안심·매물 탭은 여기에 열어요</Text>
-            <Button size="sm" variant="secondary" label="탭 열기"
-              onClick={() => store.set({ compareOpen: true })} />
-          </VStack>
-        </Card>
-      )}
-      <CompareCard state={state} />
-      {picked.length === 0 && !state.compareOpen && (
-        <EmptyState isCompact title="대화에서 집을 고르면"
-          description="여기에 고른 집과 비교·돈·안심·매물 탭이 열려요." />
-      )}
-    </VStack>
+    <aside className="ui-chat-drawer" data-open={open ? "true" : "false"} aria-label="상세 패널">
+      <div className="ui-chat-drawer-inner">
+        {detail && (
+          <Card padding={3}>
+            <VStack gap={2}>
+              <HStack gap={1} vAlign="center">
+                <Heading level={4}>자세히</Heading>
+                <span className="ui-panel-spacer" />
+                <Button size="sm" variant="ghost" label="닫기" onClick={onCloseDetail} />
+              </HStack>
+              <CandidateCard candidate={detail} tenure={tenure} destName={destName}
+                photos={detailPhotos}
+                onLive={() => onTogglePick(detail)}
+                onJeonse={() => onJeonse(detail)} onDetail={null} />
+            </VStack>
+          </Card>
+        )}
+        {panel === "model" && (
+          <ModelPanel usageLog={usageLog} serverKeys={serverKeys}
+            errors={modelErrors} onClose={onClosePanel} />
+        )}
+        {panel === "sources" && <SourcesDrawer onClose={onClosePanel} />}
+        {panel === "assume" && (
+          <AssumptionsPanel overrides={overrides}
+            onSet={onSetOverride} onReset={onResetOverride} onClose={onClosePanel} />
+        )}
+        {picked.length > 0 && (
+          <Card padding={3}>
+            <VStack gap={1}>
+              <Heading level={4}>{`고른 집 ${picked.length}곳`}</Heading>
+              {picked.map((c) => (
+                <Text key={c.id}>{c.name}</Text>
+              ))}
+              <Button size="sm" label="이 집들로 살아 보기"
+                isDisabled={picked.length < 2} onClick={onRun} />
+            </VStack>
+          </Card>
+        )}
+        <CompareCard state={state} />
+        {!detail && !panel && picked.length === 0 && !state.compareOpen && (
+          <EmptyState isCompact title="대화에서 집을 고르면"
+            description="여기에 고른 집과 비교·돈·안심·매물 탭이 열려요." />
+        )}
+      </div>
+    </aside>
   );
 }
