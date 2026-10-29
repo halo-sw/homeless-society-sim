@@ -207,6 +207,22 @@ export function srgbLumaU8(hex) {
   return 0.299 * ((h >> 16) & 255) + 0.587 * ((h >> 8) & 255) + 0.114 * (h & 255);
 }
 
+// On-screen luma of an albedo hex under scalar diffuse irradiance E
+// (three.js-style: out = lin(albedo) × E × exposure / π, gamma-encoded,
+// no tone map — a comparison model for separation tests, not a render).
+export function litLumaU8(hex, E, exposure = 1) {
+  const h = Number(hex) || 0;
+  const k = Math.max(0, Number(E) || 0) * Math.max(0, Number(exposure) || 0) / Math.PI;
+  const chan = (u8) => linToSrgb01(srgbLin(u8) * k) * 255;
+  return 0.299 * chan((h >> 16) & 255)
+    + 0.587 * chan((h >> 8) & 255) + 0.114 * chan(h & 255);
+}
+
+function linToSrgb01(l) {
+  const c = Math.min(1, Math.max(0, l));
+  return c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+}
+
 // Mix two 0xRRGGBB colours (t clamped to 0..1, smoothstepped): the
 // painted night lerp for plain-colour materials (no map).
 export function lerpHex(h1, h2, t) {

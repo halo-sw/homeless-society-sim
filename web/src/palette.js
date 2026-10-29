@@ -102,3 +102,17 @@ export function residentialColors(building, complexId) {
 export function css(hex) {
   return `#${hex.toString(16).padStart(6, "0")}`;
 }
+
+// sRGB <-> linear working space (vertex colours are consumed raw, so
+// palette hexes linearize through here before landing in a colour
+// attribute; pushing sRGB 0..1 straight renders ~60 % too bright).
+export function srgbToLinear(u8) {
+  const c = Math.min(1, Math.max(0, u8 / 255));
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+export function hexToLinearRgb(hex) {
+  const v = Math.max(0, Math.min(0xffffff, Math.floor(Number(hex) || 0)));
+  return [srgbToLinear((v >> 16) & 255),
+    srgbToLinear((v >> 8) & 255), srgbToLinear(v & 255)];
+}
