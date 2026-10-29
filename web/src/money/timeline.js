@@ -3,14 +3,16 @@
 // Spending events tie to real simulated activity: one transit fare per
 // commute trip that touches a ride (stage 9c: arriving at an out-ride
 // boarding, or leaving from a back-ride alighting — either engine form;
-// members who walk to their workplace touch no ride and pay none), one
-// grocery basket per outbound errand leg (home → shop), fixed costs on
-// their due day, salary on payday(s). Household members only —
-// background neighbours have no money. The balance is monthly cash flow
-// starting at 0 (upfront deposit/purchase shown separately, not in the
-// line).
+// members who walk to their workplace touch no ride and pay none),
+// grocery from the household plan (stage 15.2: the same planned total
+// for every home, spread over the planned errand days — simulated
+// errand legs cost time and fatigue, never money), fixed costs on their
+// due day, salary on payday(s). Household members only — background
+// neighbours have no money. The balance is monthly cash flow starting
+// at 0 (upfront deposit/purchase shown separately, not in the line).
 
 import { dateOf } from "../engine/scenario.js";
+import { planSchedule } from "../engine/agents.js";
 import { criterionDefault } from "../engine/criteria.js";
 
 export const MONEY_CATEGORIES = ["salary", "housing", "transit", "grocery", "maintenance", "other_fixed"];
@@ -47,6 +49,51 @@ function rideBoundaries(run) {
   return { board, alight };
 }
 
+// Household grocery plan (pure, home-independent): Σ members'
+// weekly errands × days/7 × one basket. Errand trips are still
+// simulated (time + fatigue), but the money comes from this plan — the
+// same number for A and B — spread over the union of the household's
+// planned errand days (stage 15.1 draws, identical for both homes).
+export function householdGrocery(scenario, { basket_won = 0 } = {}) {
+  const basket = Math.max(0, Math.round(Number(basket_won) || 0));
+  const members = (scenario.household && scenario.household.members) || [];
+  const freqOf = (m) => m.errands_per_week || { supermarket: 0, convenience: 0 };
+  const perWeek = members.reduce((a, m) =>
+    a + (Number(freqOf(m).supermarket) || 0) + (Number(freqOf(m).convenience) || 0), 0);
+  const total = Math.round(perWeek * scenario.days / 7 * basket);
+  const daySet = new Set();
+  members.forEach((m, i) => {
+    const sched = planSchedule({
+      key: `h${i + 1}`,
+      errands_per_week: freqOf(m),
+      park_walks_per_week: Number(m.park_walks_per_week) || 0,
+      clinic_visits_per_month: Number(m.clinic_visits_per_month) || 0,
+    }, scenario);
+    for (const cat of ["supermarket", "convenience"]) {
+      for (const d of sched.errands[cat]) daySet.add(d);
+    }
+  });
+  return { total_won: total, errands_per_week: perWeek,
+    errand_days: [...daySet].sort((a, b) => a - b) };
+}
+
+export function basketLabel(won) {
+  const v = Math.max(0, Math.round(Number(won) || 0));
+  if (v % 10000 === 0) return `${v / 10000}만 원`;
+  return `${v}원`;
+}
+
+// Split a total across days so the parts sum exactly (the first days
+// take the +1 remainder — deterministic).
+export function spreadTotal(totalWon, days) {
+  const total = Math.max(0, Math.round(Number(totalWon) || 0));
+  const ds = days.length > 0 ? days : [0];
+  if (!(total > 0)) return [];
+  const base = Math.floor(total / ds.length);
+  const rem = total % ds.length;
+  return ds.map((day, i) => ({ day, amount_won: -(base + (i < rem ? 1 : 0)) }));
+}
+
 function payDaysInWindow(scenario, payDayOfMonth) {
   const days = [];
   for (let d = 0; d < scenario.days; d++) {
@@ -71,7 +118,7 @@ export function moneyTimeline(run, scenario, opts = {}) {
 
   const events = [];
   let commuteLegs = 0;
-  let errandVisits = 0;
+  let errandTrips = 0;
   for (const t of run.trips || []) {
     if (!String(t.agent || "").startsWith("h")) continue;
     if (t.purpose === "commute" && fare > 0
@@ -80,11 +127,18 @@ export function moneyTimeline(run, scenario, opts = {}) {
       commuteLegs++;
       events.push({ day: t.day, category: "transit", amount_won: -fare,
         memo: `${t.agent} 통근 승차`, trip_id: t.id, source: "scenario" });
-    } else if (t.purpose === "errand" && t.from && t.from.kind === "home" && basket > 0) {
-      errandVisits++;
-      events.push({ day: t.day, category: "grocery", amount_won: -basket,
-        memo: `${t.agent} 장보기`, trip_id: t.id, source: "scenario" });
+    } else if (t.purpose === "errand" && t.from && t.from.kind === "home") {
+      // Simulated legs: they cost time and fatigue, never money.
+      errandTrips++;
     }
+  }
+  // Grocery from the household plan (same total for every home).
+  const plan = householdGrocery(scenario, { basket_won: basket });
+  const grocerySource = `가구 공통 (주 ${plan.errands_per_week}회 × ${basketLabel(basket)}, 가정값)`;
+  const groceryEvents = spreadTotal(plan.total_won, plan.errand_days);
+  for (const g of groceryEvents) {
+    events.push({ day: g.day, category: "grocery", amount_won: g.amount_won,
+      memo: "장보기", source: grocerySource });
   }
   // Fixed costs on their due day.
   if (maintenance > 0) {
@@ -132,7 +186,8 @@ export function moneyTimeline(run, scenario, opts = {}) {
     home: run.meta && run.meta.home,
     days,
     events,
-    counts: { commute_legs: commuteLegs, errand_visits: errandVisits, paydays: paydays.length },
+    counts: { commute_legs: commuteLegs, errand_visits: groceryEvents.length,
+      errand_trips: errandTrips, paydays: paydays.length },
     totals_by_category: totals,
     monthly_spent_won: spent,
     monthly_net_won: monthlyNet,

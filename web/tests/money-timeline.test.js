@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { tinyArea, tinyScenario } from "./engine-fixture.js";
 import { simulate } from "../src/engine/simulate.js";
 import { parseScenario } from "../src/engine/scenario.js";
-import { moneyTimeline } from "../src/money/timeline.js";
+import { runPaired } from "../src/engine/paired.js";
+import { householdGrocery, moneyTimeline, spreadTotal } from "../src/money/timeline.js";
 
 function tinyRun(days = 7) {
   const scenario = tinyScenario({ days, background: 0, seed: 7 });
@@ -20,17 +21,26 @@ const OPTS = {
 };
 
 describe("money timeline", () => {
-  it("ties event counts to trips (fares per commute leg, baskets per errand visit)", () => {
+  it("charges fares per commute leg and grocery from the household plan", () => {
     const { run, scenario } = tinyRun(30);
     const tl = moneyTimeline(run, scenario, OPTS);
     const commuteLegs = run.trips.filter((t) => t.agent === "h1" && t.purpose === "commute").length;
-    const errandVisits = run.trips.filter((t) => t.agent.startsWith("h")
+    const errandLegs = run.trips.filter((t) => t.agent.startsWith("h")
       && t.purpose === "errand" && t.from && t.from.kind === "home").length;
     assert.ok(commuteLegs > 0);
     assert.equal(tl.counts.commute_legs, commuteLegs);
-    assert.equal(tl.counts.errand_visits, errandVisits);
     assert.equal(tl.totals_by_category.transit, -commuteLegs * 1500);
-    assert.equal(tl.totals_by_category.grocery, -errandVisits * 30000);
+    // Simulated errand legs are evidence only; the money is the plan.
+    assert.equal(tl.counts.errand_trips, errandLegs);
+    const plan = householdGrocery(scenario, { basket_won: 30000 });
+    assert.equal(tl.totals_by_category.grocery, -plan.total_won);
+    const grocery = tl.events.filter((e) => e.category === "grocery");
+    assert.equal(tl.counts.errand_visits, grocery.length);
+    assert.ok(grocery.length > 0);
+    assert.equal(grocery.reduce((a, e) => a + e.amount_won, 0), -plan.total_won);
+    assert.deepEqual(grocery.map((e) => e.day), plan.errand_days);
+    assert.ok(grocery.every((e) => e.source
+      === `가구 공통 (주 ${plan.errands_per_week}회 × 3만 원, 가정값)`));
     assert.equal(tl.totals_by_category.maintenance, -150000);
     assert.equal(tl.totals_by_category.other_fixed, -50000);
     assert.equal(tl.totals_by_category.housing, -1200000);
@@ -39,6 +49,33 @@ describe("money timeline", () => {
     const again = moneyTimeline(run, scenario, OPTS);
     assert.deepEqual(again.daily_balance_won, tl.daily_balance_won);
     assert.deepEqual(again.events, tl.events);
+  });
+
+  it("plans grocery from weekly frequencies (householdGrocery)", () => {
+    const sc = parseScenario(tinyScenario({ days: 14, background: 0, seed: 7 }));
+    const plan = householdGrocery(sc, { basket_won: 30000 });
+    assert.equal(plan.errands_per_week, 2); // m1 1+1, m2 0+0
+    assert.equal(plan.total_won, 120000); // 2 × 14/7 × 30000
+    assert.ok(plan.errand_days.length > 0);
+    assert.ok(plan.errand_days.every((d) => d >= 0 && d < 14));
+    const parts = spreadTotal(plan.total_won, plan.errand_days);
+    assert.equal(parts.reduce((a, p) => a + p.amount_won, 0), -plan.total_won);
+    assert.deepEqual(spreadTotal(0, plan.errand_days), []);
+    assert.deepEqual(spreadTotal(100, []), [{ day: 0, amount_won: -100 }]);
+  });
+
+  it("charges both homes the same non-housing living cost (stage 15.2)", () => {
+    const raw = tinyScenario({ days: 30, background: 0, seed: 7 });
+    const paired = runPaired({ A: tinyArea(), B: tinyArea() }, raw);
+    const sc = parseScenario(raw);
+    const livingOf = (run) => {
+      const tl = moneyTimeline(run, sc, OPTS);
+      return tl.totals_by_category.grocery + tl.totals_by_category.maintenance
+        + tl.totals_by_category.other_fixed;
+    };
+    for (const pair of paired.runs) {
+      assert.equal(livingOf(pair.A), livingOf(pair.B));
+    }
   });
 
   it("computes burden ratio and remaining money", () => {

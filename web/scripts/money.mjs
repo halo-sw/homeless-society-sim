@@ -230,14 +230,17 @@ const paired = runPaired(pairedAreas, scenarioRaw, {
   ...(Object.keys(pairedDestAreas).length > 0 ? { destAreas: pairedDestAreas } : {}),
   summarize: (run, label) => {
     const m = engineMetrics(run);
-    const spend = moneyTimeline(run, scenario, { ...spendOptsBase, housing_monthly_won: 0 });
+    // Seed-matched scenario so the grocery spread falls on this run's
+    // own planned errand days (totals never depend on the seed).
+    const scForRun = run.meta.seed === scenario.seed ? scenario : { ...scenario, seed: run.meta.seed };
+    const spend = moneyTimeline(run, scForRun, { ...spendOptsBase, housing_monthly_won: 0 });
     m.grocery_won = -spend.totals_by_category.grocery;
     m.transit_won = -spend.totals_by_category.transit;
     const rem = {};
     for (const tenure of TENURES) {
       const hh = housingFor(label, tenure);
       if (!hh) continue;
-      const tl = moneyTimeline(run, scenario, { ...spendOptsBase,
+      const tl = moneyTimeline(run, scForRun, { ...spendOptsBase,
         housing_monthly_won: hh.housing.monthly_won, tenure, housing_source: hh.pi.source });
       rem[tenure] = tl.remaining_won;
     }
