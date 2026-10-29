@@ -629,7 +629,9 @@ export function ChatScreen() {
   }
 
   function handleIntakeAnswer(step, value, keep = false) {
-    const next = value === null && keep ? intake : answerStep(intake, step, value);
+    if ((value === null || value === undefined) && keep) return;
+    const said = keep ? Boolean(intake.said[step]) : false;
+    const next = answerStep(intake, step, value, said);
     setIntake(next);
     const patch = intakeToProfilePatch(next, household);
     const merged = applyIntakePatch(profileRef.current, patch);

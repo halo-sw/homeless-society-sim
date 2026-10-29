@@ -215,7 +215,8 @@ export function IntakeCard({ step, index, total, value, said, onAnswer, onSkip }
 
 export function HouseholdCard({ household, onAdd, onRemove }) {
   const members = (household && household.members) || [];
-  const [draft, setDraft] = useState({ relation: "배우자", ageBand: "30대", commuteMax: 45 });
+  const [draft, setDraft] = useState({ relation: "배우자", ageBand: "30대",
+    commuteMax: 45, workplaceText: "", incomeMan: null });
   const [error, setError] = useState("");
   return (
     <Card padding={3}>
@@ -225,7 +226,7 @@ export function HouseholdCard({ household, onAdd, onRemove }) {
         </HStack>
         {members.map((m, i) => (
           <HStack key={i} gap={1} vAlign="center">
-            <Text>{`${m.relation} · ${m.ageBand}${m.commuteMax ? ` · 출퇴근 ${m.commuteMax}분` : ""}${m.workplace && m.workplace.known ? ` · ${m.workplace.station}` : " · 직장 모름"}`}</Text>
+            <Text>{`${m.relation} · ${m.ageBand}${m.commuteMax ? ` · 출퇴근 ${m.commuteMax}분` : ""}${m.workplace && m.workplace.known ? ` · ${m.workplace.station}` : " · 직장 모름"}${m.incomeMonthly ? ` · 월 ${fmtWon(m.incomeMonthly)}` : ""}`}</Text>
             <Button size="sm" variant="ghost" label="빼기" onClick={() => onRemove(i)} />
           </HStack>
         ))}
@@ -247,9 +248,35 @@ export function HouseholdCard({ household, onAdd, onRemove }) {
               <Text type="supporting">출퇴근</Text>
               <Stepper value={draft.commuteMax} min={10} max={120} step={5} unit="분"
                 onChange={(n) => setDraft({ ...draft, commuteMax: n })} />
+            </HStack>
+            <HStack gap={1} vAlign="center">
+              <input className="ui-keyinput" value={draft.workplaceText}
+                placeholder="직장 역/장소 (예: 강남역, 비우면 모름)"
+                onChange={(e) => setDraft({ ...draft, workplaceText: e.target.value })}
+                aria-label="함께 사는 사람 직장" style={{ flex: 1 }} />
+            </HStack>
+            <HStack gap={1} vAlign="center">
+              <Text type="supporting">월급 (선택)</Text>
+              <Stepper value={draft.incomeMan ?? 0} min={0} max={2000} step={50} unit="만"
+                onChange={(man) => setDraft({ ...draft, incomeMan: man === 0 ? null : man })} />
+              {draft.incomeMan ? (
+                <Text type="supporting" hasTabularNumbers>{fmtWon(draft.incomeMan * 10000)}</Text>
+              ) : (
+                <Text type="supporting">모름</Text>
+              )}
+            </HStack>
+            <HStack gap={1} vAlign="center">
               <Button size="sm" label="+ 함께 사는 사람" onClick={() => {
-                const r = onAdd({ ...draft, workplace: { known: false }, incomeMonthly: null });
+                const wt = String(draft.workplaceText || "").trim();
+                const r = onAdd({ relation: draft.relation, ageBand: draft.ageBand,
+                  commuteMax: draft.commuteMax,
+                  workplace: wt ? { known: true, station: wt } : { known: false },
+                  incomeMonthly: draft.incomeMan ? draft.incomeMan * 10000 : null });
                 setError(r && r.error ? r.error : "");
+                if (r && r.ok) {
+                  setDraft({ relation: "배우자", ageBand: "30대",
+                    commuteMax: 45, workplaceText: "", incomeMan: null });
+                }
               }} />
             </HStack>
             {error && <Text type="supporting">{error}</Text>}
