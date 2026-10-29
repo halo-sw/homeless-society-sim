@@ -150,7 +150,8 @@ function judgeApiPlugin() {
 }
 
 // Consult path (vite dev only): POST /api/consult runs one 상담 turn
-// server-side. Same key rules as /api/judge: env only, never logged,
+// server-side. Key rules: the per-request x-model-key header (BYOK)
+// wins, else the server env key; the key is forwarded, never logged,
 // never returned. The production build has no consult key path — the
 // panel shows a recorded demo transcript instead.
 function consultApiPlugin() {
@@ -159,6 +160,21 @@ function consultApiPlugin() {
     configureServer(server) {
       server.middlewares.use("/api/consult",
         createConsultHandler({ dataDir: DATA_DIR, scenDir: SCEN_DIR, rawDir: RAW_DIR }));
+      // 13: model status for the 모델 panel — booleans only, never keys.
+      server.middlewares.use("/api/model/status", (req, res) => {
+        if (req.method !== "GET") {
+          res.statusCode = 405;
+          res.end("method not allowed");
+          return;
+        }
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({
+          ok: true,
+          meta: { hasServerKey: Boolean(process.env.MODEL_API_KEY) },
+          baseten: { hasServerKey: Boolean(process.env.BASETEN_API_KEY) },
+          recorded: { hasServerKey: true },
+        }));
+      });
     },
   };
 }

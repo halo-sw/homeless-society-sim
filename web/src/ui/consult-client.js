@@ -6,12 +6,17 @@
 // server modules or provider code, so no key material can enter the
 // bundle.
 
-export async function postConsult({ provider, messages, scenario, context = null }) {
+export async function postConsult({ provider, messages, scenario, context = null, byoKey = "" }) {
+  const headers = { "Content-Type": "application/json" };
+  // 13: BYOK travels in a header to our same-origin proxy only.
+  if (byoKey) headers["x-model-key"] = byoKey;
+  const started = (typeof performance !== "undefined" ? performance.now() : 0);
   const r = await fetch("/api/consult", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ provider, messages, scenario, context }),
   });
+  const latencyMs = (typeof performance !== "undefined" ? performance.now() : 0) - started;
   let payload = null;
   try {
     payload = await r.json();
@@ -19,9 +24,18 @@ export async function postConsult({ provider, messages, scenario, context = null
     throw new Error(`상담 서버 응답 오류 (HTTP ${r.status})`);
   }
   if (!r.ok || !payload || payload.ok !== true) {
-    throw new Error((payload && payload.error) || `상담 서버 오류 (HTTP ${r.status})`);
+    const err = new Error((payload && payload.error) || `상담 서버 오류 (HTTP ${r.status})`);
+    err.httpStatus = r.status;
+    throw err;
   }
+  payload.latencyMs = Math.round(latencyMs);
   return payload;
+}
+
+export async function fetchModelStatus() {
+  const r = await fetch("/api/model/status");
+  if (!r.ok) throw new Error(`모델 상태 조회 실패 (HTTP ${r.status})`);
+  return r.json();
 }
 
 export async function loadScenario(name) {

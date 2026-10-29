@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { providerConfig } from "../judge/providers.js";
 import { judgeHome } from "../judge/run.js";
 import { runTurn } from "./agent.js";
+import { BYOK_HEADER, resolveProxyKey, redactSecrets } from "./byok.js";
 import { createRunCache } from "./tools.js";
 import { createCsvBackend } from "../money/rtms.js";
 import { normalizeSnapshot, createHousingApi, HOUSING_KEY_ENV } from "../money/housing.js";
@@ -214,7 +215,14 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
       const body = JSON.parse(await readBody(req));
       const provider = body.provider || "meta";
       const cfg = providerConfig(provider); // throws on unknown provider
-      if (!process.env[cfg.keyEnv]) {
+      // 13: bring your own key — the per-request header wins, else the
+      // server env key. The key is forwarded, never logged/stored/echoed.
+      const byok = req.headers ? (req.headers[BYOK_HEADER] || req.headers[BYOK_HEADER.toLowerCase()]) : null;
+      const { key: apiKey, from: keyFrom } = resolveProxyKey({
+        headers: byok ? { [BYOK_HEADER]: byok } : {},
+        provider, env: process.env,
+      });
+      if (!apiKey) {
         const err = new Error(`${cfg.keyEnv} is not set on the dev server`);
         err.code = "missing_key";
         throw err;
@@ -231,6 +239,8 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
       }
       const out = await runTurn({
         provider,
+        apiKey,
+        keyFrom,
         messages: Array.isArray(body.messages) ? body.messages : [],
         scenario: body.scenario,
         context: body.context && typeof body.context === "object" ? body.context : null,
@@ -251,7 +261,10 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
       res.end(JSON.stringify(out)); // out.ok is true here
     } catch (err) {
       const missing = err && err.code === "missing_key";
-      const msg = String((err && err.message) || err);
+      // 13: the key must never appear in errors — redact everything.
+      const byok = req.headers ? (req.headers[BYOK_HEADER] || req.headers[BYOK_HEADER.toLowerCase()]) : null;
+      const msg = redactSecrets(String((err && err.message) || err),
+        [typeof byok === "string" ? byok : ""]);
       res.statusCode = missing ? 503
         : /body too large|must be|unknown|required|not valid JSON|Unexpected/.test(msg) ? 400 : 500;
       res.setHeader("Content-Type", "application/json");

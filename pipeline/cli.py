@@ -382,6 +382,12 @@ def cmd_homes(args) -> int:
     return 0
 
 
+def cmd_walkgraph(args) -> int:
+    from .walkgraph import cmd_walkgraph as run
+
+    return run(args)
+
+
 def cmd_register_fill(args) -> int:
     from .register_api import (DEFAULT_CACHE_DIR, RegisterApiError,
                                fill_area)
@@ -507,6 +513,13 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--skip-osm-names", action="store_true",
                    help="debug: skip the OSM complex-name second join")
     h.set_defaults(func=cmd_homes)
+
+    w = sub.add_parser("walkgraph",
+                       help="build data/build/walkgraph/<region>.json from the region extracts")
+    w.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    w.add_argument("--regions", default=None,
+                   help="comma-separated region ids (default: all 9)")
+    w.set_defaults(func=cmd_walkgraph)
 
     r = sub.add_parser("register-fill",
                        help="fill inferred heights via the 건축HUB title API")

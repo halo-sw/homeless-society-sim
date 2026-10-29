@@ -254,3 +254,222 @@ body.printing-share #share-print { display: block !important; padding: 24px;
   .ui-simbar { max-width: calc(100vw - 24px); }
   .ui-photo, .ui-photo img { width: 180px; }
 }
+
+/* ---------- 13: Pretendard (self-hosted, SIL OFL) ---------- */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/pretendard/PretendardVariable.woff2') format('woff2-variations');
+}
+#ui-root, #panel-root {
+  font-family: 'Pretendard Variable', -apple-system, 'Apple SD Gothic Neo',
+    'Noto Sans KR', sans-serif;
+}
+#ui-root h1, #ui-root h2, #ui-root h3, #panel-root h1, #panel-root h2,
+#panel-root h3 {
+  letter-spacing: -0.02em;
+}
+/* Every price, minute and count: tabular figures, no jitter. */
+.ui-num, .ui-price, .ui-minutes, .ui-count,
+.ui-cand-price, .ui-cand-facts, .ui-commute, .ui-usage {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 13: motion tokens (Emil: custom curves, <300ms) ---------- */
+#ui-root, #panel-root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* Buttons feel responsive (Emil). No `transition: all` anywhere. */
+#ui-root button, #panel-root button {
+  transition: transform 160ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  #ui-root button:hover, #panel-root button:hover {
+    transition: transform 160ms var(--ease-out), filter 160ms ease;
+  }
+}
+#ui-root button:active, #panel-root button:active {
+  transform: scale(0.97);
+}
+/* Popovers scale from their trigger; modals stay centred. */
+.ui-pop {
+  transform-origin: var(--transform-origin, top left);
+  transition: transform 180ms var(--ease-out), opacity 180ms var(--ease-out);
+}
+.ui-pop[data-closed] {
+  transform: scale(0.95);
+  opacity: 0;
+}
+.ui-modal {
+  transform-origin: center;
+  transition: transform 240ms var(--ease-out), opacity 240ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  #ui-root *, #panel-root * {
+    animation-duration: 0.2s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.2s !important;
+  }
+  .ui-orb-spin, .ui-stagger, .ui-card-enter { animation: none !important; }
+  #ui-root button:active, #panel-root button:active { transform: none; }
+}
+
+/* ---------- 13: shell grid (nothing overlaps, ever) ---------- */
+/* top bar / left conversation / centre stage / right detail drawer.
+   Each region owns its scroll; nothing is wider/taller than its region. */
+.ui-shell13 {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-columns: 400px minmax(0, 1fr) 360px;
+  grid-template-areas: "top top top" "chat stage drawer";
+  background: rgba(255, 253, 248, 0.98);
+}
+.ui-shell13-top { grid-area: top; min-width: 0; overflow: hidden; }
+.ui-shell13-chat {
+  grid-area: chat; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+  border-right: 1px solid var(--border, #d8d2c4);
+}
+.ui-shell13-stage {
+  grid-area: stage; min-width: 0; min-height: 0; position: relative;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #101318;
+}
+.ui-shell13-drawer {
+  grid-area: drawer; min-width: 0; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  border-left: 1px solid var(--border, #d8d2c4);
+  background: rgba(255, 253, 248, 0.98);
+}
+/* 13: the old floating cards dock into the grid — never over the canvas. */
+.ui-shell13 .ui-simleft, .ui-shell13 .ui-compare, .ui-shell13 .ui-caption,
+.ui-shell13 .ui-judgelog {
+  position: static; width: auto; max-width: none; max-height: none;
+  transform: none; overflow: visible;
+}
+/* Timeline docks at the bottom of the centre stage only. */
+.ui-shell13 .ui-simbar {
+  position: static; width: auto; max-width: none; max-height: none;
+  transform: none; margin-top: auto;
+  border-top: 1px solid var(--border, #d8d2c4);
+  background: rgba(255, 253, 248, 0.98);
+  padding: 8px 12px; overflow-y: auto; overflow-x: hidden;
+  max-height: 34%;
+}
+/* Credits leave the canvas: one small link only. */
+.ui-creditlink { font-size: 12px; white-space: nowrap; }
+.ui-shell13 .ui-attr { display: none; }
+/* Bottom sheet under 1100px. */
+@media (max-width: 1099px) {
+  .ui-shell13 {
+    grid-template-rows: 56px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "stage" "drawer";
+  }
+  .ui-shell13-chat { display: none; }
+  .ui-shell13-chat.ui-sheet-open {
+    display: flex; position: absolute; z-index: 40; left: 0; right: 0; bottom: 0;
+    max-height: 62%; border-right: none;
+    border-top: 1px solid var(--border, #d8d2c4); border-radius: 12px 12px 0 0;
+    background: rgba(255, 253, 248, 1);
+  }
+  .ui-shell13-drawer {
+    border-left: none; border-top: 1px solid var(--border, #d8d2c4);
+    max-height: 30vh;
+  }
+}
+
+/* ---------- 13: candidate card (real-estate hierarchy) ---------- */
+.ui-cand {
+  border: 1px solid var(--border, #d8d2c4); border-radius: 12px;
+  overflow: hidden; background: #fffdf8; max-width: 100%;
+}
+.ui-cand-photo { position: relative; aspect-ratio: 4 / 3; background: #e8e2d4; }
+.ui-cand-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ui-cand-count {
+  position: absolute; right: 8px; bottom: 8px; font-size: 12px;
+  background: rgba(12, 14, 18, 0.68); color: #fff; border-radius: 8px; padding: 1px 7px;
+}
+.ui-cand-label {
+  position: absolute; left: 8px; top: 8px; font-size: 12px; max-width: calc(100% - 16px);
+  background: rgba(255, 253, 248, 0.94); border-radius: 8px; padding: 1px 7px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ui-cand-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ui-cand-price { font-size: 22px; font-weight: 800; line-height: 1.25; }
+.ui-cand-price small { font-size: 13px; font-weight: 400; }
+.ui-cand-facts { font-size: 13px; color: rgba(61, 50, 39, 0.78); }
+.ui-cand-name { font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.ui-cand-place { font-size: 13px; color: rgba(61, 50, 39, 0.78); }
+.ui-cand .ui-commute { font-size: 13px; }
+.ui-srcdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.ui-src-official { background: #2f9e44; }
+.ui-src-estimate { background: #f08c00; }
+.ui-src-said { background: #1971c2; }
+.ui-cand-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.ui-cand-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ui-cand-credit { font-size: 11px; color: rgba(61, 50, 39, 0.65); }
+/* Card entrance: stagger ≤40ms each, once, transform+opacity only. */
+@keyframes uiCardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ui-card-enter { animation: uiCardIn 240ms var(--ease-out) both; }
+/* Skeletons instead of spinners for cards. */
+.ui-skel {
+  border-radius: 8px; background: rgba(61, 50, 39, 0.1);
+  background-image: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  background-size: 200% 100%;
+  animation: uiSkel 1200ms linear infinite;
+}
+@keyframes uiSkel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ---------- 13: intake cards, toast, model rows, sources ---------- */
+.ui-intake { display: flex; flex-direction: column; gap: 8px; }
+.ui-intake-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.ui-toastwrap {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px; z-index: 100; align-items: center;
+  pointer-events: none;
+}
+.ui-toast {
+  pointer-events: auto; background: #23211d; color: #f5efe4;
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: min(480px, 90vw);
+  transition: transform 240ms var(--ease-out), opacity 240ms var(--ease-out);
+}
+.ui-toast[data-closed] { transform: translateY(8px) scale(0.97); opacity: 0; }
+.ui-modelrow {
+  display: flex; gap: 8px; align-items: center; padding: 8px 0;
+  border-top: 1px solid rgba(61, 50, 39, 0.12); min-width: 0;
+}
+.ui-modelrow > :first-child { flex: 1 1 auto; min-width: 0; }
+.ui-keyinput { width: 100%; box-sizing: border-box; font: inherit; padding: 8px;
+  border: 1px solid var(--border, #d8d2c4); border-radius: 8px; background: #fffdf8; }
+.ui-src-row { padding: 10px 0; border-top: 1px solid rgba(61, 50, 39, 0.12); }
+.ui-src-row > * + * { margin-top: 2px; }
+
+/* ---------- 13: orb + map sim ---------- */
+.ui-orb { position: relative; width: 100%; height: 100%; min-height: 320px; overflow: hidden; }
+.ui-orb canvas { width: 100%; height: 100%; display: block; }
+.ui-orb-tip {
+  position: absolute; pointer-events: none; z-index: 5; max-width: 240px;
+  background: rgba(255, 253, 248, 0.97); border: 1px solid var(--border, #d8d2c4);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px;
+}
+.ui-mapsim { width: 100%; height: 100%; min-height: 320px; background: #eef1ea; }
+.ui-mapsim svg { width: 100%; height: 100%; display: block; }
+@keyframes uiOrbDrift { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+
+/* ---------- 13: timeline compact row ---------- */
+.ui-tl-compact { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ui-tl-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.ui-tl-row .ui-strip { flex: 1 1 auto; min-width: 0; }
+.ui-tl-steps {
+  display: flex; gap: 4px; align-items: center; overflow-x: auto; white-space: nowrap;
+  font-size: 12px; padding-bottom: 2px;
+}

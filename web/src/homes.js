@@ -22,6 +22,7 @@
 import { findPath } from "./engine/journey.js";
 import { rideMinutes } from "./transit/schedule.js";
 import { photosNear, PHOTOS_DISCLAIMER } from "./places/photos.js";
+import { nearestStationByWalk } from "./walkgraph.js";
 
 export const HOME_SORTS = ["commute", "monthly", "deals", "priority"];
 export const DEFAULT_HOME_SORT = "commute";
@@ -105,10 +106,23 @@ function profileValue(profile, key) {
   return f ? f.value : null;
 }
 
-function commuteSummary(home, workplace, network, schedule = null) {
-  const walk = home.station && Number.isFinite(home.station.walk_minutes)
+export const SAME_STATION_KO = "직장역과 같은 역 · 지하철 안 타요";
+
+function commuteSummary(home, workplace, network, schedule = null, walkgraphs = null) {
+  let walk = home.station && Number.isFinite(home.station.walk_minutes)
     ? { minutes: home.station.walk_minutes, station: home.station.station, known: true }
     : { minutes: null, station: null, known: false };
+  // 13: homes outside the 3D boxes walk on the region walk graph.
+  if (!walk.known && walkgraphs && typeof walkgraphs.get === "function"
+      && Number.isFinite(home.lon) && Number.isFinite(home.lat)) {
+    const graph = walkgraphs.get(home.region);
+    if (graph) {
+      const best = nearestStationByWalk(graph, home.lon, home.lat);
+      if (best) {
+        walk = { minutes: best.minutes, station: best.station, known: true, via: "walkgraph" };
+      }
+    }
+  }
   let ride = {
     known: false, lines: [], transfers: [], distanceKm: null,
     minutes: null, source: null, note: null,
@@ -145,7 +159,18 @@ function commuteSummary(home, workplace, network, schedule = null) {
       note: "고객님이 알려주신 값", derived: null,
     };
   }
-  return { walk, ride };
+  // 13: a home at the workplace station needs no subway at all.
+  const destStation = dest || null;
+  const sameStation = Boolean(walk.station && destStation && walk.station === destStation)
+    || (ride.distanceKm === 0 && walk.station && destStation);
+  if (sameStation) {
+    ride = {
+      ...ride, known: true, minutes: 0, source: ride.source || "derived",
+      note: SAME_STATION_KO, sameStation: true,
+      lines: [], transfers: [], distanceKm: 0,
+    };
+  }
+  return { walk, ride, destStation, sameStation };
 }
 
 export function commuteLine(summary) {
@@ -155,6 +180,12 @@ export function commuteLine(summary) {
       ? `집에서 ${summary.walk.station}까지 도보 1분 이내 (그래프)`
       : `집에서 ${summary.walk.station}까지 도보 ${summary.walk.minutes}분 (그래프)`;
   bits.push(walkText);
+  // 13: never print "0분 (0km)" — a home at the workplace station
+  // says so in words.
+  if (summary.sameStation || summary.ride.sameStation) {
+    bits.push(SAME_STATION_KO);
+    return bits.join(" · ");
+  }
   if (summary.ride.lines.length > 0) {
     const route = summary.ride.lines.join(" → ");
     const xfer = summary.ride.transfers.length > 0
@@ -364,6 +395,7 @@ export function find_homes(profile, index, opts = {}) {
   const schedule = opts.schedule || null; // parsed interstation schedule
   const boxes = opts.boxes || null; // Map boxId -> {graph, pois}
   const manifest = opts.photos || null;
+  const walkgraphs = opts.walkgraphs || null; // Map region -> walk graph
 
   const budgets = {
     jeonse: profileValue(profile, "depositMax"),
@@ -378,7 +410,7 @@ export function find_homes(profile, index, opts = {}) {
   for (const home of homes) {
     if (regions && !regions.includes(home.region)) continue;
     if (kind && home.kind !== kind) continue;
-    const commute = commuteSummary(home, workplace, network, schedule);
+    const commute = commuteSummary(home, workplace, network, schedule, walkgraphs);
     if (commuteMax !== null && commute.walk.known
         && commute.walk.minutes > commuteMax) continue;
     // Tenure buckets: median within budget (or no budget set).

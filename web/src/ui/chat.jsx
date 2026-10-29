@@ -39,7 +39,24 @@ import {
 } from "@astryxdesign/core/Chat";
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
-import { PreviewCard } from "./preview.jsx";
+import { IntakeCard, HouseholdCard } from "./intake.jsx";
+import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
+import { ModelPanel } from "./model-panel.jsx";
+import { SourcesDrawer } from "./sources.jsx";
+import { AssumptionsPanel } from "./assumptions.jsx";
+import { OrbView } from "./orb.jsx";
+import { toast, Toaster } from "./toast.jsx";
+import {
+  INTAKE_STEPS, intakeState0, currentStep, prefillFromExtract,
+  answerStep, skipStep, household0, addMember, removeMember,
+  intakeToProfilePatch,
+} from "../intake.js";
+import { selectPhotosForList } from "../places/select-photos.js";
+import { newUsageLog, recordTurn } from "../models/catalog.js";
+import { loadByoKey } from "../consult/byok.js";
+import { buildOrbData } from "../orb.js";
+import { defaultOverrides, setOverride, resetOverride,
+  encodeOverrides, decodeOverrides } from "../assumptions.js";
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
 // so module evaluation order is safe.
 import { CompareCard, CompareTabBody } from "./app.jsx";
@@ -53,6 +70,7 @@ import { outingsFor, hhmm } from "../timeline.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
   loadHomesIndex, loadNetwork, loadSchedule, loadPhotosManifest,
+  loadNamedPhotos, loadRegions,
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
@@ -131,11 +149,13 @@ function readinessNote(candidate) {
 }
 
 export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
-    onPreview3D, onJeonse, onRun, example }) {
+    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example }) {
   const candidates = (data && data.candidates) || [];
   const picked = candidates.filter((c) => picks.includes(c.id));
   const unready = picked.filter((c) => readinessNote(c));
   const canRun = picked.length >= 2 && unready.length === 0;
+  // 13: one photo per card at most — dedup across the whole list.
+  const withPhotos = selectPhotosForList(candidates, photoDeps || {});
   return (
     <Card padding={3}>
       <VStack gap={2}>
@@ -159,16 +179,24 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         {candidates.length === 0 && (
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
         )}
-        {candidates.map((c) => (
-          <VStack gap={1} key={c.id}>
-            <PreviewCard candidate={c} tenure={tenure}
-              inCompare={picks.includes(c.id)}
-              onPreview3D={onPreview3D} onJeonse={onJeonse}
-              onCompare={onTogglePick} />
-            {readinessNote(c) && (
-              <Text type="supporting">{`살아 보기 불가: ${readinessNote(c)}`}</Text>
-            )}
-          </VStack>
+        {withPhotos.map(({ candidate: c, photos }, i) => (
+          <div key={c.id}
+            onMouseEnter={() => onHover && onHover(`home:${c.id}`)}
+            onMouseLeave={() => onHover && onHover(null)}>
+            <VStack gap={1}>
+              <CandidateCard candidate={c} tenure={tenure} destName={destName}
+                photos={photos} index={i}
+                onLive={() => { onTogglePick(c); if (c.scene && onPreview3D) onPreview3D(c); }}
+                onJeonse={() => onJeonse(c)} onDetail={() => onDetail && onDetail(c)} />
+              {picks.includes(c.id) && (
+                <Button size="sm" variant="secondary" label="비교에서 빼기"
+                  onClick={() => onTogglePick(c)} />
+              )}
+              {readinessNote(c) && (
+                <Text type="supporting">{`살아 보기 불가: ${readinessNote(c)}`}</Text>
+              )}
+            </VStack>
+          </div>
         ))}
         {candidates.length > 0 && (
           <VStack gap={1}>
@@ -290,6 +318,33 @@ export function ListingCard({ onAsk }) {
   );
 }
 
+// --- IntakeFlowCard (13, Part 2) --------------------------------------------------------------
+// The guided intake as inline answer cards: current step, household
+// (up to 4), then the profile summary + 후보 찾기. Free conversation
+// continues at any point (the composer stays live).
+
+export function IntakeFlowCard({ intake, household, profile, handlers }) {
+  const step = currentStep(intake);
+  return (
+    <VStack gap={2}>
+      {step && !intake.done && (
+        <IntakeCard step={step} index={INTAKE_STEPS.indexOf(step)}
+          total={INTAKE_STEPS.length}
+          value={intake.values[step]} said={Boolean(intake.said[step])}
+          onAnswer={handlers.onIntakeAnswer} onSkip={handlers.onIntakeSkip} />
+      )}
+      <HouseholdCard household={household}
+        onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
+      {profile && (
+        <ProfileCard profile={profile} example={handlers.exampleId}
+          onChip={handlers.onChip} />
+      )}
+      <Button size="sm" label="후보 찾기"
+        onClick={() => handlers.onFindHomes && handlers.onFindHomes()} />
+    </VStack>
+  );
+}
+
 // --- message rendering -------------------------------------------------------------------
 
 function CardMsg({ msg, handlers, toolRows }) {
@@ -313,7 +368,13 @@ function CardMsg({ msg, handlers, toolRows }) {
             onSort={(s) => handlers.onSort(msg.id, s)}
             picks={handlers.picks} onTogglePick={handlers.onTogglePick}
             onPreview3D={handlers.onPreview3D} onJeonse={handlers.onJeonse}
-            onRun={handlers.onRun} example={msg.example} />
+            onRun={handlers.onRun} onDetail={handlers.onDetail}
+            onHover={handlers.onHover} photoDeps={handlers.photoDeps}
+            destName={handlers.destName} example={msg.example} />
+        )}
+        {msg.kind === "intake" && (
+          <IntakeFlowCard intake={handlers.intake} household={handlers.household}
+            profile={handlers.profile} handlers={handlers} />
         )}
         {msg.kind === "simulation" && (
           <SimulationCard data={data} example={msg.example} />
@@ -415,13 +476,27 @@ export function ChatScreen() {
   const [composer, setComposer] = useState("");
   const [error, setError] = useState("");
   const [usage, setUsage] = useState({ prompt_tokens: 0, completion_tokens: 0, est_usd: 0 });
+  // 13: the loose token line moves into the 모델 panel as a usage log.
+  const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
+  const [panel, setPanel] = useState(null); // null | model | sources | assume
+  const [serverKeys, setServerKeys] = useState({});
+  const [modelErrors, setModelErrors] = useState({});
+  const [intake, setIntake] = useState(() => intakeState0());
+  const [household, setHousehold] = useState(() => household0());
+  const [overrides, setOverrides] = useState(() => defaultOverrides());
+  const [namedPhotos, setNamedPhotos] = useState(null);
+  const [cardHi, setCardHi] = useState(null);
+  const [orbFilter, setOrbFilter] = useState(null);
   const idRef = useRef(0);
   const busyRef = useRef(false);
+  const profileRef = useRef(null);
+  useEffect(() => { profileRef.current = profile; }, [profile]);
   const dataRef = useRef(null); // {index, network, schedule, manifest, regionsKey}
   const stateRef = useRef({ messages, toolRows, profile, candidatesData, picks, exampleId, scenario });
-  stateRef.current = { messages, toolRows, profile, candidatesData, picks, exampleId, scenario };
+  stateRef.current = { messages, toolRows, profile, candidatesData, picks, exampleId, scenario,
+    intake, household, overrides, usageLog };
   const viewChip = useSyncExternalStore(store.subscribe,
     () => selectState(store.getState()).viewChip,
     () => selectState(store.getState()).viewChip);
@@ -436,7 +511,9 @@ export function ChatScreen() {
   const pushMsg = (msg) => {
     const id = msg.id || nextId();
     setMessages((prev) => {
-      if (msg.replace && ["profile", "candidates", "simulation"].includes(msg.kind)) {
+      // 13: a stable id renders once — the greeting can never double.
+      if (msg.id && prev.some((m) => m.id === msg.id)) return prev;
+      if (msg.replace && ["profile", "candidates", "simulation", "intake"].includes(msg.kind)) {
         const at = prev.findIndex((m) => m.kind === msg.kind && m.role === "assistant");
         if (at >= 0) {
           const next = [...prev];
@@ -470,13 +547,16 @@ export function ChatScreen() {
   async function ensureData(regions) {
     const key = (regions || []).join(",") || "all";
     if (dataRef.current && dataRef.current.regionsKey === key) return dataRef.current;
-    const [index, network, schedule, manifest] = await Promise.all([
+    const [index, network, schedule, manifest, named, regionsDoc] = await Promise.all([
       loadHomesIndex(fetchJson, regions && regions.length > 0 ? regions : null),
       loadNetwork(fetchJson),
       loadSchedule(fetchText),
       loadPhotosManifest(fetchJson),
+      loadNamedPhotos(fetchJson),
+      loadRegions(fetchJson),
     ]);
-    dataRef.current = { index, network, schedule, manifest, regionsKey: key };
+    setNamedPhotos(named);
+    dataRef.current = { index, network, schedule, manifest, named, regionsDoc, regionsKey: key };
     return dataRef.current;
   }
 
@@ -510,7 +590,79 @@ export function ChatScreen() {
         content: "어떤 상황인지 조금만 더 알려주세요. 예를 들어 어디로 출근하는지, 전세·월세 중 뭘 보는지, 예산은 얼마인지요." });
       return;
     }
+    // 13: after the first message the guided intake pre-fills from the
+    // extract and walks the six steps as inline answer cards.
+    setIntake(prefillFromExtract(intake, { profile: prof }));
+    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
     await runSearch(prof, data, { sort: "commute" });
+  }
+
+  // Merge an intake patch into the profile as customer values.
+  function applyIntakePatch(prof, patch) {
+    const next = { ...(prof || {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === undefined) continue;
+      next[key] = { value, source: "customer" };
+    }
+    return next;
+  }
+
+  const researchTimer = useRef(null);
+
+  function liveResearch(prof) {
+    if (researchTimer.current) clearTimeout(researchTimer.current);
+    researchTimer.current = setTimeout(async () => {
+      if (!dataRef.current || busyRef.current) return;
+      const before = stateRef.current.candidatesData
+        ? stateRef.current.candidatesData.result.total_matching : null;
+      busyRef.current = true;
+      try {
+        await runSearch(prof, dataRef.current, { sort: stateRef.current.candidatesData?.sort || "commute" });
+        const after = stateRef.current.candidatesData.result.total_matching;
+        if (before !== null && before !== after) {
+          toast.show(`조건 바뀜 · 후보 ${before}곳 → ${after}곳`);
+        }
+      } finally {
+        busyRef.current = false;
+      }
+    }, 400);
+  }
+
+  function handleIntakeAnswer(step, value, keep = false) {
+    const next = value === null && keep ? intake : answerStep(intake, step, value);
+    setIntake(next);
+    const patch = intakeToProfilePatch(next, household);
+    const merged = applyIntakePatch(profileRef.current, patch);
+    profileRef.current = merged;
+    setProfile(merged);
+    store.set({ chatSummary: profileSummary(merged) });
+    liveResearch(merged);
+    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
+  }
+
+  function handleIntakeSkip(step) {
+    setIntake(skipStep(intake, step));
+    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
+  }
+
+  function handleHouseholdAdd(member) {
+    const r = addMember(household, member);
+    if (!r.ok) return r;
+    setHousehold(r.household);
+    setProfile((prof) => {
+      const patch = intakeToProfilePatch(intake, r.household);
+      const merged = applyIntakePatch(prof, { members: patch.members });
+      store.set({ chatSummary: profileSummary(merged) });
+      return merged;
+    });
+    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
+    return r;
+  }
+
+  function handleHouseholdRemove(index) {
+    const next = removeMember(household, index);
+    setHousehold(next);
+    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
   }
 
   async function runSearch(prof, data, { sort }) {
@@ -664,8 +816,12 @@ export function ChatScreen() {
       { role: "user", content: text },
     ];
     try {
+      let byoKey = "";
+      try {
+        byoKey = loadByoKey(typeof sessionStorage !== "undefined" ? sessionStorage : null, provider);
+      } catch { /* no storage — server key path */ }
       const out = await postConsult({ provider, messages: history, scenario: scen,
-        context: agentContext(store.getState()) });
+        context: agentContext(store.getState()), byoKey });
       const rows = { ...stateRef.current.toolRows };
       const callIds = [];
       for (const m of out.messages) {
@@ -693,7 +849,19 @@ export function ChatScreen() {
         completion_tokens: u.completion_tokens + ((out.usage && out.usage.completion_tokens) || 0),
         est_usd: u.est_usd + ((out.usage && out.usage.est_usd) || 0),
       }));
+      // 13: per-turn usage into the 모델 panel log.
+      setUsageLog((log) => recordTurn(log, {
+        provider, model: provider,
+        input: (out.usage && out.usage.prompt_tokens) || 0,
+        output: (out.usage && out.usage.completion_tokens) || 0,
+        reasoning: (out.usage && out.usage.reasoning_tokens) || 0,
+        latencyMs: out.latencyMs || 0,
+      }));
+      setModelErrors((e) => ({ ...e, [provider]: null }));
     } catch (err) {
+      setModelErrors((e) => ({ ...e, [provider]: {
+        httpStatus: err.httpStatus || null, message: String(err.message || err).slice(0, 200),
+      } }));
       if (/is not set/.test(err.message)) {
         pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
       } else {
@@ -818,7 +986,7 @@ export function ChatScreen() {
       }
     }
     if (initial.listing === "1") {
-      pushMsg({ role: "assistant", kind: "text", content: GREETING });
+      pushMsg({ id: "greeting", role: "assistant", kind: "text", content: GREETING });
       pushMsg({ role: "assistant", kind: "listing", data: {} });
       return;
     }
@@ -844,10 +1012,14 @@ export function ChatScreen() {
       if (Array.isArray(mem.picks)) setPicks(mem.picks);
       if (mem.exampleId) setExampleId(mem.exampleId);
       if (mem.scenario) setScenario(mem.scenario);
+      if (mem.intake) setIntake(mem.intake);
+      if (mem.household) setHousehold(mem.household);
+      if (mem.overrides) setOverrides(mem.overrides);
+      if (mem.usageLog) setUsageLog(mem.usageLog);
       if (mem.compare) store.set({ compare: mem.compare });
       return;
     }
-    pushMsg({ role: "assistant", kind: "text", content: GREETING });
+    pushMsg({ id: "greeting", role: "assistant", kind: "text", content: GREETING });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -855,11 +1027,19 @@ export function ChatScreen() {
   useEffect(() => {
     if (messages.length === 0) return;
     saveTranscript({ messages, toolRows, profile, candidatesData, picks,
-      exampleId, scenario, compare: store.getState().compare, savedAt: Date.now() });
-  }, [messages, toolRows, profile, candidatesData, picks, exampleId, scenario]);
+      exampleId, scenario, intake, household, overrides, usageLog,
+      compare: store.getState().compare, savedAt: Date.now() });
+  }, [messages, toolRows, profile, candidatesData, picks, exampleId, scenario,
+    intake, household, overrides, usageLog]);
+
+  const [detail, setDetail] = useState(null);
+  const destName = (profile && profile.workplaces && profile.workplaces.value
+    && profile.workplaces.value[0] && profile.workplaces.value[0].resolved
+    && profile.workplaces.value[0].resolved.station) || "";
 
   const handlers = {
     picks,
+    intake, household, profile, exampleId,
     onChip: (field, starter) => setComposer(starter),
     onSort: handleSort,
     onTogglePick: handleTogglePick,
@@ -867,6 +1047,19 @@ export function ChatScreen() {
     onJeonse: handleJeonse,
     onRun: handleRun,
     onAsk: (text) => send(text),
+    onIntakeAnswer: handleIntakeAnswer,
+    onIntakeSkip: handleIntakeSkip,
+    onHouseholdAdd: handleHouseholdAdd,
+    onHouseholdRemove: handleHouseholdRemove,
+    onFindHomes: () => {
+      if (profileRef.current && dataRef.current && !busyRef.current) {
+        runSearch(profileRef.current, dataRef.current, { sort: "commute" });
+      }
+    },
+    onDetail: (c) => setDetail(c),
+    onHover: (key) => setCardHi(key),
+    photoDeps: { named: namedPhotos, manifest: dataRef.current?.manifest || null },
+    destName,
   };
 
   const summary = profile ? profileSummary(profile) : "";
@@ -906,6 +1099,12 @@ export function ChatScreen() {
                       { label: "Spark Open (Muse Spark Open)", onClick: () => setProvider("baseten") },
                     ]} />
                 )}
+                <Button size="sm" variant="ghost" label="모델"
+                  onClick={() => setPanel(panel === "model" ? null : "model")} />
+                <Button size="sm" variant="ghost" label="가정 바꾸기"
+                  onClick={() => setPanel(panel === "assume" ? null : "assume")} />
+                <Button size="sm" variant="ghost" label="출처·라이선스"
+                  onClick={() => setPanel(panel === "sources" ? null : "sources")} />
                 <Button size="sm" variant="ghost" label="새로 시작"
                   onClick={() => { clearTranscript(); window.location.href = "/"; }} />
               </>
@@ -952,10 +1151,31 @@ export function ChatScreen() {
                   onClick={() => chipAction(chip)} />
               ))}
             </div>
-            <Text type="supporting" hasTabularNumbers>{formatUsage(usage)}</Text>
           </section>
           <section className="ui-chat-work" aria-label="작업 영역">
-            <WorkArea picks={picks} candidatesData={candidatesData} onRun={handleRun} />
+            <WorkArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
+              panel={panel} onClosePanel={() => setPanel(null)}
+              usageLog={usageLog} serverKeys={serverKeys} modelErrors={modelErrors}
+              overrides={overrides}
+              onSetOverride={(id, v) => setOverrides((o) => setOverride(o, id, v))}
+              onResetOverride={(id) => setOverrides((o) => resetOverride(o, id))}
+              orbData={buildOrbData({
+                regions: dataRef.current?.regionsDoc || { regions: [] },
+                stations: [],
+                homes: dataRef.current?.index?.homes || [],
+                candidates: candidatesData?.result?.candidates || [],
+                manifest: dataRef.current?.manifest || null,
+                rentalCoverage: {},
+              })}
+              cardHi={cardHi}
+              onOrbRegion={(regionId) => {
+                setOrbFilter(regionId);
+                toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
+              }}
+              detail={detail} onCloseDetail={() => setDetail(null)}
+              photoDeps={handlers.photoDeps} destName={destName}
+              tenure={candidatesData?.tenure || "undecided"}
+              onLive={handleTogglePick} onJeonse={handleJeonse} />
           </section>
         </div>
         {viewChip && (

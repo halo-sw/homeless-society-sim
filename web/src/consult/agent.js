@@ -208,11 +208,12 @@ export async function runTurn(opts) {
     loadSafety = null, loadPersona = null, loadAssumption = null,
     loadHomes = null, loadPhotos = null, loadAreasIndex = null,
     loadStationBoxes = null, loadTransit = null,
-    fetchImpl = null, completeFn = null,
+    fetchImpl = null, completeFn = null, apiKey = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
   const cfg = providerConfig(provider);
-  const complete = completeFn || ((args) => completeWithTools({ ...args, fetchImpl }));
+  const complete = completeFn
+    || ((args) => completeWithTools({ ...args, fetchImpl, apiKey }));
   const session = createSession({
     scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion, loadAreaMeta,
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,

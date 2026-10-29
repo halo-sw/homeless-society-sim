@@ -25,6 +25,8 @@ export const HOMES_REGION_URL = (id) => `/data/homes/${id}.json`;
 export const NETWORK_URL = "/data/region/network.json";
 export const SCHEDULE_URL = "/scenarios/transit/seoul-metro-interstation.csv";
 export const PHOTOS_MANIFEST_URL = "/scenarios/places/commons-photos.json";
+export const NAMED_PHOTOS_URL = "/scenarios/places/commons-named.json";
+export const REGIONS_URL = "/data/regions.json";
 export const BOX_AREA_URL = (boxId) => `/data/${boxId}/area.json`;
 
 export function stationNames(network) {
@@ -107,6 +109,27 @@ export async function loadPhotosManifest(fetchJson) {
   try {
     const doc = await fetchJson(PHOTOS_MANIFEST_URL);
     return doc && Array.isArray(doc.items) ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
+// 13: name-searched Commons photos ({kind: station|complex,
+// target: station:<name>|home:<id>}). May still be in progress —
+// null degrades to street photos + our own 3D thumbnail.
+export async function loadNamedPhotos(fetchJson) {
+  try {
+    const doc = await fetchJson(NAMED_PHOTOS_URL);
+    return doc && Array.isArray(doc.items) ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadRegions(fetchJson) {
+  try {
+    const doc = await fetchJson(REGIONS_URL);
+    return doc && Array.isArray(doc.regions) ? doc : null;
   } catch {
     return null;
   }
