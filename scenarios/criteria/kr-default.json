@@ -1,6 +1,6 @@
 {
   "name": "kr-default",
-  "version": 1,
+  "version": 2,
   "note": "주거 생활 시뮬레이터의 모든 규칙·가정값. 엔진(web/src/engine/criteria.js)이 이 파일을 직접 읽어 상수로 쓴다. 시나리오는 criteria_overrides로 기준별 값을 바꿀 수 있고, 바뀐 값은 고객 입력으로 표시된다.",
   "groups": [
     { "id": "move", "title": "이동" },
@@ -410,14 +410,15 @@
       "id": "C-money-fixed",
       "group": "money",
       "title": "고정비·급여일",
-      "rule": "관리비 15만원·기타 고정비 0원은 1일차에 내고, 급여는 매월 25일에 받는다(기간에 25일이 없으면 1일차에 1개월분). 대출은 연 4%·30년(가정값)이다.",
+      "rule": "관리비 15만원·기타 고정비 0원은 1일차에 내고, 급여는 매월 25일에 받는다(기간에 25일이 없으면 1일차에 1개월분). 대출은 연 4%·30년(가정값)이고, 전세는 5억원까지만 빌리는 것으로 둔다(가정값).",
       "values": {
         "maintenance_won": { "value": 150000, "unit": "원/월", "overridable": true },
         "other_fixed_won": { "value": 0, "unit": "원/월", "overridable": true },
         "due_day_1based": { "value": 1, "unit": "일차", "overridable": true },
         "pay_day": { "value": 25, "unit": "일", "overridable": true },
         "loan_rate_pct": { "value": 4.0, "unit": "%", "overridable": true },
-        "loan_years": { "value": 30, "unit": "년", "overridable": true }
+        "loan_years": { "value": 30, "unit": "년", "overridable": true },
+        "jeonse_loan_cap_won": { "value": 500000000, "unit": "원", "overridable": true }
       },
       "source": "가정값",
       "affects": ["money.maintenance", "money.other_fixed", "money.salary", "money.housing", "daily_balance"],

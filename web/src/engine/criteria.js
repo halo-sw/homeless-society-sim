@@ -157,6 +157,7 @@ const FLAT_MAP = {
     pay_day: "pay_day",
     loan_rate_pct: "loan_rate_pct",
     loan_years: "loan_years",
+    jeonse_loan_cap_won: "jeonse_loan_cap_won",
   },
   "C-burden-rule": { threshold_pct: "burden_threshold_pct" },
   "C-jeonse-ratio-caution": { threshold_pct: "jeonse_caution_pct" },
@@ -225,6 +226,7 @@ function nativeValue(scenario, flatName) {
     case "pay_day": return money.pay_day_of_month;
     case "loan_rate_pct": return money.loan_rate_pct;
     case "loan_years": return money.loan_years;
+    case "jeonse_loan_cap_won": return money.jeonse_loan_cap_won;
     case "burden_threshold_pct":
       return scenario.money ? scenario.money.burden_threshold_pct : undefined;
     default: return undefined;
@@ -244,6 +246,7 @@ function isExplicit(scenario, flatName) {
     case "pay_day": return ex.money_pay_day_of_month === true;
     case "loan_rate_pct": return ex.money_loan_rate_pct === true;
     case "loan_years": return ex.money_loan_years === true;
+    case "jeonse_loan_cap_won": return ex.money_jeonse_loan_cap_won === true;
     case "burden_threshold_pct": return ex.money_burden_threshold_pct === true;
     default: return false;
   }
@@ -339,6 +342,7 @@ export function moneyOptsFromCriteria(resolved) {
     fixed_due_day_1based: f.due_day_1based,
     loan_rate_pct: f.loan_rate_pct,
     loan_years: f.loan_years,
+    jeonse_loan_cap_won: f.jeonse_loan_cap_won,
     burden_threshold_pct: f.burden_threshold_pct,
   };
 }

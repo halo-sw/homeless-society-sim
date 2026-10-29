@@ -304,6 +304,7 @@ async function living_cost(session, args) {
       price_won: price.price_won, deposit_won: price.deposit_won, monthly_rent_won: price.monthly_rent_won,
       cash_won: scenario.money.cash_won,
       loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years,
+      jeonse_loan_cap_won: A.jeonse_loan_cap_won,
       source: price.source,
     });
   } catch (err) {

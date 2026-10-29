@@ -76,7 +76,11 @@ describe("money tools", () => {
     });
     assert.equal(lc.ok, true);
     assert.equal(lc.monthly_net_won, 4000000);
-    assert.equal(lc.housing.monthly_won, Math.ceil(780000000 * 0.04 / 12));
+    // 7.8억 loan with the 5억 cap: interest on 5억, 2.8억 shortfall.
+    assert.equal(lc.housing.monthly_won, Math.ceil(500000000 * 0.04 / 12));
+    assert.equal(lc.housing.loan_won, 780000000);
+    assert.equal(lc.housing.loan_shortfall_won, 280000000);
+    assert.equal(lc.housing.flags.loan_shortfall, true);
     assert.ok(lc.timeline.counts.commute_legs > 0);
     assert.equal(lc.timeline.daily_balance_won.length, 7);
     assert.match(lc.formatted.burden, /%/);

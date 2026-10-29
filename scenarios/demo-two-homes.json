@@ -119,6 +119,7 @@
     "assumptions": {
       "loan_rate_pct": 4.0,
       "loan_years": 30,
+      "jeonse_loan_cap_won": 500000000,
       "maintenance_won_month": 150000,
       "transit_fare_won": 1500,
       "basket_won": 30000,

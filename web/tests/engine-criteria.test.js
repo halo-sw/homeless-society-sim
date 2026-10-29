@@ -39,7 +39,7 @@ describe("criteria file", () => {
     const onDisk = JSON.parse(readFileSync(CRITERIA_URL, "utf8"));
     validateCriteriaDoc(onDisk);
     assert.deepEqual(CRITERIA_DOC, onDisk);
-    assert.equal(CRITERIA_VERSION, 1);
+    assert.equal(CRITERIA_VERSION, 2);
     assert.ok(CRITERIA_LIST.length >= 20);
   });
 
@@ -77,6 +77,7 @@ describe("criteria file", () => {
     assert.deepEqual(DEFAULT_MONEY_ASSUMPTIONS, {
       loan_rate_pct: criterionDefault("C-money-fixed", "loan_rate_pct"),
       loan_years: criterionDefault("C-money-fixed", "loan_years"),
+      jeonse_loan_cap_won: criterionDefault("C-money-fixed", "jeonse_loan_cap_won"),
       maintenance_won_month: criterionDefault("C-money-fixed", "maintenance_won"),
       transit_fare_won: criterionDefault("C-money-fare", "fare_won"),
       basket_won: criterionDefault("C-money-basket", "basket_won"),

@@ -8,7 +8,7 @@ import {
   createCsvBackend, createApiBackend, mapApiItem, rtmsFileName,
   RTMS_DISCLAIMER,
 } from "../src/money/rtms.js";
-import { referencePrice, quantileSorted, statsOf } from "../src/money/prices.js";
+import { matchAreaBucket, referencePrice, referenceWindow, quantileSorted, statsOf } from "../src/money/prices.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
@@ -102,9 +102,63 @@ describe("rtms csv loader", () => {
     assert.equal(ref.trade.median, 2400000000); // nearest-rank of 20..28
     assert.equal(ref.trade.p25, 2200000000);
     assert.equal(ref.trade.p75, 2600000000);
-    assert.deepEqual(ref.period, { from: "202601", to: "202609" });
+    assert.deepEqual(ref.period, { from: "202510", to: "202609" }); // 12-month window
     assert.deepEqual(statsOf([]), { count: 0, median: null, p25: null, p75: null });
     assert.equal(quantileSorted([], 0.5), null);
+  });
+
+  it("follows the latest month with its 12-month window", () => {
+    const rows = [
+      { deal: "trade", area_m2: 60, trade_won: 100, contract_ym: "202401", floor: 3 },
+      { deal: "trade", area_m2: 60, trade_won: 200, contract_ym: "202506", floor: 5 },
+    ];
+    assert.deepEqual(referenceWindow(rows), { from: "202407", to: "202506" });
+    const ref = referencePrice(rows, { areaM2: 60 });
+    assert.deepEqual(ref.period, { from: "202407", to: "202506" });
+    assert.equal(ref.trade.count, 1); // the 202401 row falls outside
+    assert.equal(ref.trade.median, 200);
+    // A newer file moves the window with it.
+    rows.push({ deal: "trade", area_m2: 60, trade_won: 300, contract_ym: "202610", floor: 7 });
+    const ref2 = referencePrice(rows, { areaM2: 60 });
+    assert.deepEqual(ref2.period, { from: "202511", to: "202610" });
+    assert.equal(ref2.trade.count, 1);
+    assert.equal(ref2.trade.median, 300);
+  });
+
+  it("reports period, count, floors and bucket next to every median", () => {
+    const rows = [
+      { deal: "trade", area_m2: 60, trade_won: 100, contract_ym: "202606", floor: 3 },
+      { deal: "trade", area_m2: 60, trade_won: 200, contract_ym: "202606", floor: 15 },
+      { deal: "rent", area_m2: 60, rent_kind: "jeonse", deposit_won: 50,
+        monthly_won: 0, contract_ym: "202606", floor: 8 },
+      { deal: "rent", area_m2: 60, rent_kind: "wolse", deposit_won: 10, monthly_won: 1,
+        contract_ym: "202606", floor: null },
+    ];
+    const ref = referencePrice(rows, { areaM2: 60 });
+    assert.deepEqual(ref.trade.floors, { min: 3, max: 15 });
+    assert.deepEqual(ref.trade.period, { from: "202507", to: "202606" });
+    assert.equal(ref.trade.count, 2);
+    assert.equal(ref.trade.area_bucket_m2, 60);
+    assert.deepEqual(ref.jeonse.floors, { min: 8, max: 8 });
+    assert.equal(ref.jeonse.count, 1);
+    assert.equal(ref.jeonse.area_bucket_m2, 60);
+    assert.deepEqual(ref.wolse.floors, { min: null, max: null });
+    assert.equal(ref.wolse.count, 1);
+  });
+
+  it("matches the closest real-transaction bucket to the anchor", () => {
+    const rows = [
+      { area_m2: 84.82 }, { area_m2: 84.82 }, { area_m2: 59.97 }, { area_m2: 114.5 },
+    ];
+    // 84.82 vs 59.97 anchor → the 59.97 bucket wins.
+    assert.deepEqual(matchAreaBucket(rows, 59.97, 84.82),
+      { area_m2: 59.97, area_match: { from: 84.82, to: 59.97, basis: "실거래" } });
+    // Nothing near the anchor → keep the own area, no match record.
+    assert.deepEqual(matchAreaBucket([{ area_m2: 84.82 }], 59.97, 84.82),
+      { area_m2: 84.82, area_match: null });
+    // The own area already is the closest bucket → keep it quietly.
+    assert.deepEqual(matchAreaBucket(rows, 84.82, 84.82),
+      { area_m2: 84.82, area_match: null });
   });
 });
 

@@ -21,7 +21,7 @@ import { engineMetrics, runPaired } from "../src/engine/paired.js";
 import { parseInterstationCsv } from "../src/transit/schedule.js";
 import { Router } from "../src/engine/graph.js";
 import { createCsvBackend } from "../src/money/rtms.js";
-import { referencePrice } from "../src/money/prices.js";
+import { AREA_BUCKET_TOL_M2, matchAreaBucket, referencePrice } from "../src/money/prices.js";
 import { buildPnuIndex, matchRtmsRow, complexOfBuildings, 단지명Matches } from "../src/money/pnu.js";
 import { householdMonthlyNet } from "../src/money/payroll.js";
 import { tenureCost, TENURES } from "../src/money/tenure.js";
@@ -209,12 +209,34 @@ for (const h of scenario.homes) {
   const nameHits = rows.filter((r) => 단지명Matches(r.complex, h.complex_name));
   const used = parcelHits.length >= 3 ? parcelHits : nameHits;
   const matchMethod = parcelHits.length >= 3 ? "parcel+name" : "name-only";
-  let areaM2 = scenario.money.area_m2[h.label] || null;
-  if (!areaM2) {
+  let ownAreaM2 = scenario.money.area_m2[h.label] || null;
+  if (!ownAreaM2) {
     const areas = used.map((r) => r.area_m2).filter(Number.isFinite).sort((a, b) => a - b);
-    areaM2 = areas.length > 0 ? areas[Math.floor(areas.length / 2)] : null;
+    ownAreaM2 = areas.length > 0 ? areas[Math.floor(areas.length / 2)] : null;
   }
-  const reference = areaM2 ? referencePrice(used, { areaM2 }) : null;
+  prepByLabel[h.label] = { home: h, area, parcelHits, nameHits, used,
+    matchMethod, ownAreaM2 };
+}
+// Same-size anchor (stage 15.4): home A's area. Each other home uses
+// the real-transaction bucket closest to the anchor when it sits within
+// ±5㎡, else keeps its own area with an area_mismatch flag.
+const anchorM2 = prepByLabel[scenario.homes[0].label].ownAreaM2;
+for (const h of scenario.homes) {
+  const prep = prepByLabel[h.label];
+  let areaM2 = prep.ownAreaM2;
+  let areaMatch = null;
+  let areaMismatch = null;
+  if (h.label !== scenario.homes[0].label) {
+    const matched = matchAreaBucket(prep.used, anchorM2, prep.ownAreaM2);
+    areaM2 = matched.area_m2;
+    areaMatch = matched.area_match;
+    if (!areaMatch && Number.isFinite(anchorM2) && Number.isFinite(prep.ownAreaM2)
+        && Math.abs(prep.ownAreaM2 - anchorM2) > AREA_BUCKET_TOL_M2) {
+      areaMismatch = { a: anchorM2, b: prep.ownAreaM2,
+        diff_m2: Math.round(Math.abs(prep.ownAreaM2 - anchorM2) * 100) / 100 };
+    }
+  }
+  const reference = areaM2 ? referencePrice(prep.used, { areaM2 }) : null;
   const priceInputs = (tenure) => {
     if (!reference) return { price_won: null, deposit_won: null, monthly_rent_won: null, source: "rtms" };
     if (tenure === "매매") return { price_won: reference.trade.median, source: "rtms" };
@@ -225,8 +247,7 @@ for (const h of scenario.homes) {
     }
     return { price_won: null, deposit_won: null, monthly_rent_won: null, source: "rtms" };
   };
-  prepByLabel[h.label] = { home: h, area, parcelHits, nameHits, used,
-    matchMethod, areaM2, reference, priceInputs };
+  Object.assign(prep, { areaM2, areaMatch, areaMismatch, reference, priceInputs });
 }
 // Paired repeats across all homes (same 10 seeds by default); run 1
 // feeds the per-home fields below, every run feeds runs_summary.
@@ -245,7 +266,8 @@ const housingFor = (label, tenure) => {
   if (!hasPrice) return null;
   return { pi, housing: tenureCost({ tenure, ...pi,
     cash_won: scenario.money.cash_won,
-    loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years, source: pi.source }) };
+    loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years,
+    jeonse_loan_cap_won: A.jeonse_loan_cap_won, source: pi.source }) };
 };
 const paired = runPaired(pairedAreas, scenarioRaw, {
   ...(region ? { region } : {}),
@@ -271,8 +293,8 @@ const paired = runPaired(pairedAreas, scenarioRaw, {
   },
 });
 for (const h of scenario.homes) {
-  const { area, parcelHits, nameHits, used, matchMethod, areaM2, reference, priceInputs } =
-    prepByLabel[h.label];
+  const { area, parcelHits, nameHits, used, matchMethod, areaM2, areaMatch, areaMismatch,
+    reference, priceInputs } = prepByLabel[h.label];
   const router = routersByLabel[h.label];
   const run = paired.runs[0][h.label];
   const byTenure = {};
@@ -289,7 +311,8 @@ for (const h of scenario.homes) {
     }
     const housing = tenureCost({ tenure, ...pi,
       cash_won: scenario.money.cash_won,
-      loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years, source: pi.source });
+      loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years,
+      jeonse_loan_cap_won: A.jeonse_loan_cap_won, source: pi.source });
     const tl = moneyTimeline(run, scenario, {
       transit_fare_won: A.transit_fare_won, basket_won: A.basket_won,
       maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
@@ -355,7 +378,9 @@ for (const h of scenario.homes) {
     area: h.area, complex_name: h.complex_name, area_m2: areaM2,
     match_method: matchMethod,
     parcel_rows: parcelHits.length, name_rows: nameHits.length,
-    flags: { ...spendTl.flags },
+    flags: { ...spendTl.flags,
+      ...(areaMismatch ? { area_mismatch: areaMismatch } : {}) },
+    area_match: areaMatch,
     reference, by_tenure: byTenure,
     jeonse_check: jeonse ? { ...jeonse, match_method: matchMethod } : null,
     register_signals: register,
@@ -451,7 +476,8 @@ const doc = {
     transit_fare_won: A.transit_fare_won, basket_won: A.basket_won,
     maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
     pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
-    loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years },
+    loan_rate_pct: A.loan_rate_pct, loan_years: A.loan_years,
+    jeonse_loan_cap_won: A.jeonse_loan_cap_won },
   burden_threshold_pct: crit.flat.burden_threshold_pct,
   criteria: { doc: CRITERIA_DOC_NAME, version: CRITERIA_VERSION, overrides: crit.overridden },
   default_tenure: scenario.money.tenure,

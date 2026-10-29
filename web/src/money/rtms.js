@@ -109,7 +109,7 @@ function cancelledTrade(rec) {
 
 // Normalised row (all backends converge here):
 // {sigungu, bonbun, bubun, complex, area_m2, contract_ym, contract_day,
-//  deal, housing_type,
+//  floor, deal, housing_type,
 //  trade_won | deposit_won, monthly_won, rent_kind}
 export function normalizeTradeRow(rec, housingType) {
   if (cancelledTrade(rec)) return null;
@@ -121,6 +121,7 @@ export function normalizeTradeRow(rec, housingType) {
     area_m2: numPlain(rec["전용면적(㎡)"]),
     contract_ym: (rec["계약년월"] || "").trim(),
     contract_day: numPlain(rec["계약일"]),
+    floor: numPlain(rec["층"]),
     deal: "trade",
     housing_type: housingType,
     trade_won: numManwon(rec["거래금액(만원)"]),
@@ -139,6 +140,7 @@ export function normalizeRentRow(rec, housingType) {
     area_m2: numPlain(rec["전용면적(㎡)"]),
     contract_ym: (rec["계약년월"] || "").trim(),
     contract_day: numPlain(rec["계약일"]),
+    floor: numPlain(rec["층"]),
     deal: "rent",
     housing_type: housingType,
     rent_kind: kind === "전세" ? "jeonse" : kind === "월세" ? "wolse" : "other",
@@ -203,6 +205,7 @@ export function mapApiItem(item, deal) {
       deal: "trade",
       housing_type: s(item["houseType"] || "apt"),
       trade_won: numManwon(item["dealAmount"] || item["거래금액"]),
+      floor: numPlain(item["floor"] || item["flrNo"] || item["층"]),
       apt_seq: s(item["aptSeq"] || ""),
     };
   }
@@ -220,6 +223,7 @@ export function mapApiItem(item, deal) {
     rent_kind: (monthly || 0) > 0 ? "wolse" : "jeonse",
     deposit_won: numManwon(item["deposit"] || item["보증금"]),
     monthly_won: monthly,
+    floor: numPlain(item["floor"] || item["flrNo"] || item["층"]),
     apt_seq: s(item["aptSeq"] || ""),
   };
 }
