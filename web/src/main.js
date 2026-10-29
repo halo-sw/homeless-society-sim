@@ -7,7 +7,7 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -92,8 +92,12 @@ const WALK_ROUTE_CSS = ACTIVITIES.walk.color;
 const SUBWAY_ROUTE_CSS = ACTIVITIES.subway.color;
 
 const PARAMS = new URLSearchParams(location.search);
+// Stage 14e: ?style=painted (default, near-isometric) vs ?style=photo
+// (today's look, unchanged pixels). CAM carries fov/pitch/azimuth/rotate.
+const STYLE = resolveStyle(PARAMS);
+const CAM = cameraStyle(STYLE);
 // Stage-11 look table (?look=key:value,… retunes without a rebuild).
-const LOOK = resolveLook(PARAMS);
+const LOOK = resolveLook(PARAMS, STYLE);
 const areaId = PARAMS.get("area") || DEFAULT_AREA;
 
 // Tour sun from ?time=HH:MM (validated) or the fixed afternoon default.
@@ -203,13 +207,26 @@ function buildWorld(area, scene14) {
   const wrap0 = document.getElementById("scene-wrap");
   const aspect0 = wrap0 && wrap0.clientHeight > 0
     ? wrap0.clientWidth / wrap0.clientHeight : innerWidth / innerHeight;
-  const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, aspect0, 1, span * 8);
-  const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
-  const [hox, hoy, hoz] = tourOffset(homeDist);
+  const camera = new THREE.PerspectiveCamera(CAM.fovDeg, aspect0, 1, span * 8);
+  const homeDist = distanceForWidth(span, CAM.fovDeg, camera.aspect);
+  // The narrow painted FOV needs a much longer distance; the far plane
+  // must cover at least 2× that distance.
+  camera.far = Math.max(span * 8, homeDist * 2);
+  camera.updateProjectionMatrix();
+  const [hox, hoy, hoz] = tourOffset(homeDist, CAM.pitchDeg, CAM.azimuth);
   camera.position.set(cx + hox, hoy + ground0, -cy + hoz);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(cx, ground0, -cy);
   controls.maxPolarAngle = Math.PI * 0.49;
+  // Painted: fixed azimuth (no rotate); pan and zoom stay, zoom clamped
+  // to 150 m…span framed width. Photo keeps today's free controls.
+  controls.enableRotate = CAM.rotate;
+  if (STYLE === "painted") {
+    const clamp = zoomClampDistances(span, CAM.fovDeg, camera.aspect);
+    controls.minDistance = clamp.min;
+    controls.maxDistance = clamp.max;
+    camera.userData.clampSpan = span;
+  }
   controls.update();
 
   // --- sky rig: sun + hemi + Sky dome + PMREM environment ---
@@ -464,12 +481,18 @@ function buildWorld(area, scene14) {
 }
 
 // Refit the camera + renderer to the (docked-panel-shrunk) canvas.
-function refitToWrap(camera, renderCtl) {
+function refitToWrap(camera, renderCtl, controls = null) {
   const wrap = document.getElementById("scene-wrap");
   const w = wrap ? wrap.clientWidth : innerWidth;
   const h = wrap ? wrap.clientHeight : innerHeight;
   camera.aspect = Math.max(0.2, w / Math.max(1, h));
   camera.updateProjectionMatrix();
+  // Painted: the zoom clamp is aspect-dependent, so refresh it on refit.
+  if (controls && STYLE === "painted" && camera.userData.clampSpan) {
+    const clamp = zoomClampDistances(camera.userData.clampSpan, CAM.fovDeg, camera.aspect);
+    controls.minDistance = clamp.min;
+    controls.maxDistance = clamp.max;
+  }
   renderCtl.fitContainer();
 }
 
@@ -557,7 +580,7 @@ async function bootTour(uiMode = "tour") {
   // test uses the actual building heights (same clamp as the renderer)
   // and the settled camera pose (same offset/aspect/pitch as poseFor);
   // when no azimuth is clear, the occluders fade instead (stage 4).
-  const stopDist0 = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist0 = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   const footprints = footprintsOf(area.buildings, origin);
   const stopTargets = plan.stops.map((s, i) => {
     const wp = legPaths[i].length > 1
@@ -568,7 +591,8 @@ async function bootTour(uiMode = "tour") {
     return { anchor: lonLatToXY(s.lon, s.lat, origin), end: [wp[0], -wp[2]] };
   });
   const stopAzimuths = plan.stops.map((s, i) => {
-    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0);
+    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0,
+      undefined, CAM.pitchDeg);
     const moved = picked.azimuth !== TOUR_AZIMUTH;
     console.log(`[occlusion] stop=${i} ${s.name} azimuth=[${picked.azimuth}] ` +
       `occluders=${picked.occluders}${moved ? " (moved)" : ""}`);
@@ -578,7 +602,7 @@ async function bootTour(uiMode = "tour") {
   // tall host tower when a POI stop sits inside one.
   const stopFades = plan.stops.map((s, i) => {
     const targets = [stopTargets[i].anchor, stopTargets[i].end];
-    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i]));
+    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i], CAM.pitchDeg));
     if (s.kind === "poi") {
       for (const id of hostTowerIds(stopTargets[i].anchor, footprints)) ids.add(id);
     }
@@ -614,7 +638,7 @@ async function bootTour(uiMode = "tour") {
   let tourLitDone = false;
   function updateTourSky() {
     const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
+      camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
@@ -730,7 +754,7 @@ async function bootTour(uiMode = "tour") {
   });
 
   const refitTour = () => {
-    refitToWrap(camera, renderCtl);
+    refitToWrap(camera, renderCtl, controls);
     if (archLens) applyArchLens();
   };
   addEventListener("resize", refitTour);
@@ -744,8 +768,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   const stops = plan.stops;
 
   const schedule = tourSchedule(plan);
-  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
-  const glideDist = distanceForWidth(GLIDE_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
+  const glideDist = distanceForWidth(GLIDE_FRAME_M, CAM.fovDeg, camera.aspect);
   const state = { playing: stops.length > 0, leg: 0, legT: 0, dwell: 0, outro: 0, done: false };
   controls.enabled = !state.playing;
 
@@ -775,8 +799,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
                look: new THREE.Vector3(wp[0], wp[1], wp[2]) };
     }
     const dist = stopDist + (glideDist - stopDist) * (1 - t);
-    const [dox, doy, doz] = tourOffset(dist, undefined, TOUR_AZIMUTH);
-    const [sox, soy, soz] = tourOffset(dist, undefined, stopAzimuths[i] || TOUR_AZIMUTH);
+    const [dox, doy, doz] = tourOffset(dist, CAM.pitchDeg, TOUR_AZIMUTH);
+    const [sox, soy, soz] = tourOffset(dist, CAM.pitchDeg, stopAzimuths[i] || TOUR_AZIMUTH);
     const k = t * t; // ease the azimuth in towards the settled stop
     const ox = dox + (sox - dox) * k;
     const oy = doy + (soy - doy) * k;
@@ -1622,7 +1646,7 @@ async function bootSim() {
     const m = Math.floor(minute);
     const instant = simInstant(run.meta.start_date, day, m);
     const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
+      camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
@@ -1646,7 +1670,7 @@ async function bootSim() {
   }
 
   // --- follow camera (2b miniature framing) ---
-  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   let snapFollow = follow > 0;
 
   function followedSample() {
@@ -1680,7 +1704,7 @@ async function bootSim() {
     const hit = followedSample();
     if (!hit) return;
     const [x, y] = lonLatToXY(hit.s.lon, hit.s.lat, origin);
-    const [ox, oy, oz] = tourOffset(stopDist);
+    const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     const pos = new THREE.Vector3(x + ox, oy, -y + oz);
     const look = new THREE.Vector3(x, 2, -y);
     // Snap when far (a fast clock would lag behind); otherwise glide,
@@ -2190,7 +2214,7 @@ async function bootSim() {
 
   function streetPose(lonLat) {
     const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
-    const [ox, oy, oz] = tourOffset(stopDist);
+    const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     return { pos: new THREE.Vector3(x + ox, oy, -y + oz),
       look: new THREE.Vector3(x, 2, -y) };
   }
@@ -2202,7 +2226,7 @@ async function bootSim() {
     const size = box3.getSize(new THREE.Vector3());
     const radius = Math.max(size.x, size.z) / 2;
     const dist = Math.max(4000, radius * 2.6);
-    const [ox, oy, oz] = tourOffset(dist);
+    const [ox, oy, oz] = tourOffset(dist, CAM.pitchDeg, CAM.azimuth);
     return { pos: new THREE.Vector3(center.x + ox, oy, center.z + oz),
       look: new THREE.Vector3(center.x, 0, center.z), dist };
   }
@@ -2216,7 +2240,8 @@ async function bootSim() {
       : (jf.phase === "descending" ? jf.destLonLat : jf.boardLonLat);
     if (!lonLat) return regionalPose();
     const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
-    const pose = journeyCruisePose([x, -y], camera.aspect);
+    const pose = journeyCruisePose([x, -y], camera.aspect,
+      { fovDeg: CAM.fovDeg, pitchDeg: CAM.cruisePitchDeg, azimuth: CAM.azimuth });
     return { pos: new THREE.Vector3(...pose.pos),
       look: new THREE.Vector3(...pose.look), dist: pose.dist };
   }
@@ -2817,7 +2842,7 @@ async function bootSim() {
     }
   });
 
-  const refitSim = () => refitToWrap(camera, renderCtl);
+  const refitSim = () => refitToWrap(camera, renderCtl, controls);
   addEventListener("resize", refitSim);
   new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }
