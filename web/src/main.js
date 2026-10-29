@@ -35,9 +35,9 @@ import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
-import { aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight } from "./render/facades.js";
+import { PAINTED_ROOF_HEX, PAINTED_WALL_HEX, aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight, tourOfficeFraction } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
-import { PAINTED_NIGHT_GROUND, PAINTED_WATER, capLitFraction, lerpHex, nightTint, paintedFogRange, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
+import { PAINTED_NIGHT_GROUND, PAINTED_NIGHT_ROAD_GLOW, PAINTED_NIGHT_ROAD_WARM, PAINTED_NIGHT_WALL, PAINTED_WATER, capLitFraction, lerpHex, nightTint, paintedFogRange, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -177,16 +177,23 @@ function addLitAttr(mesh) {
 // Fill every facade mesh's aLit from an occupancy map (or null in tour
 // mode) plus the run-wide at-home share: buildings with simulated
 // residents use their exact share, other residential buildings with real
-// households use the fallback estimate, the rest stay dark.
-function makeLitFiller(litMeshes, householdsById) {
+// households use the fallback estimate, the rest stay dark — except in
+// tour mode (no run, register data sparse): every residential-class
+// building lights from the evening estimate and offices take the small
+// tour office share, so the night frame reads street by street.
+function makeLitFiller(litMeshes, householdsById, { residentialById = null, tour = false } = {}) {
   return (occ, globalFrac) => {
     for (const { mesh, ranges } of litMeshes) {
       const attr = mesh.geometry.attributes.aLit;
       for (const [bid, r] of ranges) {
+        const hh = householdsById.get(bid) || 0;
+        const hash01 = hashUnit(hashString(bid), 3);
+        const res = tour && residentialById ? residentialById.get(bid) === true : hh > 0;
         const v = capLitFraction(litFractionWithFallback(occ ? occ.get(bid) : null, {
-          households: householdsById.get(bid) || 0,
+          households: tour && res ? Math.max(1, hh) : hh,
           globalHomeFrac: globalFrac,
-          hash01: hashUnit(hashString(bid), 3),
+          hash01,
+          emptyFrac: tour && !res ? tourOfficeFraction(globalFrac, hash01) : 0,
         }), LOOK);
         attr.array.fill(v, r.start, r.start + r.count);
       }
@@ -533,11 +540,15 @@ function buildWorld(area, scene14, opts = {}) {
   scene.add(crowdMeshes.group);
 
   // Real household counts per building (register API) for the night
-  // lighting fallback (buildings without simulated residents).
+  // lighting fallback (buildings without simulated residents), plus the
+  // residential class per building for the tour estimate (no run there).
   const householdsById = new Map();
+  const residentialById = new Map();
   for (const b of area.buildings || []) {
     const hh = b.register && b.register.api && b.register.api.households;
     householdsById.set(b.id, Number(hh) || 0);
+    residentialById.set(b.id,
+      b.residential === "apartment" || b.residential === "house" || b.residential === "mixed");
   }
 
   // Tallest building top (from data) for the shadow-frustum fit.
@@ -588,9 +599,12 @@ function buildWorld(area, scene14, opts = {}) {
     }
   }
 
-  // Painted night (14e): ground-plane surfaces lerp toward navy after
-  // dusk; carriageways keep their day asphalt so they read a little
-  // lighter than the ground and lit windows pop. Photo: untouched.
+  // Painted night (14e, 17b): ground-plane surfaces lerp toward navy
+  // after dusk; carriageways keep a warm lamp-lit band plus a faint warm
+  // emissive (moonlight alone would leave them black), walls/roofs a dark
+  // slate, so lit windows pop without the blocks going black. Entries
+  // carry their own night target; `base` composes with an existing day
+  // tint (facades) instead of overwriting it. Photo: untouched.
   const nightMats = [];
   if (STYLE === "painted") {
     nightMats.push({ mat: base.material, day: baseDayColor, direct: true });
@@ -600,10 +614,27 @@ function buildWorld(area, scene14, opts = {}) {
     nightMats.push({ mat: groundMesh.material, day: LOOK.terrainBase, direct: false });
     for (const m of sceneRoadMeshes) {
       const cls = m.userData.roadCls;
-      if (cls === "road" || cls === "rail") continue;
+      if (cls === "road") {
+        nightMats.push({ mat: m.material, day: LOOK.sceneRoad, direct: false,
+          night: PAINTED_NIGHT_ROAD_WARM, glow: PAINTED_NIGHT_ROAD_GLOW });
+        continue;
+      }
+      if (cls === "rail") continue;
       const day = cls === "foot" ? LOOK.sceneFoot
         : cls === "cycle" ? LOOK.sceneCycle : LOOK.terrainBase;
       nightMats.push({ mat: m.material, day, direct: false });
+    }
+    for (const [cls, mesh] of Object.entries(wallMeshes)) {
+      nightMats.push({ mat: mesh.material, day: PAINTED_WALL_HEX, direct: false,
+        night: PAINTED_NIGHT_WALL, base: facadeTintFor(cls, STYLE) });
+    }
+    if (podiumMesh) {
+      nightMats.push({ mat: podiumMesh.material, day: PAINTED_WALL_HEX, direct: false,
+        night: PAINTED_NIGHT_WALL, base: facadeTintFor("podium", STYLE) });
+    }
+    if (roofMesh) {
+      nightMats.push({ mat: roofMesh.material, day: PAINTED_ROOF_HEX, direct: false,
+        night: PAINTED_NIGHT_WALL, base: facadeTintFor("roof", STYLE) });
     }
   }
   let lastNightT = -1;
@@ -612,9 +643,17 @@ function buildWorld(area, scene14, opts = {}) {
     const t = Math.min(1, Math.max(0, Number(nightF) || 0));
     if (Math.abs(t - lastNightT) < 0.005) return;
     lastNightT = t;
-    for (const { mat, day, direct } of nightMats) {
-      if (direct) mat.color.setHex(lerpHex(day, PAINTED_NIGHT_GROUND, t));
-      else mat.color.setRGB(...nightTint(day, PAINTED_NIGHT_GROUND, t));
+    for (const { mat, day, direct, night, base, glow } of nightMats) {
+      const target = night === undefined ? PAINTED_NIGHT_GROUND : night;
+      if (direct) mat.color.setHex(lerpHex(day, target, t));
+      else {
+        const k = nightTint(day, target, t);
+        if (base) mat.color.setRGB(base[0] * k[0], base[1] * k[1], base[2] * k[2]);
+        else mat.color.setRGB(...k);
+      }
+      if (glow !== undefined && mat.emissive) {
+        mat.emissive.setHex(lerpHex(0x000000, glow, t));
+      }
     }
   }
 
@@ -626,7 +665,8 @@ function buildWorld(area, scene14, opts = {}) {
   return {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
-    dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
+    dimMeshes, litMeshes, fadeMeshes, householdsById, residentialById,
+    maxHeightM,
     trees, treeMeshes, fillTrees, streetMeshes, crowd, crowdMeshes,
     dummy, heightAt,
     ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh, sceneMarkingsMesh,
@@ -706,7 +746,8 @@ async function fetchScene(wantId) {
 async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
-    dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
+    dimMeshes, fadeMeshes, litMeshes, householdsById, residentialById,
+    maxHeightM,
     streetMeshes, crowdMeshes, trees, treeMeshes, fillTrees, waterMesh,
     sceneWaterMesh, sceneMarkingsMesh, dummy, heightAt,
     applyPaintedNight, aviationMat } = buildWorld(area, scene14,
@@ -788,7 +829,7 @@ async function bootTour(uiMode = "tour") {
 
   // --- tour sun/sky (?time=HH:MM override; static through the tour) ---
   const { date: tourDate, minute: tourMinute } = tourSun();
-  const fillTourLit = makeLitFiller(litMeshes, householdsById);
+  const fillTourLit = makeLitFiller(litMeshes, householdsById, { residentialById, tour: true });
   let tourEmissive = 0;
   let tourBloom = 0;
   let tourFramedWidth = null;

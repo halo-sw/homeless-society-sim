@@ -56,6 +56,8 @@ export const FACADE_WALL_BASE = {
 };
 export const PAINTED_WALL = [201, 196, 187]; // #c9c4bb
 export const PAINTED_ROOF = [221, 216, 206]; // #ddd8ce
+export const PAINTED_WALL_HEX = 0xc9c4bb;
+export const PAINTED_ROOF_HEX = 0xddd8ce;
 
 function hexToRgb255(hex) {
   return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
@@ -140,13 +142,24 @@ export function litFractionFor(occ) {
 // buildings with real households but no simulated agents use the
 // run-wide at-home share modulated ±20% by a deterministic per-building
 // hash (a lighting estimate, not data — the legend says whose); empty
-// non-residential buildings stay dark.
-export function litFractionWithFallback(occ, { households = 0, globalHomeFrac = 0, hash01 = 0.5 } = {}) {
+// buildings fall back to emptyFrac (0 unless the caller passes a tour
+// office estimate).
+export function litFractionWithFallback(occ, { households = 0, globalHomeFrac = 0, hash01 = 0.5, emptyFrac = 0 } = {}) {
   if (occ && occ.total > 0) return Math.min(1, Math.max(0, occ.home / occ.total));
-  if (!(households > 0)) return 0;
+  if (!(households > 0)) return Math.min(1, Math.max(0, Number(emptyFrac) || 0));
   if (!(globalHomeFrac > 0)) return 0;
   const jitter = 0.8 + 0.4 * Math.min(1, Math.max(0, hash01));
   return Math.min(1, globalHomeFrac * jitter);
+}
+
+// Tour-mode office estimate (no run, no residents): a small deterministic
+// share of the evening curve, so offices read lit but fewer than the
+// residential floors around them. Decorative only, like the tour curve.
+export function tourOfficeFraction(globalFrac, hash01 = 0.5) {
+  const g = Math.min(1, Math.max(0, Number(globalFrac) || 0));
+  if (!(g > 0)) return 0;
+  const jitter = 0.8 + 0.4 * Math.min(1, Math.max(0, Number(hash01) || 0));
+  return Math.min(1, g * 0.25 * jitter);
 }
 
 // Run-wide at-home share from an occupancy map (for the fallback above).

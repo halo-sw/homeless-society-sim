@@ -69,6 +69,9 @@ export const PAINTED_LOOK = {
   fogRegionalNear: 4,
   fogRegionalFar: 9,
   gradeSaturation: 1.2,
+  // 17b: residential towers read most floors lit at 21:00 (the photo cap
+  // 0.35 would pin every tower at a third); 0.65 still keeps dark gaps.
+  nightLitCap: 0.65,
   // 14f: lift the photo corridor darkening (0.74 → grey blocks) — the
   // tile walls/roofs (≈ #c9c2b3 / lighter caps) already sit on the painted
   // wall/roof split, and outlines now separate the blocks. Base-map
@@ -88,12 +91,15 @@ export const PAINTED_LOOK = {
   sceneCycle: 0xa0705a,
 };
 
-// Painted night albedos (stage 14e): the ground plane goes dark
-// navy-grey while carriageways keep their day asphalt, so roads read a
-// little lighter than the ground and lit windows pop. Applied as a
+// Painted night albedos (stage 14e): the ground plane goes dark navy
+// while carriageways keep a warm lamp-lit band and walls a dark slate,
+// so lit windows pop without the blocks going black. Applied as a
 // material tint/colours lerp in main.js (painted style only).
 export const PAINTED_NIGHT_GROUND = 0x1d2330;
 export const PAINTED_NIGHT_ROAD = 0x39415a;
+export const PAINTED_NIGHT_ROAD_WARM = 0x4a4136;
+export const PAINTED_NIGHT_ROAD_GLOW = 0x2a2118;
+export const PAINTED_NIGHT_WALL = 0x3a4152;
 export const PAINTED_WATER = 0x3f6f8f;
 
 export const LOOK_KEYS = Object.keys(DEFAULT_LOOK);

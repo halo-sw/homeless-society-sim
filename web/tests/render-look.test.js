@@ -90,6 +90,7 @@ describe("look parsing (?look=key:value,…)", () => {
       fogRegionalNear: 4,
       fogRegionalFar: 9,
       gradeSaturation: 1.2,
+      nightLitCap: 0.65, // 17b: most residential floors lit at 21:00
       corridorDarken: 1, // 14f: no photo darkening on corridor tiles
       regionalGround: 0xcfc4ad,
       regionalWater: 0x3f6f8f,
