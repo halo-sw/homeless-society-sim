@@ -45,7 +45,7 @@ import { buildStreetMeshes } from "./render/streetmeshes.js";
 import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, setNightGain, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
 // Stage 14: terrain + OSM road/forest/tree scene layers.
 import { flatHeightAt, makeHeightAt, seatOnTerrain } from "./scene/height.js";
-import { loadScene } from "./scene/load.js";
+import { loadScene, toTypedMesh } from "./scene/load.js";
 import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
 import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
 import { treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
@@ -113,13 +113,14 @@ function toGeometry(data) {
 }
 
 // Indexed scene geometry (terrain, road/water ribbons): normals follow
-// the terrain via computeVertexNormals.
+// the terrain via computeVertexNormals. Accepts plain or typed arrays.
 function toIndexedGeometry(data) {
+  const t = toTypedMesh(data);
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(data.positions, 3));
-  geo.setAttribute("color", new THREE.Float32BufferAttribute(data.colors, 3));
-  geo.setAttribute("uv", new THREE.Float32BufferAttribute(data.uvs, 2));
-  geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(t.positions, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(t.colors, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(t.uvs, 2));
+  geo.setIndex(new THREE.BufferAttribute(t.indices, 1));
   geo.computeVertexNormals();
   return geo;
 }

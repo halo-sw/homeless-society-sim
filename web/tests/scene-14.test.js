@@ -162,7 +162,9 @@ describe("scene roads", () => {
     const w = buildWaterRibbons([{ k: "stream", w: 4, p: [[0, 0], [6, 0]] }],
       () => 20, LOOK);
     assert.equal(w.triangles, 6);
-    assert.ok(w.positions.filter((_, i) => i % 3 === 1).every((y) => y === 19.7));
+    // 14b: positions are Float32Array now, so compare with tolerance.
+    assert.ok(w.positions.filter((_, i) => i % 3 === 1)
+      .every((y) => Math.abs(y - 19.7) < 1e-5));
   });
 });
 

@@ -10,6 +10,7 @@
 // buildWaterRibbons(waters, heightAt) drapes the same way at −0.3 m.
 
 import { hashUnit } from "../palette.js";
+import { toTypedMesh } from "./load.js";
 
 export const RESAMPLE_M = 2;
 export const ROAD_LIFT = 0.05;
@@ -172,7 +173,7 @@ export function buildRoadMeshes(roads, heightAt, look) {
   });
   const out = {};
   for (const [cls, sink] of Object.entries(sinks)) {
-    out[cls] = { ...sink, triangles: sink.indices.length / 3 };
+    out[cls] = toTypedMesh({ ...sink, triangles: sink.indices.length / 3 });
   }
   return { meshes: out, stats };
 }
@@ -188,6 +189,6 @@ export function buildWaterRibbons(waters, heightAt, look) {
     stats.triangles += pushRibbon(sink, stations, w.w / 2, rgb);
     stats.waters++;
   });
-  return { positions: sink.positions, colors: sink.colors, uvs: sink.uvs,
-           indices: sink.indices, triangles: sink.indices.length / 3, stats };
+  return toTypedMesh({ positions: sink.positions, colors: sink.colors, uvs: sink.uvs,
+           indices: sink.indices, triangles: sink.indices.length / 3, stats });
 }
