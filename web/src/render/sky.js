@@ -35,6 +35,34 @@ function mixHex(h1, h2, t) {
   return (r << 16) | (g << 8) | b;
 }
 
+// Stage 14f painted light rig (sRGB): the photo hemisphere fill is blue
+// (hemiSkyDay #b8cfe4, B−R = 44) and every standard material also takes
+// blue diffuse IBL from the PMREM sky capture — with full-strength
+// shadows, shade reads blue and roads/towers go blue-grey. Painted days
+// use warm neutral fill, a warm haze fog, ≤45 % shadows and no sky IBL.
+export const PAINTED_LIGHT = {
+  hemiSky: 0xf2ece0,
+  hemiGround: 0xb9ad98,
+  fog: 0xe2d8c4,
+  shadowStrength: 0.45,
+};
+
+// Painted override over skyParams (pure): hemi/fog colours blend to the
+// warm rig by daylight so dawn/dusk stay continuous (full warm at dayF 1,
+// untouched photo colours at night); shadows cap at 45 % and the blue
+// sky environment switches off. Bloom/emissive/nightF/phase pass through.
+export function paintedSkyParams(p) {
+  const dayF = Math.min(1, Math.max(0, Number(p.dayF) || 0));
+  return {
+    ...p,
+    hemiSky: mixHex(p.hemiSky, PAINTED_LIGHT.hemiSky, dayF),
+    hemiGround: mixHex(p.hemiGround, PAINTED_LIGHT.hemiGround, dayF),
+    fogColor: mixHex(p.fogColor, PAINTED_LIGHT.fog, dayF),
+    shadowStrength: PAINTED_LIGHT.shadowStrength,
+    envIntensity: 0,
+  };
+}
+
 export const SKY_COLORS = {
   sunDay: 0xffe9c8, // stage 6: crisper midday, warmer sun
   sunGolden: 0xffb377,

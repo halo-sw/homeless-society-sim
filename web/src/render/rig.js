@@ -11,7 +11,7 @@
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { sunDirection } from "../lighting.js";
-import { skyParams, fogRangeFor } from "./sky.js";
+import { paintedSkyParams, skyParams, fogRangeFor } from "./sky.js";
 import { DEFAULT_LOOK } from "./look.js";
 import { SHADOW_BIAS, shadowFit, shadowHalfExtent, snapTargetToTexel } from "./shadows.js";
 
@@ -58,7 +58,11 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
   }
 
   function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null, camDistM = null, style = "photo", maxHeightM = 250, look = null }) {
-    const p = skyParams(lat, lon, date, minute);
+    const base = skyParams(lat, lon, date, minute);
+    // 14f: painted days use the warm rig (warm hemi/fog, ≤45 % shadows,
+    // no blue sky IBL); photo keeps the base params untouched.
+    const painted = style === "painted";
+    const p = painted ? paintedSkyParams(base) : base;
     const l = look || DEFAULT_LOOK;
     // Sun above the horizon; moonlight below it.
     if (p.altitude > -1) {
@@ -83,6 +87,7 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     sun.target.position.set(snapped.x, snapped.y, snapped.z);
     sun.color.setHex(p.sunColor);
     sun.intensity = p.sunIntensity * (l.sunGain || 1);
+    sun.shadow.intensity = painted ? p.shadowStrength : 1.0;
     sun.shadow.bias = fit.bias;
     sun.shadow.normalBias = fit.normalBias;
     const sc = sun.shadow.camera;
@@ -118,9 +123,11 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     renderer.toneMappingExposure = p.exposure * (l.exposureGain || 1);
     if ("environmentIntensity" in scene) scene.environmentIntensity = p.envIntensity;
 
-    // Environment capture, throttled by key (day/golden only).
+    // Environment capture, throttled by key (day/golden only). Painted
+    // takes no sky IBL (its blue diffuse lift is half the blue cast).
+    if (painted) scene.environment = null;
     const key = envKey !== null ? envKey : `${p.phase}:${Math.round(p.altitude)}:${Math.round(p.azimuth)}`;
-    if (p.skyVisible && key !== lastEnvKey) {
+    if (!painted && p.skyVisible && key !== lastEnvKey) {
       lastEnvKey = key;
       syncSkyUniforms(envSky, p, sunDir, l);
       const rt = pmrem.fromScene(envScene);

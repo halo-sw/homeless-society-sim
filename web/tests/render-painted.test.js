@@ -3,7 +3,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { postChainSpec } from "../src/render/post.js";
+import { postChainSpec, resolvePostDebug } from "../src/render/post.js";
 import { KuwaharaShader, OutlineAOShader, kuwaharaRadiusFor,
   outlineStrengthFor, paintedPixelFactor } from "../src/render/painted.js";
 
@@ -36,6 +36,19 @@ describe("painted post chain (14e)", () => {
     }
     assert.ok(!postChainSpec("high", { style: "painted", saoOff: true })
       .includes("sao"));
+  });
+});
+
+describe("painted debug routing (14f)", () => {
+  it("resolves ?debug= for painted only, anything else is a normal frame", () => {
+    assert.equal(resolvePostDebug("?debug=albedo", "painted"), "albedo");
+    assert.equal(resolvePostDebug("?debug=depth", "painted"), "depth");
+    assert.equal(resolvePostDebug("?debug=outline", "painted"), "outline");
+    assert.equal(resolvePostDebug("?debug=albedo", "photo"), null);
+    assert.equal(resolvePostDebug("?debug=nope", "painted"), null);
+    assert.equal(resolvePostDebug("", "painted"), null);
+    assert.equal(resolvePostDebug(null, "painted"), null);
+    assert.equal(resolvePostDebug(new URLSearchParams("debug=depth"), "painted"), "depth");
   });
 });
 

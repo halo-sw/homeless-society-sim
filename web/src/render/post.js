@@ -120,6 +120,43 @@ export function postChainSpec(level, { saoOff = false, style = "photo" } = {}) {
   return chain;
 }
 
+// Painted debug views (14f, pure routing): ?debug=albedo renders the scene
+// unlit with the palette colours (palette-vs-lighting split), ?debug=depth
+// shows the linear depth the outlines read, ?debug=outline the edge mask.
+// Painted only — any other style or value resolves to null (normal frame).
+export function resolvePostDebug(search, style) {
+  if (style !== "painted") return null;
+  const params = search instanceof URLSearchParams
+    ? search
+    : new URLSearchParams(typeof search === "string" ? search : "");
+  const d = params.get("debug");
+  return d === "albedo" || d === "depth" || d === "outline" ? d : null;
+}
+
+// Unlit palette sweep for ?debug=albedo: every standard material becomes
+// an unlit basic with the same map/colour/vertex-colours, so the frame
+// shows the palette with no sun, fill, IBL or shadows. Idempotent per
+// material (swapped meshes read back as basic), so late journey tiles
+// join on the next frame; the flag is static, nothing restores.
+export function albedoSweep(scene) {
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const multi = Array.isArray(o.material);
+    const mats = multi ? o.material : [o.material];
+    let changed = false;
+    const next = mats.map((m) => {
+      if (!m || !m.isMeshStandardMaterial) return m;
+      changed = true;
+      return new THREE.MeshBasicMaterial({
+        color: m.color ? m.color.clone() : 0xffffff,
+        map: m.map || null,
+        vertexColors: !!m.vertexColors,
+      });
+    });
+    if (changed) o.material = multi ? next : next[0];
+  });
+}
+
 // Pure framebuffer uniformity check for the black-frame guard: true when
 // every sampled pixel is within eps of the first AND the frame is dark.
 // A healthy frame always varies (buildings, sky, lamps at night).
@@ -159,6 +196,8 @@ export function createPost(renderer, scene, camera, opts = {}) {
     grain: opts.grain === true,
     saoOff: opts.sao === false, // ?sao=0 escape hatch
     style: opts.style === "painted" ? "painted" : "photo",
+    debug: opts.debug === "albedo" || opts.debug === "depth" || opts.debug === "outline"
+      ? opts.debug : null, // ?debug= painted-only debug view
     pxParam: opts.px ?? null, // ?px= main-pass pixel factor override
     framedWidthM: null, // live framing (outline fade); set via update()
     // Stage 11: bloom threshold above window brightness (only lamps
@@ -306,6 +345,12 @@ export function createPost(renderer, scene, camera, opts = {}) {
       if (state.grade) state.grade.uniforms.time.value = state.time % 100;
     },
     render() {
+      // ?debug=albedo: unlit palette straight to the screen (no composer).
+      if (state.debug === "albedo") {
+        albedoSweep(scene);
+        renderer.render(scene, camera);
+        return;
+      }
       if (!state.composer) {
         renderer.render(scene, camera);
         return;
