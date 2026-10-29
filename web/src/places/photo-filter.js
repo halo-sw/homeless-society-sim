@@ -3,16 +3,22 @@
 // photos all pass through isIrrelevantPhoto() before display.
 //
 // Drop when the title, description or categories suggest: people,
-// portraits, events, food, interiors (except a station concourse or
-// platform when kind = station and no people keywords), logos,
-// documents, or other cities. Tests in photo-filter-13.test.js.
+// portraits, events, food, interiors (for kind = station, platform /
+// concourse / ticket-gate words are dropped too — stations keep only
+// exteriors, entrances and street views), logos, documents, or other
+// cities. Tests in photo-filter-13.test.js.
 
 export const PEOPLE_KEYWORDS = [
   "portrait", "selfie", "face", "people", "person", "persons",
   "crowd", "pedestrian", "passenger", "passengers", "commuter",
-  "man", "woman", "boy", "girl", "child", "children", "baby",
-  "인물", "초상", "얼굴", "사람", "시민", "행인", "승객",
+  "commuters", "waiting", "man", "woman", "women",
+  "boy", "girl", "child", "children", "baby",
+  "인물", "초상", "얼굴", "사람", "시민", "행인", "승객", "기다리는",
 ];
+
+// Whole-word people keywords: substring matching would hit
+// Apartment/document/environment, so these match on word boundaries.
+export const PEOPLE_WORD_KEYWORDS = ["men"];
 
 export const EVENT_KEYWORDS = [
   "wedding", "concert", "festival", "ceremony", "event", "protest",
@@ -33,11 +39,12 @@ export const INTERIOR_KEYWORDS = [
   "실내", "내부", "거실", "침실", "주방", "화장실",
 ];
 
-// Allowed interior-ish words only when kind = "station" (a concourse
-// or platform is the station itself) and no people keywords match.
-export const STATION_INTERIOR_ALLOW = [
-  "concourse", "platform", "ticket gate", "ticketgate", "lobby",
-  "대합실", "승강장", "개찰구", "역사 내부", "지하철역",
+// 13e2: for kind = "station", interior words are dropped entirely —
+// keyword rules can't tell an empty platform from a crowded one, so
+// stations keep only exteriors, entrances and street views.
+export const STATION_INTERIOR_KEYWORDS = [
+  "platform", "concourse", "ticket gate", "ticketgate", "lobby",
+  "승강장", "대합실", "개찰구", "역사 내부",
 ];
 
 export const LOGO_DOC_KEYWORDS = [
@@ -67,8 +74,13 @@ function hasAny(text, words) {
   return words.some((w) => lower.includes(String(w).toLowerCase()));
 }
 
+function hasWord(text, words) {
+  const lower = text.toLowerCase();
+  return words.some((w) => new RegExp(`\\b${w}\\b`, "i").test(lower));
+}
+
 function hasPeople(text) {
-  return hasAny(text, PEOPLE_KEYWORDS);
+  return hasAny(text, PEOPLE_KEYWORDS) || hasWord(text, PEOPLE_WORD_KEYWORDS);
 }
 
 // kind: "complex" | "station" | "street" (default "street").
@@ -80,10 +92,10 @@ export function irrelevantReason(photo, kind = "street") {
   if (hasAny(text, FOOD_KEYWORDS)) return "food";
   if (hasAny(text, LOGO_DOC_KEYWORDS)) return "logo-or-document";
   if (hasAny(text, OTHER_CITY_KEYWORDS)) return "other-city";
-  if (hasAny(text, INTERIOR_KEYWORDS)) {
-    if (kind === "station" && hasAny(text, STATION_INTERIOR_ALLOW)) return null;
-    return "interior";
+  if (kind === "station" && hasAny(text, STATION_INTERIOR_KEYWORDS)) {
+    return "station-interior";
   }
+  if (hasAny(text, INTERIOR_KEYWORDS)) return "interior";
   return null;
 }
 

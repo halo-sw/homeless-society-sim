@@ -37,7 +37,7 @@ describe("photo selection order", () => {
   });
   it("falls back to station photos with the station label", () => {
     const st = named({ kind: "station", target: "station:서현",
-      title: "File:Seohyeon concourse.jpg", categories: ["Railway stations"] });
+      title: "File:Seohyeon station exit.jpg", categories: ["Railway stations"] });
     const deps = { named: { items: [st] }, manifest: { items: [] } };
     const { slots } = selectPhotosForHome(HOME, deps, new Set());
     assert.equal(slots.length, 1);

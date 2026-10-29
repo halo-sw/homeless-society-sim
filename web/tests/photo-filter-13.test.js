@@ -36,14 +36,27 @@ describe("photo relevance filter", () => {
     assert.equal(irrelevantReason(photo({ title: "File:Busan beach.jpg" })), "other-city");
     assert.equal(irrelevantReason(photo({ title: "File:부산역 광장.jpg" })), "other-city");
   });
-  it("drops interiors except station concourse/platform without people", () => {
+  it("drops station interiors entirely (13e2: platforms/concourses out)", () => {
     assert.equal(irrelevantReason(photo({ title: "File:Living room interior.jpg" })), "interior");
-    const concourse = photo({ title: "File:Platform view.jpg",
+    const platform = photo({ title: "File:Platform view.jpg",
       description: "empty platform", categories: ["Railway stations", "platform"] });
-    assert.equal(irrelevantReason(concourse, "station"), null);
-    const concoursePeople = photo({ title: "File:Platform crowd.jpg",
+    assert.equal(irrelevantReason(platform, "station"), "station-interior");
+    assert.equal(irrelevantReason(photo({ title: "File:대모산입구역 승강장.jpg" }),
+      "station"), "station-interior");
+    const crowd = photo({ title: "File:Platform crowd.jpg",
       description: "crowd of passengers" });
-    assert.equal(irrelevantReason(concoursePeople, "station"), "people");
+    assert.equal(irrelevantReason(crowd, "station"), "people");
+    assert.equal(irrelevantReason(photo({ title: "File:대모산입구역 1번 출구.jpg",
+      categories: ["Railway stations"] }), "station"), null);
+  });
+  it("13e2: new people words catch crowds, bare men only as a word", () => {
+    assert.equal(irrelevantReason(photo({ title: "File:Station hall.jpg",
+      description: "commuters waiting" }), "station"), "people");
+    assert.equal(irrelevantReason(photo({ title: "File:Two men.jpg" }), "station"), "people");
+    assert.equal(irrelevantReason(photo({ description: "열차를 기다리는 중" }),
+      "station"), "people");
+    assert.equal(irrelevantReason(photo({ title: "File:Apartments.jpg",
+      categories: ["Apartment buildings"] }), "complex"), null);
   });
   it("keeps plain street/park/apartment photos", () => {
     assert.equal(isIrrelevantPhoto(photo({ title: "File:Maple street.jpg",
