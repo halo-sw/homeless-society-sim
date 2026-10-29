@@ -42,13 +42,13 @@ People make the most expensive decision of their lives from a few photos and a 3
 
 So an AI household moves in first. Tell it about your life, pick candidate homes from real transactions, and the household lives 30 days in home A and home B, side by side, in a 3D model of the real neighbourhood. Muse Spark makes the household's everyday choices and explains each one. A deterministic engine counts every minute and every won. The app then compares the two homes on the customer's own priorities, with a source or an "assumption" label on every number. It shows, explains and lets you decide. It never decides for you.
 
-> Status (2026-10-30): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *planned* are not built yet.
+> Status (2026-10-30): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *coming soon* are not built yet.
 
 ## How it works
 
 | | Step | What happens | Status |
 |---|---|---|---|
-| 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text) · voice input *planned* |
+| 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text) · voice input *coming soon* |
 | 2 | **Get real candidate homes** | Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi, with ride times from the operator's schedule and public rentals from the LH · 마이홈 API. | built |
 | 3 | **The household lives there for 30 days** | The household commutes, shops, walks in the park and visits clinics on the real walking graph, in both homes at once. Runs are paired over 10 seeds, so the gap between homes comes from the homes and not from chance. | built |
 | 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. | in progress (branch `verify-16a`) |
@@ -102,8 +102,8 @@ Each model has one job. Numbers never come from a model.
 | **Muse Spark 1.3** | The household's everyday choices with reasons, the consult agent, and (as Muse Code) the coding agent that wrote this repository | built |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026` on Baseten) | The same household decisions on an open-weight model; one switch (`--provider meta\|baseten`). Compared with Spark 1.3 below | built (comparison) |
 | Muse Spark as a judge | Checks that each report sentence is backed by a cited simulation event | *in progress* |
-| Muse Voice Transcribe | Spoken intake: say your household and workplace instead of typing | *planned* |
-| SAM 3.1 | Measure rooms and window area from listing photos and floor plans | *planned* |
+| Muse Voice Transcribe | Spoken intake: say your household and workplace instead of typing | *coming soon* |
+| SAM 3.1 | Measure rooms and window area from listing photos and floor plans | *coming soon* |
 
 ## Verification
 
@@ -113,7 +113,7 @@ The agent's work is checked by code before the customer sees it.
 - **Two kinds of check.** *Deterministic* items (commute minutes, housing cost, distance to daycare or a park) must match the engine's value within a stated tolerance. *Judge* items (noise, safety, storage) must cite at least one simulation event.
 - **Pass rule.** Every *must* item covered, and weighted coverage ≥ 80 % (*must* weighs 3, *should* 1). A failed report goes back to the agent with the reasons, up to 3 times, and then to the customer.
 - **Honest gaps.** An item the engine cannot back yet is shown as 미지원 and never counted as a pass. Today two household types have full scenarios (dual-income family with a young child, newlywed couple). Remote worker, three-generation family and dog owner are scored for the checklist only.
-- **Field study** *(planned)*. Compare the simulator's findings with the real homes and real regrets of 10–20 residents and report the match rate.
+- **Field study** *(coming soon)*. Compare the simulator's findings with the real homes and real regrets of 10–20 residents and report the match rate.
 
 Status: the scorer, claim checks and retry loop are being built on branch `verify-16a`, against the ground-truth file and reference scorer written by the team.
 
@@ -196,15 +196,16 @@ Raw and built data are never committed; the scripts above regenerate them. Real-
 
 Deadline: 2026-11-05 11:00 KST.
 
+**For this submission**
+
 | Date | Plan |
 |---|---|
-| 10-30 | Fix the demo scenario. Send the field-study survey to residents |
-| 10-31 | Voice intake, measuring rooms and windows from listing photos and floor plans |
-| 11-01 | Household agents on Spark Open, verification loop and its screen |
-| 11-02 | Run the field study and compute the match rate. Side-by-side 30-day time-lapse |
+| 10-30 → 11-02 | Built-in verification loop and its screen, 내 기준 점수 up front, painted map look, cleaner sim screen |
 | 11-03 | Polish, then feature freeze at night |
 | 11-04 | 3-minute video and final README |
 | 11-05 | Submit by 09:00 KST |
+
+**Coming soon** (not in this submission): voice intake, measuring rooms and windows from listing photos and floor plans (SAM 3.1), household agents on Spark Open, a field study with real residents, life events such as elevator waits and noise between floors, and scenarios for remote workers, three-generation families and dog owners.
 
 <details>
 <summary><b>Example output</b> (demo couple; inputs are placeholders)</summary>
