@@ -139,7 +139,8 @@ function itemOccurrences(gtItem, agentText) {
 
 // Python round(x, 2) uses round-half-even; Math.round does not
 // (3/24 = 0.125 -> 0.12 in Python, 0.13 with Math.round).
-function round2py(x) {
+// Exported for the report loop so both stages round identically.
+export function roundCoverage(x) {
   const n = x * 100;
   const f = Math.floor(n);
   if (Math.abs(n - f - 0.5) < 1e-9) {
@@ -228,8 +229,8 @@ export async function scoreChecklist(loaded, agentItems, opts = {}) {
   return {
     passed: mustCovRaw >= acceptance.must_coverage
       && weightedRaw >= acceptance.weighted_coverage_threshold,
-    must_coverage: round2py(mustCovRaw),
-    weighted_coverage: round2py(weightedRaw),
+    must_coverage: roundCoverage(mustCovRaw),
+    weighted_coverage: roundCoverage(weightedRaw),
     covered,
     missing,
     feedback_ko: feedbackKo,
