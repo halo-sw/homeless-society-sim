@@ -547,3 +547,36 @@ body.printing-share #share-print { display: block !important; padding: 24px;
   }
   .ui-sim13-drawer { border-left: none; border-top: 1px solid var(--border, #d8d2c4); max-height: 32vh; }
 }
+
+/* ---------- 13e2-1: chat columns scroll on their own ---------- */
+.ui-chat [class*="astryx-layout-content"] {
+  overflow: hidden; display: flex; flex-direction: column; min-height: 0; height: 100%;
+}
+.ui-chat [class*="astryx-layout-content"] > * {
+  display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0;
+}
+.ui-chat-main { overflow: hidden; }
+.ui-chat-thread { overflow: hidden; }
+.ui-chat-thread > :first-child {
+  display: flex; flex-direction: column; flex: 1 1 auto;
+  min-height: 0; min-width: 0; overflow: hidden;
+}
+.ui-chat-thread > :first-child > :first-child {
+  flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto;
+}
+.ui-chat-thread [class*="message-list"],
+.ui-chat-thread [class*="messagelist"],
+.ui-chat-thread [class*="MessageList"] {
+  flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto;
+}
+.ui-chat-thread > :first-child > :last-child { flex: none; }
+.ui-chat-thread [class*="composer"],
+.ui-chat-thread [class*="Composer"] { flex: none; }
+.ui-chat-thread > [class*="banner"],
+.ui-chat-thread > [class*="Banner"],
+.ui-chat-thread > [role="alert"] { flex: none; }
+.ui-chat-chips { flex: none; }
+.ui-chat-thread > p { flex: none; }
+.ui-chat-stage { overflow: hidden; }
+.ui-chat-stage-body { overflow: hidden; }
+.ui-chat-drawer { overflow-y: auto; }
