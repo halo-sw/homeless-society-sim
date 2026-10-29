@@ -6,6 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { projectedOrbBounds } from "../src/orb.js";
+import { rectsIntersect, tagBoxBlocked } from "../src/stage-tags.js";
 
 const SHAPES = [
   { id: "seongdong", label: "성동", bbox: [127.0, 37.5, 127.08, 37.55] },
@@ -34,4 +35,36 @@ describe("13e4 orb projected fit", () => {
       assert.ok(Math.abs(p.fill - 0.84) < 0.02, `fill=${p.fill}`);
     });
   }
+});
+
+describe("13e4 tag box blockers", () => {
+  // GPU capture: "직장" tag box x 1058-1092 over drawer at x=1060.
+  const drawer = { left: 1060, top: 56, width: 380, height: 844 };
+  const topbar = { left: 0, top: 0, width: 1440, height: 56 };
+  const jobTag = { left: 1058, top: 55, width: 34, height: 13 };
+
+  it("hides a tag whose box overlaps the drawer", () => {
+    assert.equal(rectsIntersect(jobTag, drawer), true);
+    assert.equal(tagBoxBlocked(jobTag, [drawer, topbar]), true);
+  });
+
+  it("hides a tag whose box overlaps the top bar", () => {
+    const tag = { left: 500, top: 50, width: 60, height: 20 };
+    assert.equal(rectsIntersect(tag, topbar), true);
+    assert.equal(tagBoxBlocked(tag, [drawer, topbar]), true);
+  });
+
+  it("keeps a tag clear of both", () => {
+    const tag = { left: 500, top: 400, width: 60, height: 20 };
+    assert.equal(tagBoxBlocked(tag, [drawer, topbar]), false);
+  });
+
+  it("touching edges and empty rects do not block", () => {
+    assert.equal(rectsIntersect(
+      { left: 1000, top: 100, width: 60, height: 20 }, drawer), false);
+    assert.equal(tagBoxBlocked(jobTag, []), false);
+    assert.equal(tagBoxBlocked(jobTag, null), false);
+    assert.equal(tagBoxBlocked(jobTag,
+      [{ left: 0, top: 0, width: 0, height: 0 }]), false);
+  });
 });

@@ -26,3 +26,18 @@ export function placeTag(nx, ny, canvasRect, { drawerOpen = false, drawerWidth =
     && y >= stage.top && y <= stage.top + stage.height;
   return { x, y, visible };
 }
+
+// 13e4: hide a tag when its BOX — not just its anchor point —
+// touches a blocker (drawer, top bar). All rects are
+// {left, top, width, height} in one consistent space (e.g. viewport
+// px from getBoundingClientRect). Touching edges do not count.
+export function rectsIntersect(a, b) {
+  if (!a || !b) return false;
+  if (!(a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0)) return false;
+  return a.left < b.left + b.width && b.left < a.left + a.width
+    && a.top < b.top + b.height && b.top < a.top + a.height;
+}
+
+export function tagBoxBlocked(tagBox, blockers) {
+  return (blockers || []).some((r) => rectsIntersect(tagBox, r));
+}

@@ -13,7 +13,7 @@ import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
-import { placeTag } from "./stage-tags.js";
+import { placeTag, tagBoxBlocked } from "./stage-tags.js";
 import { commuteSegments, corridorFor, journeyBanner, journeyCameraState, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
@@ -1039,6 +1039,27 @@ async function bootSim() {
     el.style.display = "block";
     el.style.left = `${placed.x}px`;
     el.style.top = `${placed.y}px`;
+    // 13e4: hide when the tag BOX — not just its anchor — intersects
+    // the drawer or the top bar. All rects are viewport px read live
+    // here, so layout timing cannot skew them; zero-area rects
+    // (hidden elements) never block.
+    const blockers = [];
+    if (drawerEl) {
+      const dr = drawerEl.getBoundingClientRect();
+      blockers.push({ left: dr.left, top: dr.top, width: dr.width, height: dr.height });
+    }
+    const topEl = document.querySelector(".ui-sim13-top");
+    if (topEl) {
+      const tr = topEl.getBoundingClientRect();
+      blockers.push({ left: tr.left, top: tr.top, width: tr.width, height: tr.height });
+    }
+    if (blockers.length > 0) {
+      const tb = el.getBoundingClientRect();
+      if (tagBoxBlocked(
+        { left: tb.left, top: tb.top, width: tb.width, height: tb.height }, blockers)) {
+        el.style.display = "none";
+      }
+    }
   }
   const bgMesh = new THREE.InstancedMesh(
     new THREE.CapsuleGeometry(0.3, 0.9, 3, 8),
