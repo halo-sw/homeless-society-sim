@@ -103,14 +103,17 @@ describe("look parsing (?look=key:value,…)", () => {
       sceneFoot: 0xd9d3c7,
       sceneCycle: 0xa0705a,
     });
-    // Painted roads are never blue: red and green lead blue.
+    // Painted roads are near-neutral dark greys, never blue: the pinned
+    // hexes carry at most a 5-step blue lead (warm-grey asphalt).
     for (const h of [PAINTED_LOOK.sceneRoad, PAINTED_LOOK.sceneRoadMinor]) {
       const r = (h >> 16) & 255;
       const g = (h >> 8) & 255;
       const b = h & 255;
-      assert.ok(r >= b && g >= b, `road ${h.toString(16)} not blue`);
+      assert.ok(b - r <= 5 && b - g <= 5, `road ${h.toString(16)} not blue`);
+      assert.ok(Math.max(r, g, b) - Math.min(r, g, b) <= 8, `road ${h.toString(16)} grey`);
     }
   });
+});
 
 describe("fog ranges", () => {
   it("starts street fog at ≥2.5× the framed width", () => {
