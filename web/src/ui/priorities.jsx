@@ -15,7 +15,10 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { Text } from "@astryxdesign/core/Text";
-import { PRIORITY_GROUPS, PRIORITY_METRICS, defaultWeights, weightedView } from "../priorities.js";
+import { PRIORITY_GROUPS, PRIORITY_METRICS, NUMERIC_GROUPS, defaultWeights,
+  weightedView, priorityValues } from "../priorities.js";
+
+export { priorityValues };
 import { store } from "./store.js";
 import { fmtWon, fmtPct, fmtMinutes, fmtCount, fmtIndex } from "../money/format.js";
 import { tenureOf } from "./money.jsx";
@@ -31,67 +34,13 @@ function fmtMetric(unit, v) {
   return fmtCount(v, "");
 }
 
-// Per-home metric values from the money doc (+ compare leisure totals).
-// Returns {homeLabel: {metricId: number|null}}.
-export function priorityValues(moneyDoc, compareDoc, tenures) {
-  const out = {};
-  const leisure = {};
-  if (compareDoc && Array.isArray(compareDoc.metrics)) {
-    const errands = compareDoc.metrics.find((m) => m.key === "errands_done");
-    const parks = compareDoc.metrics.find((m) => m.key === "park_visits");
-    if (errands && parks) {
-      const homeA = compareDoc.home_a && compareDoc.home_a.label;
-      const homeB = compareDoc.home_b && compareDoc.home_b.label;
-      if (homeA) leisure[homeA] = (errands.a || 0) + (parks.a || 0);
-      if (homeB) leisure[homeB] = (errands.b || 0) + (parks.b || 0);
-    }
-  }
-  for (const [label, h] of Object.entries((moneyDoc && moneyDoc.homes) || {})) {
-    const v = {};
-    const edu = h.qol_education;
-    if (!edu) {
-      // Agent-merged homes (C) carry money only — no invented zeros.
-      v.edu_nearest_school_min = null;
-      v.edu_schools_10min = null;
-      v.edu_academy_10min = null;
-    } else {
-      const c10 = (edu.counts || {}).within_10min || {};
-      const nearSchool = ((edu.nearest || {}).school || [])[0];
-      v.edu_nearest_school_min = nearSchool ? nearSchool.minutes : null;
-      v.edu_schools_10min = (c10.school_elementary || 0) + (c10.school_middle || 0)
-        + (c10.school_high || 0) + (c10.school_unknown || 0);
-      v.edu_academy_10min = c10.academy ?? null;
-    }
-    const time = h.qol_time || {};
-    v.life_commute_min = time.commute_minutes_per_day ?? null;
-    v.life_evening_min = time.evening_at_home_minutes_per_day ?? null;
-    v.life_fatigue = (h.qol_fatigue || {}).avg_30d ?? null;
-    v.life_trips = leisure[label] ?? null;
-    const safety = h.qol_safety || {};
-    v.safety_total = safety.total ?? null;
-    if (Array.isArray(safety.groups)) {
-      const pick = (name) => (safety.groups.find((g) => g.cat1 === name) || {}).count;
-      const a = pick("강력범죄");
-      const b = pick("폭력범죄");
-      v.safety_violent = a !== undefined && b !== undefined ? a + b : null;
-    } else {
-      v.safety_violent = null;
-    }
-    const tenure = (tenures && tenures[label]) || "전세";
-    const sel = h.by_tenure && h.by_tenure[tenure];
-    v.money_housing = sel ? sel.housing.monthly_won : null;
-    v.money_burden = sel ? sel.burden_ratio : null;
-    v.money_remaining = sel ? sel.remaining_won : null;
-    const conv = h.qol_convenience || {};
-    v.conv_grocery = conv.grocery ?? null;
-    v.conv_clinic = conv.clinic ?? null;
-    v.conv_station = conv.station ?? null;
-    out[label] = v;
-  }
-  return out;
-}
-
+// (priorityValues lives in ../priorities.js; re-exported above for compat.)
 const UNIT_KO = { minutes: "분", index: "0–100", won_month: "원/월", ratio: "%", count: "곳·건·회" };
+
+function groupTitle(id) {
+  const g = PRIORITY_GROUPS.find((x) => x.id === id);
+  return g ? g.title : id;
+}
 
 function WeightStepper({ group, value, onChange }) {
   return (
@@ -192,6 +141,27 @@ export function PrioritiesTab({ state }) {
                 </MetadataListItem>
               ))}
             </MetadataList>
+            {NUMERIC_GROUPS.map((g) => (
+              <div className="ui-groupbar" key={g}>
+                <Text type="supporting">{`${groupTitle(g)} (비중 ${weighed.weights[g]})`}</Text>
+                {labels.map((l) => {
+                  const v = weighed.homes[l].groups[g];
+                  return (
+                    <div className="ui-groupbar-row" key={l}>
+                      <span className="ui-groupbar-label">{l}</span>
+                      <div className="ui-progress" role="progressbar"
+                        aria-label={`${groupTitle(g)} ${l}`}
+                        aria-valuenow={v === null ? 0 : Math.round(v * 100)}
+                        aria-valuemin={0} aria-valuemax={100}>
+                        <div className="ui-progress-fill"
+                          style={{ width: `${v === null ? 0 : Math.round(v * 100)}%` }} />
+                      </div>
+                      <span className="ui-groupbar-num">{v === null ? "–" : v.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
             <Text type="supporting">{weighed.formula}</Text>
             <Text type="supporting">{weighed.note}</Text>
           </>

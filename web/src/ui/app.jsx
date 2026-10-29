@@ -22,7 +22,7 @@ import { Landing } from "./landing.jsx";
 import { ChatScreen, AgentTourCard } from "./chat.jsx";
 import { TimelineBar } from "./timeline.jsx";
 import { CriteriaTab } from "./criteria.jsx";
-import { MoneyTab, QualityTab } from "./money.jsx";
+import { MoneyTab, QualityTab, tenureOf } from "./money.jsx";
 import { PrioritiesTab } from "./priorities.jsx";
 import { SafetyEduTab } from "./safety-edu.jsx";
 import { WorthItTab } from "./worthit.jsx";
@@ -38,6 +38,7 @@ import { criterionTitle } from "../engine/criteria.js";
 import { chipDisplay, tickerDisplay } from "../nowcard.js";
 import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
 import { ActivityIcon, ActivityLegend } from "./timeline.jsx";
+import { priorityValues, myScore } from "../priorities.js";
 
 function useStore() {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -473,9 +474,61 @@ function RecordSection({ state }) {
   );
 }
 
+// 17-2: 내 기준 점수 — the answer first. One row per home in A/B
+// order above the hero; both bars use the neutral fill, never sorted,
+// never crowned. Tap opens the 내 기준 tab (group bars + formula).
+function MyScoreRow({ state }) {
+  const doc = state.money;
+  if (state.moneyLoading || !doc || doc.error) return null;
+  const labels = Object.keys(doc.homes || {});
+  if (labels.length === 0) return null;
+  const tenures = {};
+  for (const label of labels) tenures[label] = tenureOf(state, label, doc);
+  const pw = state.priorityWeights;
+  const explicit = !!(pw && pw.explicit);
+  const scored = myScore(priorityValues(doc, state.compare, tenures),
+    pw ? pw.weights : null, { explicit });
+  if (!scored.ok) return null;
+  const openTab = () => store.set({ compareOpen: true, compareTab: "priorities" });
+  const num = (l) => (scored.scores[l] === null || scored.scores[l] === undefined ? "–" : scored.scores[l]);
+  return (
+    <div className="ui-myscore" data-testid="myscore-row" onClick={openTab}
+      role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openTab(); }}
+      aria-label="내 기준 점수 · 내 기준 탭으로 이동">
+      <div className="ui-myscore-head">
+        <span className="ui-myscore-title">내 기준 점수</span>
+        <span className="ui-myscore-line">{labels.map((l) => `${l} ${num(l)}`).join(" · ")}</span>
+      </div>
+      {labels.map((l) => (
+        <div className="ui-myscore-row" key={l}>
+          <span className="ui-myscore-label">{l}</span>
+          <div className="ui-progress" role="progressbar" aria-label={`${l} 내 기준 점수`}
+            aria-valuenow={num(l) === "–" ? 0 : num(l)} aria-valuemin={0} aria-valuemax={100}>
+            <div className="ui-progress-fill"
+              style={{ width: `${num(l) === "–" ? 0 : num(l)}%` }} />
+          </div>
+          <span className="ui-myscore-num">{num(l)}</span>
+        </div>
+      ))}
+      <div className="ui-myscore-cap">
+        <span>{scored.caption}</span>
+        {!explicit && (
+          <span>
+            {" · "}
+            <button type="button" className="ui-myscore-link"
+              onClick={(e) => { e.stopPropagation(); openTab(); }}>비중 정하기</button>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SimDrawer({ state }) {
   return (
     <div className="ui-drawer13f2">
+      <MyScoreRow state={state} />
       <SimHero state={state} />
       <details className="ui-section" open data-testid="section-today">
         <summary className="ui-section-head">오늘</summary>

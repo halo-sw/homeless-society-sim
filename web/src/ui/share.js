@@ -4,13 +4,15 @@
 // A / B with area, 만든 날 vs 시뮬레이션 기간) and twelve A-vs-B rows in
 // plain words — commute, monthly housing, remaining money, fatigue,
 // 10-minute convenience, jeonse signals — each with value + unit, source
-// badges and 가정값 marks, the customer's own priorities, and the
-// disclaimer. No verdict: which side is numerically lower is marked
+// badges and 가정값 marks, the customer's own priorities (내 기준 점수
+// first, same caption as the drawer), and the disclaimer. No verdict:
+// which side is numerically lower is marked
 // neutrally ("낮음"), never 좋음/나쁨, and the card shows while the
 // customer decides. The PNG renders locally via <canvas> (1080 px wide)
 // and downloads in the browser (no upload).
 
 import { fmtWon, fmtMinutes, fmtIndex } from "../money/format.js";
+import { priorityValues, myScore } from "../priorities.js";
 import { congestionPeakLine } from "../engine/journey.js";
 import { monthlyHousingLabel, BURDEN_PLAIN_LABEL,
   REMAINING_PLAIN_LABEL } from "./copy.js";
@@ -299,6 +301,21 @@ export function resultCardData({ money, compare = null, tenures = {},
     title: g.title,
     weight: priorities && weights && weights.explicit ? (weights.weights[g.id] ?? 3) : 3,
   }));
+  // 17-2: 내 기준 점수, the card's first row (same caption as the
+  // drawer). Null when the money doc or explicit weights are unusable.
+  let score = null;
+  if (money && !money.error) {
+    const scoreTenures = {};
+    for (const label of Object.keys(money.homes || {})) {
+      scoreTenures[label] = tenures[label] || "전세";
+    }
+    const s = myScore(priorityValues(money, compare, scoreTenures),
+      weights ? weights.weights : null,
+      { explicit: !!(weights && weights.explicit) });
+    if (s.ok) {
+      score = { basis: s.basis, scores: s.scores, caption: s.caption };
+    }
+  }
   return {
     title: SHARE_TITLE,
     date: createdDay,
@@ -312,6 +329,7 @@ export function resultCardData({ money, compare = null, tenures = {},
     persona: personaTitle || personaTitleFor(scenarioName),
     household: householdLine || "",
     homes,
+    score,
     rows: buildCompareRows({ money, compare, tenures, days }),
     priorities: { lines: priorityLines, note: priorityNote, bars },
     disclaimer: SHARE_DISCLAIMER,
@@ -345,6 +363,13 @@ export function renderShareCard(canvas, data) {
   for (const h of data.homes) push(h.headline, { size: 30 });
   push(`만든 날 ${data.createdDay}`, { size: 28, color: FAINT });
   push(data.simPeriod.label, { size: 28, color: FAINT, gapAfter: 14 });
+  if (data.score) {
+    const line = Object.entries(data.score.scores)
+      .map(([l, v]) => `${l} ${v === null || v === undefined ? "–" : v}`).join(" · ");
+    push("내 기준 점수", { size: 36, bold: true, gapBefore: 16 });
+    push(line, { size: 30 });
+    push(data.score.caption, { color: FAINT, size: 24, gapAfter: 8 });
+  }
   for (const r of data.rows) {
     push(r.label, { size: 30, bold: true, gapBefore: 12 });
     const markA = r.lowerSide === "A" ? " (낮음)" : "";

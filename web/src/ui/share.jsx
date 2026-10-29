@@ -1,10 +1,10 @@
 // Shareable result card (React, Astryx Dialog): one PNG (canvas, local
 // download) and a printable page. Header (persona or household, homes A
-// / B with area, 만든 날 vs 시뮬레이션 기간), twelve A-vs-B rows in plain
-// words — each number with source badges and 가정값 marks, the lower
-// side marked neutrally (낮음, never 좋음/나쁨) — the customer's own
-// priorities as small bars, and the disclaimer. No verdict; the file
-// stays in the browser (no upload).
+// / B with area, 만든 날 vs 시뮬레이션 기간), the 내 기준 점수 first,
+// twelve A-vs-B rows in plain words — each number with source badges
+// and 가정값 marks, the lower side marked neutrally (낮음, never
+// 좋음/나쁨) — the customer's own priorities as small bars, and the
+// disclaimer. No verdict; the file stays in the browser (no upload).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
@@ -39,6 +39,15 @@ function CardPreview({ data }) {
         <Text type="supporting">{`만든 날 ${data.createdDay}`}</Text>
         <Text type="supporting">{data.simPeriod.label}</Text>
       </HStack>
+      {data.score && (
+        <VStack gap={1}>
+          <Text hasTabularNumbers>
+            {`내 기준 점수 ${Object.entries(data.score.scores)
+              .map(([l, v]) => `${l} ${v === null || v === undefined ? "–" : v}`).join(" · ")}`}
+          </Text>
+          <Text type="supporting">{data.score.caption}</Text>
+        </VStack>
+      )}
       <div className="ui-share-rows" role="table" aria-label="A·B 비교">
         <div className="ui-share-row ui-share-head" role="row">
           <span role="columnheader">항목</span>

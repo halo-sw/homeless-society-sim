@@ -682,6 +682,28 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-hero-cong { display: flex; flex-direction: column; gap: var(--ui-s4); }
 .ui-hero-cong-line { display: flex; gap: var(--ui-s8); align-items: center; font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-hero-next { font-size: var(--ui-t12); color: var(--ui-ink3); }
+/* ---------- 17-2: 내 기준 점수 (answer first, neutral bars) ---------- */
+.ui-myscore { display: flex; flex-direction: column; gap: var(--ui-s4);
+  padding-bottom: var(--ui-s12); margin-bottom: var(--ui-s12);
+  border-bottom: 1px solid var(--ui-border); cursor: pointer; }
+.ui-myscore-head { display: flex; gap: var(--ui-s8); align-items: baseline; }
+.ui-myscore-title { font-size: var(--ui-t14); font-weight: var(--ui-w600); }
+.ui-myscore-line { font-size: var(--ui-t14); font-variant-numeric: tabular-nums; }
+.ui-myscore-row { display: flex; gap: var(--ui-s8); align-items: center; }
+.ui-myscore-row .ui-progress { flex: 1 1 auto; }
+.ui-myscore-label { width: 1.2em; font-size: var(--ui-t14); }
+.ui-myscore-num { min-width: 2em; text-align: right; font-size: var(--ui-t14);
+  font-variant-numeric: tabular-nums; }
+.ui-myscore-cap { font-size: var(--ui-t12); color: var(--ui-ink3); }
+.ui-myscore-link { background: none; border: none; padding: 0;
+  color: var(--ui-accent); font-size: inherit; cursor: pointer;
+  text-decoration: underline; }
+.ui-groupbar { display: flex; flex-direction: column; gap: var(--ui-s4); }
+.ui-groupbar-row { display: flex; gap: var(--ui-s8); align-items: center; }
+.ui-groupbar-row .ui-progress { flex: 1 1 auto; }
+.ui-groupbar-label { width: 1.2em; font-size: var(--ui-t14); }
+.ui-groupbar-num { min-width: 3em; text-align: right; font-size: var(--ui-t12);
+  color: var(--ui-ink2); font-variant-numeric: tabular-nums; }
 /* Card-less sections, 1px dividers, no nested cards. */
 .ui-section { border-top: 1px solid var(--ui-border); }
 .ui-section-head {
