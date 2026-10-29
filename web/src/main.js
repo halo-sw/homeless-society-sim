@@ -775,7 +775,7 @@ async function bootTour(uiMode = "tour") {
     buildUI(area, plan, !!scene14, fillTrees);
   } else {
     store.set({ area: { id: areaId, label: area.label || areaId } });
-    document.title = uiMode === "chat" ? "주거 시뮬레이터 — 대화" : "주거 시뮬레이터";
+    document.title = uiMode === "chat" ? "Ithaca — 대화" : "Ithaca";
   }
   if (uiMode === "chat") registerChatActions();
   document.getElementById("loading").remove();
@@ -1142,7 +1142,7 @@ function buildUI(area, plan, sceneOn = false, fillCount = 0) {
     },
   });
   if (plan.stops.length === 0) store.set({ tourPlaying: false });
-  document.title = `주거 시뮬레이터 — ${area.label || areaId}`;
+  document.title = `Ithaca — ${area.label || areaId}`;
 }
 
 // Shared UI actions (all modes); mode-specific boots add their own.
@@ -2601,7 +2601,7 @@ async function bootSim() {
     introOpen: !PARAMS.has("t") && !PARAMS.has("day") && PARAMS.get("intro") !== "0",
   });
   applyFollowDim();
-  document.title = `주거 시뮬레이터 — ${homeLabel} · ${run.meta.complex}`;
+  document.title = `Ithaca — ${homeLabel} · ${run.meta.complex}`;
 
   // --- 12b day-at-a-glance timeline -------------------------------------------
   // Published once per day/follow/home change (the UI moves the

@@ -2,8 +2,8 @@
 // ai-chat-landing template (Layout + greeting + ChatComposer +
 // ClickableCard grid) with the template's sample content removed — no
 // categories, modes, mentions or attachments. The 3D canvas behind
-// (tour scene, slowly drifting) is dimmed by the scrim div so the
-// white text keeps ≥ 4.5:1 contrast.
+// (tour scene, slowly drifting) shows through a warm white veil
+// (~35% map visible) so the dark text reads bright, not murky.
 //
 // Suggestion cards fill example prompts (labelled 예시) or open the
 // listing paste check; sending moves to the chat (?chat=…).
@@ -20,6 +20,8 @@ import { Popover } from "@astryxdesign/core/Popover";
 import { ChatComposer } from "@astryxdesign/core/Chat";
 import { chatUrl } from "../chat/urls.js";
 
+export const LANDING_BRAND = "Ithaca · The Pre-living Agent for Your Next Home";
+export const LANDING_TAGLINE = "We walk the odyssey. You just come home.";
 export const LANDING_HEADING = "계약 전에, 그 집에서 30일 먼저 살아 봐요";
 export const LANDING_SUB = "출근·돈·생활을 진짜 자료로 미리 살아 보고, 직접 고르세요";
 export const LANDING_PLACEHOLDER = "어디로 출근하고, 누구와 살고, 예산은 얼마인가요?";
@@ -94,6 +96,7 @@ export function Landing() {
             <LayoutContent>
               <VStack gap={8} vAlign="center" style={{ minHeight: "100%" }}>
                 <VStack gap={1}>
+                  <Text type="supporting">{LANDING_BRAND}</Text>
                   <Text type="large" as="h2">{LANDING_SUB}</Text>
                   <Text type="display-2" as="h1">{LANDING_HEADING}</Text>
                 </VStack>
@@ -131,6 +134,7 @@ export function Landing() {
                       </VStack>
                     </ClickableCard>
                   </Grid>
+                  <Text type="supporting">{LANDING_TAGLINE}</Text>
                   <div className="ui-landing-foot">
                     <HStack gap={2} vAlign="center" wrap="wrap">
                       <Text type="supporting">{COVERAGE_LINE}</Text>

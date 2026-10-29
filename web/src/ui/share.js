@@ -434,6 +434,6 @@ export function renderShareCard(canvas, data) {
   }
   ctx.fillStyle = FAINT;
   ctx.font = "24px system-ui, sans-serif";
-  ctx.fillText("주거 시뮬레이터 · 파일은 이 브라우저에만 저장돼요", pad, canvas.height - pad + 12);
+  ctx.fillText("Ithaca · 파일은 이 브라우저에만 저장돼요", pad, canvas.height - pad + 12);
   return { width: canvas.width, height: canvas.height };
 }

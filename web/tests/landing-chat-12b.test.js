@@ -167,7 +167,7 @@ describe("no demo numbers without 예시", () => {
     const text = textOf(html);
     const figs = [...text.matchAll(FIGURE)].map((m) => m[0]);
     assert.deepEqual(figs, []);
-    assert.ok(text.includes("주거 시뮬레이터"));
+    assert.ok(text.includes("Ithaca"));
   });
 
   it("example input labels every card 예시", () => {

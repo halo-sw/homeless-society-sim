@@ -128,7 +128,7 @@ export function TopBar({ mode, summary, extra, settings }) {
   return (
     <header className="ui-bar overlay">
       <div className="ui-bar-left">
-        <span className="ui-bar-title">주거 시뮬레이터</span>
+        <span className="ui-bar-title">Ithaca</span>
         <SegmentedControl label="화면 선택" value={mode}
           onChange={(v) => gotoMode(v, mode)} size="sm">
           {MODES.map((m) => (

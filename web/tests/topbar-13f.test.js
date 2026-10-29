@@ -41,7 +41,7 @@ describe("13f-1 shared top bar (SSR, no DOM)", () => {
   it("renders the bar in chat mode with the summary chip", () => {
     const html = render(React.createElement(TopBar,
       { mode: "chat", summary: "판교 출근 · 1인", settings: { mode: "chat" } }));
-    assert.ok(html.includes("주거 시뮬레이터"), "product name");
+    assert.ok(html.includes("Ithaca"), "product name");
     for (const m of MODES) assert.ok(html.includes(m), `mode ${m}`);
     assert.ok(html.includes("설정"), "settings button");
     assert.ok(html.includes("판교 출근 · 1인"), "profile summary chip");
@@ -57,7 +57,7 @@ describe("13f-1 shared top bar (SSR, no DOM)", () => {
   it("renders the bar in sim and tour modes with no centre chip", () => {
     for (const mode of ["sim", "tour"]) {
       const html = render(React.createElement(TopBar, { mode, settings: { mode } }));
-      assert.ok(html.includes("주거 시뮬레이터"), `product name (${mode})`);
+      assert.ok(html.includes("Ithaca"), `product name (${mode})`);
       for (const m of MODES) assert.ok(html.includes(m), `mode ${m} (${mode})`);
       assert.ok(html.includes("설정"), `settings button (${mode})`);
       assert.ok(!html.includes("상황을 알려주세요"), `no chat centre (${mode})`);
