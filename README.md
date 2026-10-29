@@ -1,86 +1,138 @@
-# Homeless Society Sim — live in a home for 30 days before you sign
+<h1 align="center">Homeless Society Sim</h1>
 
-[한국어 README](README.ko.md)
+<p align="center"><b>Live in the home before you sign.</b><br>An AI household lives 30 days in each candidate home and finds the problems you only learn by living there,<br>the ones a listing photo, a map and a 30-minute viewing never show.</p>
 
-**Meta Global AI Developer Hackathon · Indie Developer track · "Build for Your World"**
+<p align="center">
+  <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
+  <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
+  <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
+  <img src="https://img.shields.io/badge/tests-926_JS_·_244_Python-2f5d50?style=flat-square" alt="926 JavaScript and 244 Python tests">
+  <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
+</p>
 
-**Democratising housing knowledge for Gen-Z.** For a first-job worker, a couple about to marry or a young family in Korea, a home is the biggest and riskiest decision they will make, and most of them make it with a listing, a price and advice from friends. Deposit fraud (전세사기) has hit young renters hardest: about 75 % of the victims are in their 20s and 30s (press report of March 2025 citing Ministry of Land data).
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Run_it-locally-2f5d50?style=for-the-badge" alt="Run it locally"></a>
+  &nbsp;
+  <a href="briefs/"><img src="https://img.shields.io/badge/Muse_Code-build_log-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Muse Code build log"></a>
+  &nbsp;
+  <a href="README.ko.md"><img src="https://img.shields.io/badge/한국어-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Korean README"></a>
+</p>
 
-**Our answer: live in the home for 30 days before you sign.**
+<p align="center">
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#gallery">Gallery</a> ·
+  <a href="#what-it-does">What it does</a> ·
+  <a href="#meta-models">Meta models</a> ·
+  <a href="#verification">Verification</a> ·
+  <a href="#built-by-muse">Built by Muse</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#limits">Limits</a> ·
+  <a href="#roadmap">Roadmap</a>
+</p>
 
-1. **Say it in your own words.** The customer describes their household, workplace, salary and cash in a chat. The consult agent (Muse Spark 1.3) turns that into a profile and marks every value it had to assume.
-2. **Get real candidate homes.** Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi (성동, 송파, 강남, 강동, 위례, 판교, 성남, 정자, 분당, 미금, 수지). Ride times come from the operator's schedule, and public rentals come from the LH · 마이홈 API.
-3. **Watch a household live in home A and home B for 30 days.** It happens in a 3D model of the real neighbourhood: OpenStreetMap, the national building register and terrain, with 60 station areas built. Traffic, pedestrians and trains move procedurally. Muse makes the household's choices and gives a reason for each one, and the engine does all the counting. Runs are paired over 10 seeds, so the gap between the homes comes from the homes and not from chance.
-4. **Compare with evidence.** The app compares commute time, fatigue (from measured subway congestion), money for 매매, 전세, 월세 and public rental (from real transactions), and official safety and education figures. It weighs them only by the customer's own priorities. Every number has a source or an "assumption" label. The app shows, explains and lets you decide. It never decides for you.
+<p align="center">
+  <img src="briefs/img/10-commute-ab.png" width="760" alt="Two homes side by side at 08:50 on day 1. On the left, the person from home A in 잠실 rides 2호선 (91 % crowded, measured) towards 신분당선. On the right, the person from home B in 판교 walks to work.">
+</p>
 
-> Status (2026-10-30): work in progress (hackathon period 2026-10-27 → 11-04). The first commit is 2026-10-28, and nothing here predates the hackathon. Stage 15 (engine integrity) is on `main`, with 926 `node --test` and 244 `pytest` tests passing. In progress on branches: a painted near-isometric map look, and built-in verification that scores the agent's checklist and report against a ground-truth checklist. See [Known issues](#known-issues).
+<p align="center"><sub>08:50 on day 1, the same household in two homes. From home A they are on 2호선 (91 % crowded, measured) heading to 신분당선. From home B they walk to work. Real GPU capture, 2026-10-29.</sub></p>
+
+---
+
+People make the most expensive decision of their lives from a few photos and a 30-minute viewing. For a first-job worker, a couple about to marry or a young family in Korea, that decision is also the riskiest: about 75 % of the victims of deposit fraud (전세사기) are in their 20s and 30s (press report of March 2025 citing Ministry of Land data). Everyone who has moved knows the feeling of finding out what a home is really like only after moving in.
+
+So an AI household moves in first. Tell it about your life, pick candidate homes from real transactions, and the household lives 30 days in home A and home B, side by side, in a 3D model of the real neighbourhood. Muse Spark makes the household's everyday choices and explains each one. A deterministic engine counts every minute and every won. The app then compares the two homes on the customer's own priorities, with a source or an "assumption" label on every number. It shows, explains and lets you decide. It never decides for you.
+
+> Status (2026-10-30): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *planned* are not built yet.
+
+## How it works
+
+| | Step | What happens | Status |
+|---|---|---|---|
+| 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text) · voice input *planned* |
+| 2 | **Get real candidate homes** | Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi, with ride times from the operator's schedule and public rentals from the LH · 마이홈 API. | built |
+| 3 | **The household lives there for 30 days** | The household commutes, shops, walks in the park and visits clinics on the real walking graph, in both homes at once. Runs are paired over 10 seeds, so the gap between homes comes from the homes and not from chance. | built |
+| 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. | in progress (branch `verify-16a`) |
+| 5 | **Compare with evidence** | Time, fatigue, money for 매매 / 전세 / 월세 / public rental, 전세 warning signs, support programmes, official safety and education figures, all weighted by the customer's own priorities. | built |
+
+## Gallery
+
+<table>
+  <tr>
+    <td width="50%"><img src="briefs/img/13e4-chat.png" alt="The chat screen. The customer typed a one-line request; the agent's profile card lists each value with a 내가 말한 값 or 물어볼 값 tag. On the right, a map of the 9 regions with candidate homes as dots."></td>
+    <td width="50%"><img src="briefs/img/13e-cards-mid.png" alt="Candidate home cards: 전세 price from the real-transaction median, type, size and year, walking time to the station, a nearby photo labelled as not a listing photo, and buttons 살아 보기, 전세 점검 and 자세히."></td>
+  </tr>
+  <tr>
+    <td><sub><b>Start from your own words.</b> The profile card separates what the customer said from what is still unknown, and the map shows where the candidates are.</sub></td>
+    <td><sub><b>Real candidate homes.</b> Prices are real-transaction medians with the number of deals. Photos are nearby street photos with their licence, never presented as the listing.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="briefs/img/08c-follow.png" alt="Following one resident in the 3D neighbourhood. The Now card shows the current activity, why it happens, the criteria that applied and the fatigue level."></td>
+    <td><img src="briefs/img/11b-share-after.png" alt="The share card comparing home A and home B: how they get to work, daily commute 2 h 5 min vs 48 min, time on trains, time walked and fatigue on arrival, each with source tags."></td>
+  </tr>
+  <tr>
+    <td><sub><b>Follow one person.</b> The Now card says what they are doing, why (a routine rule, a Muse decision with its reason, or customer input), which criteria applied and how tired they are.</sub></td>
+    <td><sub><b>A result you can share.</b> A and B side by side in plain words, with 측정 / 가정값 tags on every row. The PNG is built in the browser and never uploaded.</sub></td>
+  </tr>
+</table>
+
+Every image is a real GPU capture of the running app, saved in [`briefs/img/`](briefs/img/).
 
 ## What it does
 
-![Following a resident: the Now card shows what they are doing, why, which criteria applied, and their fatigue (real GPU capture, 2026-10-29)](briefs/img/08c-follow.png)
-
-
-- **Builds the real neighbourhood in 3D** from OpenStreetMap and the national building register: footprints, heights, number of floors, residential complexes, roads, stations, parks and shops. Four areas are built today: 판교 Pangyo, 성수 Seongsu, 송파구 Songpa-gu and 잠실 Jamsil.
-- **Simulates daily life for 30 days.** A household (2 adults, plus 60 simulated neighbours, all labelled as simulated) goes to work, shops, walks in the park and visits clinics on the real walking graph. The engine is deterministic: the same seed gives byte-identical output.
-- **Muse makes the household's choices; the engine does the counting.** At each decision point (where to shop, what to do on the weekend, whether to stop on the way home) Muse Spark 1.3 picks from options the engine offers and gives a reason. In our run Muse made 198 decisions, 50 of them different from the rule-based default. Every number shown comes from the data or the engine. A guard rejects any model answer that contains a number not found in a tool result.
-- **Shows what is happening and why, while it plays.** A "Now" card shows the current activity, its cause (a routine rule, a Muse decision with its reason, or customer input), the criteria that applied, and what comes next. The followed resident, their route and their destination are highlighted.
-- **Uses explicit simulation criteria.** Every rule and assumed value the engine uses lives in one file, [`scenarios/criteria/kr-default.json`](scenarios/criteria/kr-default.json), rendered as [`docs/criteria.md`](docs/criteria.md). Each criterion has a source label: engine default, customer input, data, or assumption. Customers can change the editable ones and re-run.
-- **Living costs that fit your salary.** Enter your salary and your cash. The app estimates take-home pay (or you type in the real figure), then computes monthly housing cost for 매매 (buying), 전세 (lump-sum deposit lease), 월세 (monthly rent) and public rental housing. Prices come from **real transactions** of the same complex and floor area over the last 12 months, with cancelled deals excluded. Spending in the 30-day simulation is tied to what the household actually does: a fare for each subway trip, a basket for each grocery run.
-- **Recommends similar public rental housing.** It uses the public-housing API (LH · MyHome) and filters by housing-cost ratio, floor area and commute. Each candidate links to its official notice. One click adds it as home C and simulates it too.
-- **A consult agent.** A Muse agent with 20+ tools sets up the scenario through conversation, runs the simulation, compares the results, explains decisions and criteria, and moves the 3D view to the moment it is talking about.
-- **Personas and priorities (stage 9a).** Three household templates (1인 사회초년생, 예비·신혼부부, 맞벌이 + 초등학생 자녀) the consult agent offers first; the customer's own priority weights (education · our life · safety · money · convenience) with a side-by-side "내 기준으로 보기" view; official police occurrence counts and OSM-based education access — all shown, explained and never scored or ranked.
-- **"Is it worth it?" over 5, 10 or 20 years (stage 9b).** Buying vs 전세 vs 월세 vs public rental: total cash out, interest, locked cash, opportunity cost at a rate the customer sets, a yearly loan schedule, rate stress (+1/+2 %p) and DSR. Price paths appear only as customer-chosen scenarios (default −2/0/+2 % a year), each labelled "가정 시나리오, 전망 아님". The app shows the break-even year per scenario and never says buy or don't buy.
-- **전세 safety check (stage 9b).** The 전세-to-sale ratio of the same complex and area from real transactions (e.g. 레이크팰리스 59.97㎡: 37 %), building-register signals, an official six-step checklist (등기부등본, 전입·확정일자, 보증보험, 세금 체납… each linked to the official site) and a **mock deposit-loss simulation** (insured / auction / unrecovered paths with stated assumptions). It shows signals and next steps, never a "safe / unsafe" verdict, and it is not legal advice.
-- **Support programmes at a glance (stage 9b, data verified 2026-10-29).** 버팀목 전세, 청년전용 버팀목, 신혼부부전용 전세, 디딤돌, 신생아 특례 디딤돌: income, asset, rate, loan limit and deposit/price caps from the official 주택도시기금 product pages, each with a source link and date. The table compares the customer's stated numbers condition by condition, with exceptions in plain words, and never says "eligible".
-- **The commute the home really gives you (stage 9c).** The workplace is a place, and each home derives its own commute: from home A (잠실) the person walks to the station, rides 2호선 → 신분당선 and walks to work; from home B (판교) they walk. The ride is its own trip, with per-leg congestion and sources on the Now card.
-- **Plain words everywhere (stage 10).** Labels say what the number means in everyday Korean: "월 주거비 (전세)" became "전세로 살면 매달 집에 드는 돈", "주거비 부담률" became "월급에서 집에 나가는 비율", "출근 도착 피로도" became "회사 도착할 때 피곤한 정도". Every figure has "어떻게 계산했나요?". Jargon appears only with a glossary tooltip, and a test scans the UI for banned bare jargon ([`docs/copy-guide.md`](docs/copy-guide.md)).
-- **A floating AI agent (stage 10).** A "물어보기" button opens a floating Astryx chat panel (Popover, ChatLayout, ChatToolCalls, ChatSystemMessage, Citation, ChatComposer) with suggestion chips that follow the current screen ("이 출근길 왜 피곤해요?"). It knows what "this" refers to, shows each tool step and cites every source. Gentle nudges appear at notable moments, at most one a minute.
-- **Check a real listing you found (stage 10).** Paste the text of a listing from any real-estate app. The agent extracts only values present in the text, matches the complex, and shows where the asking price sits among the last year of real transactions (e.g. 전세 9.8억: middle of 47 deals, range 7.61억–11.8억), the 전세-to-sale ratio and the checklist. One click lives in it for 30 days as home C. Private listing sites are never scraped. Public notices (LH, SH, youth housing) come from the official API with links to the originals.
-- **A shareable result card and a 3-minute tour (stage 10).** "결과 공유" builds a PNG and a printable page comparing A and B in plain words, with source badges and assumption marks; nothing is uploaded. `?tour=demo` plays an 11-step guided tour for first-time users and for recording.
-- **Follows the person across the region (stage 8).** When the followed member rides the subway, the camera rises over a lightweight corridor map (10,971 buildings in 65 lazily loaded tiles) and a train moves along the real line geometry from OpenStreetMap (2·8·9호선, 수인분당선, 신분당선). The customer's ride time is split by line distance, for example 잠실→판교 = 2호선 8.6 min + transfer 4 min + 신분당선 17.4 min.
-- **A congestion-based fatigue index (stage 8).** Built from Seoul Metro's measured congestion per station, direction and 30-minute slot (e.g. 2호선 잠실 08:00 inner loop ≈ 93 %). Lines without data, such as 신분당선, are marked "no data" and use a stated assumption. Every weight is a public, editable criterion. It is a stated model, not a medical judgement.
-
-### What it deliberately does not do
-
-No price forecasts (price paths appear only as customer-chosen scenarios labelled as assumptions), no buy-or-don't-buy or sign-or-don't-sign advice, no eligibility verdicts for loans or support programmes, no "safe / unsafe" verdict on a specific property or landlord, no composite safety or school-quality score, no demographic profiling, no default "best home" ranking, and no straight-line commute claims. Safety and education figures are official statistics with source, period and geographic level. When a value is assumed, the app says so. Nothing here is legal or financial advice.
-
-## Example output (demo couple; inputs are placeholders)
-
-![08:50 on day 1. Left: from home A the person is on 2호선 (91 % crowded, measured) heading to 신분당선. Right: from home B they are walking to work (real GPU capture, 2026-10-29)](briefs/img/10-commute-ab.png)
-
-| | Home A · 잠실 레이크팰리스 59.97㎡ | Home B · 판교 백현마을 84.82㎡ |
+| Area | What it does | Backed by |
 |---|---|---|
-| Real-transaction median (last 12 months) | buy 26.5억 / 전세 9.8억 / 월세 4억 + 200만 | buy 25.2억 / 전세 9.5억 / 월세 4.5억 + 200만 |
-| 전세로 살면 매달 집에 드는 돈 | 260만 원 | 250만 원 |
-| 월급에서 집에 나가는 비율 | 36 % | 35 % |
-| 보증금이 집값의 몇 %인지 (전세가율) | 37 % | 37.7 % |
-| How they get to work (workplace near 판교역, assumed) | walk → 2호선 → 신분당선 → walk | walk |
-| Time on trains in 30 days | 44 h | 0 |
-| Time walked in 30 days | 27.8 h | 38.0 h |
-| How tired on arrival at work (stated model, 0–100) | 25.3 | 5.7 |
-| Most crowded leg | 2호선 93 % (measured) | — |
-| Evenings at home in 30 days (18–24 h) | 323 h | 343 h |
-| Park visits / errands in 30 days | 10 / 33 | 26 / 17 |
+| **3D neighbourhood** | Footprints, heights, floors, complexes, roads, terrain, parks and trees, for 60 station areas and a corridor map of 10,971 buildings. Vehicles, pedestrians and trains move procedurally, so scrubbing the timeline never drifts. | OpenStreetMap, 건축물대장 / GIS건물통합정보, DEM tiles |
+| **30-day life** | 2 adults plus 60 simulated neighbours (labelled as simulated) live on the real walking graph. The same seed gives byte-identical output. | Deterministic engine, [`scenarios/criteria/kr-default.json`](scenarios/criteria/kr-default.json) |
+| **Choices by Muse** | At each decision point the engine offers options, and Muse picks one and gives a reason. In one run Muse made 198 decisions, 50 of them different from the rule default. A guard rejects any answer that contains a number not found in a tool result. | Muse Spark 1.3 |
+| **Commute** | Each home derives its own commute: walk, ride (per line, from the operator's schedule), transfers and walk. Fatigue comes from measured congestion per station, direction and 30-minute slot. | 서울교통공사 interstation times and congestion |
+| **Money** | Take-home pay from salary, then monthly housing cost for 매매, 전세, 월세 and public rental from real transactions of the same size over the last 12 months. Fares are distance-based, walking commutes are counted, and loans are capped. | 국토교통부 실거래가 |
+| **Worth it over 5–20 years** | Total cash out, interest, locked cash, opportunity cost, rate stress and DSR. Price paths appear only as customer-chosen scenarios labelled "가정 시나리오, 전망 아님". | Customer inputs, stated formulas |
+| **전세 safety check** | 전세-to-sale ratio, building-register signals, the official six-step checklist with links, and a mock deposit-loss simulation. Signals and next steps, never a verdict. | 실거래가, 건축물대장, 인터넷등기소, HUG |
+| **Support programmes** | 버팀목, 디딤돌, 신혼부부·청년·신생아 products compared with the customer's numbers condition by condition, with the official link and date. Never says "eligible". | 주택도시기금 product pages (checked 2026-10-29) |
+| **Check a real listing** | Paste a listing's text. The agent extracts only the values in the text and shows where the price sits among last year's real deals, then can live in it as home C. | 실거래가; private listing sites are never scraped |
+| **Consult agent** | A floating chat with 20+ tools sets up the scenario, runs it, compares, explains, cites every source and moves the 3D view to the moment it is talking about. | Muse Spark 1.3 |
+| **Plain words** | Every figure says what it means in everyday Korean and has "어떻게 계산했나요?". A test scans the UI for bare jargon. | [`docs/copy-guide.md`](docs/copy-guide.md) |
 
-Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원, a loan rate, and a 30-minute 잠실→판교 ride. All are labelled as assumptions on screen. The table shows differences; which matters more is the customer's call.
+## Meta models
 
-## How it is built
+Each model has one job. Numbers never come from a model.
 
-Every line of product code, every test and every pipeline script in this repository was written by **Muse** (`muse-spark-1.3`, Muse Code agent mode). A human and an orchestrating assistant wrote the stage briefs, downloaded data, ran tests and captured screenshots on a real GPU. The full brief → result trail is in [`briefs/`](briefs/), and the rules are in [`AGENTS.md`](AGENTS.md).
+| Model | Job in the product | Status |
+|---|---|---|
+| **Muse Spark 1.3** | The household's everyday choices with reasons, the consult agent, and (as Muse Code) the coding agent that wrote this repository | built |
+| **Muse Spark Open** (`meta-models/muse-spark-open-1026` on Baseten) | The same household decisions on an open-weight model; one switch (`--provider meta\|baseten`). Compared with Spark 1.3 below | built (comparison) |
+| Muse Spark as a judge | Checks that each report sentence is backed by a cited simulation event | *in progress* |
+| Muse Voice Transcribe | Spoken intake: say your household and workplace instead of typing | *planned* |
+| SAM 3.1 | Measure rooms and window area from listing photos and floor plans | *planned* |
+
+## Verification
+
+The agent's work is checked by code before the customer sees it.
+
+- **Ground truth.** A checklist of what must be covered for each household type: 9 common items (commute time, monthly housing cost and noise are *must*; daylight, groceries, the walk home at night, storage, defects and the morning rush are *should*) plus 5–6 items per household type.
+- **Two kinds of check.** *Deterministic* items (commute minutes, housing cost, distance to daycare or a park) must match the engine's value within a stated tolerance. *Judge* items (noise, safety, storage) must cite at least one simulation event.
+- **Pass rule.** Every *must* item covered, and weighted coverage ≥ 80 % (*must* weighs 3, *should* 1). A failed report goes back to the agent with the reasons, up to 3 times, and then to the customer.
+- **Honest gaps.** An item the engine cannot back yet is shown as 미지원 and never counted as a pass. Today two household types have full scenarios (dual-income family with a young child, newlywed couple). Remote worker, three-generation family and dog owner are scored for the checklist only.
+- **Field study** *(planned)*. Compare the simulator's findings with the real homes and real regrets of 10–20 residents and report the match rate.
+
+Status: the scorer, claim checks and retry loop are being built on branch `verify-16a`, against the ground-truth file and reference scorer written by the team.
+
+## Built by Muse
+
+Every line of product code, every test and every pipeline script in this repository was written by **Muse** (`muse-spark-1.3`, Muse Code agent mode). A human and an orchestrating assistant wrote the stage briefs, downloaded data, ran tests, captured screenshots on a real GPU and did the git work. Each stage has a brief and a result note in [`briefs/`](briefs/), and the rules are in [`AGENTS.md`](AGENTS.md).
 
 | Layer | Where | Notes |
 |---|---|---|
-| Data pipeline (Python) | `pipeline/` | OSM extract, building join with the national register, walking graph, complexes, validation; stage 8 adds the subway network, corridor tiles and congestion |
-| Life engine (JS, pure) | `web/src/engine/` | Routines, decisions, trips with causes, money timeline, criteria loader; deterministic |
+| Data pipeline (Python) | `pipeline/` | OSM extract, building join with the national register, walking graph, regions, subway network, terrain and scene boxes |
+| Life engine (JS, pure) | `web/src/engine/` | Routines, decisions, trips with causes, paired runs, money timeline, criteria loader |
 | Muse judgement layer | `web/src/judge/` | Decision prompts, number guards, recorded decisions for exact replay |
 | Consult agent | `web/src/consult/` | OpenAI-style tool calls to the Meta API, server-side only (keys never reach the browser) |
-| Money and prices | `web/src/money/` | Payroll table, tenure formulas, real-transaction CSV loader, public-rental adapter |
-| 3D scene | `web/src/render/`, `web/src/main.js` | three.js 0.170: PBR facades from data, sky and sun for Seoul, night lights driven by the residents who are at home |
+| Money and prices | `web/src/money/` | Payroll table, tenure formulas, real-transaction loader, public-rental adapter |
+| Transit | `web/src/transit/` | Operator schedule, ride minutes per leg, fares |
+| 3D scene and motion | `web/src/render/`, `web/src/scene/`, `web/src/motion/` | three.js 0.170: PBR facades, terrain, road ribbons, trees, procedural vehicles, pedestrians and trains |
 | UI | `web/src/ui/` | React 19 + **Astryx** (Meta's design system) |
 
-Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the coding agent that wrote the repo) and **Muse Spark Open** (`meta-models/muse-spark-open-1026` on Baseten, an open-weight model). The provider is one switch (`--provider meta|baseten`).
-
-**Spark 1.3 vs Spark Open on the same household (2026-10-29, `reasoning_effort` low, files in [`scenarios/decisions/compare-1029/`](scenarios/decisions/compare-1029/)):**
+**Spark 1.3 vs Spark Open on the same household** (2026-10-29, `reasoning_effort` low, files in [`scenarios/decisions/compare-1029/`](scenarios/decisions/compare-1029/)):
 
 | | Spark 1.3 | Spark Open |
 |---|---|---|
@@ -90,13 +142,11 @@ Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the cod
 | Average latency per call | 3.7 s | 2.7 s |
 | Output tokens (A + B) | 140k | 96k |
 
-Where they differ it is mostly which shop to stop at after work (15 of 19). Without a reasoning limit Spark Open spent its whole 2,000-token budget thinking on 116 of 154 calls; with `reasoning_effort: low` it answered every one.
+Where they differ, it is mostly which shop to stop at after work (15 of 19). Without a reasoning limit, Spark Open spent its whole 2,000-token budget thinking on 116 of 154 calls. With `reasoning_effort: low` it answered every one.
 
-Tests: 926 `node --test` tests (including a headless sim-mode smoke test, a server-render smoke test of the whole React UI and a plain-words scan) and 244 `pytest` tests (2026-10-30).
+## Quick start
 
-## Run it
-
-Requirements: Node 20+, Python 3.12, about 6 GB of disk for raw data.
+Requirements: Node 20+, Python 3.12, and about 6 GB of disk for raw data.
 
 ```bash
 # 1. Python pipeline
@@ -115,24 +165,74 @@ node web/scripts/money.mjs   --scenario scenarios/demo-two-homes.json --out data
 cd web && MODEL_API_KEY=... npm run dev
 ```
 
-Useful URLs (add to `/?mode=sim&scenario=demo-two-homes`): `&tour=demo` (3-minute guided tour), `&home=A&day=1&t=08:50&follow=1` (follow the commute), `&tab=money` (living costs), `&tab=listings` (check a listing; `&fill=example` for a labelled example), `&tab=money&share=1` (result card), `&tab=criteria` (criteria). `/?area=seongsu&shot=3&time=18:30` is a scenic tour.
+Useful URLs (add to `/?mode=sim&scenario=demo-two-homes`):
 
-Raw and built data are never committed. The scripts above regenerate them. Real-transaction CSVs, the public-housing snapshot and the subway congestion file are fetched by the operator and stay local, as their terms require.
+| URL | Shows |
+|---|---|
+| `&tour=demo` | 3-minute guided tour |
+| `&home=A&day=1&t=08:50&follow=1` | Follow the commute |
+| `&tab=money` | Living costs |
+| `&tab=listings&fill=example` | Check a listing, with a labelled example |
+| `&tab=money&share=1` | Result card |
+| `&tab=criteria` | Criteria |
 
-## Data sources
+`/` opens the chat entry, and `/?area=seongsu&shot=3&time=18:30` is a scenic tour.
 
-OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형) · 경찰청 범죄 발생 지역별 통계 (2025, stage 9a) · 주택도시기금 product pages (nhuf.molit.go.kr, checked 2026-10-29) · official 전세 checklist sites (인터넷등기소, 정부24, HUG 안심전세포털, 국세청). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
+Raw and built data are never committed; the scripts above regenerate them. Real-transaction CSVs, the public-housing snapshot and the subway congestion file are fetched by the operator and stay local, as their terms require.
 
-## Known issues
+## Limits
 
-- Stage 11 and 11b (2026-10-29, checked on the real GPU) fixed the floating panel overlap, truncated labels, the empty share card, the grey ride view (all 65 corridor tiles now load, with a base map) and the blown-out night towers. The "물어보기" button can still disappear at night while following a person.
-- `?q=high` renders black on Apple GPUs (ANGLE Metal); the app detects this and falls back to medium.
-- The payroll rates in `scenarios/assumptions/kr-payroll.json` and the ownership costs (취득세, 중개수수료, 재산세…) are marked `needs_confirmation` and are listed as "아직 계산에 넣지 않은 것" until filled from official pages.
-- Subway ride minutes are customer input (an assumption), not a timetable. 신분당선 has no public congestion data, so it uses a stated 70 % assumption.
-- 성남시 crime statistics are city-level, while Seoul's are district-level; the app shows the level next to every figure.
+**What it deliberately does not do.** No price forecasts (price paths appear only as customer-chosen scenarios labelled as assumptions). No buy-or-don't-buy or sign-or-don't-sign advice. No eligibility verdicts for loans or support programmes. No "safe / unsafe" verdict on a property or landlord. No composite safety or school-quality score, no demographic profiling, no default "best home" ranking and no straight-line commute claims. When a value is assumed, the app says so. Nothing here is legal or financial advice.
+
+**Known issues.**
+- Only two household types have full scenarios. The engine has no events yet for noise, late returns, deliveries, storage or the morning rush, so those checklist items show as 미지원.
+- 신분당선 has no public congestion data, so it uses a stated 70 % assumption.
+- `?q=high` renders black on Apple GPUs (ANGLE Metal). The app detects this and falls back to medium.
+- Some payroll rates and ownership costs (취득세, 중개수수료, 재산세…) are marked `needs_confirmation` and listed as "아직 계산에 넣지 않은 것" until filled from official pages.
+- 성남시 crime statistics are city-level, while Seoul's are district-level. The app shows the level next to every figure.
 - Public-housing notices have no deadline field in the API, so the app lists "recent notices" and links to the original.
 
-## Progress log
+## Roadmap
+
+Deadline: 2026-11-05 11:00 KST.
+
+| Date | Plan |
+|---|---|
+| 10-30 | Fix the demo scenario. Send the field-study survey to residents |
+| 10-31 | Voice intake, measuring rooms and windows from listing photos and floor plans |
+| 11-01 | Household agents on Spark Open, verification loop and its screen |
+| 11-02 | Run the field study and compute the match rate. Side-by-side 30-day time-lapse |
+| 11-03 | Polish, then feature freeze at night |
+| 11-04 | 3-minute video and final README |
+| 11-05 | Submit by 09:00 KST |
+
+<details>
+<summary><b>Example output</b> (demo couple; inputs are placeholders)</summary>
+
+<br>
+
+| | Home A · 잠실 레이크팰리스 59.97㎡ | Home B · 판교 백현마을 84.82㎡ |
+|---|---|---|
+| Real-transaction median (last 12 months) | buy 26.5억 / 전세 9.8억 / 월세 4억 + 200만 | buy 25.2억 / 전세 9.5억 / 월세 4.5억 + 200만 |
+| 전세로 살면 매달 집에 드는 돈 | 260만 원 | 250만 원 |
+| 월급에서 집에 나가는 비율 | 36 % | 35 % |
+| 보증금이 집값의 몇 %인지 (전세가율) | 37 % | 37.7 % |
+| How they get to work (workplace near 판교역, assumed) | walk → 2호선 → 신분당선 → walk | walk |
+| Time on trains in 30 days | 44 h | 0 |
+| Time walked in 30 days | 27.8 h | 38.0 h |
+| How tired on arrival at work (stated model, 0–100) | 25.3 | 5.7 |
+| Most crowded leg | 2호선 93 % (measured) | — |
+| Evenings at home in 30 days (18–24 h) | 323 h | 343 h |
+| Park visits / errands in 30 days | 10 / 33 | 26 / 17 |
+
+Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 and a loan rate. All are labelled as assumptions on screen. These numbers are from before stage 15, which compares homes of the same size and counts walking commutes. The table shows differences; which matters more is the customer's call.
+
+</details>
+
+<details>
+<summary><b>Progress log</b> (what Muse built, stage by stage)</summary>
+
+<br>
 
 | Stage | What Muse built | Brief → result |
 |---|---|---|
@@ -155,6 +255,13 @@ OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장
 | 14–14b | Terrain (DEM), road ribbons, OSM trees for 60 station areas; procedural vehicles, pedestrians and trains | [`14`](briefs/14-RESULT.md), [`14b`](briefs/14b-RESULT.md) |
 | 15 | Engine integrity: paired runs over 10 seeds, household costs, walking commutes counted, distance fares, same-size comparison, loan cap | [`15 brief`](briefs/15-engine-integrity.md) |
 
-## Roadmap (until 11-04)
+</details>
 
-Next: merge the painted map look and the redesigned sim screen, built-in verification (the agent's checklist and report are scored against a ground-truth checklist, retried up to 3 times, then handed to the user), English UI → feature freeze → a 3-minute video.
+<details>
+<summary><b>Data sources</b></summary>
+
+<br>
+
+OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형) and interstation times · 경찰청 범죄 발생 지역별 통계 (2025) · 주택도시기금 product pages (nhuf.molit.go.kr, checked 2026-10-29) · official 전세 checklist sites (인터넷등기소, 정부24, HUG 안심전세포털, 국세청). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
+
+</details>
