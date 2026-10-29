@@ -8,7 +8,6 @@
 // Data comes from <scenario>-money.json (+ compare totals for leisure
 // trips) — never computed from thin air here.
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -18,16 +17,10 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { Text } from "@astryxdesign/core/Text";
 import { PRIORITY_GROUPS, PRIORITY_METRICS, defaultWeights, weightedView } from "../priorities.js";
 import { store } from "./store.js";
-import { fmtWon, fmtPct, fmtMinutes, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
+import { fmtWon, fmtPct, fmtMinutes, fmtCount, fmtIndex } from "../money/format.js";
 import { tenureOf } from "./money.jsx";
 import { Gloss } from "./gloss.jsx";
-
-function SrcBadge({ source }) {
-  return (
-    <Badge variant={source === "graph" ? "teal" : source === "rtms" ? "blue" : source === "police" ? "purple" : "orange"}
-      label={badgeFor(source)} />
-  );
-}
+import { GroupBadges } from "./source-badge.jsx";
 
 function fmtMetric(unit, v) {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
@@ -146,19 +139,22 @@ export function PrioritiesTab({ state }) {
         </HStack>
         <Text type="supporting">0 = 안 봄 · 5 = 가장 중요. 이 비중이 집을 비교하는 유일한 가중치입니다.</Text>
       </VStack>
-      {PRIORITY_GROUPS.map((g) => (
+      {PRIORITY_GROUPS.map((g) => {
+        const metrics = PRIORITY_METRICS.filter((m) => m.group === g.id);
+        return (
         <VStack gap={1} key={g.id}>
           <Heading level={4}>{g.title}</Heading>
           <Text type="supporting">{g.note}</Text>
+          <HStack gap={1} vAlign="center">
+            <Text type="supporting">출처</Text>
+            <GroupBadges sources={metrics.map((m) => m.source)} />
+          </HStack>
           <MetadataList>
-            {PRIORITY_METRICS.filter((m) => m.group === g.id).map((m) => (
+            {metrics.map((m) => (
               <MetadataListItem key={m.id} label={`${m.label} (${UNIT_KO[m.unit] || m.unit})`}>
-                <HStack gap={1} vAlign="center" wrap="wrap">
-                  <Text hasTabularNumbers>
-                    {labels.map((l) => `${l} ${fmtMetric(m.unit, (values[l] || {})[m.id])}`).join(" · ")}
-                  </Text>
-                  <SrcBadge source={m.source} />
-                </HStack>
+                <Text hasTabularNumbers>
+                  {labels.map((l) => `${l} ${fmtMetric(m.unit, (values[l] || {})[m.id])}`).join(" · ")}
+                </Text>
                 {m.note && <Text type="supporting">{m.note}</Text>}
               </MetadataListItem>
             ))}
@@ -172,7 +168,8 @@ export function PrioritiesTab({ state }) {
             </Text>
           )}
         </VStack>
-      ))}
+        );
+      })}
       <VStack gap={1}>
         {!showNumber && (
           <HStack gap={1}>

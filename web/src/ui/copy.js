@@ -49,3 +49,36 @@ export const BURDEN_PLAIN_LABEL = "월급에서 집에 나가는 비율";
 export const BURDEN_PLAIN_NOTE = "흔히 30%를 넘으면 빠듯하다고 해요 (참고 기준)";
 export const REMAINING_PLAIN_LABEL = "집값과 생활비를 내고 남는 돈";
 export const HOW_CALCULATED = "어떻게 계산했나요?";
+
+// 13f-1: only two source badges exist on screen — 실측 (measured or
+// official) and 가정값 (assumed, stated, or estimated). Everything else
+// renders as plain text. Pure; the SourceBadge component reads this.
+const MEASURED_SOURCES = new Set([
+  "서울교통공사", "실측", "실거래", "rtms", "graph", "그래프",
+  "register", "관청 자료", "건축물대장", "police", "경찰청",
+  "housing_api", "공공임대", "network", "schedule", "photos",
+]);
+
+export function sourceBadgeFor(source) {
+  return MEASURED_SOURCES.has(String(source || "").trim()) ? "실측" : "가정값";
+}
+
+// Unique badges for one group (section header or row group), measured
+// first. Rendered once per group, never on every line.
+export function groupBadgesFor(sources) {
+  const uniq = [...new Set((sources || []).map(sourceBadgeFor))];
+  return uniq.sort((a, b) => (a === "실측" ? -1 : 1));
+}
+
+// Example id → plain title. "예시로 시작했어요 (newlywed-couple)" is
+// gone; the chat says "예시: 예비 신혼부부".
+export const EXAMPLE_TITLE = {
+  "single-firstjob": "1인 사회초년생",
+  "newlywed-couple": "예비 신혼부부",
+  "dual-income-child": "맞벌이 + 초등학생 자녀",
+};
+
+export function exampleLine(id) {
+  const title = EXAMPLE_TITLE[String(id || "")];
+  return title ? `예시: ${title}` : "예시에서 시작했어요";
+}

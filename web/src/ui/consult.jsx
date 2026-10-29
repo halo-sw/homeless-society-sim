@@ -7,10 +7,10 @@
 // Dev: live agent over POST /api/consult (key on the dev server only),
 // with the current view attached so "이거" resolves. Conversations
 // live in browser memory only; the server stores nothing.
-import { Badge } from "@astryxdesign/core/Badge";
 import { Citation } from "@astryxdesign/core/Citation";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
+import { Text } from "@astryxdesign/core/Text";
 import {
   ChatMessage, ChatMessageBubble, ChatToolCalls,
 } from "@astryxdesign/core/Chat";
@@ -57,7 +57,7 @@ export function AssistantMsg({ msg, toolRows }) {
     <ChatMessage sender="assistant">
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
-          <Badge variant="yellow" label="기록된 답변" />
+          <Text type="supporting">기록된 답변</Text>
         </ChatMessageBubble>
       )}
       {msg.content && (

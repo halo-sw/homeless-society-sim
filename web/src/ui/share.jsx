@@ -7,7 +7,6 @@
 // stays in the browser (no upload).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -50,21 +49,16 @@ function CardPreview({ data }) {
           <div className="ui-share-row" role="row" key={r.id}>
             <span role="cell">
               <Text>{r.label}</Text>
-              <HStack gap={1} vAlign="center" wrap="wrap">
-                {r.sources.map((s) => (
-                  <Badge key={s} variant="neutral" label={shareSourceKo(s)} />
-                ))}
-                {r.assumed && <Badge variant="yellow" label="가정값" />}
-              </HStack>
+              <Text type="supporting">
+                {`출처: ${[...r.sources.map(shareSourceKo), ...(r.assumed ? ["가정값"] : [])].join(" · ")}`}
+              </Text>
               {r.note && <Text type="supporting">{r.note}</Text>}
             </span>
             <span role="cell">
-              <Text hasTabularNumbers>{r.a}</Text>
-              {r.lowerSide === "A" && <Badge variant="neutral" label="낮음" />}
+              <Text hasTabularNumbers>{r.lowerSide === "A" ? `${r.a} (낮음)` : r.a}</Text>
             </span>
             <span role="cell">
-              <Text hasTabularNumbers>{r.b}</Text>
-              {r.lowerSide === "B" && <Badge variant="neutral" label="낮음" />}
+              <Text hasTabularNumbers>{r.lowerSide === "B" ? `${r.b} (낮음)` : r.b}</Text>
             </span>
           </div>
         ))}

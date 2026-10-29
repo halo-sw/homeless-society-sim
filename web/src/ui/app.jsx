@@ -15,6 +15,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useState } from "react";
 import { store } from "./store.js";
+import { SourceBadge, GroupBadges } from "./source-badge.jsx";
 import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup } from "./compare-tabs.js";
 import { Landing } from "./landing.jsx";
 // Cycle with chat.jsx (it reuses CompareCard): render-time use only,
@@ -32,7 +33,7 @@ import { ListingsTab } from "./listings.jsx";
 import { ShareDialog } from "./share.jsx";
 import { SourcesDrawer } from "./sources.jsx";
 import { DemoTour } from "./DemoTour.jsx";
-import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent, badgeFor } from "../money/format.js";
+import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand, congestionPeakLine } from "../engine/journey.js";
 import { criterionTitle } from "../engine/criteria.js";
@@ -108,8 +109,6 @@ function TopBar({ state, onSources }) {
 // the day strip (+ A·B stack), the activity legend and the 30-day
 // strip. The two sliders and the tick dots are gone.
 
-const JUDGE_BADGE = { rule: "neutral", spark: "blue", open: "purple" };
-
 function CaptionCard({ state }) {
   const c = state.caption;
   if (!c) return null;
@@ -133,8 +132,7 @@ function CaptionCard({ state }) {
           {j && (
             <VStack gap={1}>
               <HStack gap={1} vAlign="center" wrap="wrap">
-                <Badge variant={JUDGE_BADGE[j.badgeCls] || "neutral"} label={j.badgeText} />
-                {state.judgeLive && <Badge variant="success" label="live" />}
+                <Text type="supporting">{j.badgeText}</Text>
                 {j.canAsk && (
                   <Button size="sm" variant="ghost" label="Muse에게 묻기"
                     isLoading={state.judgeAskState === "asking"}
@@ -184,8 +182,8 @@ function JudgeLogCard({ state }) {
                   <HStack gap={1} vAlign="center" wrap="wrap">
                     <Text type="supporting" hasTabularNumbers>{row.minute}</Text>
                     <Text type="supporting">{`${row.agent} · ${row.kind} → ${row.choice}`}</Text>
-                    <Badge variant={JUDGE_BADGE[row.badgeCls] || "neutral"} label={row.badgeText} />
-                    {state.judgeFlash === row.id && <Badge variant="orange" label="지금" />}
+                    <Text type="supporting">{row.badgeText}</Text>
+                    {state.judgeFlash === row.id && <Text type="supporting">지금</Text>}
                   </HStack>
                   {row.reason && <Text type="supporting">“{row.reason}”</Text>}
                 </VStack>
@@ -281,7 +279,7 @@ function FatigueBar({ fatigue, nowMin }) {
     <VStack gap={1}>
       <HStack gap={1} vAlign="center" wrap="wrap">
         <Text>{`지금 피곤한 정도 ${fmtIndex(f.value)}${deltaText}`}</Text>
-        {f.source && <Badge variant="neutral" label={f.source === "서울교통공사" ? "실측" : "가정값"} />}
+        {f.source && <SourceBadge source={f.source} />}
       </HStack>
       <div className="ui-progress" role="progressbar" aria-label="피곤한 정도 (0–100)"
         aria-valuenow={Math.round(f.value)} aria-valuemin={0} aria-valuemax={100}>
@@ -291,8 +289,7 @@ function FatigueBar({ fatigue, nowMin }) {
       {peakLine && (
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Text type="supporting" hasTabularNumbers>{`오늘 가장 붐비는 순간 · ${peakLine}`}</Text>
-          <Badge variant="neutral"
-            label={f.peakCongestion.source === "서울교통공사" ? "실측" : "가정값"} />
+          <SourceBadge source={f.peakCongestion.source} />
         </HStack>
       )}
       <FatigueSpark series={f.series} nowMin={nowMin} />
@@ -311,8 +308,9 @@ function JourneyCard({ state }) {
     <div className="ui-journey">
       <Card>
         <VStack gap={1}>
-          <HStack gap={1} vAlign="center">
+          <HStack gap={1} vAlign="center" wrap="wrap">
             <Heading level={4}>이동 중</Heading>
+            <GroupBadges sources={legs.map((l) => l.source)} />
             <HStack gap={1} vAlign="center">
               {[["auto", "자동"], ["low", "거리 보기"], ["high", "전체 경로"]].map(([v, label]) => (
                 <Button key={v} size="sm" variant={state.journeyView === v ? "secondary" : "ghost"}
@@ -320,7 +318,7 @@ function JourneyCard({ state }) {
               ))}
             </HStack>
           </HStack>
-          {loading && <Badge variant="info" label={loading} />}
+          {loading && <Text type="supporting">{loading}</Text>}
           {journey && (
             <>
               <HStack gap={1} vAlign="center">
@@ -346,7 +344,6 @@ function JourneyCard({ state }) {
                       <Text type="supporting" hasTabularNumbers>
                         {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 붐비는 정도 ${l.valuePct}%`}
                       </Text>
-                      <Badge variant="neutral" label={l.source === "서울교통공사" ? "실측" : "가정값"} />
                     </HStack>
                   );
                 })}
@@ -397,7 +394,10 @@ function NowCard({ state }) {
         <VStack gap={1}>
           <HStack gap={1} vAlign="center" wrap="wrap">
             <Heading level={4}>{`${n.label} · 지금`}</Heading>
-            <Badge variant="neutral" label={WHY_KIND_KO[n.whyKind] || n.whyKind} />
+            <Text type="supporting">{WHY_KIND_KO[n.whyKind] || n.whyKind}</Text>
+            {n.ride && n.ride.legs.length > 0 && (
+              <GroupBadges sources={n.ride.legs.map((l) => l.source)} />
+            )}
           </HStack>
           <Text>{n.now}</Text>
           {n.ride && n.ride.legs.length > 0 && (
@@ -411,7 +411,6 @@ function NowCard({ state }) {
                     <Text type="supporting" hasTabularNumbers>
                       {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 붐비는 정도 ${l.valuePct}%`}
                     </Text>
-                    <Badge variant="neutral" label={l.source === "서울교통공사" ? "실측" : "가정값"} />
                   </HStack>
                 );
               })}
@@ -424,12 +423,8 @@ function NowCard({ state }) {
             </div>
           )}
           <Text type="supporting">{`이렇게 한 까닭 · ${n.why}`}</Text>
-          {d && d.chosen_by === "model" && (
-            <HStack gap={1} vAlign="center" wrap="wrap">
-              <Badge variant={d.provider === "baseten" ? "purple" : "blue"}
-                label={d.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"} />
-              {d.reason_ko && <Text type="supporting">“{d.reason_ko}”</Text>}
-            </HStack>
+          {d && d.chosen_by === "model" && d.reason_ko && (
+            <Text type="supporting">“{d.reason_ko}”</Text>
           )}
           {n.criterionIds.length > 0 && (
             <HStack gap={1} vAlign="center" wrap="wrap">
@@ -473,12 +468,14 @@ function IntroCard({ state }) {
           </MetadataList>
           {m.assumptions.length > 0 && (
             <VStack gap={1}>
-              <Text>가정한 것</Text>
+              <HStack gap={1} vAlign="center">
+                <Text>가정한 것</Text>
+                <GroupBadges sources={m.assumptions.map((a) => a.source || "가정값")} />
+              </HStack>
               {m.assumptions.map((a, i) => (
-                <HStack gap={1} vAlign="center" key={i}>
-                  <Text type="supporting">{a.label}</Text>
-                  <Badge variant="orange" label={a.source || "가정값"} />
-                </HStack>
+                <Text type="supporting" key={i}>
+                  {a.source && a.source !== "가정값" ? `${a.label} (${a.source})` : a.label}
+                </Text>
               ))}
             </VStack>
           )}
@@ -504,14 +501,14 @@ export function CompareTabBody({ state }) {
   if (!cmp || !cmp.metrics) return null;
   return (
     <>
+      <HStack gap={1} vAlign="center">
+        <Text type="supporting">출처</Text>
+        <GroupBadges sources={cmp.metrics.map((m) => m.source)} />
+      </HStack>
       <MetadataList>
         {cmp.metrics.map((m) => (
           <MetadataListItem key={m.key} label={m.label}>
-            <HStack gap={1} vAlign="center" wrap="wrap">
-              <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)} · B ${fmtMetric(m.unit, m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`}</Text>
-              <Badge variant={m.source === "graph" ? "teal" : "orange"}
-                label={badgeFor(m.source)} />
-            </HStack>
+            <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)} · B ${fmtMetric(m.unit, m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`}</Text>
           </MetadataListItem>
         ))}
       </MetadataList>
@@ -665,9 +662,7 @@ export function App() {
           </div>
         )}
         {state.viewChip && (
-          <div className="ui-viewchip overlay">
-            <Badge variant="info" label={state.viewChip} />
-          </div>
+          <div className="ui-viewchip overlay">{state.viewChip}</div>
         )}
       </>
     );
@@ -691,9 +686,7 @@ export function App() {
       <IntroCard state={state} />
       {agentAsked() && <AgentTourCard />}
       {state.viewChip && (
-        <div className="ui-viewchip overlay">
-          <Badge variant="info" label={state.viewChip} />
-        </div>
+        <div className="ui-viewchip overlay">{state.viewChip}</div>
       )}
       <ShareDialog />
       <DemoTour />

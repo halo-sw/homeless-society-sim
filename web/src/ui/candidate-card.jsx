@@ -3,7 +3,6 @@
 // place, then OUR decisive extra — the commute and the 30-day life.
 // SSR-safe.
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { TENURE_KO } from "../profile.js";
@@ -127,9 +126,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         <div className="ui-commute ui-num">
           {commute.text} <SourceDot source={commute.source} />
         </div>
-        <div className="ui-cand-badges">
-          {badges.map((b) => <Badge key={b} variant="neutral" label={b} />)}
-        </div>
+        <div className="ui-cand-facts ui-num">{badges.join(" · ")}</div>
         {photo && <div className="ui-cand-credit">{photo.credit}</div>}
         <div className="ui-cand-actions">
           <Button size="sm" variant={picked ? "secondary" : "primary"}

@@ -3,7 +3,6 @@
 // time. State machine in ../intake.js; this file only renders.
 // SSR-safe (no window at module scope).
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -18,7 +17,7 @@ import { fmtWon } from "../money/format.js";
 
 function SaidBadge({ said }) {
   if (!said) return null;
-  return <Badge variant="blue" label={SAID_VALUE_BADGE} />;
+  return <Text type="supporting">{SAID_VALUE_BADGE}</Text>;
 }
 
 function Stepper({ value, min, max, step, unit, placeholder, startValue, onChange }) {

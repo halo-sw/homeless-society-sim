@@ -3,7 +3,6 @@
 // loss scenarios. Never "이 집은 안전/위험" — signals, missing
 // information, and the checklist only.
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -12,7 +11,8 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { Gloss } from "./gloss.jsx";
-import { fmtWon, badgeFor } from "../money/format.js";
+import { SourceBadge } from "./source-badge.jsx";
+import { fmtWon } from "../money/format.js";
 import { MOCKLOSS_PATH_KO, MOCKLOSS_LEGAL_NOTE, mockDepositLoss } from "../money/mockloss.js";
 
 const MOCKLOSS_DEFAULTS = {
@@ -21,10 +21,7 @@ const MOCKLOSS_DEFAULTS = {
 };
 
 function SrcBadge({ source }) {
-  return (
-    <Badge variant={source === "rtms" ? "blue" : source === "register" ? "teal" : "orange"}
-      label={source === "register" ? "건축물대장" : badgeFor(source)} />
-  );
+  return <SourceBadge source={source} />;
 }
 
 function OfficialLink({ url, where }) {

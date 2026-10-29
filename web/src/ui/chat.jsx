@@ -109,7 +109,7 @@ export function ProfileCard({ profile, example, onChip }) {
       <VStack gap={2}>
         <HStack gap={1} vAlign="center">
           <Heading level={4}>고객님 상황</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
         </HStack>
         <MetadataList>
           {rows.map((r) => (
@@ -118,8 +118,7 @@ export function ProfileCard({ profile, example, onChip }) {
                 <HStack gap={1} vAlign="center" wrap="wrap">
                   <Text hasTabularNumbers>{r.text}</Text>
                   {sourceKo(r.source) !== "" && (
-                    <Badge variant={r.source === "asked" ? "neutral" : "blue"}
-                      label={sourceKo(r.source)} />
+                    <Text type="supporting">{sourceKo(r.source)}</Text>
                   )}
                 </HStack>
                 {r.note && r.note !== r.label && r.note !== r.text && (
@@ -166,7 +165,7 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>{`집 후보 ${candidates.length}곳`}</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           <span className="ui-panel-spacer" />
           <DropdownMenu
             button={{ label: HOME_SORT_KO[sort] || sort, variant: "ghost", size: "sm" }}
@@ -239,7 +238,7 @@ export function SimulationCard({ data, example }) {
         <VStack gap={2}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>30일 살아 보는 중</Heading>
-            {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+            {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           </HStack>
           <ProgressBar label={`살아 보기 진행 중 (${p.done}/${p.total})`}
             value={p.total > 0 ? Math.round((p.done / p.total) * 100) : 0} max={100} />
@@ -266,8 +265,8 @@ export function SimulationCard({ data, example }) {
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>30일 살아 보기 결과</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
-          {data.recorded && <Badge variant="yellow" label="기록된 답변" />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
+          {data.recorded && <Text type="supporting">기록된 답변</Text>}
         </HStack>
         <Text type="supporting">
           {`${labels.map((l) => `${l} ${(data.names || {})[l] || ""}`.trim()).join(" · ")}`
@@ -356,7 +355,7 @@ function CardMsg({ msg, handlers, toolRows }) {
     <ChatMessage sender="assistant" avatar={<Avatar name="상담" size="md" />}>
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
-          <Badge variant="yellow" label="기록된 답변" />
+          <Text type="supporting">기록된 답변</Text>
         </ChatMessageBubble>
       )}
       <ChatMessageBubble variant="ghost" width="100%">
@@ -420,7 +419,7 @@ export function AgentTourCard() {
         <VStack gap={2}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>상담</Heading>
-            {rec && <Badge variant="yellow" label="기록된 답변" />}
+            {rec && <Text type="supporting">기록된 답변</Text>}
           </HStack>
           {rec ? (
             <VStack gap={1}>
@@ -1184,9 +1183,7 @@ export function ChatScreen() {
             onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
         </div>
         {viewChip && (
-          <div className="ui-viewchip overlay">
-            <Badge variant="info" label={viewChip} />
-          </div>
+          <div className="ui-viewchip overlay">{viewChip}</div>
         )}
         <Toaster />
       </AppShell>
