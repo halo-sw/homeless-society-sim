@@ -208,9 +208,12 @@ describe("chat reopen (11b carryover)", () => {
     const src = readFileSync(join(HERE, "..", "src", "main.js"), "utf8");
     assert.ok(src.includes("openChat: () =>"), "openChat action registered");
     assert.ok(src.includes("chatReopenUrl()"), "reopens via /?chat=");
-    const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
-    assert.ok(app.includes('label="대화"'), "TopBar 대화 entry");
+    // 13f-1: the shared bar (topbar.jsx) carries the 대화 entry.
+    const bar = readFileSync(join(HERE, "..", "src", "ui", "topbar.jsx"), "utf8");
+    assert.ok(bar.includes('label: "대화"'), "TopBar 대화 entry");
     // Unconditional: not gated on clock, follow, or night state.
-    assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(app), "not follow-gated");
+    assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(bar), "not follow-gated");
+    const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
+    assert.ok(app.includes("MapTools") && app.includes("TopBar"), "sim/tour render the shared bar");
   });
 });

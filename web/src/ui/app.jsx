@@ -2,7 +2,6 @@
 // publishes state to the store; this module only renders it and routes
 // UI actions back through store.act(). No three.js here.
 import { useSyncExternalStore } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -12,9 +11,9 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
-import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useState } from "react";
 import { store } from "./store.js";
+import { TopBar, MapTools } from "./topbar.jsx";
 import { SourceBadge, GroupBadges } from "./source-badge.jsx";
 import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup } from "./compare-tabs.js";
 import { Landing } from "./landing.jsx";
@@ -31,7 +30,6 @@ import { JeonseTab } from "./jeonse.jsx";
 import { SupportTab } from "./support.jsx";
 import { ListingsTab } from "./listings.jsx";
 import { ShareDialog } from "./share.jsx";
-import { SourcesDrawer } from "./sources.jsx";
 import { DemoTour } from "./DemoTour.jsx";
 import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
@@ -45,11 +43,6 @@ function useStore() {
 
 const act = (name, ...args) => store.act(name, ...args);
 
-const MODE_ITEMS = [
-  { value: "tour", label: "투어" },
-  { value: "sim", label: "생활 시뮬레이션" },
-];
-
 function SegControl({ label, value, onChange, items, size }) {
   return (
     <SegmentedControl label={label} value={value} onChange={onChange} size={size || "sm"}>
@@ -57,51 +50,6 @@ function SegControl({ label, value, onChange, items, size }) {
         <SegmentedControlItem key={it.value} value={it.value} label={it.label} />
       ))}
     </SegmentedControl>
-  );
-}
-
-function TopBar({ state, onSources }) {
-  const isSim = state.mode === "sim";
-  return (
-    <div className="ui-topbar">
-      <div className="ui-topbar-inner overlay">
-        <Card>
-          <HStack gap={3} vAlign="center" wrap="wrap">
-            <HStack gap={1} vAlign="center">
-              <Heading level={3}>주거 시뮬레이터</Heading>
-              <Badge variant="orange" label="미니어처" />
-            </HStack>
-            {isSim ? (
-              <SegControl label="홈 선택" value={state.home}
-                onChange={(v) => act("selectHome", v)}
-                items={state.homes.map((h) => ({ value: h.label, label: h.label }))} />
-            ) : (
-              <SegControl label="지역 선택" value={state.area.id}
-                onChange={(v) => act("selectArea", v)} items={state.areaOptions} />
-            )}
-            <SegControl label="모드 선택" value={state.mode}
-              onChange={(v) => act("selectMode", v)} items={MODE_ITEMS} />
-            <HStack gap={2} vAlign="center">
-              {!isSim && (
-                <Button size="sm" label={state.tourPlaying ? "일시정지" : "재생"}
-                  onClick={() => act("toggleTourPlay")} />
-              )}
-              {isSim && (
-                <Button size="sm" variant="ghost" label="이 시뮬레이션은?"
-                  onClick={() => act("setIntroOpen", true)} />
-              )}
-              <ToggleButton size="sm" label="집만 밝게 보기" isPressed={state.resOnly}
-                onPressedChange={(next) => act("setResOnly", next)} />
-              {/* 12b: the floating agent is gone — the chat reopens from
-                  here at any hour, with the transcript kept. */}
-              <Button size="sm" label="대화" onClick={() => act("openChat")} />
-              <Button size="sm" variant="ghost" label="출처"
-                onClick={() => onSources && onSources()} />
-            </HStack>
-          </HStack>
-        </Card>
-      </div>
-    </div>
   );
 }
 
@@ -566,9 +514,8 @@ function judgmentLine(side) {
   return `Muse가 고름 ${s.model || 0} · 규칙이 대신 고름 ${s.rule_fallback || 0} · 평소대로 ${other}`;
 }
 
-function LegendCard({ state }) {
+function LegendCard({ state, onClose }) {
   const legend = state.legend;
-  const [open, setOpen] = useState(false);
   if (!legend) return null;
   const total = legend.resRows.reduce((a, r) => a + (r.count || 0), 0);
   return (
@@ -578,28 +525,26 @@ function LegendCard({ state }) {
           <HStack gap={2} vAlign="center">
             <Heading level={4}>{legend.title}</Heading>
             <span className="ui-panel-spacer" />
-            <Button size="sm" variant="ghost" label={open ? "접기" : `${total.toLocaleString()}동`}
-              onClick={() => setOpen(!open)} />
+            {onClose && (
+              <Button size="sm" variant="ghost" label="닫기" onClick={onClose} />
+            )}
           </HStack>
-          {open && (
-            <>
-              {legend.resRows.map((row) => (
-                <div className="ui-legend-row" key={row.label}>
-                  <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
-                  <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
-                </div>
-              ))}
-              {legend.heightRows.length > 0 && <Text type="supporting">높이 출처</Text>}
-              {legend.heightRows.map((row) => (
-                <div className="ui-legend-row" key={row.label}>
-                  <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
-                  <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
-                </div>
-              ))}
-              {legend.simNote && <Text type="supporting">{legend.simNote}</Text>}
-              <Text type="supporting">{legend.note}</Text>
-            </>
-          )}
+          <Text type="supporting" hasTabularNumbers>{`건물 ${total.toLocaleString()}동`}</Text>
+          {legend.resRows.map((row) => (
+            <div className="ui-legend-row" key={row.label}>
+              <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
+              <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
+            </div>
+          ))}
+          {legend.heightRows.length > 0 && <Text type="supporting">높이 출처</Text>}
+          {legend.heightRows.map((row) => (
+            <div className="ui-legend-row" key={row.label}>
+              <span className="ui-swatch" style={{ background: row.color }} aria-hidden="true" />
+              <Text type="supporting">{`${row.label} ${row.count.toLocaleString()}`}</Text>
+            </div>
+          ))}
+          {legend.simNote && <Text type="supporting">{legend.simNote}</Text>}
+          <Text type="supporting">{legend.note}</Text>
         </VStack>
       </Card>
     </div>
@@ -638,9 +583,13 @@ function agentAsked() {
   }
 }
 
+function restartToLanding() {
+  if (typeof window !== "undefined") window.location.href = "/";
+}
+
 export function App() {
   const state = useStore();
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   if (!state.ready) return null;
   if (state.mode === "landing") {
     return <Landing />;
@@ -649,18 +598,23 @@ export function App() {
     return <ChatScreen />;
   }
   const isSim = state.mode === "sim";
+  const settings = isSim
+    ? { mode: "sim", assumptions: null,
+      onIntro: () => act("setIntroOpen", true), onRestart: restartToLanding }
+    : { mode: "tour", assumptions: null,
+      onIntro: null, onRestart: restartToLanding };
+  const toggleLegend = () => setLegendOpen(!legendOpen);
+  const closeLegend = () => setLegendOpen(false);
   if (!isSim) {
     return (
       <>
-        <TopBar state={state} onSources={() => setSourcesOpen(true)} />
+        <div className="ui-topbar">
+          <TopBar mode="tour" settings={settings} />
+        </div>
+        <MapTools state={state} legendOpen={legendOpen} onLegend={toggleLegend} />
         <CaptionCard state={state} />
-        <LegendCard state={state} />
+        {legendOpen && <LegendCard state={state} onClose={closeLegend} />}
         {agentAsked() && <AgentTourCard />}
-        {sourcesOpen && (
-          <div className="ui-intro overlay">
-            <SourcesDrawer onClose={() => setSourcesOpen(false)} />
-          </div>
-        )}
         {state.viewChip && (
           <div className="ui-viewchip overlay">{state.viewChip}</div>
         )}
@@ -670,18 +624,18 @@ export function App() {
   return (
     <div className="ui-sim13">
       <div className="ui-sim13-top">
-        <TopBar state={state} onSources={() => setSourcesOpen(true)} />
+        <TopBar mode="sim" settings={settings} />
       </div>
       <div className="ui-sim13-stage">
+        <MapTools state={state} legendOpen={legendOpen} onLegend={toggleLegend} />
         <TimelineBar state={state} compact />
       </div>
       <div className="ui-sim13-drawer overlay">
         <NowCard state={state} />
         <JourneyCard state={state} />
         <JudgeLogCard state={state} />
-        <LegendCard state={state} />
+        {legendOpen && <LegendCard state={state} onClose={closeLegend} />}
         <CompareCard state={state} />
-        {sourcesOpen && <SourcesDrawer onClose={() => setSourcesOpen(false)} />}
       </div>
       <IntroCard state={state} />
       {agentAsked() && <AgentTourCard />}

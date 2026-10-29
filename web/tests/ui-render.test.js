@@ -368,7 +368,12 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     const html = renderCase({ mode: "chat", ready: true,
       area: { id: "st-미금", label: "미금역 인근" } }, "?chat=");
     assert.ok(html.includes("주거 시뮬레이터"), "product name");
-    assert.ok(html.includes("새로 시작"), "reset action");
+    // 13f-1: one shared bar — mode switch + 설정; the reset action
+    // lives in the sheet (covered by topbar-13f.test.js).
+    for (const m of ["대화", "살아 보기", "동네 둘러보기"]) {
+      assert.ok(html.includes(m), `mode ${m}`);
+    }
+    assert.ok(html.includes("설정"), "settings button");
     assert.ok(html.includes("지금 보는 장면"), "work area");
   });
 

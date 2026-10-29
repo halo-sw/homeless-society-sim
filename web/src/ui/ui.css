@@ -33,11 +33,44 @@
 }
 #ui-root .overlay { pointer-events: auto; }
 
-.ui-topbar {
-  position: absolute; top: 0; left: 0; right: 0;
-  display: flex; justify-content: center; padding: var(--ui-s8) var(--ui-s12);
+.ui-topbar { position: absolute; top: 0; left: 0; right: 0; }
+
+/* ---------- 13f-1: one top bar (chat / sim / tour) ---------- */
+.ui-bar {
+  height: 56px; flex: none; box-sizing: border-box;
+  display: flex; align-items: center; gap: var(--ui-s16);
+  padding: 0 var(--ui-s16);
+  background: var(--ui-card); border-bottom: 1px solid var(--ui-border);
 }
-.ui-topbar-inner { width: 100%; max-width: 1100px; }
+.ui-bar-left { display: flex; align-items: center; gap: var(--ui-s12); min-width: 0; }
+.ui-bar-title {
+  font-size: var(--ui-t16); font-weight: var(--ui-w600);
+  line-height: var(--ui-lh-head); white-space: nowrap;
+}
+.ui-bar-center {
+  flex: 1 1 auto; display: flex; justify-content: center;
+  min-width: 0; overflow: hidden;
+}
+.ui-bar-right { display: flex; align-items: center; gap: var(--ui-s8); margin-left: auto; }
+.ui-sheet-body {
+  display: flex; flex-direction: column; gap: var(--ui-s16);
+  padding: var(--ui-s16);
+}
+/* Sim/tour view options, floating at the map's top-left. */
+.ui-tools {
+  position: absolute; top: 68px; left: 12px; z-index: 20;
+  display: flex; gap: var(--ui-s8); align-items: center; flex-wrap: wrap;
+  max-width: calc(100vw - 24px);
+  background: var(--ui-card); border: 1px solid var(--ui-border);
+  border-radius: var(--ui-r-card); box-shadow: var(--ui-shadow);
+  padding: var(--ui-s8) var(--ui-s12);
+}
+.ui-sim13-stage .ui-tools { top: 0; left: 0; }
+/* Small neutral mark (replaces the assistant's letter avatar). */
+.ui-mark {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--ui-ink3); display: inline-block; flex: none;
+}
 
 /* Stage 6 layout: the sim bar docks bottom-left so the frame centre
    (followed resident) stays clear; the caption stays bottom-centre above
@@ -560,10 +593,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-sim13-top {
   grid-area: top; min-width: 0;
   background: var(--ui-card);
-  border-bottom: 1px solid var(--ui-border);
 }
-.ui-sim13-top .ui-topbar { position: static; padding: var(--ui-s8) var(--ui-s12); }
-.ui-sim13-top .ui-topbar-inner { max-width: none; }
 .ui-sim13-stage {
   grid-area: stage; min-width: 0; min-height: 0; position: relative;
   display: flex; flex-direction: column; justify-content: flex-end;
