@@ -113,6 +113,22 @@ Full suite: `cd web && npm test` → **830 pass / 0 fail**. Each item built
 - `web/tests/stage-tags-13e2.test.js` (new): rect math, NDC mapping,
   drawer/vertical hiding (3).
 
+# Stage 13e3 — RESULT (two fixes)
+
+Full suite: `cd web && npm test` → **831 pass / 0 fail** (`vite build` ✓).
+
+## 1. Stage beside thread — `13e3: stage beside thread`
+- GPU showed `.ui-chat-stage` 1440×0: the 13e2-1 `> *` column rule hit
+  `.ui-chat-main`, which must be a row. `web/src/ui/ui.css` gains
+  `.ui-chat [class*="astryx-layout-content"] > .ui-chat-main
+  { flex-direction: row; }`. Thread scroll rules untouched.
+- `web/tests/chat-scroll-13e2.test.js` gains a row assertion (5 tests).
+
+## 2. Landing footer readable — `13e3: landing footer readable`
+- `web/src/ui/landing.jsx`: coverage line + sources wrapped in
+  `.ui-landing-foot`; `web/src/ui/ui.css` gives it the subtitle colour
+  `rgba(255,255,255,0.88)` for p/span/button.
+
 ## Capture URLs (from `briefs/13d-RESULT.md`)
 - `/?chat=판교로%20출근하는%20신입%2C%20연봉%204천%2C%20모은%20돈%205천%2C%20전세%202억%20이하&example=single-firstjob`
 - `/?chat=맞벌이%20예비부부%2C%20강남%20출근%2C%20전세%204억%20이하%2C%2059㎡%20이상&example=newlywed-couple`
