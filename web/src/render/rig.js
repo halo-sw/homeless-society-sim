@@ -57,7 +57,7 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     u.sunPosition.value.copy(dir);
   }
 
-  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null, maxHeightM = 250, look = null }) {
+  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null, camDistM = null, style = "photo", maxHeightM = 250, look = null }) {
     const p = skyParams(lat, lon, date, minute);
     const l = look || DEFAULT_LOOK;
     // Sun above the horizon; moonlight below it.
@@ -110,7 +110,8 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
       scene.fog.color.setHex(p.fogColor);
       // Distance cueing follows the framing (stage 6): crisp stops, haze
       // only far beyond the frame. Factors from the look table.
-      const range = fogRangeFor(framedWidth === null ? span : framedWidth, l);
+      const range = fogRangeFor(framedWidth === null ? span : framedWidth, l,
+        { style, camDistM });
       scene.fog.near = range.near;
       scene.fog.far = range.far;
     }

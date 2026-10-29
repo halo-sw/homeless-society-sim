@@ -156,6 +156,16 @@ export function streetFogRange(framedWidthM, look = DEFAULT_LOOK) {
   };
 }
 
+// Painted fog from the camera distance, not the framed width: at the 10°
+// painted FOV the camera sits ~3.6× the framed width away, so a pure
+// width-multiple starts fog just behind the target and tints the frame.
+// near = camDist + 2×width, far = camDist + 6×width. Photo unchanged.
+export function paintedFogRange(camDistM, framedWidthM) {
+  const d = Math.max(0, num(camDistM, 0));
+  const w = Math.max(50, num(framedWidthM, 300));
+  return { near: d + 2 * w, far: d + 6 * w };
+}
+
 // Regional fog from the live camera-to-target distance (not altitude):
 // the line, the train and the stations stay clear of the haze while the
 // horizon still melts. Far is always ≥ 6× the distance.

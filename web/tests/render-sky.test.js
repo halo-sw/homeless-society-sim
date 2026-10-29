@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { dayPhase, skyParams } from "../src/render/sky.js";
+import { dayPhase, fogRangeFor, skyParams } from "../src/render/sky.js";
 
 // Seoul, autumn (the capture dates).
 const LAT = 37.55;
@@ -78,5 +78,19 @@ describe("Seoul sky parameters", () => {
 
   it("is deterministic", () => {
     assert.deepEqual(at("16:30", 990), at("16:30", 990));
+  });
+});
+
+describe("fog range routing (14f)", () => {
+  it("uses camera-distance fog for painted, width multiples for photo", () => {
+    assert.deepEqual(fogRangeFor(300, null, { style: "painted", camDistM: 1070 }),
+      { near: 1670, far: 2870 });
+    // Photo: defaults and explicit style both keep the 2.5×/6× multiples.
+    assert.deepEqual(fogRangeFor(300), { near: 750, far: 1800 });
+    assert.deepEqual(fogRangeFor(300, null, { style: "photo", camDistM: 1070 }),
+      { near: 750, far: 1800 });
+    // Painted without a camera distance falls back to the multiples.
+    assert.deepEqual(fogRangeFor(300, null, { style: "painted" }),
+      { near: 750, far: 1800 });
   });
 });

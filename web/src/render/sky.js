@@ -8,7 +8,7 @@
 
 import { solarPosition } from "../lighting.js";
 import { daylightFactor, duskFactor } from "../sim.js";
-import { streetFogRange } from "./look.js";
+import { paintedFogRange, streetFogRange } from "./look.js";
 
 export const PHASES = ["day", "golden", "blue", "night"];
 
@@ -103,6 +103,15 @@ export function skyParams(lat, lon, date, minute) {
 // the stop framing itself stays crisp (1.5× read milky), and ends at 6×
 // so the skyline melts into the sky colour. Pure; the rig applies it per
 // frame. Factors live in the look table (render/look.js).
-export function fogRangeFor(framedWidthM, look) {
+// Stage 14f: painted style measures from the camera distance instead — at
+// the 10° FOV the camera sits ~3.6× the framed width away, so a pure
+// width multiple starts fog just behind the target and tints the frame.
+// Photo passes no opts and keeps the width multiples exactly.
+export function fogRangeFor(framedWidthM, look, { style = "photo", camDistM = null } = {}) {
+  const hasDist = camDistM !== null && camDistM !== undefined && camDistM !== ""
+    && Number.isFinite(Number(camDistM));
+  if (style === "painted" && hasDist) {
+    return paintedFogRange(camDistM, framedWidthM);
+  }
   return streetFogRange(framedWidthM, look);
 }
