@@ -86,6 +86,12 @@ link to this file or the sources above.
 - Source: 서울교통공사, https://data.seoul.go.kr/dataList/OA-12034/S/1/datasetView.do
 - Licence: 공공누리 제1유형 (출처표시). Running times are the operator's standard schedule; real trips vary.
 
+## 국토교통부 수도권 전철 운임 조정 (stage 15)
+- Rule: 수도권 통합 거리비례 운임 (교통카드, 성인), 시행 2025-06-28. Base 1,550원 to 10 km; 10–50 km +100원 per started 5 km; over 50 km +100원 per started 8 km; single-use ticket +100원; transfers inside the integrated system add no new base fare.
+- Source: 국토교통부, <https://www.molit.go.kr>. Quoted rule, not legal advice; check the official notice before quoting.
+- Distances come from the interstation file above (lines 1–8); other legs use the engine's OSM chainage or the straight line × 1.2 and are marked 추정.
+- 신분당선 구간별 별도운임 (신사–강남, 강남–정자, 정자–광교) stays null with status 확인 필요 until filled from the operator's official page; trips touching the line show “신분당선 별도운임 확인 중” and keep the 가정값 source.
+
 ## Wikimedia Commons, name search (stage 13)
 - File: `scenarios/places/commons-named.json`. A manifest only, no image bytes: 884 freely licensed photos found by searching Commons for station names (117 stations) and apartment complex names (20 complexes), fetched 2026-10-29.
 - Each item keeps its author, licence, licence URL and source page; the app shows a credit per photo.
