@@ -133,3 +133,57 @@ Full suite: `cd web && npm test` → **831 pass / 0 fail** (`vite build` ✓).
 - `/?chat=판교로%20출근하는%20신입%2C%20연봉%204천%2C%20모은%20돈%205천%2C%20전세%202억%20이하&example=single-firstjob`
 - `/?chat=맞벌이%20예비부부%2C%20강남%20출근%2C%20전세%204억%20이하%2C%2059㎡%20이상&example=newlywed-couple`
 - `/?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1`
+
+# Stage 13e4 — RESULT (three leftovers from the 13e3 GPU capture)
+
+Full suite: `cd web && npm test` → **841 pass / 0 fail** (`vite build` ✓).
+Captures: `briefs/img/13e4-chat.png`, `briefs/img/13e4-sim.png` (1440×900).
+
+## 1. Orb fitted and centred — `13e4: orb fitted and centred`
+- Diagnosis: 13e2 fitted the raw world depth, but the tilted camera
+  `(0, 7.5, 9)` compresses ground z to ~0.64× on screen and near/far
+  edges sit at different depths — so the regions filled a 550×200
+  strip of the 1000×811 stage.
+- `web/src/orb.js`: `fitOrbView` now iterates in NDC (camera basis
+  right +X, up (0, vz, −vy)): rescale distance to target fill,
+  re-centre the NDC box, 12 rounds → projected box fills
+  `ORB_FIT_FILL` (0.84) of the shorter side, centred. New
+  `projectedOrbBounds` helper (centre ±5 %, per-axis fill);
+  `ORB_VIEW_DIR` must match `ui/orb.jsx`.
+- `web/src/ui/orb.jsx`: re-fits (centre + distance) on container
+  resize, not just aspect.
+- Tests: `web/tests/stage-13e4.test.js` orb block (2- and 9-slab
+  samples at 1000×811: centred ±5 %, fill 0.84 ± 0.02). Note:
+  `web/tests/orb-fit-13e2.test.js` "exact world centre" and "wider
+  from closer" assertions are superseded by the brief's projected
+  contract (same-axis aspects share one distance; portrait frames
+  from farther) and updated with 13e4 comments.
+
+## 2. Sim tags never over drawer or top bar — `13e4: sim tags never over drawer or top bar`
+- Diagnosis: `paintTag` (`web/src/main.js`, the only `.style.left`
+  writer — `paintTagPin` delegates to it) hid tags by anchor point
+  only; the "직장" anchor at x≈1058 passed left of the drawer at
+  x=1060 while its box (to x≈1092) overlapped it. Drawer rect is
+  read live, so layout timing was not the cause.
+- `web/src/stage-tags.js`: new pure `rectsIntersect(a, b)` /
+  `tagBoxBlocked(tagBox, blockers)` (touching edges and zero-area
+  rects never block).
+- `web/src/main.js` `paintTag`: after positioning, hides the tag
+  when its measured box intersects the drawer rect
+  (`.ui-sim13-drawer`, else open `.ui-chat-drawer`) or the top bar
+  rect (`.ui-sim13-top`).
+- Tests: `stage-13e4.test.js` tag block replays the capture coords
+  (4).
+
+## 3. Rule titles, not IDs — `13e4: rule titles, not IDs`
+- `web/src/engine/criteria.js`: new `criterionTitle(id)` — Korean
+  title from the same table the 기준 tab renders (`CRITERIA_BY_ID`),
+  id fallback.
+- `web/src/ui/app.jsx` `CriterionChips` (the "적용한 기준" chips):
+  `label={criterionTitle(id)}`, id kept in `title` only.
+- `web/src/ui` grep for other visible `C-` ids: only
+  `criteria.jsx:59` (id badge next to the already-shown title) —
+  badge removed, id moved to `title` on the title text.
+  `aria-label`s and code comparisons untouched.
+- Tests: `stage-13e4.test.js` title block —
+  `criterionTitle("C-commute-depart")` is "출근·등교 출발 시각" (2).
