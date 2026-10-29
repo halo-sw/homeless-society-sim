@@ -555,6 +555,7 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 .ui-chat [class*="astryx-layout-content"] > * {
   display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0;
 }
+.ui-chat [class*="astryx-layout-content"] > .ui-chat-main { flex-direction: row; }
 .ui-chat-main { overflow: hidden; }
 .ui-chat-thread { overflow: hidden; }
 .ui-chat-thread > :first-child {

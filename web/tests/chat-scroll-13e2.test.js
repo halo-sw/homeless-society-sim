@@ -38,6 +38,11 @@ describe("13e2 chat column scrolling", () => {
     assert.ok(body.includes("min-height: 0"), "min-height 0");
   });
 
+  it("13e3: chat main stays a row (thread | stage | drawer)", () => {
+    const body = rule('.ui-chat [class*="astryx-layout-content"] > .ui-chat-main');
+    assert.ok(body.includes("flex-direction: row"), "main is a row");
+  });
+
   it("message list scrolls, composer/chips/banner stay pinned", () => {
     const list = rule(".ui-chat-thread > :first-child > :first-child");
     assert.ok(list.includes("overflow-y: auto"), "list scrolls");
