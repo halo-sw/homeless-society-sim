@@ -13,6 +13,7 @@ import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
+import { placeTag } from "./stage-tags.js";
 import { commuteSegments, corridorFor, journeyBanner, journeyCameraState, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
@@ -1011,9 +1012,33 @@ async function bootSim() {
       el.style.display = "none";
       return;
     }
+    // 13e2: position in the canvas/stage rect, never innerWidth /
+    // innerHeight — and hide tags sliding under the right drawer.
+    const canvasEl = document.getElementById("scene");
+    const wrapEl = document.getElementById("scene-wrap");
+    const c = canvasEl ? canvasEl.getBoundingClientRect() : null;
+    const w = wrapEl ? wrapEl.getBoundingClientRect() : null;
+    const full = c || { left: 0, top: 0, width: innerWidth, height: innerHeight };
+    const drawerEl = document.querySelector(".ui-sim13-drawer")
+      || document.querySelector('.ui-chat-drawer[data-open="true"]');
+    let overlap = 0;
+    if (drawerEl && c) {
+      const dr = drawerEl.getBoundingClientRect();
+      if (dr.width > 0 && dr.height > 0 && dr.right >= c.right - 1 && dr.left > c.left) {
+        overlap = Math.min(c.right - dr.left, c.width);
+      }
+    }
+    const placed = placeTag(tagV.x, tagV.y,
+      { left: full.left - (w ? w.left : 0), top: full.top - (w ? w.top : 0),
+        width: full.width, height: full.height },
+      { drawerOpen: overlap > 0, drawerWidth: overlap });
+    if (!placed.visible) {
+      el.style.display = "none";
+      return;
+    }
     el.style.display = "block";
-    el.style.left = `${(tagV.x * 0.5 + 0.5) * innerWidth}px`;
-    el.style.top = `${(-tagV.y * 0.5 + 0.5) * innerHeight}px`;
+    el.style.left = `${placed.x}px`;
+    el.style.top = `${placed.y}px`;
   }
   const bgMesh = new THREE.InstancedMesh(
     new THREE.CapsuleGeometry(0.3, 0.9, 3, 8),
