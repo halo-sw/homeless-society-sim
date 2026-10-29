@@ -29,6 +29,9 @@ const hhmm = (m) => {
   const c = Math.max(0, Math.min(1439, Math.round(m)));
   return `${String(Math.floor(c / 60)).padStart(2, "0")}:${String(c % 60).padStart(2, "0")}`;
 };
+// 17b: the one-line text carries no leading day/time or home letter (the
+// drawer shows those in their own columns); when_ko keeps them instead.
+const whenKo = (day, minute) => `${dayLabel(day)} ${hhmm(minute)}`;
 const fmtDur = (min) => {
   const total = Math.round(min);
   const h = Math.floor(total / 60);
@@ -122,14 +125,16 @@ function crowdedCandidate(runA, runB, labelA, labelB) {
   const win = best[side];
   if (!win.evidence) return null;
   const home = side === 0 ? labelA : labelB;
+  const text = `${win.leg.lineName} ${win.leg.from}→${win.leg.to} ` +
+    `혼잡 ${Math.round(win.pct)}% (실측)`;
   return {
     kind: "crowded", gapRel,
     moment: {
       kind: "crowded", home, agent: win.away.agent,
       day: win.away.day, minute: win.boardMin,
       dayLabel: dayLabel(win.away.day), timeLabel: hhmm(win.boardMin),
-      sentence: `${dayLabel(win.away.day)} ${hhmm(win.boardMin)} ${home} ` +
-        `${win.leg.lineName} ${win.leg.from}→${win.leg.to} 혼잡 ${Math.round(win.pct)}% (실측)`,
+      when_ko: whenKo(win.away.day, win.boardMin),
+      text_ko: text, sentence: text,
       evidence: win.evidence,
       detail: { pct: win.pct, line: win.leg.lineName,
         from: win.leg.from, to: win.leg.to, source: win.leg.congestion.source },
@@ -167,13 +172,15 @@ function commuteCandidate(runA, runB, labelA, labelB) {
   const side = !best[1] || (best[0] && best[0].span >= best[1].span) ? 0 : 1;
   const win = best[side];
   const home = side === 0 ? labelA : labelB;
+  const text = `출근 ${fmtDur(win.span)}`;
   return {
     kind: "commute", gapRel,
     moment: {
       kind: "commute", home, agent: win.agent,
       day: win.day, minute: win.trip.depart_min,
       dayLabel: dayLabel(win.day), timeLabel: hhmm(win.trip.depart_min),
-      sentence: `${dayLabel(win.day)} ${home} 출근 ${fmtDur(win.span)}`,
+      when_ko: whenKo(win.day, win.trip.depart_min),
+      text_ko: text, sentence: text,
       evidence: { type: "trip", id: win.trip.id },
       detail: { minutes: win.span },
     },
@@ -269,12 +276,14 @@ function gapCandidate(runA, runB, labelA, labelB) {
     evidence = awayEvidence(run, ids, away, [pick.key]);
   }
   if (!evidence) return null;
+  const text = `${pick.noun} ${labelA} ${pick.unit(pick.a)} vs ${labelB} ${pick.unit(pick.b)}`;
   return {
     kind: "gap", gapRel: pick.rel,
     moment: {
       kind: "gap", home, agent, day, minute,
       dayLabel: dayLabel(day), timeLabel: hhmm(minute),
-      sentence: `${pick.noun} ${labelA} ${pick.unit(pick.a)} vs ${labelB} ${pick.unit(pick.b)}`,
+      when_ko: whenKo(day, minute),
+      text_ko: text, sentence: text,
       evidence,
       detail: { metric: pick.key, a: pick.a, b: pick.b },
     },
@@ -298,14 +307,15 @@ function decisionCandidate(runA, runB, labelA, labelB) {
   const d = (side === 0 ? listA : listB)[0];
   const home = side === 0 ? labelA : labelB;
   const labelOf = (key) => ((d.options || []).find((o) => o.key === key) || {}).label || key;
+  const text = `${labelOf(d.default_key)} 대신 ${labelOf(d.chosen_key)}: “${d.reason_ko.trim()}”`;
   return {
     kind: "decision", gapRel,
     moment: {
       kind: "decision", home, agent: d.agent,
       day: d.day, minute: d.minute,
       dayLabel: dayLabel(d.day), timeLabel: hhmm(d.minute),
-      sentence: `${dayLabel(d.day)} ${hhmm(d.minute)} ${home} ` +
-        `${labelOf(d.default_key)} 대신 ${labelOf(d.chosen_key)}: “${d.reason_ko.trim()}”`,
+      when_ko: whenKo(d.day, d.minute),
+      text_ko: text, sentence: text,
       evidence: { type: "decision", id: d.id },
       detail: { decisionKind: d.kind, chosenBy: d.chosen_by, reason_ko: d.reason_ko.trim() },
     },

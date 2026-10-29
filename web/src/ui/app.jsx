@@ -547,9 +547,10 @@ function MomentsSection({ state }) {
               data-day={m.day} data-minute={m.minute}
               data-follow={m.followIndex || 0}
               onClick={() => seek(m)}
-              aria-label={`${m.dayLabel} ${m.timeLabel} ${m.sentence}`}>
+              aria-label={`${m.dayLabel} ${m.timeLabel} ${m.home} ${m.text_ko || m.sentence}`}>
               <span className="ui-moment-when">{`${m.dayLabel} ${m.timeLabel}`}</span>
-              <span className="ui-moment-text">{m.sentence}</span>
+              <span className="ui-tag ui-moment-home">{m.home}</span>
+              <span className="ui-moment-text">{m.text_ko || m.sentence}</span>
               <span className="ui-tag">근거 ✓</span>
             </button>
           ))}

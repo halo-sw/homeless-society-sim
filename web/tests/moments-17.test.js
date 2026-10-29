@@ -53,7 +53,12 @@ describe("17-3 pickMoments on the demo build", { skip: !hasDemo }, () => {
       const run = m.home === "A" ? A : B;
       assert.ok(evidenceExists(run, m.evidence),
         `${m.kind} evidence ${m.evidence.type}:${m.evidence.id} in run ${m.home}`);
-      assert.ok(!m.sentence.includes("가정"), `no assumed wording: ${m.sentence}`);
+      assert.ok(!m.text_ko.includes("가정"), `no assumed wording: ${m.text_ko}`);
+      assert.equal(m.when_ko, `${m.dayLabel} ${m.timeLabel}`);
+      assert.equal(m.sentence, m.text_ko);
+      // 17b: the one-line text says the time once (left column owns it).
+      assert.ok(!/^\d+일차/.test(m.text_ko), `no leading day: ${m.text_ko}`);
+      assert.ok(!/^\d\d:\d\d/.test(m.text_ko), `no leading time: ${m.text_ko}`);
     }
   });
 
@@ -69,7 +74,8 @@ describe("17-3 pickMoments on the demo build", { skip: !hasDemo }, () => {
     const crowded = moments.find((m) => m.kind === "crowded");
     assert.ok(crowded, "demo A has measured rides");
     assert.equal(crowded.detail.source, "서울교통공사");
-    assert.match(crowded.sentence, /실측/);
+    assert.match(crowded.text_ko, /실측/);
+    assert.match(crowded.text_ko, /^2호선 잠실→강남 혼잡 93% \(실측\)$/);
   });
 
   it("recomputes evening-at-home minutes exactly like the engine", () => {
@@ -95,8 +101,9 @@ describe("17-3 pickMoments on synthetic runs (no data needed)", () => {
     const dec = moments.find((m) => m.kind === "decision");
     assert.ok(dec, "decision candidate");
     assert.equal(dec.home, "A");
-    assert.match(dec.sentence, /마트 대신 집으로/);
-    assert.match(dec.sentence, /피곤해서 바로 쉬고 싶어요/);
+    assert.match(dec.text_ko, /마트 대신 집으로/);
+    assert.match(dec.text_ko, /피곤해서 바로 쉬고 싶어요/);
+    assert.ok(!/^\d+일차/.test(dec.text_ko), "no leading day in decision text");
     assert.deepEqual(dec.evidence, { type: "decision", id: d.id });
     assert.ok(evidenceExists(runA, dec.evidence));
   });
@@ -143,14 +150,17 @@ describe("17-3 drawer moments section (SSR, no DOM)", () => {
   const MOMENTS = [
     { kind: "crowded", home: "A", agent: "h1", agentLabel: "구성원 1",
       day: 1, minute: 492, dayLabel: "2일차", timeLabel: "08:12",
-      sentence: "2일차 08:12 A 2호선 잠실→강남 혼잡 93% (실측)",
+      when_ko: "2일차 08:12", text_ko: "2호선 잠실→강남 혼잡 93% (실측)",
+      sentence: "2호선 잠실→강남 혼잡 93% (실측)",
       evidence: { type: "trip", id: "t000005" }, followIndex: 1, gapRel: 1 },
     { kind: "commute", home: "A", agent: "h1", agentLabel: "구성원 1",
       day: 0, minute: 501, dayLabel: "1일차", timeLabel: "08:21",
-      sentence: "1일차 A 출근 44분",
+      when_ko: "1일차 08:21", text_ko: "출근 44분",
+      sentence: "출근 44분",
       evidence: { type: "trip", id: "t000001" }, followIndex: 1, gapRel: 0.6 },
     { kind: "gap", home: "B", agent: "h1", agentLabel: "구성원 1",
       day: 4, minute: 1060, dayLabel: "5일차", timeLabel: "17:40",
+      when_ko: "5일차 17:40", text_ko: "공원 A 10번 vs B 26번",
       sentence: "공원 A 10번 vs B 26번",
       evidence: { type: "decision", id: "h1:d4:1053:park_or_home:00" },
       followIndex: 1, gapRel: 0.5 },
@@ -175,7 +185,9 @@ describe("17-3 drawer moments section (SSR, no DOM)", () => {
     assert.ok(html.includes("section-moments"), "test id");
     assert.equal(html.split("근거 ✓").length - 1, 3, "three evidence chips");
     for (const m of MOMENTS) {
-      assert.ok(html.includes(m.sentence), m.kind);
+      assert.ok(html.includes(m.text_ko), m.kind);
+      assert.ok(html.includes(`ui-moment-home">${m.home}<`),
+        `${m.kind} home chip`);
       assert.ok(html.includes(`data-day="${m.day}"`), `${m.kind} seek day`);
       assert.ok(html.includes(`data-minute="${m.minute}"`), `${m.kind} seek minute`);
       assert.ok(html.includes("data-follow=\"1\""), `${m.kind} follow member`);

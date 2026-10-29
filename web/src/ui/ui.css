@@ -713,6 +713,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ui-moment-text { flex: 1 1 auto; font-size: var(--ui-t14); min-width: 0; }
 .ui-moment .ui-tag { flex: none; }
+.ui-moment-home { font-weight: var(--ui-w600); }
 /* Card-less sections, 1px dividers, no nested cards. */
 .ui-section { border-top: 1px solid var(--ui-border); }
 .ui-section-head {
