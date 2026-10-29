@@ -29,7 +29,12 @@ describe("money timeline", () => {
       && t.purpose === "errand" && t.from && t.from.kind === "home").length;
     assert.ok(commuteLegs > 0);
     assert.equal(tl.counts.commute_legs, commuteLegs);
+    // No region: legacy rides price from the fallback fare.
+    assert.equal(tl.counts.commute_trips, commuteLegs);
+    assert.equal(tl.counts.commute_ride_trips, commuteLegs);
+    assert.equal(tl.counts.commute_walk_trips, 0);
     assert.equal(tl.totals_by_category.transit, -commuteLegs * 1500);
+    assert.equal(tl.flags.commute_missing, false);
     // Simulated errand legs are evidence only; the money is the plan.
     assert.equal(tl.counts.errand_trips, errandLegs);
     const plan = householdGrocery(scenario, { basket_won: 30000 });
@@ -100,7 +105,7 @@ describe("money timeline", () => {
     assert.match(tl2.payday_note, /1일차/);
   });
 
-  it("charges fares only where rides happen (stage 9c)", () => {
+  it("counts every commute, walk or ride (stage 15.3)", () => {
     const scenario = tinyScenario({ days: 7, background: 0, seed: 7,
       household: { members: [
         // Rides: the island workplace is unreachable on foot.
@@ -118,15 +123,24 @@ describe("money timeline", () => {
     assert.ok(run.aways.some((a) => a.agent === "h1" && a.kind === "ride"));
     assert.ok(!run.aways.some((a) => a.agent === "h2" && a.kind === "ride"));
     const tl = moneyTimeline(run, parseScenario(scenario), OPTS);
-    // One Monday: the rider pays 2 fares, the walker none.
+    // One Monday: 2 ride journeys + 2 walk journeys.
     assert.equal(tl.counts.commute_legs, 2);
+    assert.equal(tl.counts.commute_trips, 4);
+    assert.equal(tl.counts.commute_ride_trips, 2);
+    assert.equal(tl.counts.commute_walk_trips, 2);
     assert.equal(tl.totals_by_category.transit, -3000);
     const fares = tl.events.filter((e) => e.category === "transit");
-    assert.ok(fares.every((e) => e.memo.startsWith("h1")));
     assert.ok(fares.every((e) => e.trip_id), "fares tie to walk trips for the ticker");
+    const rides = fares.filter((e) => e.memo.startsWith("h1"));
+    assert.equal(rides.length, 2);
+    assert.ok(rides.every((e) => e.amount_won === -1500));
+    const walks = fares.filter((e) => e.memo.startsWith("h2"));
+    assert.equal(walks.length, 2);
+    assert.ok(walks.every((e) => e.amount_won === 0 && e.fare_note === "걸어서 출근"));
+    assert.equal(tl.flags.commute_missing, false);
   });
 
-  it("charges no fare for local-poi commutes", () => {
+  it("counts local-poi commutes as walks at 0원", () => {
     const scenario = tinyScenario({ days: 7, background: 0, seed: 7,
       household: { members: [
         { id: "m1", label: "구성원 1", role: "adult", workdays: ["Mon"],
@@ -136,6 +150,29 @@ describe("money timeline", () => {
     assert.ok(run.trips.some((t) => t.purpose === "commute"));
     const tl = moneyTimeline(run, parseScenario(scenario), OPTS);
     assert.equal(tl.counts.commute_legs, 0);
+    assert.equal(tl.counts.commute_trips, 2);
+    assert.equal(tl.counts.commute_walk_trips, 2);
     assert.equal(tl.totals_by_category.transit, 0);
+    const fares = tl.events.filter((e) => e.category === "transit");
+    assert.ok(fares.every((e) => e.fare_note === "걸어서 출근"));
+    assert.equal(tl.flags.commute_missing, false);
+  });
+
+  it("flags a run where a worker never commutes", () => {
+    const scenario = tinyScenario({ days: 7, background: 0, seed: 7 });
+    scenario.household.members[0].work.station_name = "없는역";
+    const run = simulate(tinyArea(), structuredClone(scenario), "A");
+    assert.equal(run.trips.filter((t) => t.agent === "h1" && t.purpose === "commute").length, 0);
+    const errors = [];
+    const orig = console.error;
+    console.error = (...a) => errors.push(a.join(" "));
+    let tl;
+    try {
+      tl = moneyTimeline(run, parseScenario(scenario), OPTS);
+    } finally {
+      console.error = orig;
+    }
+    assert.equal(tl.flags.commute_missing, true);
+    assert.ok(errors.some((e) => e.includes("[engine] commute-missing") && e.includes("m1")));
   });
 });

@@ -18,6 +18,7 @@ import { CRITERIA_DOC_NAME, CRITERIA_VERSION, moneyOptsFromCriteria, resolveCrit
 import { parseScenario } from "../src/engine/scenario.js";
 import { loadDestArea } from "../src/engine/destload.js";
 import { engineMetrics, runPaired } from "../src/engine/paired.js";
+import { parseInterstationCsv } from "../src/transit/schedule.js";
 import { Router } from "../src/engine/graph.js";
 import { createCsvBackend } from "../src/money/rtms.js";
 import { referencePrice } from "../src/money/prices.js";
@@ -87,6 +88,26 @@ async function loadRegion() {
   return region;
 }
 const region = await loadRegion();
+// Fare table (stage 15.3): operator interstation km for lines 1–8 plus
+// network stop coordinates for the straight-line × 1.2 fallback.
+let fareSchedule = null;
+try {
+  fareSchedule = parseInterstationCsv(await readFile(
+    join(REPO, "scenarios", "transit", "seoul-metro-interstation.csv"), "utf8"));
+} catch {
+  fareSchedule = null;
+}
+let fareStopCoords = null;
+if (region && region.network) {
+  fareStopCoords = new Map();
+  for (const line of region.network.lines || []) {
+    for (const s of line.stops || []) {
+      if (s && s.id !== undefined && Number.isFinite(s.lon) && Number.isFinite(s.lat)) {
+        fareStopCoords.set(s.id, [s.lon, s.lat]);
+      }
+    }
+  }
+}
 // Safety stats (stage 9a): optional build artifact; the UI + consult say
 // so honestly when it is missing.
 let safetyDoc = null;
@@ -214,6 +235,7 @@ const spendOptsBase = {
   maintenance_won_month: A.maintenance_won_month, other_fixed_won_month: A.other_fixed_won_month,
   household_monthly_net_won: net.household_monthly_net_won,
   pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+  fare_schedule: fareSchedule, fare_stop_coords: fareStopCoords,
 };
 const housingFor = (label, tenure) => {
   if (tenure === "공공임대") return null;
@@ -274,6 +296,7 @@ for (const h of scenario.homes) {
       household_monthly_net_won: net.household_monthly_net_won,
       housing_monthly_won: housing.monthly_won, tenure, housing_source: pi.source,
       pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+      fare_schedule: fareSchedule, fare_stop_coords: fareStopCoords,
     });
     byTenure[tenure] = {
       housing, price_inputs: pi,
@@ -282,6 +305,7 @@ for (const h of scenario.homes) {
       remaining_won: tl.remaining_won,
       burden_ratio: tl.burden_ratio,
       counts: tl.counts,
+      flags: tl.flags,
       daily_balance_won: tl.daily_balance_won,
       payday_note: tl.payday_note,
     };
@@ -312,6 +336,7 @@ for (const h of scenario.homes) {
     household_monthly_net_won: net.household_monthly_net_won,
     housing_monthly_won: 0,
     pay_day_of_month: A.pay_day_of_month, fixed_due_day_1based: A.fixed_due_day_1based,
+    fare_schedule: fareSchedule, fare_stop_coords: fareStopCoords,
   });
   // Stage 9b: jeonse ratio over the same matched rows + register signals
   // for the complex's buildings (thresholds resolve per scenario run).
@@ -330,6 +355,7 @@ for (const h of scenario.homes) {
     area: h.area, complex_name: h.complex_name, area_m2: areaM2,
     match_method: matchMethod,
     parcel_rows: parcelHits.length, name_rows: nameHits.length,
+    flags: { ...spendTl.flags },
     reference, by_tenure: byTenure,
     jeonse_check: jeonse ? { ...jeonse, match_method: matchMethod } : null,
     register_signals: register,

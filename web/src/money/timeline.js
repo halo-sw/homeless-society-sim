@@ -1,19 +1,21 @@
 // 30-day money timeline from a simulated run (pure, deterministic).
 //
-// Spending events tie to real simulated activity: one transit fare per
-// commute trip that touches a ride (stage 9c: arriving at an out-ride
-// boarding, or leaving from a back-ride alighting — either engine form;
-// members who walk to their workplace touch no ride and pay none),
-// grocery from the household plan (stage 15.2: the same planned total
-// for every home, spread over the planned errand days — simulated
-// errand legs cost time and fatigue, never money), fixed costs on their
-// due day, salary on payday(s). Household members only — background
-// neighbours have no money. The balance is monthly cash flow starting
-// at 0 (upfront deposit/purchase shown separately, not in the line).
+// Spending events tie to real simulated activity: one transit event per
+// one-way commute journey, walk or ride (stage 15.3 — walking commutes
+// cost 0원 with fare_note 걸어서 출근; ride journeys price from the
+// distance fare table when the route is known, else the transit_fare_won
+// fallback labelled 가정값), grocery from the household plan (stage
+// 15.2: the same planned total for every home, spread over the planned
+// errand days — simulated errand legs cost time and fatigue, never
+// money), fixed costs on their due day, salary on payday(s). Household
+// members only — background neighbours have no money. The balance is
+// monthly cash flow starting at 0 (upfront deposit/purchase shown
+// separately, not in the line).
 
 import { dateOf } from "../engine/scenario.js";
 import { planSchedule } from "../engine/agents.js";
 import { criterionDefault } from "../engine/criteria.js";
+import { fareForTrip, resolveLegKm, SHINBUNDANG_PENDING_NOTE } from "./fare.js";
 
 export const MONEY_CATEGORIES = ["salary", "housing", "transit", "grocery", "maintenance", "other_fixed"];
 
@@ -94,6 +96,97 @@ export function spreadTotal(totalWon, days) {
   return ds.map((day, i) => ({ day, amount_won: -(base + (i < rem ? 1 : 0)) }));
 }
 
+// One-way commute journeys per member-day (stage 15.3): every commute
+// counts, walk or ride. A journey exists per direction (out = from home,
+// back = to home) when a walk leg or a ride touches it; it is a ride
+// journey when a ride (new-form ride away or legacy station-ride work
+// stay) covers that direction, else a walk journey.
+export function commuteJourneys(run) {
+  const byDay = new Map();
+  const entryFor = (agent, day) => {
+    const k = `${agent}|${day}`;
+    if (!byDay.has(k)) {
+      byDay.set(k, { agent, day, outWalk: [], backWalk: [],
+        outRide: null, backRide: null, legacy: null });
+    }
+    return byDay.get(k);
+  };
+  for (const t of run.trips || []) {
+    if (!String(t.agent || "").startsWith("h") || t.purpose !== "commute") continue;
+    const e = entryFor(t.agent, t.day);
+    if (t.from && t.from.kind === "home") e.outWalk.push(t);
+    if (t.to && t.to.kind === "home") e.backWalk.push(t);
+  }
+  for (const a of run.aways || []) {
+    if (!String(a.agent || "").startsWith("h")) continue;
+    if (a.kind === "ride") {
+      const e = entryFor(a.agent, a.day);
+      if (a.detail && a.detail.direction === "back") e.backRide = a;
+      else e.outRide = a;
+    } else if (a.kind === "work" && a.detail && a.detail.ride_minutes !== undefined) {
+      entryFor(a.agent, a.day).legacy = a;
+    }
+  }
+  const journeys = [];
+  for (const e of byDay.values()) {
+    const sides = [
+      { direction: "out", walk: e.outWalk[0] || null, ride: e.outRide },
+      { direction: "back", walk: e.backWalk[0] || null, ride: e.backRide },
+    ];
+    for (const s of sides) {
+      const ride = rideStateOf(s.ride, e.legacy, s.direction);
+      if (!s.walk && ride.state === "none") continue;
+      journeys.push({ agent: e.agent, day: e.day, direction: s.direction,
+        walk: s.walk, ride });
+    }
+  }
+  journeys.sort((a, b) => a.day - b.day || (a.agent < b.agent ? -1 : 1)
+    || (a.direction === b.direction ? 0 : a.direction === "out" ? -1 : 1));
+  return journeys;
+}
+
+// Ride coverage for one direction: new-form ride away first, else the
+// legacy station-ride work stay's side. → {state: legs|fallback|none}.
+function rideStateOf(rideAway, legacyAway, direction) {
+  if (rideAway && rideAway.detail) {
+    const d = rideAway.detail;
+    if (d.ride && Array.isArray(d.ride.legs)) return { state: "legs", legs: d.ride.legs };
+    if (d.ride_fallback) return { state: "fallback" };
+    return { state: "none" };
+  }
+  if (legacyAway && legacyAway.detail) {
+    const d = legacyAway.detail;
+    const side = d.rides && d.rides[direction];
+    if (side && Array.isArray(side.legs)) return { state: "legs", legs: side.legs };
+    if (d.ride_fallback) return { state: "fallback" };
+  }
+  return { state: "none" };
+}
+
+// One ride journey's transit event: fareForTrip when the route is known,
+// else the transit_fare_won fallback (가정값).
+function priceRideJourney(j, fare, fareCtx) {
+  const base = { day: j.day, category: "transit", memo: `${j.agent} 통근 승차`,
+    ...(j.walk ? { trip_id: j.walk.id } : {}) };
+  const fallback = () => ({ ...base, amount_won: -fare, source: "가정값",
+    fare_note: "가정값", distance_km: null });
+  if (j.ride.state !== "legs") return fallback();
+  const resolved = [];
+  for (const leg of j.ride.legs) {
+    const r = resolveLegKm(leg, fareCtx);
+    if (!r) return fallback();
+    resolved.push({ ...leg, km: r.km, official: r.official });
+  }
+  const priced = fareForTrip({ legs: resolved, card: "transit_card", age: "adult" });
+  if (!priced) return fallback();
+  let note = `거리비례 ${priced.distance_km}km`;
+  if (priced.distance === "추정") note += " (추정)";
+  if (priced.shinbundang) note = `${SHINBUNDANG_PENDING_NOTE} · ${note}`;
+  return { ...base, amount_won: -priced.fare_won, source: priced.source,
+    fare_note: note, distance_km: priced.distance_km, distance: priced.distance,
+    ...(priced.shinbundang ? { shinbundang: priced.shinbundang } : {}) };
+}
+
 function payDaysInWindow(scenario, payDayOfMonth) {
   const days = [];
   for (let d = 0; d < scenario.days; d++) {
@@ -125,13 +218,49 @@ export function moneyTimeline(run, scenario, opts = {}) {
         && (board.has(`${t.agent}|${t.day}|${t.arrive_min}`)
           || alight.has(`${t.agent}|${t.day}|${t.depart_min}`))) {
       commuteLegs++;
-      events.push({ day: t.day, category: "transit", amount_won: -fare,
-        memo: `${t.agent} 통근 승차`, trip_id: t.id, source: "scenario" });
     } else if (t.purpose === "errand" && t.from && t.from.kind === "home") {
       // Simulated legs: they cost time and fatigue, never money.
       errandTrips++;
     }
   }
+  // Every commute journey counts, walk or ride (stage 15.3).
+  const fareCtx = { schedule: opts.fare_schedule || null,
+    stopCoords: opts.fare_stop_coords || null };
+  const journeys = commuteJourneys(run);
+  let commuteRideTrips = 0;
+  let commuteWalkTrips = 0;
+  for (const j of journeys) {
+    if (j.ride.state === "none") {
+      commuteWalkTrips++;
+      const walkKm = j.walk ? Math.round(j.walk.distance_m / 10) / 100 : null;
+      events.push({ day: j.day, category: "transit", amount_won: 0,
+        memo: `${j.agent} 걸어서 ${j.direction === "out" ? "출근" : "퇴근"}`,
+        ...(j.walk ? { trip_id: j.walk.id } : {}),
+        source: "graph", fare_note: "걸어서 출근",
+        ...(walkKm === null ? {} : { distance_km: walkKm }) });
+    } else {
+      commuteRideTrips++;
+      events.push(priceRideJourney(j, fare, fareCtx));
+    }
+  }
+  // A member with workdays but no commute at all is a broken run, not a
+  // cheap one: log it and flag the result.
+  const flags = { commute_missing: false };
+  const journeysByAgent = new Map();
+  for (const j of journeys) {
+    journeysByAgent.set(j.agent, (journeysByAgent.get(j.agent) || 0) + 1);
+  }
+  const members = (scenario.household && scenario.household.members) || [];
+  members.forEach((m, i) => {
+    const key = `h${i + 1}`;
+    const hasWork = Array.isArray(m.workdays) && m.workdays.length > 0
+      && m.work && m.work.type !== "none";
+    if (!hasWork) return;
+    if ((journeysByAgent.get(key) || 0) === 0) {
+      flags.commute_missing = true;
+      console.error(`[engine] commute-missing ${m.id || key} ${run.meta && run.meta.home}`);
+    }
+  });
   // Grocery from the household plan (same total for every home).
   const plan = householdGrocery(scenario, { basket_won: basket });
   const grocerySource = `가구 공통 (주 ${plan.errands_per_week}회 × ${basketLabel(basket)}, 가정값)`;
@@ -186,8 +315,12 @@ export function moneyTimeline(run, scenario, opts = {}) {
     home: run.meta && run.meta.home,
     days,
     events,
-    counts: { commute_legs: commuteLegs, errand_visits: groceryEvents.length,
+    counts: { commute_legs: commuteLegs,
+      commute_trips: commuteRideTrips + commuteWalkTrips,
+      commute_ride_trips: commuteRideTrips, commute_walk_trips: commuteWalkTrips,
+      errand_visits: groceryEvents.length,
       errand_trips: errandTrips, paydays: paydays.length },
+    flags,
     totals_by_category: totals,
     monthly_spent_won: spent,
     monthly_net_won: monthlyNet,

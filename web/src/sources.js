@@ -89,6 +89,15 @@ export const SOURCES = [
     mustNot: "출처를 지우면 안 돼요. 실제 소요와 다를 수 있어요.",
   },
   {
+    id: "molti-fare",
+    name: "국토교통부 수도권 전철 운임 조정 (2025-06-28 시행)",
+    use: "출퇴근 1회 요금. 거리비례 기본 1,550원(교통카드·성인) 규칙 그대로 계산해요.",
+    licence: "공식 운임 고시 인용 (신분당선 별도운임은 확인 중)",
+    version: "2025-06-28 시행",
+    url: "https://www.molit.go.kr",
+    mustNot: "옮긴 값을 공식 확답처럼 쓰면 안 돼요. 신분당선 별도운임은 사업자 페이지에서 확인하세요.",
+  },
+  {
     id: "commons",
     name: "Wikimedia Commons (동네 사진)",
     use: "단지·역·거리 사진. 매물 자체 사진이 아니며, 사진마다 작가·라이선스·원본 링크를 달아요.",
@@ -175,6 +184,7 @@ export function miniCreditFor(feature) {
     rentals: "공공임대: LH·마이홈",
     safety: "범죄 통계: 경찰청",
     congestion: "혼잡도: 서울교통공사",
+    fare: "운임: 국토교통부 (2025-06-28 시행)",
     photos: "사진: Wikimedia Commons",
     support: "조건: 주택도시기금 (2026-10-29 확인)",
   };
