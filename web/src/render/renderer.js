@@ -21,7 +21,8 @@ export const GUARD_SAMPLE = 8; // 8×8 centre pixels
 
 export function createRenderer({ canvas, params }) {
   const search = params instanceof URLSearchParams ? params : new URLSearchParams(params || "");
-  let quality = parseQuality(search);
+  const viewportWidth = typeof window === "undefined" ? null : window.innerWidth;
+  let quality = parseQuality(search, { viewportWidth });
   const tilt = search.get("tilt") !== "0";
   const grain = search.get("grain") === "1";
   const sao = search.get("sao") !== "0";

@@ -151,6 +151,15 @@ export const SOURCES = [
     url: "https://astryx.design",
     mustNot: "라이선스 범위를 벗어나 재배포하면 안 돼요.",
   },
+  {
+    id: "terrain-tiles",
+    name: "AWS Terrain Tiles (Terrarium, SRTM)",
+    use: "3D 지형 높이(2.5m 격자로 재가공). 국내는 SRTM 30m 기반이라 큰 산 모양만 맞고 세부 굴곡은 약해요.",
+    licence: "Mapzen/Tilezen Joerd terrain tiles (SRTM 출처 표기)",
+    version: "줌 14, 2026-10-29 내려받기 (lon 126.98–127.22, lat 37.27–37.62)",
+    url: "https://registry.opendata.aws/terrain-tiles/",
+    mustNot: "정밀 측량처럼 쓰면 안 돼요. 출처(AWS Terrain Tiles, SRTM)를 지우면 안 돼요.",
+  },
 ];
 
 export function sourceById(id) {

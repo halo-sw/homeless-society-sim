@@ -52,6 +52,16 @@ describe("look parsing (?look=key:value,…)", () => {
       regionalGround: 0xa9a68e,
       regionalWater: 0x5b8fc4,
       regionalRoad: 0x6e6a5e,
+      terrainBase: 0xc9c2a6,
+      terrainGrass: 0xbccb9c,
+      terrainForest: 0x6f9a5e,
+      terrainScrub: 0xc2c27e,
+      terrainWater: 0x93bcd6,
+      terrainRock: 0xa09a8c,
+      sceneRoad: 0x959a9e,
+      sceneFoot: 0xe9e3d5,
+      sceneCycle: 0xb97a5e,
+      sceneRail: 0x55555c,
     });
   });
 

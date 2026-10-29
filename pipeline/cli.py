@@ -388,6 +388,48 @@ def cmd_walkgraph(args) -> int:
     return run(args)
 
 
+def cmd_scene(args) -> int:
+    from .scene import run_scene
+
+    build_dir = Path(args.build_dir)
+    patterns = [args.area] if args.area else []
+    if args.areas:
+        patterns += args.areas.split(",")
+    if not patterns:
+        print("error: pass --area <id> or --areas <patterns> "
+              "(st-가천대, station:*, region:bundang)", file=sys.stderr)
+        return 2
+    try:
+        ratio = tuple(int(v) for v in args.species.split(","))
+        if len(ratio) != 3 or any(v < 0 for v in ratio) or sum(ratio) <= 0:
+            raise ValueError
+    except ValueError:
+        print("error: --species needs 3 non-negative ints, e.g. 40,50,10",
+              file=sys.stderr)
+        return 2
+    try:
+        area_ids = expand_area_patterns(patterns, build_dir)
+    except (KeyError, LookupError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    results = {}
+    for area_id in area_ids:
+        try:
+            results[area_id] = run_scene(
+                area_id, build_dir, dem_name=args.dem,
+                species_ratio=ratio, overwrite=args.overwrite)
+        except (FileNotFoundError, LookupError, KeyError,
+                RuntimeError) as exc:
+            results[area_id] = {"area": area_id, "error": str(exc)}
+    print(json.dumps(results, indent=2, sort_keys=True,
+                     ensure_ascii=False))
+    failures = [f"{a}: {r['error']}" for a, r in results.items()
+                if "error" in r]
+    for message in failures:
+        print(f"SCENE FAILED: {message}", file=sys.stderr)
+    return 1 if failures else 0
+
+
 def cmd_register_fill(args) -> int:
     from .register_api import (DEFAULT_CACHE_DIR, RegisterApiError,
                                fill_area)
@@ -520,6 +562,22 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--regions", default=None,
                    help="comma-separated region ids (default: all 9)")
     w.set_defaults(func=cmd_walkgraph)
+
+    c = sub.add_parser("scene",
+                       help="build data/build/<area>/scene.json "
+                            "(terrain, roads, lands, water, trees)")
+    c.add_argument("--area", default=None,
+                   help="one area id (legacy box id or st-<station>)")
+    c.add_argument("--areas", default=None,
+                   help="comma-separated ids/patterns: st-판교, station:*, region:bundang")
+    c.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR))
+    c.add_argument("--dem", default="terrarium",
+                   help="DEM source: terrarium (default) or ngii_5m")
+    c.add_argument("--species", default="40,50,10",
+                   help="conifer,broadleaf,shrub ratio (default 40,50,10)")
+    c.add_argument("--overwrite", action="store_true",
+                   help="rebuild even when the input signature matches")
+    c.set_defaults(func=cmd_scene)
 
     r = sub.add_parser("register-fill",
                        help="fill inferred heights via the 건축HUB title API")

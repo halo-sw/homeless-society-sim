@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Stage-14 scene fixture: ~200 m square near 가천대 (WGS84 degrees).
+     Forest multipolygon with a hole, a tertiary road, a footway, a
+     tree_row, a stream, one tree node. -->
+<osm version="0.6" generator="stage14-fixture">
+  <!-- forest outer (closed) -->
+  <node id="1" lat="37.4477000" lon="127.1257000"/>
+  <node id="2" lat="37.4477000" lon="127.1277000"/>
+  <node id="3" lat="37.4497000" lon="127.1277000"/>
+  <node id="4" lat="37.4497000" lon="127.1257000"/>
+  <!-- forest hole (closed, ~55x66 m) -->
+  <node id="5" lat="37.4484000" lon="127.1264000"/>
+  <node id="6" lat="37.4484000" lon="127.1270000"/>
+  <node id="7" lat="37.4490000" lon="127.1270000"/>
+  <node id="8" lat="37.4490000" lon="127.1264000"/>
+  <!-- tertiary road west-east through the middle -->
+  <node id="10" lat="37.4482000" lon="127.1255000"/>
+  <node id="11" lat="37.4482000" lon="127.1267000"/>
+  <node id="12" lat="37.4482000" lon="127.1279000"/>
+  <!-- footway north-south -->
+  <node id="13" lat="37.4476000" lon="127.1261000"/>
+  <node id="14" lat="37.4487000" lon="127.1261000"/>
+  <node id="15" lat="37.4498000" lon="127.1261000"/>
+  <!-- tree_row along the south edge -->
+  <node id="16" lat="37.4475000" lon="127.1258000"/>
+  <node id="17" lat="37.4475000" lon="127.1266000"/>
+  <node id="18" lat="37.4475000" lon="127.1274000"/>
+  <!-- stream north-south (east side) -->
+  <node id="19" lat="37.4476000" lon="127.1274000"/>
+  <node id="20" lat="37.4487000" lon="127.1274500"/>
+  <node id="21" lat="37.4498000" lon="127.1274000"/>
+  <!-- lone tree node -->
+  <node id="22" lat="37.4495500" lon="127.1260500">
+    <tag k="natural" v="tree"/>
+    <tag k="leaf_type" v="needleleaved"/>
+  </node>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/>
+  </way>
+  <way id="101">
+    <nd ref="5"/><nd ref="6"/><nd ref="7"/><nd ref="8"/><nd ref="5"/>
+  </way>
+  <relation id="200">
+    <member type="way" ref="100" role="outer"/>
+    <member type="way" ref="101" role="inner"/>
+    <tag k="type" v="multipolygon"/>
+    <tag k="natural" v="wood"/>
+  </relation>
+  <way id="102">
+    <nd ref="10"/><nd ref="11"/><nd ref="12"/>
+    <tag k="highway" v="tertiary"/>
+    <tag k="name" v="복정로"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="103">
+    <nd ref="13"/><nd ref="14"/><nd ref="15"/>
+    <tag k="highway" v="footway"/>
+  </way>
+  <way id="104">
+    <nd ref="16"/><nd ref="17"/><nd ref="18"/>
+    <tag k="natural" v="tree_row"/>
+  </way>
+  <way id="105">
+    <nd ref="19"/><nd ref="20"/><nd ref="21"/>
+    <tag k="waterway" v="stream"/>
+  </way>
+  <!-- small park (closed) -->
+  <node id="30" lat="37.4493000" lon="127.1271000"/>
+  <node id="31" lat="37.4493000" lon="127.1276500"/>
+  <node id="32" lat="37.4497000" lon="127.1276500"/>
+  <node id="33" lat="37.4497000" lon="127.1271000"/>
+  <way id="106">
+    <nd ref="30"/><nd ref="31"/><nd ref="32"/><nd ref="33"/><nd ref="30"/>
+    <tag k="leisure" v="park"/>
+    <tag k="name" v="쌈지공원"/>
+  </way>
+</osm>

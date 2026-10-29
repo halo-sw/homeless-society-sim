@@ -432,7 +432,14 @@ function projectRing(ringLonLat, origin) {
   return ringLonLat.map(([lon, lat]) => lonLatToXY(lon, lat, origin));
 }
 
-export function buildBuildings(buildings, complexes, origin) {
+export const FOOTING_M = 0.6; // buried foundation skirt on slopes
+export const FOOTING_SLOPE_M = 0.25; // footing only past this corner spread
+
+export function buildBuildings(buildings, complexes, origin, opts = {}) {
+  // Stage 14: baseAt(outerRingsXY) -> {base, ceil} seats each building on
+  // the terrain (lowest footprint corner; a buried footing skirt covers
+  // the corner spread on slopes). Without it everything sits at y = 0.
+  const { baseAt = null } = opts;
   const complexOf = new Map();
   for (const c of complexes || []) {
     for (const id of c.building_ids) complexOf.set(id, c.id);
@@ -481,31 +488,44 @@ export function buildBuildings(buildings, complexes, origin) {
     const walls = [bucket, wallBucket];
     const roofs = [bucket, detail.roofs];
     const podium = [bucket, detail.podium];
+    let dy = 0;
+    let footing = 0;
+    if (baseAt) {
+      const seat = baseAt(polysXY.map((poly) => poly[0])) || {};
+      dy = Number.isFinite(seat.base) ? seat.base : 0;
+      const ceil = Number.isFinite(seat.ceil) ? seat.ceil : dy;
+      footing = ceil - dy > FOOTING_SLOPE_M ? FOOTING_M : 0;
+    }
+    const footingRgb = footing > 0
+      ? [sideRgb[0] * 0.82, sideRgb[1] * 0.82, sideRgb[2] * 0.82] : null;
     for (const polyXY of polysXY) {
       const ring = polyXY[0];
       if (ring.length < 4) continue;
+      if (footing > 0) {
+        buildWalls(walls, ring, dy - footing, dy + 0.05, footingRgb);
+      }
       if (slab) {
-        buildBandedWalls(walls, ring, 0, height, floors, wallRgb, bandRgb, sideRgb);
-        buildFlatRoof(roofs, [polyXY], height, roofRgb);
-        buildRooftopBox(roofs, ring, height, bandRgb);
-        buildParapet(roofs, ring, height, bandRgb);
+        buildBandedWalls(walls, ring, dy, height, floors, wallRgb, bandRgb, sideRgb);
+        buildFlatRoof(roofs, [polyXY], dy + height, roofRgb);
+        buildRooftopBox(roofs, ring, dy + height, bandRgb);
+        buildParapet(roofs, ring, dy + height, bandRgb);
       } else {
         if (hasPodium) {
-          buildWalls(podium, ring, 0, PODIUM_H_M, wallRgb, sideRgb);
-          buildWalls(walls, ring, PODIUM_H_M, height, wallRgb, sideRgb);
+          buildWalls(podium, ring, dy, dy + PODIUM_H_M, wallRgb, sideRgb);
+          buildWalls(walls, ring, dy + PODIUM_H_M, dy + height, wallRgb, sideRgb);
         } else {
-          buildWalls(walls, ring, 0, height, wallRgb, sideRgb);
+          buildWalls(walls, ring, dy, dy + height, wallRgb, sideRgb);
         }
         const kind = roofKind(b, ring);
-        if (kind === "gable") buildGableRoof(roofs, ring, height, roofRgb);
-        else if (kind === "hip") buildHipRoof(roofs, ring, height, roofRgb);
+        if (kind === "gable") buildGableRoof(roofs, ring, dy + height, roofRgb);
+        else if (kind === "hip") buildHipRoof(roofs, ring, dy + height, roofRgb);
         else {
-          buildFlatRoof(roofs, [polyXY], height, roofRgb);
-          buildParapet(roofs, ring, height, roofRgb);
+          buildFlatRoof(roofs, [polyXY], dy + height, roofRgb);
+          buildParapet(roofs, ring, dy + height, roofRgb);
         }
         if (!slab && height >= TALL_PLANT_MIN_M && kind === "flat") {
-          buildRooftopBox(roofs, ring, height, bandRgb);
-          buildPlantBoxes(roofs, ring, height, bandRgb);
+          buildRooftopBox(roofs, ring, dy + height, bandRgb);
+          buildPlantBoxes(roofs, ring, dy + height, bandRgb);
         }
       }
     }

@@ -21,6 +21,10 @@
 // - regionalGround / regionalWater / regionalRoad: the journey base-map
 //   colours as decimal sRGB ints (e.g. regionalWater:6000000), so the
 //   `?look=` number parser accepts them.
+// - terrainBase / terrainGrass / terrainForest / terrainScrub /
+//   terrainWater / terrainRock: stage-14 land-mask + slope colours.
+// - sceneRoad / sceneFoot / sceneCycle / sceneRail: stage-14 ribbon
+//   colours. All colours are decimal sRGB ints like regionalGround.
 
 export const DEFAULT_LOOK = {
   fogStreetNear: 2.5,
@@ -41,6 +45,16 @@ export const DEFAULT_LOOK = {
   regionalGround: 0xa9a68e,
   regionalWater: 0x5b8fc4,
   regionalRoad: 0x6e6a5e,
+  terrainBase: 0xc9c2a6,
+  terrainGrass: 0xbccb9c,
+  terrainForest: 0x6f9a5e,
+  terrainScrub: 0xc2c27e,
+  terrainWater: 0x93bcd6,
+  terrainRock: 0xa09a8c,
+  sceneRoad: 0x959a9e,
+  sceneFoot: 0xe9e3d5,
+  sceneCycle: 0xb97a5e,
+  sceneRail: 0x55555c,
 };
 
 export const LOOK_KEYS = Object.keys(DEFAULT_LOOK);

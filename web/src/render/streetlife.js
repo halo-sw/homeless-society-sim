@@ -2,9 +2,11 @@
 //
 // placeStreetlife(roads, origin, opts) deterministically parks cars
 // along drivable road edges, picks a few slow movers, and lines the
-// larger roads with street lamps. Like trees and walkers this is CLEARLY
-// DECORATIVE — the UI/attribution says 나무·인물은 장식용 모의 표시,
-// and no analysis may use it. Same seed => same layout.
+// larger roads with street lamps. Like walkers this is CLEARLY
+// DECORATIVE — the legend says 인물·차량은 장식용 모의 표시 — and no
+// analysis may use it. Same seed => same layout. (Trees used to live
+// here; stage 14 grows them from OSM forest/park areas instead —
+// see web/src/scene/trees3d.js and pipeline/scene.py.)
 
 import { lonLatToXY } from "../frame.js";
 import { isDrivableClass, roadWidth } from "../ground.js";

@@ -24,10 +24,11 @@ export function lampGlowFor(v) {
   return { head: k * LAMP_HEAD_GAIN, haloOpacity: k * LAMP_HALO_OPACITY, visible: k > 0.01 };
 }
 
-export function buildStreetMeshes(streetlife) {
+export function buildStreetMeshes(streetlife, { heightAt = null } = {}) {
   const group = new THREE.Group();
   const dummy = new THREE.Object3D();
   const { cars, movers, lamps } = streetlife;
+  const groundY = (x, z) => (heightAt ? heightAt(x, z) : 0);
 
   // --- cars: body + glass cabin share instance matrices ---
   const bodyGeo = new THREE.BoxGeometry(4.4, 0.9, 1.9);
@@ -39,7 +40,7 @@ export function buildStreetMeshes(streetlife) {
   const glassMesh = new THREE.InstancedMesh(glassGeo, carGlassMaterial(), Math.max(total, 1));
   const col = new THREE.Color();
   const place = (mesh, i, x, z, rotY) => {
-    dummy.position.set(x, 0, z);
+    dummy.position.set(x, groundY(x, z), z);
     dummy.rotation.set(0, rotY, 0);
     dummy.scale.setScalar(1);
     dummy.updateMatrix();
@@ -96,7 +97,7 @@ export function buildStreetMeshes(streetlife) {
   const haloPos = new Float32Array(Math.max(lamps.length, 1) * 3);
   lamps.forEach((l, i) => {
     haloPos[i * 3] = l.x;
-    haloPos[i * 3 + 1] = LAMP_POLE_H + 0.1;
+    haloPos[i * 3 + 1] = groundY(l.x, -l.y) + LAMP_POLE_H + 0.1;
     haloPos[i * 3 + 2] = -l.y;
   });
   haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));

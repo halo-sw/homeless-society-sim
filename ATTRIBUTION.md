@@ -89,3 +89,9 @@ link to this file or the sources above.
 ## Wikimedia Commons, name search (stage 13)
 - File: `scenarios/places/commons-named.json`. A manifest only, no image bytes: 884 freely licensed photos found by searching Commons for station names (117 stations) and apartment complex names (20 complexes), fetched 2026-10-29.
 - Each item keeps its author, licence, licence URL and source page; the app shows a credit per photo.
+
+## AWS Terrain Tiles, Terrarium (stage 14)
+- Directory: `data/raw/dem/terrarium/14/{x}_{y}.png` (231 tiles, zoom 14, lon 126.98–127.22, lat 37.27–37.62, downloaded 2026-10-29, not committed).
+- Source: AWS Terrain Tiles (Mapzen/Tilezen Joerd), <https://registry.opendata.aws/terrain-tiles/>. In Korea the tiles derive from SRTM (~30 m effective), resampled here to a 2.5 m grid with bilinear interpolation plus weak seeded noise (see `pipeline/dem.py`).
+- Decode: `elevation_m = R*256 + G + B/256 − 32768`.
+- Use: 3D terrain heights only (built into per-box `scene.json`, ODbL OSM data stays separate). Shown on screen via the 출처·라이선스 drawer (`terrain-tiles` in `web/src/sources.js`). Not survey-grade: mountain outlines only.

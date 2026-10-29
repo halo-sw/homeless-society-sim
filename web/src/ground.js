@@ -18,6 +18,8 @@
 import * as THREE from "three";
 import { lonLatToXY } from "./frame.js";
 import { CROSSWALK, FOOTWAY, GRASS, GROUND_PLATE, KERB, LANE_WHITE, LANE_YELLOW, PARK, ROAD, ROAD_MAJOR, WATER, WOOD, hashString, hashUnit } from "./palette.js";
+import { isMaskedKind } from "./scene/terrain.js";
+import { specWidth } from "./scene/roads.js";
 
 export const Y_WATER = 0.05;
 export const Y_PLATE = 0.06;
@@ -83,7 +85,11 @@ function hexRgb(hex) {
 }
 
 function pushTriAt(positions, normals, colors, a, b, c, y, rgb, uvs = null) {
-  for (const [x, yy] of [a, b, c]) positions.push(x, y, -yy);
+  // y is one height or [ya, yb, yc] (stage 14: draped on the terrain).
+  const ys = Array.isArray(y) ? y : [y, y, y];
+  [[a, ys[0]], [b, ys[1]], [c, ys[2]]].forEach(([[x, yy], h]) => {
+    positions.push(x, h, -yy);
+  });
   for (let i = 0; i < 3; i++) normals.push(0, 1, 0);
   for (let i = 0; i < 3; i++) colors.push(rgb[0], rgb[1], rgb[2]);
   if (uvs) for (const [x, yy] of [a, b, c]) uvs.push(x, yy); // planar metres
@@ -184,7 +190,7 @@ export function findCrossings(projectedRoads, maxCrossings = 400) {
       const q = f.points[Math.min(f.points.length - 1, i + 1)];
       const p = f.points[Math.max(0, i - 1)];
       out.push({ x, y, angle: Math.atan2(q[1] - p[1], q[0] - p[0]),
-                 width: Math.max(...matches.map((d) => roadWidth(d.highway))) });
+                 width: Math.max(...matches.map((d) => d.width ?? roadWidth(d.highway))) });
     }
   }
   // Geometric X-crossings (no shared node).
@@ -202,7 +208,7 @@ export function findCrossings(projectedRoads, maxCrossings = 400) {
           if (!hit || near(hit[0], hit[1])) continue;
           out.push({ x: hit[0], y: hit[1],
                      angle: Math.atan2(p2[1] - p1[1], p2[0] - p1[0]),
-                     width: roadWidth(d.highway) });
+                     width: d.width ?? roadWidth(d.highway) });
           if (out.length >= maxCrossings) break;
         }
         if (out.length >= maxCrossings) break;
@@ -332,7 +338,20 @@ function triangulatePolyXY(polyXY) {
   }
 }
 
-export function buildGround(roads, landuse, complexes, buildingsById, origin) {
+export function buildGround(roads, landuse, complexes, buildingsById, origin, opts = {}) {
+  // Stage 14 opts: heightAt drapes every vertex on the terrain;
+  // sceneRoads hands roads + masked green + water to the scene layers
+  // (one road system, one land system) and keeps plates, paint,
+  // crosswalks and the unmasked kinds; specWidths sizes the paint by
+  // the scene width table so edge lines sit on the wider ribbons.
+  const { heightAt = null, sceneRoads = false, specWidths = false } = opts;
+  const widthOf = (road) => (specWidths
+    ? specWidth(road.highway, road.lanes ?? null)
+    : roadWidth(road.highway));
+  // Layer height at a local-metre point ([x, yNorth] -> world z = -y).
+  const at = (p, layerY) => (heightAt ? heightAt(p[0], -p[1]) + layerY : layerY);
+  const triY = (a, b, c, layerY) => (heightAt
+    ? [at(a, layerY), at(b, layerY), at(c, layerY)] : layerY);
   const positions = [];
   const normals = [];
   const colors = [];
@@ -375,14 +394,16 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
       return [x + (dx / len) * 3, y + (dy / len) * 3];
     });
     for (let i = 1; i < padded.length - 1; i++) {
-      pushTriAt(positions, normals, colors, padded[0], padded[i], padded[i + 1], Y_PLATE, plateRgb, uvs);
+      pushTriAt(positions, normals, colors, padded[0], padded[i], padded[i + 1],
+        triY(padded[0], padded[i], padded[i + 1], Y_PLATE), plateRgb, uvs);
       stats.plates++;
     }
   }
 
-  // Green + water polygons.
+  // Green + water polygons (masked kinds live in the scene mask instead).
   const waterRgb = hexRgb(WATER);
   for (const feat of landuse || []) {
+    if (sceneRoads && isMaskedKind(feat.kind)) continue;
     const color = landuseColor(feat.kind);
     if (color === null) continue;
     if (feat.geometry.type !== "Polygon" && feat.geometry.type !== "MultiPolygon") continue;
@@ -399,44 +420,50 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
         if (!pts[a] || !pts[b] || !pts[c]) continue;
         // Subtle seeded variation on grass (water/roads stay flat).
         const triRgb = isWater ? rgb : jitterRgb(rgb, grassJitter([pts[a], pts[b], pts[c]]));
-        pushTriAt(positions, normals, colors, pts[a], pts[b], pts[c], y, triRgb, uvs);
+        pushTriAt(positions, normals, colors, pts[a], pts[b], pts[c],
+          triY(pts[a], pts[b], pts[c], y), triRgb, uvs);
         if (isWater) {
           // Duplicated into the reflective overlay skin (same triangles).
           pushTriAt(water.positions, water.normals, water.colors,
-            pts[a], pts[b], pts[c], y + 0.02, waterRgb, water.uvs);
+            pts[a], pts[b], pts[c], triY(pts[a], pts[b], pts[c], y + 0.02),
+            waterRgb, water.uvs);
           stats.water++;
         } else stats.green++;
       }
     }
   }
 
-  // Roads as ribbons.
+  // Roads as ribbons (skipped when the scene ribbons own the roads).
   const projected = [];
   for (const road of roads || []) {
     if (road.geometry.type !== "LineString") continue;
     const points = road.geometry.coordinates.map(([lon, lat]) => lonLatToXY(lon, lat, origin));
     if (points.length < 2) continue;
+    const w = widthOf(road);
     projected.push({ highway: road.highway, layer: road.layer || 0,
                      bridge: road.bridge || null, tunnel: road.tunnel || null,
-                     area: !!road.area, points });
+                     area: !!road.area, width: w, points });
     if (road.area) continue; // plaza surfaces: not ribbons (kept for future use)
-    const rgb = hexRgb(roadColor(road.highway));
-    for (const [a, b, c] of ribbonTriangles(points, roadWidth(road.highway))) {
-      pushTriAt(positions, normals, colors, a, b, c, Y_ROAD, rgb, uvs);
-      stats.roadTris++;
+    if (!sceneRoads) {
+      const rgb = hexRgb(roadColor(road.highway));
+      for (const [a, b, c] of ribbonTriangles(points, w)) {
+        pushTriAt(positions, normals, colors, a, b, c,
+          triY(a, b, c, Y_ROAD), rgb, uvs);
+        stats.roadTris++;
+      }
     }
     // Lane paint + kerbs by road class (own overlay mesh).
-    const { tris, kerbs } = laneMarkingTriangles(points, roadWidth(road.highway), road.highway);
+    const { tris, kerbs } = laneMarkingTriangles(points, w, road.highway);
     const markRgb = hexRgb(markingColor(road.highway));
     for (const [a, b, c] of tris) {
       pushTriAt(markings.positions, markings.normals, markings.colors,
-        a, b, c, Y_MARK, markRgb, markings.uvs);
+        a, b, c, triY(a, b, c, Y_MARK), markRgb, markings.uvs);
       stats.markingTris++;
     }
     const kerbRgb = hexRgb(KERB);
     for (const [a, b, c] of kerbs) {
       pushTriAt(markings.positions, markings.normals, markings.colors,
-        a, b, c, Y_KERB, kerbRgb, markings.uvs);
+        a, b, c, triY(a, b, c, Y_KERB), kerbRgb, markings.uvs);
       stats.kerbTris++;
     }
     stats.roads++;
@@ -446,7 +473,8 @@ export function buildGround(roads, landuse, complexes, buildingsById, origin) {
   const walkRgb = hexRgb(CROSSWALK);
   for (const crossing of findCrossings(projected)) {
     for (const [a, b, c] of crosswalkTriangles(crossing)) {
-      pushTriAt(positions, normals, colors, a, b, c, Y_CROSSWALK, walkRgb, uvs);
+      pushTriAt(positions, normals, colors, a, b, c,
+        triY(a, b, c, Y_CROSSWALK), walkRgb, uvs);
     }
     stats.crossings++;
   }

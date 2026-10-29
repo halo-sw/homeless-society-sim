@@ -76,7 +76,7 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
       spanMaxM: shadowSpan });
     const fit = shadowFit({ halfM: half, distM: dist, maxHeightM,
       mapSize: sun.shadow.mapSize.x });
-    const snapped = snapTargetToTexel({ x: target.x, z: target.z,
+    const snapped = snapTargetToTexel({ x: target.x, y: target.y || 0, z: target.z,
       sunDir: [sunDir.x, sunDir.y, sunDir.z], texelM: fit.texelM });
     sun.position.set(snapped.x + sunDir.x * dist, snapped.y + sunDir.y * dist,
       snapped.z + sunDir.z * dist);

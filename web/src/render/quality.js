@@ -32,9 +32,14 @@ export const QUALITY_SETTINGS = {
 export const AUTO_DROP_FRAMES = 60;
 export const AUTO_DROP_FPS = 25;
 
-export function parseQuality(params) {
+export const LOW_WIDTH_PX = 768;
+
+// An explicit ?q= always wins; otherwise narrow screens (≤ 768 px,
+// spec §6 mobile rule) start at low.
+export function parseQuality(params, { viewportWidth = null } = {}) {
   const q = params.get("q");
   if (q === "high" || q === "medium" || q === "low") return q;
+  if (Number.isFinite(viewportWidth) && viewportWidth <= LOW_WIDTH_PX) return "low";
   return "medium";
 }
 

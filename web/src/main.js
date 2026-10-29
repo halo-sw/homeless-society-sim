@@ -43,6 +43,12 @@ import { createSkyRig } from "./render/rig.js";
 import { placeStreetlife } from "./render/streetlife.js";
 import { buildStreetMeshes } from "./render/streetmeshes.js";
 import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, setNightGain, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
+// Stage 14: terrain + OSM road/forest/tree scene layers.
+import { flatHeightAt, makeHeightAt, seatOnTerrain } from "./scene/height.js";
+import { loadScene } from "./scene/load.js";
+import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
+import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
+import { treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
 
 // 12a: the area list comes from the built data/build/areas-index.json
 // (id, label, center, bbox, station, size) — never a hard-coded array.
@@ -106,6 +112,18 @@ function toGeometry(data) {
   return geo;
 }
 
+// Indexed scene geometry (terrain, road/water ribbons): normals follow
+// the terrain via computeVertexNormals.
+function toIndexedGeometry(data) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(data.positions, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(data.colors, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(data.uvs, 2));
+  geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // Per-vertex night lit fraction for facade meshes (filled from run
 // occupancy; 0 = dark). The emissive shader patch reads this.
 function addLitAttr(mesh) {
@@ -150,12 +168,19 @@ async function fetchArea(wantId) {
 
 // Static world shared by tour and sim modes: renderer, camera, lights,
 // ground, buildings, trees. Returns every handle the modes need.
-function buildWorld(area) {
+// scene14 is the box's scene.json (or null → flat fallback).
+function buildWorld(area, scene14) {
   const origin = originOf(area);
   const box = bboxToXY(area.bbox, origin);
   const cx = (box.minX + box.maxX) / 2;
   const cy = (box.minY + box.maxY) / 2;
   const span = Math.max(box.maxX - box.minX, box.maxY - box.minY);
+  // One height function for terrain, roads, buildings, trees, walkers,
+  // route lines and the rig (flat 0 without scene.json).
+  const heightAt = scene14 ? makeHeightAt(scene14.terrain) : flatHeightAt();
+  const ground0 = heightAt(cx, -cy);
+  const demMin = scene14 ? scene14.meta.dem.min_m : 0;
+  const demMax = scene14 ? scene14.meta.dem.max_m : 0;
 
   // --- renderer / scene / camera (5b seam: createRenderer/renderFrame) ---
   const canvas = document.getElementById("scene");
@@ -172,9 +197,9 @@ function buildWorld(area) {
   const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, aspect0, 1, span * 8);
   const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
   const [hox, hoy, hoz] = tourOffset(homeDist);
-  camera.position.set(cx + hox, hoy, -cy + hoz);
+  camera.position.set(cx + hox, hoy + ground0, -cy + hoz);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(cx, 0, -cy);
+  controls.target.set(cx, ground0, -cy);
   controls.maxPolarAngle = Math.PI * 0.49;
   controls.update();
 
@@ -195,11 +220,29 @@ function buildWorld(area) {
     new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 })
   );
   base.rotation.x = -Math.PI / 2;
-  base.position.set(cx, -0.05, -cy);
+  base.position.set(cx, scene14 ? demMin - 1 : -0.05, -cy);
   base.receiveShadow = true;
   scene.add(base);
+  // Stage-14 terrain: full-res grid + canvas land mask (one draw call).
+  let terrainMesh = null;
+  if (scene14) {
+    const t = buildTerrainMesh(scene14.terrain, LOOK);
+    const canvas = document.createElement("canvas");
+    canvas.width = MASK_SIZE;
+    canvas.height = MASK_SIZE;
+    paintLandMask(canvas.getContext("2d"), scene14.lands, scene14.terrain, LOOK);
+    const mask = new THREE.CanvasTexture(canvas);
+    mask.colorSpace = THREE.SRGBColorSpace;
+    mask.anisotropy = maxAniso;
+    terrainMesh = new THREE.Mesh(toIndexedGeometry(t),
+      new THREE.MeshStandardMaterial({ map: mask, vertexColors: true,
+        roughness: 1, metalness: 0 }));
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+  }
   const buildingsById = new Map(area.buildings.map((b) => [b.id, b]));
-  const groundData = buildGround(area.roads, area.landuse, area.complexes, buildingsById, origin);
+  const groundData = buildGround(area.roads, area.landuse, area.complexes, buildingsById, origin,
+    scene14 ? { heightAt, sceneRoads: true, specWidths: true } : {});
   const groundMesh = new THREE.Mesh(toGeometry(groundData), groundMaterial({ aniso: maxAniso }));
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
@@ -214,9 +257,32 @@ function buildWorld(area) {
     waterMesh = new THREE.Mesh(toGeometry(groundData.water), waterMaterial());
     scene.add(waterMesh);
   }
+  // Stage-14 road ribbons + waterway ribbons (≤ 4 + 1 draw calls).
+  const sceneRoadMeshes = [];
+  let sceneWaterMesh = null;
+  if (scene14) {
+    const { meshes } = buildRoadMeshes(scene14.roads, heightAt, LOOK);
+    const offsets = { road: 1, rail: 1, foot: 2, cycle: 2 };
+    for (const [cls, data] of Object.entries(meshes)) {
+      if (data.triangles === 0) continue;
+      const mesh = new THREE.Mesh(toIndexedGeometry(data),
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95,
+          metalness: 0, polygonOffset: true,
+          polygonOffsetFactor: -offsets[cls], polygonOffsetUnits: -offsets[cls] }));
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      sceneRoadMeshes.push(mesh);
+    }
+    const w = buildWaterRibbons(scene14.water, heightAt, LOOK);
+    if (w.triangles > 0) {
+      sceneWaterMesh = new THREE.Mesh(toIndexedGeometry(w), waterMaterial());
+      scene.add(sceneWaterMesh);
+    }
+  }
 
   // --- buildings: one PBR wall mesh per facade class + podium + roofs ---
-  const built = buildBuildings(area.buildings, area.complexes, origin);
+  const built = buildBuildings(area.buildings, area.complexes, origin,
+    scene14 ? { baseAt: (rings) => seatOnTerrain(heightAt, rings) } : {});
   const dummy = new THREE.Object3D();
   const wallMeshes = {};
   const litMeshes = []; // {mesh, ranges} for night occupancy + tour fade
@@ -256,58 +322,90 @@ function buildWorld(area) {
   // "주거만 강조" dims the non-residential walls + podium.
   const dimMeshes = [wallMeshes.none, podiumMesh].filter(Boolean);
 
-  // --- decorative trees: one trunk mesh + one canopy mesh per species ---
-  const { trees, trunkColor } = placeTrees(area, origin);
-  const bySpecies = { zelkova: [], ginkgo: [], pine: [] };
-  for (const t of trees) (bySpecies[t.species] || bySpecies.zelkova).push(t);
-  const trunkMesh = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(TREE_TRUNK_R_TOP, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_H, 5),
-    trunkMaterial(trunkColor), Math.max(trees.length, 1));
-  trees.forEach((t, i) => {
-    dummy.position.set(t.x, (TREE_TRUNK_H / 2) * t.scale, -t.y);
-    dummy.scale.setScalar(t.scale);
-    dummy.rotation.set(0, t.phase, 0);
-    dummy.updateMatrix();
-    trunkMesh.setMatrixAt(i, dummy.matrix);
-  });
-  trunkMesh.count = trees.length;
-  scene.add(trunkMesh);
-  const canopyMaterial = vegetationMaterial();
-  const canopyMeshes = [];
-  const canopyGeo = {
-    // Zelkova: broad vase crown; ginkgo: narrower upright crown.
-    zelkova: new THREE.IcosahedronGeometry(TREE_CANOPY_R, 1),
-    ginkgo: new THREE.IcosahedronGeometry(TREE_CANOPY_R * 0.8, 1),
-    pine: new THREE.ConeGeometry(TREE_CANOPY_R * 0.85, TREE_CANOPY_R * 2.4, 7),
-  };
-  for (const [species, list] of Object.entries(bySpecies)) {
-    const mesh = new THREE.InstancedMesh(canopyGeo[species], canopyMaterial, Math.max(list.length, 1));
-    list.forEach((t, i) => {
-      if (species === "pine") {
-        dummy.position.set(t.x, (TREE_TRUNK_H + TREE_CANOPY_R * 1.1) * t.scale, -t.y);
-        dummy.scale.setScalar(t.scale);
-      } else if (species === "ginkgo") {
-        dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
-        dummy.scale.set(t.scale, t.scale * 1.25, t.scale);
-      } else {
-        dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
-        dummy.scale.set(t.scale * 1.15, t.scale * 1.0, t.scale * 1.15);
-      }
+  // --- trees: OSM forest/park placements (scene) or decorative (flat) ---
+  const treeMeshes = [];
+  let trees = [];
+  const tintColor = new THREE.Color();
+  if (scene14) {
+    trees = scene14.trees;
+    const bySpecies = [[], [], []];
+    for (const t of trees) bySpecies[t[3]].push(t);
+    bySpecies.forEach((list, species) => {
+      if (list.length === 0) return;
+      const mesh = new THREE.InstancedMesh(treeGeometry(species),
+        treeMaterial(), list.length);
+      list.forEach((t, i) => {
+        const [x, z, scale] = t;
+        dummy.position.set(x, heightAt(x, z), z);
+        dummy.scale.setScalar(scale);
+        dummy.rotation.set(0, treeRotation(x, z), 0);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+      });
+      mesh.count = list.length;
+      mesh.castShadow = true;
+      mesh.customDepthMaterial = treeShadowMaterial();
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      scene.add(mesh);
+      treeMeshes.push(mesh);
+    });
+  } else {
+    // Flat fallback: the old decorative street + complex trees.
+    const placed = placeTrees(area, origin);
+    trees = placed.trees;
+    const bySpecies = { zelkova: [], ginkgo: [], pine: [] };
+    for (const t of trees) (bySpecies[t.species] || bySpecies.zelkova).push(t);
+    const trunkMesh = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(TREE_TRUNK_R_TOP, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_H, 5),
+      trunkMaterial(placed.trunkColor), Math.max(trees.length, 1));
+    trees.forEach((t, i) => {
+      dummy.position.set(t.x, (TREE_TRUNK_H / 2) * t.scale, -t.y);
+      dummy.scale.setScalar(t.scale);
       dummy.rotation.set(0, t.phase, 0);
       dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, new THREE.Color(t.color));
+      trunkMesh.setMatrixAt(i, dummy.matrix);
     });
-    mesh.count = list.length;
-    mesh.castShadow = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    scene.add(mesh);
-    canopyMeshes.push(mesh);
+    trunkMesh.count = trees.length;
+    scene.add(trunkMesh);
+    treeMeshes.push(trunkMesh);
+    const canopyMaterial = vegetationMaterial();
+    const canopyGeo = {
+      // Zelkova: broad vase crown; ginkgo: narrower upright crown.
+      zelkova: new THREE.IcosahedronGeometry(TREE_CANOPY_R, 1),
+      ginkgo: new THREE.IcosahedronGeometry(TREE_CANOPY_R * 0.8, 1),
+      pine: new THREE.ConeGeometry(TREE_CANOPY_R * 0.85, TREE_CANOPY_R * 2.4, 7),
+    };
+    for (const [species, list] of Object.entries(bySpecies)) {
+      const mesh = new THREE.InstancedMesh(canopyGeo[species], canopyMaterial, Math.max(list.length, 1));
+      list.forEach((t, i) => {
+        if (species === "pine") {
+          dummy.position.set(t.x, (TREE_TRUNK_H + TREE_CANOPY_R * 1.1) * t.scale, -t.y);
+          dummy.scale.setScalar(t.scale);
+        } else if (species === "ginkgo") {
+          dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
+          dummy.scale.set(t.scale, t.scale * 1.25, t.scale);
+        } else {
+          dummy.position.set(t.x, TREE_CANOPY_Y * t.scale, -t.y);
+          dummy.scale.set(t.scale * 1.15, t.scale * 1.0, t.scale * 1.15);
+        }
+        dummy.rotation.set(0, t.phase, 0);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        mesh.setColorAt(i, new THREE.Color(t.color));
+      });
+      mesh.count = list.length;
+      mesh.castShadow = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      scene.add(mesh);
+      treeMeshes.push(mesh);
+    }
   }
 
   // --- decorative street life: parked/moving cars + lamps (see legend) ---
   const streetMeshes = buildStreetMeshes(
-    placeStreetlife(area.roads, origin, { seed: area.area || areaId }));
+    placeStreetlife(area.roads, origin, { seed: area.area || areaId }),
+    { heightAt });
   scene.add(streetMeshes.group);
 
   // Real household counts per building (register API) for the night
@@ -324,14 +422,21 @@ function buildWorld(area) {
     const h = Number(b.height_m) || (Number(b.levels) || 0) * 3 || 0;
     if (h > maxH) maxH = h;
   }
-  const maxHeightM = maxH > 0 ? Math.min(600, maxH) : 250;
+  const relief = scene14 ? demMax - demMin : 0;
+  const maxHeightM = maxH > 0 || relief > 0
+    ? Math.min(600, Math.max(maxH, relief)) : 250;
 
   renderCtl.attach(scene, camera, document.getElementById("scene-wrap"));
+  // Stage-14 perf log, once per box load (scene-only draw calls/tris).
+  const sceneMeasure = renderCtl.measureScene();
+  console.log(`[scene14] area=${areaId} scene=${scene14 ? "terrain" : "flat"} ` +
+    `drawCalls=${sceneMeasure.calls} triangles=${sceneMeasure.triangles}`);
   return {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
     dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
-    trees, trunkMesh, canopyMeshes, streetMeshes, dummy,
+    trees, treeMeshes, streetMeshes, dummy, heightAt, ground0, terrainMesh,
+    sceneRoadMeshes, sceneWaterMesh,
   };
 }
 
@@ -378,11 +483,24 @@ function trackSimViewOffset(camera) {
   camera.updateProjectionMatrix();
 }
 
+async function fetchScene(wantId) {
+  return loadScene(wantId, async (url) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url}: ${r.status}`);
+    return r.json();
+  });
+}
+
 async function bootTour(uiMode = "tour") {
-  const area = await fetchArea(areaId);
+  const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
-    streetMeshes, trees, dummy } = buildWorld(area);
+    streetMeshes, trees, dummy, heightAt } = buildWorld(area, scene14);
+  // World position with terrain height (tour route + stops ride +2 m).
+  const w2hg = (lon, lat, lift = 2) => {
+    const [x, y] = lonLatToXY(lon, lat, origin);
+    return [x, heightAt(x, -y) + lift, -y];
+  };
   for (const { mesh } of fadeMeshes) makeFadeable(mesh);
 
   // --- preview walkers (instanced capsules, simulated) ---
@@ -399,10 +517,9 @@ async function bootTour(uiMode = "tour") {
 
   // --- tour plan + route line ---
   const plan = selectTourStops(area);
-  const w2w = (lon, lat) => lonLatToWorld(lon, lat, origin);
   const legPaths = plan.stops.map((s) =>
     pathWaypoints(s.pathNodeIds, area.graph.nodes, origin,
-      (lon, lat) => lonLatToWorld(lon, lat, origin, 2)));
+      (lon, lat) => w2hg(lon, lat)));
   if (legPaths.some((p) => p.length > 1)) {
     const pts = legPaths.flat().map(([x, y, z]) => new THREE.Vector3(x, y, z));
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
@@ -421,7 +538,7 @@ async function bootTour(uiMode = "tour") {
   const stopTargets = plan.stops.map((s, i) => {
     const wp = legPaths[i].length > 1
       ? legPaths[i][legPaths[i].length - 1]
-      : lonLatToWorld(s.lon, s.lat, origin, 2);
+      : w2hg(s.lon, s.lat);
     // Clear the view toward both the named stop anchor and the settled
     // path end (the camera centres on the latter).
     return { anchor: lonLatToXY(s.lon, s.lat, origin), end: [wp[0], -wp[2]] };
@@ -456,7 +573,7 @@ async function bootTour(uiMode = "tour") {
   // The landing and the chat reuse the tour scene as a backdrop; only
   // the tour shows captions, the legend and the area switcher.
   if (uiMode === "tour") {
-    buildUI(area, plan);
+    buildUI(area, plan, !!scene14);
   } else {
     store.set({ area: { id: areaId, label: area.label || areaId } });
     document.title = uiMode === "chat" ? "주거 시뮬레이터 — 대화" : "주거 시뮬레이터";
@@ -474,7 +591,8 @@ async function bootTour(uiMode = "tour") {
     const framedWidth = frameWidthFor(
       camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
-      minute: tourMinute, target: { x: controls.target.x, z: controls.target.z },
+      minute: tourMinute,
+      target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
       shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM, look: LOOK });
     tourBloom = p.bloom;
     setGlobalNight(p.emissive);
@@ -509,7 +627,7 @@ async function bootTour(uiMode = "tour") {
   // Landing/chat reuse the glide as a backdrop (quiet: no captions);
   // the chat pauses it so the customer orbits freely.
   const player = createPlayer(plan, legPaths, camera, controls, origin,
-    stopAzimuths, applyFade, archLens, uiMode !== "tour");
+    stopAzimuths, applyFade, archLens, uiMode !== "tour", heightAt);
   if (plan.stops.length > 0) applyFade(0);
   store.registerActions({
     toggleTourPlay: () => {
@@ -565,7 +683,7 @@ async function bootTour(uiMode = "tour") {
     const dt = Math.min(clock.getDelta(), 0.1);
     const t = clock.elapsedTime;
     player.update(dt);
-    updateWalkers(walkerMesh, walkers, area.graph.nodes, origin, t, dummy);
+    updateWalkers(walkerMesh, walkers, area.graph.nodes, origin, t, dummy, heightAt);
     streetMeshes.updateMovers(t);
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
@@ -587,11 +705,11 @@ async function bootTour(uiMode = "tour") {
   new ResizeObserver(refitTour).observe(document.getElementById("scene-wrap"));
 }
 
-function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
+function updateWalkers(mesh, walkers, nodes, origin, t, dummy, heightAt = null) {
   walkers.forEach((w, i) => {
     const s = sampleWalker(w, nodes, t);
     const [x, y] = lonLatToXY(s.lon, s.lat, origin);
-    dummy.position.set(x, 0.95, -y);
+    dummy.position.set(x, (heightAt ? heightAt(x, -y) : 0) + 0.95, -y);
     dummy.rotation.set(0, Math.atan2(Math.cos(s.heading), Math.sin(s.heading)), 0);
     dummy.scale.setScalar(1);
     dummy.updateMatrix();
@@ -603,7 +721,7 @@ function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
 // --- tour player: glide legs, 3 s dwell per stop, outro pull-back ---
 // onLeg(i) fires whenever the current leg view changes (fade updates).
 // archLens composes level-sensor poses (the loop re-levels each frame).
-function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null, archLens = false, quiet = false) {
+function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null, archLens = false, quiet = false, heightAt = null) {
   const stops = plan.stops;
 
   const schedule = tourSchedule(plan);
@@ -614,7 +732,8 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
 
   function stopPoint(i) {
     if (legPaths[i].length > 1) return legPaths[i][legPaths[i].length - 1];
-    return lonLatToWorld(stops[i].lon, stops[i].lat, origin, 2);
+    const [x, y] = lonLatToXY(stops[i].lon, stops[i].lat, origin);
+    return [x, (heightAt ? heightAt(x, -y) : 0) + 2, -y];
   }
 
   // Camera pose along leg i at eased progress t: the frame widens during
@@ -634,7 +753,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
       const frameW = STOP_FRAME_M + (GLIDE_FRAME_M - STOP_FRAME_M) * (1 - t);
       const ap = archLensPose(frameW, camera.aspect, stopAzimuths[i] || TOUR_AZIMUTH);
       return { pos: new THREE.Vector3(wp[0] + ap.dirX * ap.horiz, wp[1] + ap.vert, wp[2] + ap.dirZ * ap.horiz),
-               look: new THREE.Vector3(wp[0], 2, wp[2]) };
+               look: new THREE.Vector3(wp[0], wp[1], wp[2]) };
     }
     const dist = stopDist + (glideDist - stopDist) * (1 - t);
     const [dox, doy, doz] = tourOffset(dist, undefined, TOUR_AZIMUTH);
@@ -644,7 +763,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     const oy = doy + (soy - doy) * k;
     const oz = doz + (soz - doz) * k;
     return { pos: new THREE.Vector3(wp[0] + ox, wp[1] + oy, wp[2] + oz),
-             look: new THREE.Vector3(ahead[0], 2, ahead[2]) };
+             look: new THREE.Vector3(ahead[0], ahead[1], ahead[2]) };
   }
 
   function showStop(i) {
@@ -797,7 +916,10 @@ function legendRows(area) {
   return { resRows, heightRows };
 }
 
-function buildUI(area, plan) {
+export const TREE_NOTE_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 인물·차량은 장식용 모의 표시입니다";
+export const TREE_NOTE_FLAT = "나무·인물은 장식용 모의 표시입니다";
+
+function buildUI(area, plan, sceneOn = false) {
   const { resRows, heightRows } = legendRows(area);
   store.set({
     areaOptions: AREAS.map((a) => ({ value: a.id, label: a.label })),
@@ -806,7 +928,7 @@ function buildUI(area, plan) {
       title: "범례",
       resRows,
       heightRows,
-      note: "나무·인물은 장식용 모의 표시입니다",
+      note: sceneOn ? TREE_NOTE_SCENE : TREE_NOTE_FLAT,
     },
   });
   if (plan.stops.length === 0) store.set({ tourPlaying: false });
@@ -984,12 +1106,13 @@ async function bootSim() {
   }
   const area = await fetchArea(run.meta.area);
   simAreaId = run.meta.area;
+  const scene14 = await fetchScene(run.meta.area);
   const homes = scenario && Array.isArray(scenario.homes) && scenario.homes.length > 0
     ? scenario.homes
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
-    wallMeshes, podiumMesh, roofMesh } = buildWorld(area);
+    wallMeshes, podiumMesh, roofMesh, heightAt } = buildWorld(area, scene14);
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
   // pulse animation when the OS asks for reduced motion.
@@ -1219,8 +1342,11 @@ async function bootSim() {
     const p = nodeLonLat.get(nodeId);
     if (!p) return null;
     const [x, y] = lonLatToXY(p[0], p[1], origin);
-    return new THREE.Vector3(x, lift, -y);
+    return new THREE.Vector3(x, heightAt(x, -y) + lift, -y);
   }
+
+  // Absolute tag/mark heights ride the terrain too (else hill boxes bury them).
+  const tagY = (x, z, lift) => heightAt(x, z) + lift;
 
   // Split a trip path at the travelled fraction into behind/ahead
   // polylines (world space), sharing the interpolated current point.
@@ -1248,7 +1374,7 @@ async function bootSim() {
         const s = sampleAgent(a.key, indexed, day, minute, nodeLonLat,
           homeLonLat.get(a.key), edgeLen);
         const [x, y] = lonLatToXY(s.lon, s.lat, origin);
-        dummy.position.set(x, height, -y);
+        dummy.position.set(x, heightAt(x, -y) + height, -y);
         dummy.rotation.set(0, 0, 0);
         dummy.scale.setScalar(s.visible ? 1 : 0.0001);
         dummy.updateMatrix();
@@ -1263,9 +1389,9 @@ async function bootSim() {
         homeLonLat.get(a.key), edgeLen);
       const [x, y] = lonLatToXY(s.lon, s.lat, origin);
       const marked = s.visible || s.state === "home";
-      ringMeshes[i].position.set(x, 0.3, -y);
+      ringMeshes[i].position.set(x, heightAt(x, -y) + 0.3, -y);
       ringMeshes[i].visible = marked;
-      paintTag(tagEls[i], x, 6, -y, marked);
+      paintTag(tagEls[i], x, tagY(x, -y, 6), -y, marked);
     });
   }
 
@@ -1336,7 +1462,7 @@ async function bootSim() {
       if (!c) continue;
       const [x, y] = lonLatToXY(c[0], c[1], origin);
       const s = new THREE.Mesh(qolGeo, qolMat);
-      s.position.set(x, 4, -y);
+      s.position.set(x, tagY(x, -y, 4), -y);
       s.renderOrder = 997;
       qolGroup.add(s);
     }
@@ -1414,8 +1540,8 @@ async function bootSim() {
       routeDone.visible = true;
       const dp = h.destNodeId ? nodeWorld(h.destNodeId, 0) : null;
       if (dp && h.destLabel) {
-        paintTagPin(destPin, dp.x, 10, dp.z, h.destLabel);
-        destMark.position.set(dp.x, 3, dp.z);
+        paintTagPin(destPin, dp.x, tagY(dp.x, dp.z, 10), dp.z, h.destLabel);
+        destMark.position.set(dp.x, tagY(dp.x, dp.z, 3), dp.z);
         destMark.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
         destMark.visible = true;
       } else {
@@ -1430,9 +1556,9 @@ async function bootSim() {
       destMark.visible = false;
       const sp = h.rideAway.stationNodeId ? nodeWorld(h.rideAway.stationNodeId, 1) : null;
       if (sp) {
-        setLine(rideStub, [sp, new THREE.Vector3(sp.x, 30, sp.z)]);
+        setLine(rideStub, [sp, new THREE.Vector3(sp.x, tagY(sp.x, sp.z, 30), sp.z)]);
         rideStub.visible = true;
-        paintTagPin(destPin, sp.x, 34, sp.z, `지하철 탑승 (가정값 ${h.rideAway.rideMinutes}분)`);
+        paintTagPin(destPin, sp.x, tagY(sp.x, sp.z, 34), sp.z, `지하철 탑승 (가정값 ${h.rideAway.rideMinutes}분)`);
       } else {
         rideStub.visible = false;
         destPin.style.display = "none";
@@ -1446,8 +1572,8 @@ async function bootSim() {
       lastRouteKey = "";
     }
     if (listingPinTarget) {
-      paintTagPin(listingPin, listingPinTarget.x, 14, listingPinTarget.z, listingPinTarget.label);
-      listingMark.position.set(listingPinTarget.x, 3, listingPinTarget.z);
+      paintTagPin(listingPin, listingPinTarget.x, tagY(listingPinTarget.x, listingPinTarget.z, 14), listingPinTarget.z, listingPinTarget.label);
+      listingMark.position.set(listingPinTarget.x, tagY(listingPinTarget.x, listingPinTarget.z, 3), listingPinTarget.z);
       listingMark.visible = true;
     } else {
       listingPin.style.display = "none";
@@ -1471,7 +1597,8 @@ async function bootSim() {
     const framedWidth = frameWidthFor(
       camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
-      minute: m, target: { x: controls.target.x, z: controls.target.z },
+      minute: m,
+      target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
       shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM, look: LOOK });
     simBloom = p.bloom;
     const key = `${day}:${m}`;
@@ -2171,7 +2298,7 @@ async function bootSim() {
       resRows: resRows.filter((r) => Object.values(RES_LABELS).includes(r.label)),
       heightRows: [],
       simNote: `시뮬레이션 주민 ${run.meta.agents}명 (가구 ${run.meta.household}명 + 이웃 ${run.meta.background}명) · 엔진 재생`,
-      note: "나무·인물은 장식용 모의 표시입니다",
+      note: scene14 ? TREE_NOTE_SCENE : TREE_NOTE_FLAT,
     },
     follow,
     followOptions: [{ value: "0", label: "자유 시점" },
