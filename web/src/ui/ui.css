@@ -756,7 +756,13 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ui-today-row:hover { background: var(--ui-sunken); }
 .ui-today-now { background: var(--ui-sunken); font-weight: var(--ui-w600); }
 .ui-today-time { font-size: var(--ui-t12); color: var(--ui-ink2); font-variant-numeric: tabular-nums; flex: none; }
-.ui-today-label { flex: 1 1 auto; min-width: 0; }
+.ui-today-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* ---------- 17-4: badges never truncate (GPU capture 10-30) ---------- */
+/* The line text shrinks first, then wraps; the badge keeps its full word. */
+.ui-today-row .astryx-badge {
+  flex: none; white-space: nowrap; max-width: none;
+  overflow: visible; text-overflow: clip;
+}
 .ui-today-foot { display: flex; flex-direction: column; gap: var(--ui-s4); }
 
 /* ---------- 13f2: one-row timeline (≤64px, stage only) ---------- */

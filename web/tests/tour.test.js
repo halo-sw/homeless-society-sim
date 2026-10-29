@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,7 +112,11 @@ describe("tour (synthetic)", () => {
 });
 
 describe("tour (real data: songpa-jamsil)", () => {
-  it("builds 4-6 stops from real complexes/POIs with graph walking times", async () => {
+  // 17-4: skip (not ENOENT) on a clean clone without data/build.
+  const hasJamsil = existsSync(
+    join(HERE, "..", "..", "data", "build", "songpa-jamsil", "area.json"));
+
+  it("builds 4-6 stops from real complexes/POIs with graph walking times", { skip: !hasJamsil }, async () => {
     const dir = join(HERE, "..", "..", "data", "build", "songpa-jamsil");
     const area = JSON.parse(await readFile(join(dir, "area.json"), "utf-8"));
     for (const [key, value] of Object.entries(area)) {

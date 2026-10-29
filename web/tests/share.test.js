@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { buildCompareRows, resultCardData, shareSourceKo,
   SHARE_DISCLAIMER, SHARE_ROW_IDS, personaTitleFor } from "../src/ui/share.js";
+import { fmtWon } from "../src/money/format.js";
 import { BANNED_LABEL_JARGON, ALLOWED_LONG_PHRASES } from "../src/ui/copy.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -227,7 +228,11 @@ describe("result card on the real demo build", () => {
     assert.deepEqual(data.rows.map((r) => r.id), SHARE_ROW_IDS);
     assert.equal(rowById(data, "walk_30d").a, "27시간 50분");
     assert.equal(rowById(data, "walk_30d").b, "38시간 3분");
-    assert.equal(rowById(data, "housing").a, "월 260만 원");
+    // 17-4: the expected housing figure comes from the built money doc
+    // (stage-15 loan cap), not a hard-coded pre-15 string.
+    const expectHousingA = fmtWon(
+      money.homes.A.by_tenure["전세"].housing.monthly_won, { monthly: true });
+    assert.equal(rowById(data, "housing").a, expectHousingA);
     assert.equal(rowById(data, "commute_mode").b, "도보");
     assert.equal(data.homes[0].headline, "A 레이크팰리스 · 59.97㎡ (전세)");
   });

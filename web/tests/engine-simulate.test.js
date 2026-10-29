@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -319,6 +320,12 @@ describe("canonical json", () => {
 });
 
 describe("engine (real data)", () => {
+  // 17-4: skip (not ENOENT) on a clean clone without data/build.
+  const hasArea = (areaId) => existsSync(
+    join(HERE, "..", "..", "data", "build", areaId, "area.json"));
+  const hasJamsil = hasArea("songpa-jamsil");
+  const hasPangyo = hasArea("pangyo");
+
   async function loadArea(areaId) {
     const dir = join(HERE, "..", "..", "data", "build", areaId);
     const area = JSON.parse(await readFile(join(dir, "area.json"), "utf-8"));
@@ -350,7 +357,7 @@ describe("engine (real data)", () => {
     };
   }
 
-  it("runs home A on real jamsil data", async () => {
+  it("runs home A on real jamsil data", { skip: !hasJamsil }, async () => {
     const area = await loadArea("songpa-jamsil");
     const run = simulate(area, demo(), "A");
     assert.equal(run.meta.agents, 6);
@@ -366,7 +373,7 @@ describe("engine (real data)", () => {
     assert.ok(run.trips.some((t) => t.agent === "h1" && t.purpose === "commute" && t.to.label === "잠실"));
   });
 
-  it("branches station entrances on real pangyo data", async () => {
+  it("branches station entrances on real pangyo data", { skip: !hasPangyo }, async () => {
     const area = await loadArea("pangyo");
     const run = simulate(area, demo(), "B");
     assert.equal(run.meta.complex, "백현마을");
