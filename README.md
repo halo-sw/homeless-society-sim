@@ -4,13 +4,16 @@
 
 **Meta Global AI Developer Hackathon · Indie Developer track · "Build for Your World"**
 
-**Democratising housing knowledge for Gen-Z.** For a first-job worker, a couple about to marry, or a young family in Korea, a home is the biggest and riskiest decision they will make, and most of them make it with a listing, a price and advice from friends. A listing doesn't tell you what a month of your life would look like there: how long the walk to the station takes, how packed the 08:00 train is, how tired you are when you get home, how close the schools are, or how much money is left after housing costs. It also doesn't tell you whether a mortgage is really worth it compared with renting, whether a 전세 (lump-sum deposit lease) shows warning signs, or which public rentals and government support you could get at your salary.
+**Democratising housing knowledge for Gen-Z.** For a first-job worker, a couple about to marry or a young family in Korea, a home is the biggest and riskiest decision they will make, and most of them make it with a listing, a price and advice from friends. Deposit fraud (전세사기) has hit young renters hardest: about 75 % of the victims are in their 20s and 30s (press report of March 2025 citing Ministry of Land data).
 
-Deposit fraud (전세사기) has hit young renters hardest: about 75 % of the victims are in their 20s and 30s (press report of March 2025 citing Ministry of Land data). We think people should be able to **live in a home as a simulation, run the numbers, check the warning signs and see the support they can get, before they sign**.
+**Our answer: live in the home for 30 days before you sign.**
 
-So we built a simulator that answers these questions with real public data. **One or two simulated people (or a family) live in home A and in home B for 30 days**, side by side, in a 3D model of the real neighbourhood. The app then compares time, money, daily convenience, education access and official safety statistics, weighted only by **the customer's own priorities**, and explains every number. It shows, explains and lets you decide. It never decides for you.
+1. **Say it in your own words.** The customer describes their household, workplace, salary and cash in a chat. The consult agent (Muse Spark 1.3) turns that into a profile and marks every value it had to assume.
+2. **Get real candidate homes.** Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi (성동, 송파, 강남, 강동, 위례, 판교, 성남, 정자, 분당, 미금, 수지). Ride times come from the operator's schedule, and public rentals come from the LH · 마이홈 API.
+3. **Watch a household live in home A and home B for 30 days.** It happens in a 3D model of the real neighbourhood: OpenStreetMap, the national building register and terrain, with 60 station areas built. Traffic, pedestrians and trains move procedurally. Muse makes the household's choices and gives a reason for each one, and the engine does all the counting. Runs are paired over 10 seeds, so the gap between the homes comes from the homes and not from chance.
+4. **Compare with evidence.** The app compares commute time, fatigue (from measured subway congestion), money for 매매, 전세, 월세 and public rental (from real transactions), and official safety and education figures. It weighs them only by the customer's own priorities. Every number has a source or an "assumption" label. The app shows, explains and lets you decide. It never decides for you.
 
-> Status: work in progress (hackathon period 2026-10-27 → 11-04). The first commit is 2026-10-28; nothing here predates the hackathon. See [Known issues](#known-issues).
+> Status (2026-10-30): work in progress (hackathon period 2026-10-27 → 11-04). The first commit is 2026-10-28, and nothing here predates the hackathon. Stage 15 (engine integrity) is on `main`, with 926 `node --test` and 244 `pytest` tests passing. In progress on branches: a painted near-isometric map look, and built-in verification that scores the agent's checklist and report against a ground-truth checklist. See [Known issues](#known-issues).
 
 ## What it does
 
@@ -89,7 +92,7 @@ Meta models: **Muse Spark 1.3** (household decisions, consult agent, and the cod
 
 Where they differ it is mostly which shop to stop at after work (15 of 19). Without a reasoning limit Spark Open spent its whole 2,000-token budget thinking on 116 of 154 calls; with `reasoning_effort: low` it answered every one.
 
-Tests: 636 `node --test` tests (including a headless sim-mode smoke test, a server-render smoke test of the whole React UI and a plain-words scan) and 168 `pytest` tests.
+Tests: 926 `node --test` tests (including a headless sim-mode smoke test, a server-render smoke test of the whole React UI and a plain-words scan) and 244 `pytest` tests (2026-10-30).
 
 ## Run it
 
@@ -146,7 +149,12 @@ OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장
 | 10 | Plain words, floating Astryx agent, listing check, public notices, share card, demo tour | [`10-RESULT`](briefs/10-RESULT.md) |
 | 10b | Fix: React snapshot loop, tour NaN, render smoke test | [`10-RESULT`](briefs/10-RESULT.md#stage-10b--whole-ui-react-loop--tour-nan-muse) |
 | 11–11b | Agent panel placement, full labels, share card with A/B numbers, look table, ride base map | [`11-RESULT`](briefs/11-RESULT.md) |
+| 12a–12a2 | 11 areas, customer numbers, real candidate homes, schedule ride times on 9 lines | [`12a`](briefs/12a-RESULT.md), [`12a2`](briefs/12a2-RESULT.md) |
+| 12b | Question-first entry, conversation, home previews, day timeline | [`12b-RESULT`](briefs/12b-RESULT.md) |
+| 13d–13e | Layout without overlaps, guided intake, candidate cards, Seoul/Gyeonggi orb | [`13d`](briefs/13d-RESULT.md), [`13e`](briefs/13e-RESULT.md) |
+| 14–14b | Terrain (DEM), road ribbons, OSM trees for 60 station areas; procedural vehicles, pedestrians and trains | [`14`](briefs/14-RESULT.md), [`14b`](briefs/14b-RESULT.md) |
+| 15 | Engine integrity: paired runs over 10 seeds, household costs, walking commutes counted, distance fares, same-size comparison, loan cap | [`15 brief`](briefs/15-engine-integrity.md) |
 
 ## Roadmap (until 11-04)
 
-Next: start from the customer's own words (a prompt over the map, then a chat), find candidate homes from real transactions across 11 areas (성동, 송파, 강남, 강동, 위례, 판교, 성남, 정자, 분당, 미금, 수지) with real neighbourhood photos, and a clearer day timeline → feature freeze → a 3-minute video.
+Next: merge the painted map look and the redesigned sim screen, built-in verification (the agent's checklist and report are scored against a ground-truth checklist, retried up to 3 times, then handed to the user), English UI → feature freeze → a 3-minute video.
