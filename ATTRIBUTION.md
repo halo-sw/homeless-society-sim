@@ -85,3 +85,7 @@ link to this file or the sources above.
 - File: `scenarios/transit/seoul-metro-interstation.csv` (UTF-8 copy of the file on 서울 열린데이터광장, dataset OA-12034, downloaded 2026-10-29; lines 1–8, standard running time per station gap, reference date 2024-03-25).
 - Source: 서울교통공사, https://data.seoul.go.kr/dataList/OA-12034/S/1/datasetView.do
 - Licence: 공공누리 제1유형 (출처표시). Running times are the operator's standard schedule; real trips vary.
+
+## Wikimedia Commons, name search (stage 13)
+- File: `scenarios/places/commons-named.json`. A manifest only, no image bytes: 884 freely licensed photos found by searching Commons for station names (117 stations) and apartment complex names (20 complexes), fetched 2026-10-29.
+- Each item keeps its author, licence, licence URL and source page; the app shows a credit per photo.
