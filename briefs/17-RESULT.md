@@ -137,3 +137,106 @@ member; share card shows the score before the twelve rows.
   failed).
 - The decision moment kind never fires on rule-only runs (today's
   demo); it will appear once judged runs ship.
+
+---
+
+# Stage 17b — RESULT: polish from the GPU capture
+
+Date: 2026-10-30. Brief: stage-17b prompt (four findings from the
+laptop-GPU capture of `ithaca-17`, 1440×900, 2026-10-30 04:30). All
+product code by Muse (agent mode). No sub-agents. Commits on
+`ithaca-17`: `f560e8b` (part 1), `c482dc7` (part 2), `62b5bf0`
+(part 3), `b7c7764` (part 4).
+
+## What changed
+
+**1. Moment text once** (`f560e8b`). `pickMoments` sentences no
+longer repeat the day/time or the home letter: each moment now carries
+`text_ko` (e.g. "2호선 잠실→강남 혼잡 93% (실측)", "출근 44분") with
+`when_ko` ("2일차 08:12") beside it (`sentence` stays as an alias of
+`text_ko`). The drawer keeps day + time in its left column and shows
+the home in a small "A"/"B" chip before the sentence. Tests:
+`moments-17.test.js` updated (no leading day/time in `text_ko`,
+`when_ko` == day + time, home chip in the render).
+
+**2. Softer shade, darker roads** (`c482dc7`). Two real causes, both
+in code: (a) shade — `PAINTED_LIGHT.shadowStrength` 0.45 → 0.30 plus
+a new `hemiBoost` ×1.35 on the day hemisphere fill (blended by
+daylight, nights untouched); pure `shadeSunRatio` resolves 0.76 at
+14:00 against the ≥ 0.55 bar. (b) roads — the ribbon builder pushed
+sRGB 0..1 straight into vertex colours, which three.js consumes as
+linear, so `#5b5d60` rendered ≈ `#a2a4a7` next to the correctly
+decoded beige terrain; palette hexes now linearize through
+`hexToLinearRgb` (painted + photo both render true). Post chain
+untouched, outlines kept. Tests: `painted-17b.test.js` (new values,
+boost day/night, shade ratio, ribbon linearity + round-trip, road vs
+ground ≥ 25 levels); two `scene-14` colour pins moved to linear.
+
+**3. Lit night** (`62b5bf0`). Tour nights lit only register-known
+towers (sparse data) and capped every tower at 0.35: tour mode now
+lights every residential-class building from the evening estimate
+(`eveningHomeFraction(21:00)` = 0.9 → capped 0.65, ≥ 0.6 for any
+hash) with offices on a small deterministic share (`≈ 0.18–0.27`,
+new `tourOfficeFraction` via an `emptyFrac` fallback opt — sim
+behaviour unchanged). Painted `nightLitCap` 0.35 → 0.65 (photo keeps
+0.35). Roads lerp to warm lamp-lit asphalt (`0x4a4136`, lighter than
+the navy ground) plus a faint warm emissive (`0x2a2118` — moonlight
+alone leaves albedo black); walls/roofs lerp to dark slate
+(`0x3a4152`, +30 levels over the `#1d2330` ground). Tests: 21:00
+residential ≥ 0.6, offices fewer-but-some, road lighter than ground,
+wall slate ≥ 15 above ground.
+
+**4. Readable regional view** (`b7c7764`). Same colour-space bug one
+level up: corridor flat colours were authored as sRGB/255 but
+consumed raw, so sunlit blocks rendered tan-brown ≈ the beige base —
+the one-brown view. `palette.js` now owns `srgbToLinear` /
+`hexToLinearRgb` (roads.js re-exports); corridor walls/roofs are the
+linearized painted targets (`#c9c4bb` / `#ddd8ce`), `hexToRgb`
+linearizes the look-table road/river, and the painted base map keeps
+`#cfc4ad` / `#5b5d60` / `#3f6f8f` with `corridorDarken` 1 (no brown
+multiplier; 14f outlines kept). Tests: corridor round-trips, tile
+emission, roof vs ground ≥ 15, road vs ground ≥ 25, and a
+representative-morning lit model (`litLumaU8`: shaded wall vs
+sunlit ground ≈ 23 ≥ 15 at 08:50).
+
+## Capture URLs
+
+Base: the dev server root (`npm run dev` in `web/`).
+
+- Day shade + roads (part 2): \\
+  `/?area=songpa-jamsil&shot=0&q=high&time=14:00` \\
+  plus `&debug=albedo` to compare palette vs lighting.
+- Night (part 3): `/?area=songpa-jamsil&shot=0&q=high&time=21:00` —
+  most residential floors lit, warm road bands, slate walls.
+- Regional (part 4):
+  `/?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1`
+- Moments (part 1): the sim URL above — "살아 보니" cards show
+  "2일차 08:12 ＋ A chip ＋ 2호선 …" with no repeated time.
+
+Checks: shaded walls soft (≥ 55 % of sun), carriageways dark
+asphalt (≥ 25 levels under the beige), night towers mostly lit with
+a faint warm road glow, regional blocks/walls/roads/river each
+readable with outlines.
+
+## Tests and build
+
+- `cd web && npm test`: **1131 pass, 0 fail, 1 skipped** (the skip
+  is pre-existing). Includes `painted-17b.test.js` (16 tests) and
+  the updated pins (`moments-17`, `scene-14`, `render-look`,
+  `ride-11b`).
+- `npx vite build` still hits the known sandbox EPERM
+  (`node_modules/.vite-temp`, same as 14e/17). Stand-ins, all green:
+  `node --check` on every edited plain-JS file, the SSR suites as
+  import smoke for the edited JSX, and a full esbuild bundle of
+  `src/main.js` (5.3 MB, warnings only) in `/tmp/17b-bundle`.
+
+## Known limitations / follow-ups
+
+- Photo style inherits the corrected (darker, truer) ribbon and
+  corridor blocks — palettes unchanged, on-screen values now match
+  them; worth one photo-capture glance.
+- The ≥ 15 wall/ground bar is geometry-aided (shaded faces vs
+  sunlit ground, roofs +20 in albedo); fully sunlit walls still sit
+  near the ground tone — the capture measures the mixed frame.
+- Night rails keep day albedo (moonlit → dark); only carriageways
+  got the lamp band.
