@@ -42,28 +42,40 @@ function mixHex(h1, h2, t) {
 // use warm neutral fill, a warm haze fog, soft shadows and no sky IBL.
 // 17b: the laptop capture still read shaded walls near-black, so shadows
 // soften to 30 % and the day hemisphere fill gains ×1.35.
+// 17c: the GPU capture reads every sunlit flat brown and ~20 % dark
+// (ground #cfc4ad → (161,137,109) at 08:50): the warm morning sun
+// (#ffd5ab, B/R = 0.4 in linear) dominates the irradiance while the
+// total E×exposure/π sits at ~0.45, so the palette hue never survives.
+// Painted days now use a neutral (white) day sun and a UNIFORM ×1.8 day
+// gain over sun + fill (replacing the fill-only 1.35): E×exposure/π ≈ 1
+// at mid-morning, so sunlit flats render at their authored albedo, and
+// the shade/sun ratio is gain-invariant (17b's ≥ 0.55 bar still holds).
+// Both blend by dayF, so dusk and night keep the photo colours/levels.
 export const PAINTED_LIGHT = {
   hemiSky: 0xf2ece0,
   hemiGround: 0xb9ad98,
   fog: 0xe2d8c4,
+  sunDay: 0xffffff,
   shadowStrength: 0.3,
-  hemiBoost: 1.35,
+  dayLight: 1.8,
 };
 
-// Painted override over skyParams (pure): hemi/fog colours blend to the
-// warm rig by daylight so dawn/dusk stay continuous (full warm at dayF 1,
-// untouched photo colours at night); shadows sit at 30 %, the fill gains
-// the boost by day, and the blue sky environment switches off.
+// Painted override over skyParams (pure): hemi/fog/sun colours blend to
+// the rig by daylight so dawn/dusk stay continuous (full rig at dayF 1,
+// untouched photo colours at night); shadows sit at 30 %, sun + fill
+// gain the day boost by day, and the blue sky environment switches off.
 // Bloom/emissive/nightF/phase pass through.
 export function paintedSkyParams(p) {
   const dayF = Math.min(1, Math.max(0, Number(p.dayF) || 0));
+  const gain = 1 + (PAINTED_LIGHT.dayLight - 1) * dayF;
   return {
     ...p,
     hemiSky: mixHex(p.hemiSky, PAINTED_LIGHT.hemiSky, dayF),
     hemiGround: mixHex(p.hemiGround, PAINTED_LIGHT.hemiGround, dayF),
     fogColor: mixHex(p.fogColor, PAINTED_LIGHT.fog, dayF),
-    hemiIntensity: (Number(p.hemiIntensity) || 0)
-      * (1 + (PAINTED_LIGHT.hemiBoost - 1) * dayF),
+    sunColor: mixHex(p.sunColor, PAINTED_LIGHT.sunDay, dayF),
+    sunIntensity: (Number(p.sunIntensity) || 0) * gain,
+    hemiIntensity: (Number(p.hemiIntensity) || 0) * gain,
     shadowStrength: PAINTED_LIGHT.shadowStrength,
     envIntensity: 0,
   };

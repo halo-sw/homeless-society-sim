@@ -19,7 +19,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { qualitySettings } from "./quality.js";
-import { DEFAULT_LOOK } from "./look.js";
+import { DEFAULT_LOOK, GRADE_LUMA, GRADE_WARM, GRADE_WARM_HI, GRADE_WARM_LO } from "./look.js";
 import { KuwaharaShader, PaintedPass, kuwaharaRadiusFor, outlineStrengthFor,
   paintedPixelFactor } from "./painted.js";
 
@@ -65,6 +65,7 @@ const GradeShader = {
     grain: { value: 0.0 },
     time: { value: 0.0 },
     saturation: { value: DEFAULT_LOOK.gradeSaturation },
+    warm: { value: 1.0 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -79,19 +80,22 @@ const GradeShader = {
     uniform float grain;
     uniform float time;
     uniform float saturation;
+    uniform float warm;
     varying vec2 vUv;
     float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7)) + time * 13.0) * 43758.5453);
     }
-    float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+    float luma(vec3 c) { return dot(c, vec3(${GRADE_LUMA.join(", ")})); }
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       // Gentle colour grade (stage 6): warm highlights, neutral shadows,
       // a touch more saturation. Shadows keep their hue (no split-tone).
-      // Saturation from the look table (stage 11: 1.12 default).
+      // Saturation from the look table (stage 11: 1.12 default). 17c: the
+      // warm triplet scales by the warm uniform — photo 1.0, painted 0.0
+      // (neutral: the palette already carries the painted look).
       float l = luma(c.rgb);
-      float hi = smoothstep(0.45, 1.0, l);
-      c.rgb *= mix(vec3(1.0), vec3(1.045, 1.005, 0.955), hi);
+      float hi = smoothstep(${GRADE_WARM_LO.toFixed(2)}, ${GRADE_WARM_HI.toFixed(1)}, l);
+      c.rgb *= mix(vec3(1.0), vec3(${GRADE_WARM.join(", ")}), hi * warm);
       c.rgb = mix(vec3(l), c.rgb, saturation);
       vec2 q = vUv - 0.5;
       c.rgb *= 1.0 - vignette * dot(q, q) * 2.2;
@@ -299,6 +303,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
     const grade = new ShaderPass(GradeShader);
     grade.uniforms.grain.value = state.grain ? 0.045 : 0.0;
     grade.uniforms.saturation.value = state.gradeSaturation;
+    grade.uniforms.warm.value = state.style === "painted" ? 0 : 1;
     state.grade = grade;
     composer.addPass(grade);
     composer.addPass(new OutputPass());

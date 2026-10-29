@@ -99,15 +99,19 @@ describe("painted light rig (14f: warm, never blue)", () => {
     assert.equal(rig.envIntensity, 0);
     // Timing/phase pass through untouched.
     const base = at("14:00", 840);
-    for (const k of ["phase", "sunColor", "bloom", "emissive", "nightF", "dayF"]) {
+    for (const k of ["phase", "bloom", "emissive", "nightF", "dayF"]) {
       assert.equal(rig[k], base[k], k);
     }
+    // 17c: the day sun is neutral white (the warm photo sun browned every
+    // sunlit flat on the GPU capture); nights still pass through (below).
+    assert.equal(rig.sunColor, 0xffffff);
   });
   it("leaves night colours alone (the override blends by daylight)", () => {
     const base = at("22:00", 1320);
     const rig = paintedSkyParams(base);
     assert.equal(rig.hemiSky, base.hemiSky);
     assert.equal(rig.fogColor, base.fogColor);
+    assert.equal(rig.sunColor, base.sunColor);
     assert.equal(rig.envIntensity, 0);
   });
 });

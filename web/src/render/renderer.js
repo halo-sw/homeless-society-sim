@@ -15,6 +15,15 @@ import { resolveLook } from "./look.js";
 import { resolvePostDebug } from "./post.js";
 import { resolveStyle } from "../camera.js";
 
+// Output transform per style (pure): photo keeps the filmic AgX curve,
+// painted uses a linear (exposure-gain-only) transform — 17c found AgX
+// darkening every flat ~10 % and compressing the roof/ground albedo gap
+// (19 levels → 8) on the GPU capture, so the painted palette never
+// survived to the screen. The palette IS the painted picture.
+export function toneMappingFor(style) {
+  return style === "painted" ? THREE.LinearToneMapping : THREE.AgXToneMapping;
+}
+
 export const STAT_FRAMES = [30, 120];
 // Black-frame guard sample points (checked only on high, where the SAO
 // path runs): two early frames, then done.
@@ -34,7 +43,7 @@ export function createRenderer({ canvas, params }) {
   const look = resolveLook(search); // ?look=key:value,… (stage 11)
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMapping = toneMappingFor(style);
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;

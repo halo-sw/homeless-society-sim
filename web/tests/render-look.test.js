@@ -89,7 +89,7 @@ describe("look parsing (?look=key:value,…)", () => {
       fogStreetFar: 9,
       fogRegionalNear: 4,
       fogRegionalFar: 9,
-      gradeSaturation: 1.2,
+      gradeSaturation: 1.0, // 17c: neutral grade (was 1.2: browned flats)
       nightLitCap: 0.65, // 17b: most residential floors lit at 21:00
       corridorDarken: 1, // 14f: no photo darkening on corridor tiles
       regionalGround: 0xcfc4ad,
@@ -187,8 +187,8 @@ describe("painted fog + night (14e)", () => {
     assert.equal(resolveLook("", "photo").corridorDarken, 0.74);
   });
 
-  it("grades painted frames at 1.2 saturation", () => {
-    assert.equal(resolveLook("", "painted").gradeSaturation, 1.2);
+  it("grades painted frames neutrally (1.0), photo at 1.12", () => {
+    assert.equal(resolveLook("", "painted").gradeSaturation, 1.0);
     assert.equal(resolveLook("", "photo").gradeSaturation, 1.12);
   });
 

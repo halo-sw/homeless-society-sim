@@ -68,7 +68,10 @@ export const PAINTED_LOOK = {
   fogStreetFar: 9,
   fogRegionalNear: 4,
   fogRegionalFar: 9,
-  gradeSaturation: 1.2,
+  // 17c: neutral grade — the palette already carries the look. The photo
+  // 1.2 saturation + warm highlights pushed every sunlit flat ~15 levels
+  // toward brown on the GPU capture (blue −18 % through the grade alone).
+  gradeSaturation: 1.0,
   // 17b: residential towers read most floors lit at 21:00 (the photo cap
   // 0.35 would pin every tower at a third); 0.65 still keeps dark gaps.
   nightLitCap: 0.65,
@@ -95,6 +98,14 @@ export const PAINTED_LOOK = {
 // while carriageways keep a warm lamp-lit band and walls a dark slate,
 // so lit windows pop without the blocks going black. Applied as a
 // material tint/colours lerp in main.js (painted style only).
+// Grade-shader constants (single source of truth: post.js builds the
+// GLSL from these, chain.js mirrors the math for the 17c pixel tests).
+// Luma weights are Rec.601; the warm triplet scales highlights only.
+export const GRADE_LUMA = [0.299, 0.587, 0.114];
+export const GRADE_WARM = [1.045, 1.005, 0.955];
+export const GRADE_WARM_LO = 0.45;
+export const GRADE_WARM_HI = 1.0;
+
 export const PAINTED_NIGHT_GROUND = 0x1d2330;
 export const PAINTED_NIGHT_ROAD = 0x39415a;
 export const PAINTED_NIGHT_ROAD_WARM = 0x4a4136;

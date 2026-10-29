@@ -28,17 +28,23 @@ const linToSrgbU8 = (l) => {
 };
 
 describe("17b-2 painted day light values", () => {
-  it("pins softer shadows (30 %) and a ×1.35 day fill boost", () => {
+  it("pins softer shadows (30 %) and a uniform ×1.8 day gain", () => {
     assert.equal(PAINTED_LIGHT.shadowStrength, 0.3);
-    assert.equal(PAINTED_LIGHT.hemiBoost, 1.35);
+    // 17c: the fill-only ×1.35 is replaced by a uniform sun+fill gain
+    // (the shade/sun ratio is gain-invariant, so the ≥ 55 % bar below
+    // still holds with the same margin).
+    assert.equal(PAINTED_LIGHT.dayLight, 1.8);
   });
 
-  it("boosts the hemisphere fill by day, never at night", () => {
+  it("boosts sun and fill uniformly by day, never at night", () => {
     const base = { dayF: 1, hemiSky: 0, hemiGround: 0, fogColor: 0,
-      hemiIntensity: 0.85 };
-    assert.ok(Math.abs(paintedSkyParams(base).hemiIntensity - 0.85 * 1.35) < 1e-9);
+      sunColor: 0, sunIntensity: 3.0, hemiIntensity: 0.85 };
+    const day = paintedSkyParams(base);
+    assert.ok(Math.abs(day.hemiIntensity - 0.85 * 1.8) < 1e-9);
+    assert.ok(Math.abs(day.sunIntensity - 3.0 * 1.8) < 1e-9);
     const night = paintedSkyParams({ ...base, dayF: 0 });
     assert.ok(Math.abs(night.hemiIntensity - 0.85) < 1e-9);
+    assert.ok(Math.abs(night.sunIntensity - 3.0) < 1e-9);
   });
 
   it("keeps a shaded wall ≥ 55 % of the same wall in sun at 14:00", () => {
