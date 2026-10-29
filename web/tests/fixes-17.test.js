@@ -17,7 +17,7 @@ describe("17-4 오늘 badges never truncate", () => {
     assert.ok(badge[0].includes("flex: none"), "badge never shrinks");
     assert.ok(badge[0].includes("white-space: nowrap"), "badge never wraps");
     assert.ok(/max-width:\s*none/.test(badge[0]), "no badge width cap");
-    assert.ok(badge[0].includes("text-overflow: clip"), "no ellipsis");
+    assert.ok(badge[0].includes("overflow: visible"), "ellipsis cannot apply");
     assert.ok(!badge[0].includes("ellipsis"), "no ellipsis anywhere");
     const label = css.match(/\.ui-today-label \{[^}]*\}/);
     assert.ok(label && label[0].includes("overflow-wrap"), "line text wraps");
