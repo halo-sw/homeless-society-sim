@@ -81,7 +81,7 @@ import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
 import { postConsult, loadScenario, formatUsage } from "./consult-client.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
-import { agentContext, viewSystemLine } from "./agent-float.js";
+import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const IS_DEV = ENV.DEV === true;
@@ -573,7 +573,7 @@ export function ChatScreen() {
       .map((m) => m.content), text].join("\n");
     const ex = extractStep(joined, stateRef.current.profile, stationNames(data.network));
     const exId = addToolRow({ name: "extract_profile", ok: ex.value.ok,
-      summary: ex.value.ok ? "상황 읽기" : "읽기 실패", ms: ex.ms });
+      summary: ex.value.ok ? "" : "읽기 실패", ms: ex.ms });
     if (!ex.value.ok) {
       pushMsg({ role: "assistant", kind: "text",
         content: `말씀을 숫자로 옮기지 못했어요: ${ex.value.errors.join("; ")}`,
@@ -679,7 +679,7 @@ export function ChatScreen() {
     }
     const ms = Date.now() - t0;
     const rowId = addToolRow({ name: "find_homes", ok: true,
-      summary: `집 후보 ${result.candidates.length}곳(정렬: ${HOME_SORT_KO[sort]})`, ms });
+      summary: `${result.candidates.length}곳 · ${HOME_SORT_KO[sort]}`, ms });
     // A new search drops picks that are no longer listed.
     setPicks((prev) => prev.filter((id) => result.candidates.some((c) => c.id === id)));
     setCandidatesData({ result, tenure, sort });
@@ -758,7 +758,7 @@ export function ChatScreen() {
       const scenValue = sc.value;
       setScenario(scenValue);
       const buildId = addToolRow({ name: "build_scenario", ok: true,
-        summary: `시나리오 (${picked.map((p) => p.name).join(" · ")})`, ms: sc.ms });
+        summary: picked.map((p) => p.name).join(" · "), ms: sc.ms });
       const labels = picked.map((_, i) => "ABC"[i]);
       const runner = createWorkerRunner(new URL("../sim-worker.js", import.meta.url));
       const { runs, compare, ms } = await runStep(
@@ -766,9 +766,9 @@ export function ChatScreen() {
           { done: pg.done + 1, total: picked.length + 1, label: pg.label })),
         scenValue, labels);
       const runId = addToolRow({ name: "run_simulation", ok: true,
-        summary: `30일 실행 (${labels.join("·")})`, ms });
+        summary: `30일 · ${labels.join("·")}`, ms });
       const cmpId = addToolRow({ name: "compare", ok: true,
-        summary: `비교 (${compare.metrics.length}개 지표)`, ms: 0 });
+        summary: `${compare.metrics.length}개 지표`, ms: 0 });
       const customId = newCustomId();
       await saveCustomRun({ id: customId, scenario: scenValue, runs, labels,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])) });
@@ -976,7 +976,7 @@ export function ChatScreen() {
         pushMsg({ role: "user", kind: "text", content: rec.q });
         const calls = (rec.tools || []).map((t, i) => {
           const id = addToolRow({ name: t.name, ok: t.ok !== false,
-            summary: t.summary || "", ms: t.ms || 0 });
+            summary: stripToolLabel(t.name, t.summary), ms: t.ms || 0 });
           return { id, name: t.name };
         });
         pushMsg({ role: "assistant", kind: "text", content: rec.a,

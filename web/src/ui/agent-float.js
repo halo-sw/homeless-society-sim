@@ -94,6 +94,22 @@ export function toolActionKo(name) {
   return TOOL_ACTION_KO[name] || name;
 }
 
+// 13e2: tool rows say the label once — the summary carries only the
+// result, so strip a leading copy of the label.
+export function stripToolLabel(name, summary) {
+  const label = toolActionKo(name);
+  const s = String(summary || "");
+  if (label && s.startsWith(label)) return s.slice(label.length).trimStart();
+  return s;
+}
+
+// 13e2: ≥100 ms reads as seconds with one decimal, faster stays in ms.
+export function toolDurationKo(ms) {
+  const n = Number(ms) || 0;
+  if (n >= 100) return `${(n / 1000).toFixed(1)}초`;
+  return `${Math.round(n)}ms`;
+}
+
 // --- citations ------------------------------------------------------------------
 // Every assistant answer that used tools carries its sources (title +
 // repo-known URL, or title only when the repo knows no URL).

@@ -15,7 +15,7 @@ import {
   ChatMessage, ChatMessageBubble, ChatToolCalls,
 } from "@astryxdesign/core/Chat";
 import { store } from "./store.js";
-import { citationsFor, toolActionKo } from "./agent-float.js";
+import { citationsFor, toolActionKo, toolDurationKo } from "./agent-float.js";
 
 export const PROVIDER_BADGE = { meta: "Muse Spark 1.3", baseten: "Muse Spark Open" };
 
@@ -28,7 +28,7 @@ export function ToolRows({ rows }) {
         name: toolActionKo(r.name),
         status: r.ok ? "complete" : "error",
         target: r.summary,
-        duration: `${r.ms}ms`,
+        duration: toolDurationKo(r.ms),
       }))} />
     </ChatMessageBubble>
   );
