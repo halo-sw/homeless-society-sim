@@ -1,4 +1,6 @@
-<h1 align="center">Homeless Society Sim</h1>
+<h1 align="center">Ithaca</h1>
+
+<p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
 
 <p align="center"><b>계약하기 전에, 그 집에서 먼저 살아 보세요.</b><br>AI 가족이 후보 집마다 30일을 먼저 살아 보고, 매물 사진과 지도, 30분짜리 집 구경으로는 안 보이는<br>"살아 봐야 아는 문제"를 찾아내요.</p>
 
@@ -8,6 +10,7 @@
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
   <img src="https://img.shields.io/badge/tests-926_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 926개, Python 테스트 244개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
 </p>
 
 <p align="center">
@@ -266,3 +269,7 @@ cd web && MODEL_API_KEY=... npm run dev
 OpenStreetMap(ODbL, Geofabrik 경유) · GIS건물통합정보와 건축물대장(국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API(LH · 마이홈) · 서울교통공사 지하철혼잡도정보(공공누리 3유형)와 역간 소요시간 · 경찰청 범죄 발생 지역별 통계(2025) · 주택도시기금 상품 페이지(nhuf.molit.go.kr, 2026-10-29 확인) · 공식 전세 체크리스트 사이트(인터넷등기소, 정부24, HUG 안심전세포털, 국세청). 자세한 이용 조건은 [`ATTRIBUTION.md`](ATTRIBUTION.md)에 있어요.
 
 </details>
+
+## 라이선스
+
+코드는 [MIT](LICENSE)예요. 데이터, 사진, 폰트는 각자의 라이선스를 따르고, [`ATTRIBUTION.md`](ATTRIBUTION.md)에 정리돼 있어요.

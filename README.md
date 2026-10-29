@@ -1,6 +1,8 @@
-<h1 align="center">Homeless Society Sim</h1>
+<h1 align="center">Ithaca</h1>
 
-<p align="center"><b>Live in the home before you sign.</b><br>An AI household lives 30 days in each candidate home and finds the problems you only learn by living there,<br>the ones a listing photo, a map and a 30-minute viewing never show.</p>
+<p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
+
+<p align="center">An AI household lives 30 days in each candidate home and finds the problems you only learn by living there,<br>the ones a listing photo, a map and a 30-minute viewing never show.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
@@ -8,6 +10,7 @@
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
   <img src="https://img.shields.io/badge/tests-926_JS_·_244_Python-2f5d50?style=flat-square" alt="926 JavaScript and 244 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
 </p>
 
 <p align="center">
@@ -266,3 +269,7 @@ Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 an
 OpenStreetMap (ODbL, via Geofabrik) · GIS건물통합정보 and 건축물대장 (국토교통부 / VWorld / 건축HUB) · 국토교통부 실거래가 공개시스템 · 공공주택 데이터 API (LH · 마이홈) · 서울교통공사 지하철혼잡도정보 (공공누리 3유형) and interstation times · 경찰청 범죄 발생 지역별 통계 (2025) · 주택도시기금 product pages (nhuf.molit.go.kr, checked 2026-10-29) · official 전세 checklist sites (인터넷등기소, 정부24, HUG 안심전세포털, 국세청). Full terms are in [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
 </details>
+
+## License
+
+Code: [MIT](LICENSE). Data, photos and fonts keep their own licences, listed in [`ATTRIBUTION.md`](ATTRIBUTION.md).
