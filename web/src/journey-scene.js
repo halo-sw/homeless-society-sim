@@ -12,7 +12,7 @@
 
 import * as THREE from "three";
 import { lonLatToXY } from "./frame.js";
-import { BAND_COLORS, corridorLoadPlan, patternById, trainPosition } from "./journey.js";
+import { BAND_COLORS, STATION_DOT_PX, TRAIN_MARKER_PX, corridorLoadPlan, markerScaleFor, patternById, trainPosition } from "./journey.js";
 import { baseMapBounds, hexToRgb, sliceGeometry, tileBuildings, tileLines,
   tileRoadRibbons, tileWater, tileWaterRibbons } from "./corridor.js";
 import { congestionBand } from "./engine/journey.js";
@@ -73,9 +73,18 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
   const rgbWater = hexToRgb(numOr(l.regionalWater, DEFAULT_LOOK.regionalWater));
   const trainMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95 });
   const dotGeo = new THREE.SphereGeometry(18, 10, 8);
+  // 17c: marker outline + sizing. The cone carries a 1 px dark edge child;
+  // dots get a dark hull (same instances ×1.25, drawn first) so white
+  // reads on beige. World sizes feed markerScaleFor (journey.js).
+  const TRAIN_CONE_H = 90;
+  const DOT_DIAM = 36;
+  const DOT_HULL = 1.25;
+  const OUTLINE_DARK = 0x222222;
 
   let lineMesh = null;
   let dotMesh = null;
+  let dotHull = null;
+  let dotWorld = []; // world Vector3 per station dot (for rescaling)
   let trainMesh = null;
   let groundMesh = null;
   let roadMesh = null;
@@ -106,14 +115,20 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
   }
 
   function clearPath() {
-    for (const mesh of [lineMesh, dotMesh, trainMesh]) {
+    for (const mesh of [lineMesh, dotMesh, dotHull, trainMesh]) {
       if (mesh) {
         group.remove(mesh);
+        // The train outline rides as a child: its edge geometry goes too.
+        mesh.traverse((o) => {
+          if (o !== mesh && o.geometry) o.geometry.dispose();
+          if (o !== mesh && o.material) o.material.dispose();
+        });
         if (mesh.geometry && mesh.geometry !== dotGeo) mesh.geometry.dispose();
         if (mesh.material && mesh.material !== trainMat) mesh.material.dispose();
       }
     }
-    lineMesh = dotMesh = trainMesh = null;
+    lineMesh = dotMesh = dotHull = trainMesh = null;
+    dotWorld = [];
     clearLabels();
     rideKey = "";
   }
@@ -257,19 +272,41 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
       dotMesh = new THREE.InstancedMesh(dotGeo,
         new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false,
           transparent: true, opacity: 0.9 }), dotPositions.length);
+      // Dark hull under the white dots: same instances ×1.25, drawn
+      // first — a ~1 px dark rim so dots read on beige (17c).
+      dotHull = new THREE.InstancedMesh(dotGeo,
+        new THREE.MeshBasicMaterial({ color: OUTLINE_DARK, depthTest: false,
+          transparent: true, opacity: 0.9 }), dotPositions.length);
       const dummy = new THREE.Object3D();
-      dotPositions.forEach(([lon, lat], i) => {
-        const p = toWorld([lon, lat], 60);
+      dotWorld = dotPositions.map(([lon, lat]) => toWorld([lon, lat], 60));
+      dotWorld.forEach((p, i) => {
         dummy.position.copy(p);
+        dummy.scale.setScalar(1);
         dummy.updateMatrix();
         dotMesh.setMatrixAt(i, dummy.matrix);
+        dummy.scale.setScalar(DOT_HULL);
+        dummy.updateMatrix();
+        dotHull.setMatrixAt(i, dummy.matrix);
       });
-      dotMesh.renderOrder = 991;
+      dotMesh.instanceMatrix.needsUpdate = true;
+      dotHull.instanceMatrix.needsUpdate = true;
+      // Draw ladder: line 990, hull 991, dots 992, cone 993, edges 994.
+      dotHull.renderOrder = 991;
+      dotHull.frustumCulled = false;
+      dotMesh.renderOrder = 992;
       dotMesh.frustumCulled = false;
-      group.add(dotMesh);
+      group.add(dotHull, dotMesh);
     }
     trainMesh = new THREE.Mesh(new THREE.ConeGeometry(30, 90, 10), trainMat);
-    trainMesh.renderOrder = 992;
+    // 1 px dark cone edges (17c): a LineSegments child, so it inherits
+    // the marker scale and hides with the cone.
+    const edge = new THREE.LineSegments(
+      new THREE.EdgesGeometry(trainMesh.geometry, 20),
+      new THREE.LineBasicMaterial({ color: OUTLINE_DARK, depthTest: false,
+        transparent: true, opacity: 0.9 }));
+    edge.renderOrder = 994;
+    trainMesh.add(edge);
+    trainMesh.renderOrder = 993;
     trainMesh.visible = false;
     group.add(trainMesh);
     buildStationLabels(ride, coords);
@@ -336,6 +373,37 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
     trainMesh.position.copy(p);
     trainMesh.visible = true;
     return pos;
+  }
+
+  // 17c: distance-scaled markers (call every frame while the journey is
+  // visible): the cone clamps to 28 px, dots to 14 px, so the marker
+  // stays legible from street level to the cruise without hiding the
+  // road. Runs even when the cone hides (dots still show the stations).
+  const markerDummy = new THREE.Object3D();
+  function updateMarkerScale(camera, viewHpx) {
+    if (!camera || !group.visible) return;
+    const fov = Number(camera.fov) || 10;
+    const vh = Number(viewHpx) || 800;
+    if (trainMesh && trainMesh.visible) {
+      trainMesh.scale.setScalar(markerScaleFor(
+        camera.position.distanceTo(trainMesh.position), fov, vh,
+        TRAIN_CONE_H, TRAIN_MARKER_PX));
+    }
+    if (dotMesh && dotHull && dotWorld.length > 0) {
+      dotWorld.forEach((p, i) => {
+        const s = markerScaleFor(camera.position.distanceTo(p), fov, vh,
+          DOT_DIAM, STATION_DOT_PX);
+        markerDummy.position.copy(p);
+        markerDummy.scale.setScalar(s);
+        markerDummy.updateMatrix();
+        dotMesh.setMatrixAt(i, markerDummy.matrix);
+        markerDummy.scale.setScalar(s * DOT_HULL);
+        markerDummy.updateMatrix();
+        dotHull.setMatrixAt(i, markerDummy.matrix);
+      });
+      dotMesh.instanceMatrix.needsUpdate = true;
+      dotHull.instanceMatrix.needsUpdate = true;
+    }
   }
 
   function setManifest(m) {
@@ -513,6 +581,6 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
   resetBaseMap();
 
   return { setPath, setTrain, setManifest, updateTiles, preloadCorridor,
-    tileProgress, updateStationLabels, pathBounds, counts, setVisible,
-    dispose, group };
+    tileProgress, updateStationLabels, updateMarkerScale, pathBounds,
+    counts, setVisible, dispose, group };
 }

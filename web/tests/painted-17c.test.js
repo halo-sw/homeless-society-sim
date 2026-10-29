@@ -9,6 +9,9 @@ import { GRADE_LUMA, GRADE_WARM, PAINTED_NIGHT_GROUND, PAINTED_NIGHT_ROAD_GLOW,
   nightEmissiveHex } from "../src/render/look.js";
 import { hexToLinearRgb } from "../src/palette.js";
 import { toneMappingFor } from "../src/render/renderer.js";
+import { MARKER_MIN_SCALE, STATION_DOT_PX, TRAIN_MARKER_PX,
+  markerScaleFor } from "../src/journey.js";
+import { distanceForWidth } from "../src/camera.js";
 
 // Songpa-jamsil box centre (data bbox): the demo home-A area.
 const LAT = 37.5132169;
@@ -156,5 +159,42 @@ describe("17c-2 night ground and roads visible", () => {
     const g = resolvePaintedPixel(PAINTED_NIGHT_GROUND,
       { ...NIGHT_2100, emissiveHex: nightEmissiveHex({}) });
     assert.equal(g.fogF, 0);
+  });
+});
+
+describe("17c-3 smaller sim marker", () => {
+  // Screen px of a world-height object at a camera distance.
+  const pxFor = (worldH, scale, d, fov = 10, vh = 860) =>
+    (worldH * scale * vh) / (2 * d * Math.tan((fov * Math.PI) / 180 / 2));
+
+  it("pins the marker budgets (cone 28 px, dots 14 px)", () => {
+    assert.equal(TRAIN_MARKER_PX, 28);
+    assert.equal(STATION_DOT_PX, 14);
+    assert.equal(MARKER_MIN_SCALE, 0.02);
+  });
+
+  it("clamps the cone to 28 px at street framing", () => {
+    // Painted stop framing (450 m ≈ the journey street ends).
+    const d = distanceForWidth(450, 10, 1.2);
+    const s = markerScaleFor(d, 10, 860, 90, TRAIN_MARKER_PX);
+    assert.ok(s < 1, `street scale ${s} should shrink the 90 m cone`);
+    assert.ok(Math.abs(pxFor(90, s, d) - 28) < 0.5, `cone px ${pxFor(90, s, d)}`);
+    const dots = markerScaleFor(d, 10, 860, 36, STATION_DOT_PX);
+    assert.ok(pxFor(36, dots, d) <= 14.5, `dot px ${pxFor(36, dots, d)}`);
+  });
+
+  it("keeps the authored size at the cruise (already ≤ 28 px)", () => {
+    const s = markerScaleFor(17000, 10, 860, 90, TRAIN_MARKER_PX);
+    assert.equal(s, 1);
+    assert.ok(pxFor(90, s, 17000) <= 28, `cruise cone px ${pxFor(90, s, 17000)}`);
+  });
+
+  it("clamps instead of vanishing or enlarging", () => {
+    assert.equal(markerScaleFor(1e9, 10, 860, 90, 28), 1);
+    assert.ok(markerScaleFor(5, 10, 860, 90, 28) >= MARKER_MIN_SCALE);
+    for (const bad of [NaN, null, undefined, -3]) {
+      const s = markerScaleFor(bad, 10, 860, 90, 28);
+      assert.ok(Number.isFinite(s) && s >= MARKER_MIN_SCALE && s <= 1);
+    }
   });
 });

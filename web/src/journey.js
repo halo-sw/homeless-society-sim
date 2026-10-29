@@ -108,6 +108,25 @@ export function trainPosition(network, ride, elapsed) {
     transferIndex: at.transferIndex };
 }
 
+// Marker screen-size clamp (17c): the train cone (90 m) and station
+// dots (36 m) are authored for the regional cruise; near street level
+// they cover hundreds of px and hide the road. Scale by camera distance
+// so the cone never exceeds 28 px and dots 14 px tall — legible, never
+// dominant. Never enlarges past the authored size, never vanishes.
+export const TRAIN_MARKER_PX = 28;
+export const STATION_DOT_PX = 14;
+export const MARKER_MIN_SCALE = 0.02;
+
+export function markerScaleFor(camDistM, fovDeg, viewHpx, worldHM, maxPx) {
+  const d = Math.max(1, Number(camDistM) || 1);
+  const fov = Math.max(1, Math.min(120, Number(fovDeg) || 10));
+  const vh = Math.max(1, Number(viewHpx) || 1);
+  const wh = Math.max(0.01, Number(worldHM) || 0.01);
+  const px = Math.max(1, Number(maxPx) || 1);
+  const worldForMax = (px * (2 * d * Math.tan((fov * Math.PI) / 180 / 2))) / vh;
+  return Math.min(1, Math.max(MARKER_MIN_SCALE, worldForMax / wh));
+}
+
 export function patternById(network, id) {
   if (!network || !id) return null;
   for (const line of network.lines || []) {

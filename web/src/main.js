@@ -3082,6 +3082,13 @@ async function bootSim() {
         || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
       journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed);
     }
+    // 17c: distance-scaled journey markers (cone ≤ 28 px, dots ≤ 14 px).
+    if (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
+        || jfTrain.phase === "descending" || jfTrain.phase === "hold"
+        || jfTrain.phase === "boarding") {
+      journeyLayer.updateMarkerScale(camera,
+        (renderer.domElement && renderer.domElement.clientHeight) || 800);
+    }
     // Station names ride along the line during the regional phases only.
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending")) {
