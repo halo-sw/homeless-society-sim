@@ -344,10 +344,11 @@ function profileValue(profile, key) {
   return f ? f.value : null;
 }
 
-const SOURCE_KO = { customer: "내가 말한 값", default: "기본값", derived: "계산한 값" };
+const SOURCE_KO = { customer: "내가 말한 값", default: "기본값", derived: "계산한 값",
+  asked: "물어볼 값" };
 
 export function sourceKo(source) {
-  return SOURCE_KO[source] || "내가 말한 값";
+  return SOURCE_KO[source] || "";
 }
 
 export function fieldRows(profile) {
@@ -355,8 +356,16 @@ export function fieldRows(profile) {
   const push = (key, label, fmt) => {
     const f = profile && profile[key];
     if (!f) return;
-    rows.push({ key, label, value: f.value, source: f.source || "customer",
-      note: f.note || "", text: fmt(f.value, f) });
+    const v = f.value;
+    const empty = v === null || v === undefined || v === ""
+      || (Array.isArray(v) && v.length === 0);
+    if (empty) {
+      rows.push({ key, label, value: v, source: "asked", note: "",
+        text: "아직 몰라요" });
+      return;
+    }
+    rows.push({ key, label, value: v, source: f.source || "",
+      note: f.note || "", text: fmt(v, f) });
   };
   const won = (v) => (v === null || v === undefined ? "아직" : fmtWon(v));
   push("members", "함께 사는 사람", (v) => {

@@ -20,7 +20,7 @@
 import { findPath } from "./engine/journey.js";
 import { rideMinutes as derivedRideMinutes } from "./transit/schedule.js";
 
-export const PROFILE_SOURCES = ["customer", "default", "derived"];
+export const PROFILE_SOURCES = ["customer", "default", "derived", "asked"];
 
 // Engine constants allowed as defaults (labelled wherever shown).
 export const ENGINE_DEFAULTS = {
@@ -48,13 +48,13 @@ export function field(value, source, note = "") {
 }
 
 export function emptyProfile() {
-  const blank = () => field(null, "customer", "아직 묻지 않음");
+  const blank = () => field(null, "asked", "");
   return {
     members: blank(), workplaces: blank(), salaryAnnual: blank(),
     takehomeMonthly: blank(), cash: blank(), debts: blank(), tenure: blank(),
     depositMax: blank(), monthlyMax: blank(), priceMax: blank(),
     sizeMin: blank(), commuteMax: blank(),
-    priorities: blank(), mustHaves: field([], "customer", ""),
+    priorities: blank(), mustHaves: field([], "asked", ""),
   };
 }
 
@@ -292,7 +292,7 @@ export function extract_profile(text, current = null, opts = {}) {
     const n = (profile.members.value || []).length || 1;
     set("salaryAnnual",
       Array.from({ length: n }, () => salaryHit.won),
-      salaryHit.evidence, "연봉(세전 가정: 실수령은 estimate_net_pay로)");
+      salaryHit.evidence, "세전 연봉이에요. 실수령은 따로 계산해요.");
   }
   if (cashHit && profile.cash.value === null) {
     set("cash", cashHit.won, cashHit.evidence, "모은 돈");
@@ -565,13 +565,13 @@ export function exampleProfile() {
     workplaces: field([{ member: 0, text: "판교", resolved: { station: "판교" } }],
       "customer", "예시: 판교로 출근"),
     salaryAnnual: field([40000000, 36000000], "customer", "예시 연봉(세전)"),
-    takehomeMonthly: field(null, "customer", "예시: 아직 묻지 않음"),
+    takehomeMonthly: field(null, "asked", ""),
     cash: field(50000000, "customer", "예시: 모은 돈 5천"),
     debts: field(0, "customer", "예시: 빚 없음"),
     tenure: field("jeonse", "customer", "예시: 전세"),
     depositMax: field(300000000, "customer", "예시: 전세 3억 이하"),
-    monthlyMax: field(null, "customer", "예시: 아직 묻지 않음"),
-    priceMax: field(null, "customer", "예시: 아직 묻지 않음"),
+    monthlyMax: field(null, "asked", ""),
+    priceMax: field(null, "asked", ""),
     sizeMin: field(59, "customer", "예시: 59㎡ 이상"),
     commuteMax: field(60, "customer", "예시: 편도 60분까지"),
     priorities: field({ edu: 3, life: 3, safety: 3, money: 3, convenience: 3 },

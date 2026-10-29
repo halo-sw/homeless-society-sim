@@ -117,9 +117,14 @@ export function ProfileCard({ profile, example, onChip }) {
               <VStack gap={0}>
                 <HStack gap={1} vAlign="center" wrap="wrap">
                   <Text hasTabularNumbers>{r.text}</Text>
-                  <Badge variant="neutral" label={sourceKo(r.source)} />
+                  {sourceKo(r.source) !== "" && (
+                    <Badge variant={r.source === "asked" ? "neutral" : "blue"}
+                      label={sourceKo(r.source)} />
+                  )}
                 </HStack>
-                {r.note && <Text type="supporting">{r.note}</Text>}
+                {r.note && r.note !== r.label && r.note !== r.text && (
+                  <Text type="supporting">{r.note}</Text>
+                )}
               </VStack>
             </MetadataListItem>
           ))}

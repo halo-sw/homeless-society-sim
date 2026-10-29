@@ -66,7 +66,7 @@ describe("extract_profile", () => {
     for (const key of ["salaryAnnual", "cash", "depositMax", "monthlyMax",
       "priceMax", "workplaces", "members", "tenure"]) {
       assert.equal(r.profile[key].value, null, key);
-      assert.equal(r.profile[key].source, "customer", key);
+      assert.equal(r.profile[key].source, "asked", key);
     }
     assert.ok(r.asked.length <= 2);
     assert.ok(r.asked.length >= 1);
@@ -158,7 +158,7 @@ describe("example profile", () => {
     const p = exampleProfile();
     for (const key of PROFILE_FIELDS) {
       assert.ok(p[key] && typeof p[key] === "object", key);
-      assert.ok(["customer", "default", "derived"].includes(p[key].source), key);
+      assert.ok(["customer", "default", "derived", "asked"].includes(p[key].source), key);
     }
     assert.equal(TENURE_KO[p.tenure.value], "전세");
   });
