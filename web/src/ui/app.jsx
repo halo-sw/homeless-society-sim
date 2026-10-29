@@ -35,7 +35,9 @@ import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent } from "../mone
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand, congestionPeakLine } from "../engine/journey.js";
 import { criterionTitle } from "../engine/criteria.js";
-import { FATIGUE_MODEL_NOTE, chipDisplay, tickerDisplay } from "../nowcard.js";
+import { chipDisplay, tickerDisplay } from "../nowcard.js";
+import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
+import { ActivityIcon } from "./timeline.jsx";
 
 function useStore() {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -105,52 +107,54 @@ export function CaptionCard({ state }) {
   );
 }
 
-function JudgeLogCard({ state }) {
+function JudgeLogCard({ state, bare }) {
   if (state.judgeLog.length === 0) return null;
+  const body = (
+    <VStack gap={2}>
+      <HStack gap={2} vAlign="center">
+        <Heading level={4}>선택 기록</Heading>
+        <span className="ui-panel-spacer" />
+        {state.judge && state.judge.canAsk && (
+          <Button size="sm" variant="ghost" label="Muse에게 묻기"
+            isLoading={state.judgeAskState === "asking"}
+            onClick={() => act("askLive")} />
+        )}
+      </HStack>
+      {state.askError && (
+        <Banner status="warning" title="라이브 판단을 불러오지 못했습니다"
+          description={state.askError} isDismissable
+          onDismiss={() => store.set({ askError: "" })} />
+      )}
+      <ol className="ui-timeline">
+        {state.judgeLog.map((row, i) => (
+          <li key={row.id || i}
+            className={state.judgeFlash === row.id ? "ui-timeline-row ui-flash" : "ui-timeline-row"}>
+            <span className="ui-timeline-dot" aria-hidden="true" />
+            <VStack gap={0}>
+              <HStack gap={1} vAlign="center" wrap="wrap">
+                <Text type="supporting" hasTabularNumbers>{row.minute}</Text>
+                <Text type="supporting">{`${row.agent} · ${row.kind} → ${row.choice}`}</Text>
+                <Text type="supporting">{row.badgeText}</Text>
+                {state.judgeFlash === row.id && <Text type="supporting">지금</Text>}
+              </HStack>
+              {row.reason && <Text type="supporting">“{row.reason}”</Text>}
+            </VStack>
+          </li>
+        ))}
+      </ol>
+    </VStack>
+  );
+  // 13f2: inside the drawer section the card chrome goes (no nested
+  // cards); the standalone overlay keeps it.
+  if (bare) return <div className="ui-judgelog-bare">{body}</div>;
   return (
     <div className="ui-judgelog overlay">
-      <Card>
-        <VStack gap={2}>
-          <HStack gap={2} vAlign="center">
-            <Heading level={4}>선택 기록</Heading>
-            <span className="ui-panel-spacer" />
-            {state.judge && state.judge.canAsk && (
-              <Button size="sm" variant="ghost" label="Muse에게 묻기"
-                isLoading={state.judgeAskState === "asking"}
-                onClick={() => act("askLive")} />
-            )}
-          </HStack>
-          {state.askError && (
-            <Banner status="warning" title="라이브 판단을 불러오지 못했습니다"
-              description={state.askError} isDismissable
-              onDismiss={() => store.set({ askError: "" })} />
-          )}
-          <ol className="ui-timeline">
-            {state.judgeLog.map((row, i) => (
-              <li key={row.id || i}
-                className={state.judgeFlash === row.id ? "ui-timeline-row ui-flash" : "ui-timeline-row"}>
-                <span className="ui-timeline-dot" aria-hidden="true" />
-                <VStack gap={0}>
-                  <HStack gap={1} vAlign="center" wrap="wrap">
-                    <Text type="supporting" hasTabularNumbers>{row.minute}</Text>
-                    <Text type="supporting">{`${row.agent} · ${row.kind} → ${row.choice}`}</Text>
-                    <Text type="supporting">{row.badgeText}</Text>
-                    {state.judgeFlash === row.id && <Text type="supporting">지금</Text>}
-                  </HStack>
-                  {row.reason && <Text type="supporting">“{row.reason}”</Text>}
-                </VStack>
-              </li>
-            ))}
-          </ol>
-        </VStack>
-      </Card>
+      <Card>{body}</Card>
     </div>
   );
 }
 
 const WHY_KIND_KO = { routine: "평소 습관", decision: "고른 것", input: "고객님이 정한 것", none: "기록 없음" };
-
-const BAND_CSS = { calm: "#4a9b6b", normal: "#d9a83c", crowded: "#d96c3c", packed: "#c0392b" };
 
 // Fatigue line over the day: stepwise value 0–100 with event markers.
 function FatigueSpark({ series, nowMin }) {
@@ -180,26 +184,29 @@ function FatigueSpark({ series, nowMin }) {
   );
 }
 
-// At most 3 criterion chips; the rest hide behind "+N개 기준" (stage 9c).
+// 13f2: criteria as small text tags (still buttons underneath, so the
+// criterion tab keeps opening); the rest hide behind "+N개".
 function CriterionChips({ ids }) {
   const [open, setOpen] = useState(false);
   const { visible, hiddenCount } = chipDisplay(ids, open);
   if (visible.length === 0) return null;
   return (
-    <HStack gap={1} vAlign="center" wrap="wrap">
+    <div className="ui-tags">
       {visible.map((id) => (
-        // 13e4: the Korean rule title on the chip; the internal id
+        // 13e4: the Korean rule title on the tag; the internal id
         // stays in `title` only.
-        <span key={id} title={id}>
-          <Button size="sm" variant="ghost" label={criterionTitle(id)}
-            onClick={() => act("openCriterion", id)} />
-        </span>
+        <button key={id} type="button" className="ui-tag" title={id}
+          onClick={() => act("openCriterion", id)}>
+          {criterionTitle(id)}
+        </button>
       ))}
       {hiddenCount > 0 && (
-        <Button size="sm" variant="ghost" label={open ? "접기" : `+${hiddenCount}개 기준`}
-          onClick={() => setOpen(!open)} />
+        <button type="button" className="ui-tag ui-tag-more"
+          onClick={() => setOpen(!open)}>
+          {open ? "접기" : `+${hiddenCount}개`}
+        </button>
       )}
-    </HStack>
+    </div>
   );
 }
 
@@ -221,12 +228,23 @@ function TickerList({ events }) {
   );
 }
 
-function FatigueBar({ fatigue, nowMin }) {
+// The ride note names the leg ("신분당선 강남→판교 붐비는 정도 70%, …")
+// — the hero and the 오늘 list already say that, so only the posture
+// half stays here.
+function shortFatigueNote(note) {
+  const s = String(note || "");
+  if (!s) return "";
+  const m = /붐비는 정도 /.exec(s);
+  return m ? s.slice(m.index) : s;
+}
+
+function FatigueBlock({ fatigue, nowMin }) {
   const f = fatigue;
   const width = `${Math.max(0, Math.min(100, f.value))}%`;
   const deltaText = f.delta === null || f.delta === undefined
     ? "" : ` (${f.delta > 0 ? "+" : ""}${Math.round(f.delta * 10) / 10})`;
   const peakLine = f.peakCongestion ? congestionPeakLine(f.peakCongestion) : null;
+  const note = shortFatigueNote(f.note);
   return (
     <VStack gap={1}>
       <HStack gap={1} vAlign="center" wrap="wrap">
@@ -237,7 +255,7 @@ function FatigueBar({ fatigue, nowMin }) {
         aria-valuenow={Math.round(f.value)} aria-valuemin={0} aria-valuemax={100}>
         <div className="ui-progress-fill" style={{ width }} />
       </div>
-      {f.note && <Text type="supporting">{f.note}</Text>}
+      {note && <Text type="supporting">{note}</Text>}
       {peakLine && (
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Text type="supporting" hasTabularNumbers>{`오늘 가장 붐비는 순간 · ${peakLine}`}</Text>
@@ -245,152 +263,238 @@ function FatigueBar({ fatigue, nowMin }) {
         </HStack>
       )}
       <FatigueSpark series={f.series} nowMin={nowMin} />
-      <Text type="supporting">{FATIGUE_MODEL_NOTE}</Text>
+      <Text type="supporting">피곤한 정도는 가정 모델이에요</Text>
       <CriterionChips ids={f.criterionIds} />
     </VStack>
   );
 }
 
-function JourneyCard({ state }) {
+// 13f2: the 오늘 list — the day's trips as one compact line per leg.
+// Replaces JourneyCard and the duplicated leg lines (NowCard, spark
+// caption). Step labels keep their engine text; only the trailing
+// source word moves into a badge at the end of the line.
+const STEP_ICON = { place: "home", walk: "walk", ride: "subway", transfer: "subway", stay: "other" };
+
+function stepLabelShown(label) {
+  return String(label || "").replace(/ (실측|가정)\)$/, ")");
+}
+
+export function TodayList({ state }) {
   const journey = state.journey;
   const loading = state.journeyLoading;
-  if (!journey && !loading) return null;
-  const legs = journey ? journey.legs || [] : [];
+  const outings = (state.routeSteps && state.routeSteps.outings) || [];
+  const minute = Math.floor(state.clock.minute);
+  if (outings.length === 0 && !journey && !loading) return null;
+  const at = outingIndexAt(outings, minute);
+  const nav = navFromOutings(outings, minute);
+  const jump = (m) => act("setMinute", Math.max(0, Math.min(1439, Math.round(m))));
   return (
-    <div className="ui-journey">
-      <Card>
-        <VStack gap={1}>
-          <HStack gap={1} vAlign="center" wrap="wrap">
-            <Heading level={4}>이동 중</Heading>
-            <GroupBadges sources={legs.map((l) => l.source)} />
-            <HStack gap={1} vAlign="center">
-              {[["auto", "자동"], ["low", "거리 보기"], ["high", "전체 경로"]].map(([v, label]) => (
-                <Button key={v} size="sm" variant={state.journeyView === v ? "secondary" : "ghost"}
-                  label={label} onClick={() => act("setJourneyView", v)} />
-              ))}
-            </HStack>
+    <div className="ui-today" data-testid="today-list">
+      <div className="ui-today-nav">
+        <Button size="sm" variant="ghost" label="◀ 이전 이동"
+          isDisabled={nav.prev === null}
+          onClick={() => nav.prev !== null && jump(nav.prev)} />
+        <Button size="sm" variant="ghost" label="다음 이동 ▶"
+          isDisabled={nav.next === null}
+          onClick={() => nav.next !== null && jump(nav.next)} />
+        <span className="ui-panel-spacer" />
+        {(journey || loading) && (
+          <HStack gap={1} vAlign="center">
+            {[["auto", "자동"], ["low", "거리 보기"], ["high", "전체 경로"]].map(([v, label]) => (
+              <Button key={v} size="sm" variant={state.journeyView === v ? "secondary" : "ghost"}
+                label={label} onClick={() => act("setJourneyView", v)} />
+            ))}
           </HStack>
-          {loading && <Text type="supporting">{loading}</Text>}
-          {journey && (
-            <>
-              <HStack gap={1} vAlign="center">
-                <Text>{journey.where}</Text>
-                {journey.totalMin > 0 && (
-                  <Text type="supporting" hasTabularNumbers>{`남은 ${journey.minutesLeft}분`}</Text>
-                )}
+        )}
+      </div>
+      {loading && <Text type="supporting">{loading}</Text>}
+      {outings.map((o, oi) => {
+        const current = oi === at ? stepIndexAt(o.steps || [], minute) : -1;
+        return (
+          <div key={oi} className="ui-today-outing">
+            {(o.steps || []).map((s, i) => {
+              const band = s.congestion ? congestionBand(s.congestion.valuePct).key : null;
+              const isNow = oi === at && i === current;
+              return (
+                <button key={i} type="button" data-current={isNow}
+                  className={isNow ? "ui-today-row ui-today-now" : "ui-today-row"}
+                  onClick={() => jump(s.minute)}
+                  aria-label={`${hhmm(s.minute)} ${s.label}${isNow ? " (지금)" : ""}`}>
+                  <span className="ui-today-time">{hhmm(s.minute)}</span>
+                  <ActivityIcon activity={STEP_ICON[s.kind] || "other"} />
+                  <span className="ui-today-label">{stepLabelShown(s.label)}</span>
+                  {band && (
+                    <span className={`ui-dot ui-dot-${band}`} aria-hidden="true" />
+                  )}
+                  {s.congestion && <SourceBadge source={s.congestion.source} />}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+      {journey && (
+        <div className="ui-today-foot">
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            {BAND_ORDER.map((b) => (
+              <HStack key={b} gap={1} vAlign="center">
+                <span className={`ui-dot ui-dot-${b}`} aria-hidden="true" />
+                <Text type="supporting">{BAND_LABEL[b]}</Text>
               </HStack>
-              {journey.totalMin > 0 && (
-                <div className="ui-progress" role="progressbar" aria-label="이동 진행률"
-                  aria-valuenow={journey.elapsedMin} aria-valuemin={0} aria-valuemax={journey.totalMin}>
-                  <div className="ui-progress-fill"
-                    style={{ width: `${Math.min(100, (journey.elapsedMin / journey.totalMin) * 100)}%` }} />
-                </div>
-              )}
-              <VStack gap={0}>
-                {legs.map((l, i) => {
-                  const band = congestionBand(l.valuePct).key;
-                  return (
-                    <HStack key={i} gap={1} vAlign="center" wrap="wrap">
-                      <span style={{ width: 8, height: 8, borderRadius: 4,
-                        background: BAND_CSS[band], display: "inline-block" }} />
-                      <Text type="supporting" hasTabularNumbers>
-                        {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 붐비는 정도 ${l.valuePct}%`}
-                      </Text>
-                    </HStack>
-                  );
-                })}
-              </VStack>
-              <HStack gap={1} vAlign="center" wrap="wrap">
-                {BAND_ORDER.map((b) => (
-                  <HStack key={b} gap={1} vAlign="center">
-                    <span style={{ width: 8, height: 8, borderRadius: 4,
-                      background: BAND_CSS[b], display: "inline-block" }} />
-                    <Text type="supporting">{BAND_LABEL[b]}</Text>
-                  </HStack>
-                ))}
-              </HStack>
-              <Text type="supporting">{journey.corridorLabel}</Text>
-              {journey.detailNote && <Text type="supporting">{journey.detailNote}</Text>}
-              <Text type="supporting">{`붐비는 정도 자료: ${journey.congestionSource}`}</Text>
-            </>
-          )}
-        </VStack>
-      </Card>
+            ))}
+          </HStack>
+          <Text type="supporting">{journey.corridorLabel}</Text>
+          {journey.detailNote && <Text type="supporting">{journey.detailNote}</Text>}
+          <Text type="supporting">{`붐비는 정도 자료: ${journey.congestionSource}`}</Text>
+        </div>
+      )}
     </div>
   );
 }
 
-function NowCard({ state }) {
+// 13f2: the drawer answers "지금 이 사람은 어떤 상황인가?" first
+// (hero), everything else one tap away (three folded sections, 오늘
+// open). Each fact appears once: the current leg in the hero, every
+// leg in 오늘, the reasons in 왜, records in 비교·기록.
+const STATUS_CHIP = { trip: "이동 중", ride: "이동 중", home: "집", away: "직장", place: "외출" };
+
+function heroSentence(state) {
+  const n = state.now;
+  if (state.journey && state.journey.where) return state.journey.where;
+  if (n.ride && n.ride.where) return n.ride.where;
+  return n.now;
+}
+
+// The hero's big number: minutes left in the current situation, from
+// the journey/ride payload when riding, else read off the engine's
+// own one-line wording (walk remain, stay remain, work end time).
+function heroBig(state) {
+  const n = state.now;
+  const left = state.journey && Number.isFinite(state.journey.minutesLeft)
+    ? state.journey.minutesLeft
+    : n.ride && Number.isFinite(n.ride.minutesLeft) ? n.ride.minutesLeft : null;
+  if (left !== null) return `${left}분 남음`;
+  const m = /(\d+)분 남음/.exec(n.now);
+  if (m) return `${m[1]}분 남음`;
+  if (/곧 도착/.test(n.now)) return "곧 도착";
+  const stay = /(\d+)분 머묾/.exec(n.now);
+  if (stay) return `${stay[1]}분 머묾`;
+  const end = /(\d{2}):(\d{2})까지/.exec(n.now);
+  if (end && state.clock) {
+    const rest = (Number(end[1]) * 60 + Number(end[2])) - Math.floor(state.clock.minute);
+    if (rest >= 0) return `${rest}분 남음`;
+  }
+  return "";
+}
+
+function heroLeg(state) {
+  const j = state.journey;
+  if (j && j.legs && Number.isFinite(j.legIndex) && j.legs[j.legIndex]) return j.legs[j.legIndex];
+  const r = state.now && state.now.ride;
+  if (r && r.legs && r.legs.length === 1) return r.legs[0];
+  return null;
+}
+
+function SimHero({ state }) {
   const n = state.now;
   if (!n) return null;
   if (n.free) {
     return (
-      <div className="ui-nowcard">
-        <Card>
-          <VStack gap={1}>
-            <Heading level={4}>지금 식구들 모습</Heading>
-            {n.rows.map((r) => (
-              <Text key={r.agentKey} hasTabularNumbers>
-                {`${r.label} · ${r.line}${r.fatigue === null || r.fatigue === undefined ? "" : ` · 피곤한 정도 ${fmtIndex(r.fatigue)}`}`}
-              </Text>
-            ))}
-          </VStack>
-        </Card>
+      <div className="ui-hero" data-testid="sim-hero">
+        <div className="ui-hero-top">
+          <span className="ui-hero-name">지금 식구들 모습</span>
+        </div>
+        {n.rows.map((r) => (
+          <div key={r.agentKey} className="ui-hero-line">
+            {`${r.label} · ${r.line}${r.fatigue === null || r.fatigue === undefined ? "" : ` · 피곤한 정도 ${fmtIndex(r.fatigue)}`}`}
+          </div>
+        ))}
       </div>
     );
   }
+  const big = heroBig(state);
+  const leg = heroLeg(state);
+  const band = leg ? congestionBand(leg.valuePct).key : null;
+  const pct = leg ? Math.round(leg.valuePct) : 0;
+  return (
+    <div className="ui-hero" data-testid="sim-hero">
+      <div className="ui-hero-top">
+        <span className="ui-hero-name">{n.label}</span>
+        <span className="ui-tag">{STATUS_CHIP[n.state] || "지금"}</span>
+      </div>
+      <div className="ui-hero-line">{heroSentence(state)}</div>
+      {big && <div className="ui-hero-big">{big}</div>}
+      {leg && (
+        <div className="ui-hero-cong">
+          <div className="ui-progress" role="progressbar" aria-label="타는 구간 붐비는 정도"
+            aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+            <div className={`ui-progress-fill ui-fill-${band}`}
+              style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+          </div>
+          <div className="ui-hero-cong-line">
+            <span>{`혼잡 ${pct}%`}</span>
+            <SourceBadge source={leg.source} />
+          </div>
+        </div>
+      )}
+      <div className="ui-hero-next">{`다음: ${n.next}`}</div>
+    </div>
+  );
+}
+
+function WhySection({ state }) {
+  const n = state.now;
+  if (!n || n.free) return null;
   const d = n.decision;
   return (
-    <div className="ui-nowcard">
-      <Card>
+    <VStack gap={2}>
+      <Text type="supporting">{`이렇게 한 까닭 · ${WHY_KIND_KO[n.whyKind] ? `${WHY_KIND_KO[n.whyKind]} · ` : ""}${n.why}`}</Text>
+      {d && d.chosen_by === "model" && d.reason_ko && (
+        <Text type="supporting">“{d.reason_ko}”</Text>
+      )}
+      {n.criterionIds.length > 0 && (
         <VStack gap={1}>
-          <HStack gap={1} vAlign="center" wrap="wrap">
-            <Heading level={4}>{`${n.label} · 지금`}</Heading>
-            {WHY_KIND_KO[n.whyKind] && (
-              <Text type="supporting">{WHY_KIND_KO[n.whyKind]}</Text>
-            )}
-            {n.ride && n.ride.legs.length > 0 && (
-              <GroupBadges sources={n.ride.legs.map((l) => l.source)} />
-            )}
-          </HStack>
-          <Text>{n.now}</Text>
-          {n.ride && n.ride.legs.length > 0 && (
-            <VStack gap={0}>
-              {n.ride.legs.map((l, i) => {
-                const band = congestionBand(l.valuePct).key;
-                return (
-                  <HStack key={i} gap={1} vAlign="center" wrap="wrap">
-                    <span style={{ width: 8, height: 8, borderRadius: 4,
-                      background: BAND_CSS[band], display: "inline-block" }} />
-                    <Text type="supporting" hasTabularNumbers>
-                      {`${l.line} ${l.from}→${l.to} ${fmtMinutes(l.minutes)} · 붐비는 정도 ${l.valuePct}%`}
-                    </Text>
-                  </HStack>
-                );
-              })}
-            </VStack>
-          )}
-          {n.progress !== null && n.progress !== undefined && (
-            <div className="ui-progress" role="progressbar" aria-label="현재 일정 진행률"
-              aria-valuenow={Math.round(n.progress * 100)} aria-valuemin={0} aria-valuemax={100}>
-              <div className="ui-progress-fill" style={{ width: `${Math.round(n.progress * 100)}%` }} />
-            </div>
-          )}
-          <Text type="supporting">{`이렇게 한 까닭 · ${n.why}`}</Text>
-          {d && d.chosen_by === "model" && d.reason_ko && (
-            <Text type="supporting">“{d.reason_ko}”</Text>
-          )}
-          {n.criterionIds.length > 0 && (
-            <HStack gap={1} vAlign="center" wrap="wrap">
-              <Text type="supporting">적용한 기준</Text>
-              <CriterionChips ids={n.criterionIds} />
-            </HStack>
-          )}
-          <Text type="supporting">{`다음 일정 · ${n.next}`}</Text>
-          {n.fatigue && <FatigueBar fatigue={n.fatigue} nowMin={state.clock && state.clock.minute} />}
-          <TickerList events={state.ticker} />
+          <Text type="supporting">적용한 기준</Text>
+          <CriterionChips ids={n.criterionIds} />
         </VStack>
-      </Card>
+      )}
+      {n.fatigue && <FatigueBlock fatigue={n.fatigue} nowMin={state.clock && state.clock.minute} />}
+    </VStack>
+  );
+}
+
+function RecordSection({ state }) {
+  return (
+    <VStack gap={2}>
+      <TickerList events={state.ticker} />
+      <JudgeLogCard state={state} bare />
+      <CompareCard state={state} bare />
+    </VStack>
+  );
+}
+
+export function SimDrawer({ state }) {
+  return (
+    <div className="ui-drawer13f2">
+      <SimHero state={state} />
+      <details className="ui-section" open data-testid="section-today">
+        <summary className="ui-section-head">오늘</summary>
+        <div className="ui-section-body">
+          <TodayList state={state} />
+        </div>
+      </details>
+      <details className="ui-section" data-testid="section-why">
+        <summary className="ui-section-head">왜 이렇게 판단했나</summary>
+        <div className="ui-section-body">
+          <WhySection state={state} />
+        </div>
+      </details>
+      <details className="ui-section" data-testid="section-compare">
+        <summary className="ui-section-head">비교·기록</summary>
+        <div className="ui-section-body">
+          <RecordSection state={state} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -474,7 +578,7 @@ export function CompareTabBody({ state }) {
   );
 }
 
-export function CompareCard({ state }) {
+export function CompareCard({ state, bare }) {
   if (!state.compareOpen) return null;
   // Two levels so every label fits: the group row (비교 · 돈 · 안심 ·
   // 매물) then the tabs inside the active group. Switching groups jumps
@@ -482,34 +586,38 @@ export function CompareCard({ state }) {
   const group = groupForTab(state.compareTab);
   const groupItems = COMPARE_GROUPS.map((g) => ({ value: g.id, label: g.label }));
   const tabItems = tabsInGroup(group).map((v) => ({ value: v, label: labelForTab(v) }));
+  const body = (
+    <VStack gap={2}>
+      <HStack gap={2} vAlign="center">
+        <Heading level={4}>30일 생활 비교</Heading>
+        <span className="ui-panel-spacer" />
+        <Button size="sm" variant="secondary" label="결과 공유"
+          onClick={() => store.set({ shareOpen: true })} />
+        <Button size="sm" variant="ghost" label="닫기" onClick={() => act("toggleCompare")} />
+      </HStack>
+      <SegControl label="비교 묶음" value={group}
+        onChange={(g) => act("setCompareTab", tabsInGroup(g)[0])} items={groupItems} />
+      <SegControl label="비교 탭" value={state.compareTab}
+        onChange={(v) => act("setCompareTab", v)} items={tabItems} />
+      {state.compareTab === "compare" && <CompareTabBody state={state} />}
+      {state.compareTab === "priorities" && <PrioritiesTab state={state} />}
+      {state.compareTab === "money" && <MoneyTab state={state} />}
+      {state.compareTab === "worthit" && <WorthItTab state={state} />}
+      {state.compareTab === "quality" && <QualityTab state={state} />}
+      {state.compareTab === "safety" && <SafetyEduTab state={state} />}
+      {state.compareTab === "jeonse" && <JeonseTab state={state} />}
+      {state.compareTab === "support" && <SupportTab state={state} />}
+      {state.compareTab === "listings" && <ListingsTab state={state} />}
+      {state.compareTab === "listings-public" && <ListingsTab state={state} sub="public" />}
+      {state.compareTab === "criteria" && <CriteriaTab state={state} />}
+    </VStack>
+  );
+  // 13f2: inside the drawer section the card chrome goes (no nested
+  // cards); the standalone overlay (chat) keeps it.
+  if (bare) return <div className="ui-compare-bare">{body}</div>;
   return (
     <div className="ui-compare overlay">
-      <Card>
-        <VStack gap={2}>
-          <HStack gap={2} vAlign="center">
-            <Heading level={4}>30일 생활 비교</Heading>
-            <span className="ui-panel-spacer" />
-            <Button size="sm" variant="secondary" label="결과 공유"
-              onClick={() => store.set({ shareOpen: true })} />
-            <Button size="sm" variant="ghost" label="닫기" onClick={() => act("toggleCompare")} />
-          </HStack>
-          <SegControl label="비교 묶음" value={group}
-            onChange={(g) => act("setCompareTab", tabsInGroup(g)[0])} items={groupItems} />
-          <SegControl label="비교 탭" value={state.compareTab}
-            onChange={(v) => act("setCompareTab", v)} items={tabItems} />
-          {state.compareTab === "compare" && <CompareTabBody state={state} />}
-          {state.compareTab === "priorities" && <PrioritiesTab state={state} />}
-          {state.compareTab === "money" && <MoneyTab state={state} />}
-          {state.compareTab === "worthit" && <WorthItTab state={state} />}
-          {state.compareTab === "quality" && <QualityTab state={state} />}
-          {state.compareTab === "safety" && <SafetyEduTab state={state} />}
-          {state.compareTab === "jeonse" && <JeonseTab state={state} />}
-          {state.compareTab === "support" && <SupportTab state={state} />}
-          {state.compareTab === "listings" && <ListingsTab state={state} />}
-          {state.compareTab === "listings-public" && <ListingsTab state={state} sub="public" />}
-          {state.compareTab === "criteria" && <CriteriaTab state={state} />}
-        </VStack>
-      </Card>
+      <Card>{body}</Card>
     </div>
   );
 }
@@ -637,11 +745,8 @@ export function App() {
         <TimelineBar state={state} compact />
       </div>
       <div className="ui-sim13-drawer overlay">
-        <NowCard state={state} />
-        <JourneyCard state={state} />
-        <JudgeLogCard state={state} />
+        <SimDrawer state={state} />
         {legendOpen && <LegendCard state={state} onClose={closeLegend} />}
-        <CompareCard state={state} />
       </div>
       <IntroCard state={state} />
       {agentAsked() && <AgentTourCard />}

@@ -311,13 +311,16 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     assert.ok(html.includes("비교 숫자 불러오는 중"), "loading state on the tour step");
   });
 
-  it("renders the ride-time journey card (t=08:40) with no React errors", () => {
+  it("renders the ride-time hero (t=08:40) with no React errors", () => {
     const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:40"), follow: 1 });
     assert.ok(patch.journey, "08:40 is inside the A commute ride");
     const html = renderCase(patch,
       "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:40&follow=1");
-    assert.ok(html.includes("지하철 이동 중"), "ride Now card");
-    assert.ok(html.includes("이동 중"), "journey card");
+    // 13f2: the drawer hero names the current leg, not the whole trip.
+    assert.ok(html.includes(patch.journey.where), "hero sentence");
+    assert.ok(html.includes(`${patch.journey.minutesLeft}분 남음`), "hero big number");
+    assert.ok(html.includes("다음:"), "hero next event");
+    assert.ok(html.includes("왜 이렇게 판단했나"), "folded why section");
   });
 
   it("renders tour step 1 and step 9 with no React errors or NaN", () => {
