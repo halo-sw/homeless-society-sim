@@ -82,3 +82,8 @@ export function exampleLine(id) {
   const title = EXAMPLE_TITLE[String(id || "")];
   return title ? `예시: ${title}` : "예시에서 시작했어요";
 }
+
+// Engine source labels in plain words ("engine 기본값" never shows).
+export function plainSource(source) {
+  return source === "engine 기본값" ? "기본 계산값" : String(source || "");
+}

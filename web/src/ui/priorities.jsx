@@ -151,7 +151,8 @@ export function PrioritiesTab({ state }) {
           </HStack>
           <MetadataList>
             {metrics.map((m) => (
-              <MetadataListItem key={m.id} label={`${m.label} (${UNIT_KO[m.unit] || m.unit})`}>
+              <MetadataListItem key={m.id}
+                label={UNIT_KO[m.unit] ? `${m.label} (${UNIT_KO[m.unit]})` : m.label}>
                 <Text hasTabularNumbers>
                   {labels.map((l) => `${l} ${fmtMetric(m.unit, (values[l] || {})[m.id])}`).join(" · ")}
                 </Text>

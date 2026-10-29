@@ -94,7 +94,7 @@ export function JeonseTab({ state }) {
               </Text>
             </MetadataListItem>
             <MetadataListItem label="자주 쓰는 기준선">
-              <Text type="supporting">{`${check.ref_note} (${check.band.criterion_id})`}</Text>
+              <Text type="supporting">{check.ref_note}</Text>
             </MetadataListItem>
           </MetadataList>
         )}

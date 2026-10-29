@@ -31,6 +31,8 @@ describe("13f-1 shared top bar (SSR, no DOM)", () => {
       console.error = orig;
     }
     assert.equal(errors.length, 0, `React errors: ${errors.join(" | ").slice(0, 1000)}`);
+    const bad = html.match(/[a-z]+_[a-z]+|complex|°\s?[NE]/);
+    assert.ok(!bad, `internal text on screen: ${bad && bad[0]}`);
     return html;
   }
 

@@ -11,6 +11,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
+import { plainSource } from "./copy.js";
 import { PRIORITY_GROUPS, PRIORITY_METRICS } from "../priorities.js";
 
 function PrioritiesMap() {
@@ -49,7 +50,7 @@ function CriterionRow({ item, focus }) {
         <span title={item.id}>
           <Text>{item.title}</Text>
         </span>
-        <Text type="supporting">{item.source}</Text>
+        <Text type="supporting">{plainSource(item.source)}</Text>
         <Text type="supporting">{item.rule}</Text>
         {item.valuesLine && <Text type="supporting" hasTabularNumbers>{item.valuesLine}</Text>}
         {item.affects.length > 0 && (
@@ -103,8 +104,8 @@ export function CriteriaTab({ state }) {
     <VStack gap={2}>
       <PrioritiesMap />
       <Text type="supporting">
-        {`계산 기준 ${doc.items.length}개 · ${doc.doc} v${doc.version}`}
-        {doc.overrides.length > 0 ? ` · 고객님이 바꾼 것 ${doc.overrides.length}개 (${doc.overrides.join(", ")})` : " · 바꾼 것 없음"}
+        {`계산 기준 ${doc.items.length}개`}
+        {doc.overrides.length > 0 ? ` · 고객님이 바꾼 것 ${doc.overrides.length}개` : " · 바꾼 것 없음"}
       </Text>
       {doc.groups.map((g) => (
         <VStack gap={1} key={g.id}>

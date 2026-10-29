@@ -19,7 +19,6 @@
 // (?ask=…) carry over with the 기록된 답변 badge.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
-import { Avatar } from "@astryxdesign/core/Avatar";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -40,6 +39,7 @@ import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
 import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
+import { exampleLine } from "./copy.js";
 import { TopBar } from "./topbar.jsx";
 import { OrbView } from "./orb.jsx";
 import { toast, Toaster } from "./toast.jsx";
@@ -165,7 +165,7 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           <span className="ui-panel-spacer" />
           <DropdownMenu
-            button={{ label: HOME_SORT_KO[sort] || sort, variant: "ghost", size: "sm" }}
+            button={{ label: HOME_SORT_KO[sort] || HOME_SORT_KO.commute, variant: "ghost", size: "sm" }}
             menuWidth={220}
             items={HOME_SORTS.map((s) => ({
               label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
@@ -298,7 +298,7 @@ export function TabCard({ tab }) {
   return (
     <Card padding={3}>
       <VStack gap={2}>
-        <Heading level={4}>{TAB_TITLES[tab] || tab}</Heading>
+        <Heading level={4}>{TAB_TITLES[tab] || "자세히"}</Heading>
         {tab === "jeonse" && <JeonseTab state={state} />}
         {tab === "worthit" && <WorthItTab state={state} />}
         {tab === "support" && <SupportTab state={state} />}
@@ -349,7 +349,7 @@ function CardMsg({ msg, handlers, toolRows }) {
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
   return (
-    <ChatMessage sender="assistant" avatar={<Avatar name="상담" size="md" />}>
+    <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
           <Text type="supporting">기록된 답변</Text>
@@ -972,7 +972,7 @@ export function ChatScreen() {
           recorded: true, tool_calls: calls });
         if (initial.example) {
           pushMsg({ role: "system", kind: "system",
-            content: `예시로 시작했어요 (${initial.example})` });
+            content: exampleLine(initial.example) });
         }
         return;
       }
@@ -986,7 +986,7 @@ export function ChatScreen() {
       clearTranscript();
       if (initial.example) {
         pushMsg({ role: "system", kind: "system",
-          content: `예시로 시작했어요 (${initial.example})` });
+          content: exampleLine(initial.example) });
       }
       send(initial.message);
       return;

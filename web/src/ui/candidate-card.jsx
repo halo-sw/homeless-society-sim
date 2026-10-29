@@ -54,11 +54,11 @@ const SRC_KO = { official: "공식", estimate: "추정", said: "내가 말한 �
 const SRC_CLS = { official: "ui-src-official", estimate: "ui-src-estimate", said: "ui-src-said", unknown: "" };
 
 export function SourceDot({ source }) {
-  if (!source || source === "unknown") return null;
+  if (!source || source === "unknown" || !SRC_KO[source]) return null;
   return (
-    <span title={SRC_KO[source] || source}>
+    <span title={SRC_KO[source]}>
       <span className={`ui-srcdot ${SRC_CLS[source] || ""}`} aria-hidden="true" />
-      <span style={{ fontSize: 12 }}>{SRC_KO[source]}</span>
+      <Text type="supporting">{SRC_KO[source]}</Text>
     </span>
   );
 }

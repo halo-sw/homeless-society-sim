@@ -8,6 +8,7 @@
 // with the current view attached so "이거" resolves. Conversations
 // live in browser memory only; the server stores nothing.
 import { Citation } from "@astryxdesign/core/Citation";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
 import { Text } from "@astryxdesign/core/Text";
@@ -23,13 +24,17 @@ export function ToolRows({ rows }) {
   if (!rows || rows.length === 0) return null;
   return (
     <ChatMessageBubble variant="ghost" width="100%">
-      <ChatToolCalls calls={rows.map((r) => ({
-        key: r.id,
-        name: toolActionKo(r.name),
-        status: r.ok ? "complete" : "error",
-        target: r.summary,
-        duration: toolDurationKo(r.ms),
-      }))} />
+      <Collapsible
+        trigger={<Text type="supporting">{`확인한 것 ${rows.length}가지`}</Text>}
+        defaultIsOpen={false}>
+        <ChatToolCalls calls={rows.map((r) => ({
+          key: r.id,
+          name: toolActionKo(r.name),
+          status: r.ok ? "complete" : "error",
+          target: r.summary,
+          duration: toolDurationKo(r.ms),
+        }))} />
+      </Collapsible>
     </ChatMessageBubble>
   );
 }

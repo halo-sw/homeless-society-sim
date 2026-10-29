@@ -238,6 +238,9 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
       `React logged errors for ${search || "(no tour/search)"}: ${errors.join(" | ").slice(0, 2000)}`);
     assert.ok(!html.includes(">NaN<"), "rendered NaN text");
     assert.ok(html.length > 1000, `suspiciously short render (${html.length} chars)`);
+    // 13f-1: no engine ids, category words, or coordinates on screen.
+    const bad = html.match(/[a-z]+_[a-z]+|complex|°\s?[NE]/);
+    assert.ok(!bad, `internal text on screen: ${bad && bad[0]}`);
     return html;
   }
 

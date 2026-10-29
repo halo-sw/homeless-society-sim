@@ -57,17 +57,21 @@ function SegControl({ label, value, onChange, items, size }) {
 // the day strip (+ A·B stack), the activity legend and the 30-day
 // strip. The two sliders and the tick dots are gone.
 
-function CaptionCard({ state }) {
+export function CaptionCard({ state }) {
   const c = state.caption;
   if (!c) return null;
   const j = state.judge;
+  // The engine's meta packs "label · category · coordinates" — the card
+  // shows the label only, with the walk line under it. No categories,
+  // no coordinates.
+  const kind = String(c.meta || "").split(" · ")[0].trim();
   return (
     <div className="ui-caption overlay">
       <Card>
         <VStack gap={2}>
           <VStack gap={0}>
             <Heading level={4}>{c.name}</Heading>
-            {c.meta && <Text type="supporting">{c.meta}</Text>}
+            {kind && <Text type="supporting">{kind}</Text>}
           </VStack>
           {c.walk && <Text>{c.walk}</Text>}
           {c.dots && c.dots.count > 0 && (
@@ -342,7 +346,9 @@ function NowCard({ state }) {
         <VStack gap={1}>
           <HStack gap={1} vAlign="center" wrap="wrap">
             <Heading level={4}>{`${n.label} · 지금`}</Heading>
-            <Text type="supporting">{WHY_KIND_KO[n.whyKind] || n.whyKind}</Text>
+            {WHY_KIND_KO[n.whyKind] && (
+              <Text type="supporting">{WHY_KIND_KO[n.whyKind]}</Text>
+            )}
             {n.ride && n.ride.legs.length > 0 && (
               <GroupBadges sources={n.ride.legs.map((l) => l.source)} />
             )}

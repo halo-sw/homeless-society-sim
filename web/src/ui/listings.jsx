@@ -193,7 +193,7 @@ function CheckResult({ check, onLiveIn }) {
       </HStack>
       <MetadataList>
         {Object.entries(check.positions || {}).map(([key, pos]) => (
-          <MetadataListItem key={key} label={POSITION_KO[key] || key}>
+          <MetadataListItem key={key} label={POSITION_KO[key] || "기타"}>
             {!pos.computable ? (
               <Text type="supporting">{pos.note}</Text>
             ) : (
