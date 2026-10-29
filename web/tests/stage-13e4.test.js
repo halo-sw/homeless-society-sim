@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { projectedOrbBounds } from "../src/orb.js";
 import { rectsIntersect, tagBoxBlocked } from "../src/stage-tags.js";
+import { criterionTitle } from "../src/engine/criteria.js";
 
 const SHAPES = [
   { id: "seongdong", label: "성동", bbox: [127.0, 37.5, 127.08, 37.55] },
@@ -66,5 +67,17 @@ describe("13e4 tag box blockers", () => {
     assert.equal(tagBoxBlocked(jobTag, null), false);
     assert.equal(tagBoxBlocked(jobTag,
       [{ left: 0, top: 0, width: 0, height: 0 }]), false);
+  });
+});
+
+describe("13e4 rule titles", () => {
+  it("chip label for C-commute-depart is Korean", () => {
+    const label = criterionTitle("C-commute-depart");
+    assert.match(label, /[가-힣]/);
+    assert.equal(label, "출근·등교 출발 시각");
+  });
+
+  it("unknown ids fall back to the id", () => {
+    assert.equal(criterionTitle("C-nope"), "C-nope");
   });
 });

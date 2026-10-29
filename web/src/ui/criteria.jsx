@@ -55,8 +55,10 @@ function CriterionRow({ item, focus }) {
     <div ref={ref} className={focus ? "ui-criterion-focus" : undefined}>
       <VStack gap={1}>
         <HStack gap={1} vAlign="center" wrap="wrap">
-          <Text>{item.title}</Text>
-          <Badge variant="neutral" label={item.id} />
+          {/* 13e4: title only — the internal id stays in `title`. */}
+          <span title={item.id}>
+            <Text>{item.title}</Text>
+          </span>
           <Badge variant={SOURCE_VARIANT[item.source] || "neutral"} label={item.source} />
         </HStack>
         <Text type="supporting">{item.rule}</Text>

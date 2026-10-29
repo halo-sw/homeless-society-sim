@@ -87,6 +87,14 @@ export const CRITERIA_GROUPS = CRITERIA_DOC.groups;
 export const CRITERIA_BY_ID = new Map(CRITERIA_LIST.map((c) => [c.id, c]));
 export const CRITERIA_VERSION = CRITERIA_DOC.version;
 
+// 13e4: customer-facing chip label for a criterion id — the Korean
+// title from the same table the 기준 tab renders. Unknown ids fall
+// back to the id itself (callers keep it in a `title` attribute).
+export function criterionTitle(id) {
+  const c = CRITERIA_BY_ID.get(id);
+  return (c && c.title) || id;
+}
+
 // Engine-consumed values: criterion id -> { jsonKey: flatName }.
 // Every entry must exist in the JSON (checked at import, so the file and
 // the engine can never drift); every overridable JSON value must be

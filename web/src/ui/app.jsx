@@ -35,6 +35,7 @@ import { DemoTour } from "./DemoTour.jsx";
 import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent, badgeFor } from "../money/format.js";
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand, congestionPeakLine } from "../engine/journey.js";
+import { criterionTitle } from "../engine/criteria.js";
 import { FATIGUE_MODEL_NOTE, chipDisplay, tickerDisplay } from "../nowcard.js";
 
 function useStore() {
@@ -237,8 +238,12 @@ function CriterionChips({ ids }) {
   return (
     <HStack gap={1} vAlign="center" wrap="wrap">
       {visible.map((id) => (
-        <Button key={id} size="sm" variant="ghost" label={id}
-          onClick={() => act("openCriterion", id)} />
+        // 13e4: the Korean rule title on the chip; the internal id
+        // stays in `title` only.
+        <span key={id} title={id}>
+          <Button size="sm" variant="ghost" label={criterionTitle(id)}
+            onClick={() => act("openCriterion", id)} />
+        </span>
       ))}
       {hiddenCount > 0 && (
         <Button size="sm" variant="ghost" label={open ? "접기" : `+${hiddenCount}개 기준`}
