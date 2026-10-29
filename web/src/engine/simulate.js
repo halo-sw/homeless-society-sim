@@ -131,6 +131,7 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
       complex: resolved.complex.name,
       home_building: resolved.buildingId,
       home_node: resolved.nodeId,
+      home_anchor: resolved.anchor || { method: "complex" },
       start_date: scenario.start_date,
       days: scenario.days,
       seed: scenario.seed,

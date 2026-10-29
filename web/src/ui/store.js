@@ -8,7 +8,7 @@
 // no three.js; unit-tested.
 
 export const INITIAL_STATE = {
-  mode: "tour", // "tour" | "sim"
+  mode: "tour", // "tour" | "sim" | "landing" | "chat"
   area: { id: "", label: "" },
   areaOptions: [], // [{value, label}] (tour mode)
   home: "",
@@ -60,6 +60,14 @@ export const INITIAL_STATE = {
   journeyView: "auto", // "auto" | "low" (거리 보기) | "high" (전체 경로)
   journeyLoading: "", // "판교 지도 불러오는 중…" while preloading, else ""
   region: null, // {network, congestion, corridors} presence flags | null
+  // Stage 12b: day-at-a-glance timeline (published once per day/follow/
+  // home change; the playhead minute moves underneath in the UI).
+  dayStrip: null, // {segments} for the followed member (or member 1) today
+  dayStripB: null, // {home, segments} for the other home (stripCompare) | null
+  monthStrip: null, // [{day, date, weekday, weekend, commuteMin, fatigueMean, trips}]
+  routeSteps: null, // {steps, outing, outings} for the followed member today
+  stripCompare: false, // A·B day strips stacked
+  chatSummary: "", // top-bar profile chip in chat mode ("판교 출근 · 1인 · …")
 };
 
 function clone(value) {

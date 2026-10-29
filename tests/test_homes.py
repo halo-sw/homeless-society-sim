@@ -339,7 +339,10 @@ def test_slim_home_and_indexes(tmp_path):
     slim = slim_home(home)
     assert slim["station"] == {"station": "송파", "walk_minutes": 5}
     assert slim["osm_name"] == "송파헬리오시티"
-    for dropped in ("pnu", "housing_type", "footprints", "photos_700m",
+    # 12b: the browser joins picked homes to scene complexes via PNU
+    # (same as the server's build_scenario), so slim keeps it.
+    assert slim["pnu"] == "11710"
+    for dropped in ("housing_type", "footprints", "photos_700m",
                     "osm"):
         assert dropped not in slim
     out = write_slim_indexes([home,

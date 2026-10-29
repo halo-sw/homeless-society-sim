@@ -11,13 +11,16 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
-import { Slider } from "@astryxdesign/core/Slider";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useState } from "react";
 import { store } from "./store.js";
 import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup } from "./compare-tabs.js";
-import { ConsultPanel } from "./consult.jsx";
+import { Landing } from "./landing.jsx";
+// Cycle with chat.jsx (it reuses CompareCard): render-time use only,
+// so module evaluation order is safe.
+import { ChatScreen, AgentTourCard } from "./chat.jsx";
+import { TimelineBar } from "./timeline.jsx";
 import { CriteriaTab } from "./criteria.jsx";
 import { MoneyTab, QualityTab } from "./money.jsx";
 import { PrioritiesTab } from "./priorities.jsx";
@@ -86,8 +89,9 @@ function TopBar({ state }) {
               )}
               <ToggleButton size="sm" label="집만 밝게 보기" isPressed={state.resOnly}
                 onPressedChange={(next) => act("setResOnly", next)} />
-              <ToggleButton size="sm" label="상담" isPressed={state.consultOpen}
-                onPressedChange={(next) => act("setConsultOpen", next)} />
+              {/* 12b: the floating agent is gone — the chat reopens from
+                  here at any hour, with the transcript kept. */}
+              <Button size="sm" label="대화" onClick={() => act("openChat")} />
             </HStack>
           </HStack>
         </Card>
@@ -96,52 +100,9 @@ function TopBar({ state }) {
   );
 }
 
-const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-
-function SimBar({ state }) {
-  const { clock } = state;
-  return (
-    <div className="ui-simbar overlay">
-      <Card>
-        <VStack gap={2}>
-          <HStack gap={2} vAlign="center" wrap="wrap">
-            <Text hasTabularNumbers>{clock.label}</Text>
-            <Button size="sm" label={state.playing ? "일시정지" : "재생"}
-              onClick={() => act("toggleSimPlay")} />
-            <SegControl label="재생 속도" value={String(state.speed)}
-              onChange={(v) => act("setSpeed", Number(v))}
-              items={[{ value: "1", label: "1×" }, { value: "10", label: "10×" }, { value: "60", label: "60×" }]} />
-            <Button size="sm" label="A·B 비교" variant="secondary"
-              onClick={() => act("toggleCompare")} />
-          </HStack>
-          <div className="ui-simbar-sliders">
-            <Slider label="일차" min={1} max={clock.days} step={1} value={clock.day + 1}
-              formatValue={(v) => `${v}일차`} valueDisplay="text"
-              onChange={(v) => act("setDay", v - 1)} />
-            <Slider label="시간" min={0} max={1439} step={1} value={Math.floor(clock.minute)}
-              formatValue={(v) => hhmm(v)} valueDisplay="text"
-              onChange={(v) => act("setMinute", v)} />
-          </div>
-          <SegControl label="따라가기" value={String(state.follow)}
-            onChange={(v) => act("setFollow", Number(v))}
-            items={state.followOptions} />
-          {state.simTicks.length > 0 && (
-            <div className="ui-ticks" role="group" aria-label="고른 순간·출발 순간 (누르면 이동)">
-              {state.simTicks.map((t, i) => (
-                <button key={`${t.kind}-${t.minute}-${i}`}
-                  className={`ui-tick ui-tick-${t.kind}`}
-                  style={{ left: `${(t.minute / 1439 * 100).toFixed(2)}%` }}
-                  title={`${hhmm(t.minute)} ${t.kind === "decision" ? "고른 순간" : "출발"}`}
-                  aria-label={`${hhmm(t.minute)} ${t.kind === "decision" ? "고른 순간" : "출발"}로 이동`}
-                  onClick={() => act("setMinute", t.minute)} />
-              ))}
-            </div>
-          )}
-        </VStack>
-      </Card>
-    </div>
-  );
-}
+// 12b: the sim bar is the TimelineBar (timeline.jsx) — route steps,
+// the day strip (+ A·B stack), the activity legend and the 30-day
+// strip. The two sliders and the tick dots are gone.
 
 const JUDGE_BADGE = { rule: "neutral", spark: "blue", open: "purple" };
 
@@ -524,7 +485,7 @@ const fmtMetric = (unit, v) => (
   unit === "minutes" ? fmtMinutes(v) : unit === "metres" ? fmtDistance(v)
     : unit === "index" ? fmtIndex(v) : unit === "percent" ? fmtPercent(v) : fmtCount(v));
 
-function CompareTabBody({ state }) {
+export function CompareTabBody({ state }) {
   const cmp = state.compare;
   if (state.compareLoading) return <Text type="supporting">불러오는 중…</Text>;
   if (cmp && cmp.error) {
@@ -554,7 +515,7 @@ function CompareTabBody({ state }) {
   );
 }
 
-function CompareCard({ state }) {
+export function CompareCard({ state }) {
   if (!state.compareOpen) return null;
   // Two levels so every label fits: the group row (비교 · 돈 · 안심 ·
   // 매물) then the tabs inside the active group. Switching groups jumps
@@ -661,14 +622,41 @@ function AttrLine({ state }) {
   );
 }
 
+// ?agent=1 (incl. the tour's agent step) shows the tour card — the
+// floating panel is gone, the chat answers from here on.
+function agentAsked() {
+  try {
+    return typeof window !== "undefined"
+      && new URLSearchParams(window.location.search).get("agent") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function App() {
   const state = useStore();
   if (!state.ready) return null;
+  if (state.mode === "landing") {
+    return (
+      <>
+        <Landing />
+        <AttrLine state={state} />
+      </>
+    );
+  }
+  if (state.mode === "chat") {
+    return (
+      <>
+        <ChatScreen />
+        <AttrLine state={state} />
+      </>
+    );
+  }
   const isSim = state.mode === "sim";
   return (
     <>
       <TopBar state={state} />
-      {isSim && <SimBar state={state} />}
+      {isSim && <TimelineBar state={state} />}
       {!isSim && <CaptionCard state={state} />}
       {isSim && (
         <div className="ui-simleft overlay">
@@ -683,13 +671,13 @@ export function App() {
       {isSim && <IntroCard state={state} />}
       {isSim && <CompareCard state={state} />}
       {!isSim && <LegendCard state={state} />}
+      {agentAsked() && <AgentTourCard />}
       <AttrLine state={state} />
       {state.viewChip && (
         <div className="ui-viewchip overlay">
           <Badge variant="info" label={state.viewChip} />
         </div>
       )}
-      <ConsultPanel />
       {isSim && <ShareDialog />}
       {isSim && <DemoTour />}
     </>

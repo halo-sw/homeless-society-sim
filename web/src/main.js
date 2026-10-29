@@ -25,8 +25,12 @@ import { assignWalkers, sampleWalker } from "./walkers.js";
 import { areasOrFallback, FALLBACK_AREAS } from "./areas-index.js";
 import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
-import { loadAgentOpen } from "./ui/agent-float.js";
 import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
+// 12b: landing/chat routing, timeline builders + activity colours,
+// custom-run store (?custom=<id>).
+import { routeForSearch, chatUrl, chatReopenUrl } from "./chat/urls.js";
+import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.js";
+import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
 import { eveningHomeFraction, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
@@ -68,6 +72,9 @@ const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
 const SUN_MINUTE = 15 * 60;
 const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
+// 12b: map-route colours shared with the day strip (timeline.js).
+const WALK_ROUTE_CSS = ACTIVITIES.walk.color;
+const SUBWAY_ROUTE_CSS = ACTIVITIES.subway.color;
 
 const PARAMS = new URLSearchParams(location.search);
 // Stage-11 look table (?look=key:value,… retunes without a rebuild).
@@ -337,7 +344,7 @@ function refitToWrap(camera, renderCtl) {
   renderCtl.fitContainer();
 }
 
-async function bootTour() {
+async function bootTour(uiMode = "tour") {
   const area = await fetchArea(areaId);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
@@ -411,8 +418,16 @@ async function bootTour() {
 
   mountUI();
   registerCommonActions();
-  store.set({ mode: "tour" });
-  buildUI(area, plan);
+  store.set({ mode: uiMode });
+  // The landing and the chat reuse the tour scene as a backdrop; only
+  // the tour shows captions, the legend and the area switcher.
+  if (uiMode === "tour") {
+    buildUI(area, plan);
+  } else {
+    store.set({ area: { id: areaId, label: area.label || areaId } });
+    document.title = uiMode === "chat" ? "주거 시뮬레이터 — 대화" : "주거 시뮬레이터";
+  }
+  if (uiMode === "chat") registerChatActions();
   document.getElementById("loading").remove();
   document.getElementById("fade").classList.add("clear");
 
@@ -457,8 +472,10 @@ async function bootTour() {
   if (archLens) applyArchLens();
 
   // --- tour playback ---
+  // Landing/chat reuse the glide as a backdrop (quiet: no captions);
+  // the chat pauses it so the customer orbits freely.
   const player = createPlayer(plan, legPaths, camera, controls, origin,
-    stopAzimuths, applyFade, archLens);
+    stopAzimuths, applyFade, archLens, uiMode !== "tour");
   if (plan.stops.length > 0) applyFade(0);
   store.registerActions({
     toggleTourPlay: () => {
@@ -501,6 +518,10 @@ async function bootTour() {
     if (Number.isFinite(s) && s >= 0) player.seekTime(s);
     if (!shouldAutoplay(params) && player.playing) player.toggle();
   }
+  const REDUCED_TOUR = typeof matchMedia === "function"
+    && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (uiMode === "chat" && player.playing) player.toggle();
+  if (uiMode === "landing" && REDUCED_TOUR && player.playing) player.toggle();
   store.set({ tourPlaying: player.playing, ready: true });
 
   // --- loop ---
@@ -548,7 +569,7 @@ function updateWalkers(mesh, walkers, nodes, origin, t, dummy) {
 // --- tour player: glide legs, 3 s dwell per stop, outro pull-back ---
 // onLeg(i) fires whenever the current leg view changes (fade updates).
 // archLens composes level-sensor poses (the loop re-levels each frame).
-function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null, archLens = false) {
+function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [], onLeg = null, archLens = false, quiet = false) {
   const stops = plan.stops;
 
   const schedule = tourSchedule(plan);
@@ -593,6 +614,7 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   }
 
   function showStop(i) {
+    if (quiet) return; // landing/chat backdrop: the glide, no captions
     const s = stops[i];
     store.set({ caption: {
       name: s.name,
@@ -757,9 +779,18 @@ function buildUI(area, plan) {
   document.title = `주거 시뮬레이터 — ${area.label || areaId}`;
 }
 
-// Shared UI actions (both modes); mode-specific boots add their own.
+// Shared UI actions (all modes); mode-specific boots add their own.
 function registerCommonActions() {
   store.registerActions({
+    // 12b: tab buttons that used to whisper to the floating agent now
+    // open the chat with their question (transcript kept in memory).
+    consultSend: (text) => {
+      location.href = chatUrl(String(text || ""));
+    },
+    // The chat reopens from every screen, at any hour.
+    openChat: () => {
+      location.href = chatReopenUrl();
+    },
     selectArea: (id) => {
       location.href = `${location.pathname}?area=${id}`;
     },
@@ -772,6 +803,31 @@ function registerCommonActions() {
       location.href = `${location.pathname}?mode=sim&home=${label}`;
     },
     setConsultOpen: (next) => store.set({ consultOpen: next }),
+  });
+}
+
+// Chat work-area actions: the compare tabs render from store data the
+// chat put there (no sim clock, no scene pins here — those stay in
+// the sim view and say so instead of failing silently).
+function registerChatActions() {
+  store.registerActions({
+    setCompareTab: (tab) => {
+      if (!VALID_COMPARE_TABS.includes(tab)) return;
+      store.set({ compareTab: tab });
+    },
+    toggleCompare: () => {
+      store.set({ compareOpen: !store.getState().compareOpen });
+    },
+    setMoneyTenure: (label, tenure) => {
+      store.set({ moneyTenure: { ...store.getState().moneyTenure, [label]: tenure } });
+    },
+    showListingPin: () => {
+      store.set({ viewChip: "핀은 시뮬레이션 화면에서 보여요" });
+    },
+    clearListingPin: () => {},
+    jumpToCriterionUse: () => {
+      store.set({ viewChip: "그 순간은 시뮬레이션 화면에서 보여요" });
+    },
   });
 }
 
@@ -800,6 +856,8 @@ function workerRuns(scenarioName, labels) {
       reject(new Error("sim worker timed out"));
     }, 180000);
     worker.onmessage = (e) => {
+      // 12b: per-home progress posts carry no runs — ignore them.
+      if (e.data && e.data.progress) return;
       clearTimeout(timer);
       worker.terminate();
       if (e.data && e.data.ok) resolve(e.data.runs);
@@ -822,16 +880,34 @@ async function bootSim() {
   const loading = document.getElementById("loading");
   const scenarioName = PARAMS.get("scenario") || "demo-two-homes";
   const homeLabel = PARAMS.get("home") || "A";
-  let scenario = null;
-  try {
-    const r = await fetch(`/scenarios/${scenarioName}.json`);
-    if (r.ok) scenario = await r.json();
-  } catch {
-    scenario = null;
+  // 12b: ?custom=<id> loads a chat-run simulation (scenario + runs)
+  // from IndexedDB instead of /data + /scenarios.
+  const customId = customRunId(location.search);
+  let customRecord = null;
+  if (customId) {
+    customRecord = await loadCustomRun(customId).catch(() => null);
+    if (!customRecord) {
+      loading.textContent = "저장된 살아 보기를 찾지 못했어요. 대화에서 다시 실행해 주세요.";
+      throw new Error(`custom run ${customId} not found`);
+    }
+    if (!customRecord.runs[homeLabel]) {
+      loading.textContent = `저장된 살아 보기에 홈 ${homeLabel}이(가) 없어요.`;
+      throw new Error(`custom run ${customId} has no home ${homeLabel}`);
+    }
+  }
+  let scenario = customRecord ? customRecord.scenario : null;
+  if (!scenario) {
+    try {
+      const r = await fetch(`/scenarios/${scenarioName}.json`);
+      if (r.ok) scenario = await r.json();
+    } catch {
+      scenario = null;
+    }
   }
   loading.textContent = `생활 시뮬레이션 불러오는 중… (홈 ${homeLabel})`;
-  let run = await loadRunFile(scenarioName, homeLabel).catch(() => null);
-  let runSource = "file";
+  let run = customRecord ? customRecord.runs[homeLabel]
+    : await loadRunFile(scenarioName, homeLabel).catch(() => null);
+  let runSource = customRecord ? "custom" : "file";
   if (!run) {
     loading.textContent = `엔진 실행 중… (시나리오 ${scenarioName}, 홈 ${homeLabel})`;
     try {
@@ -986,7 +1062,8 @@ async function bootSim() {
   scene.add(listingMark);
   let listingPinTarget = null; // {x, z, label} in world coords
   const rideStub = new THREE.Line(new THREE.BufferGeometry(),
-    new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 4, gapSize: 3,
+    // 12b: the ride stub shares the day strip's 지하철 colour.
+    new THREE.LineDashedMaterial({ color: SUBWAY_ROUTE_CSS, dashSize: 4, gapSize: 3,
       transparent: true, opacity: 0.9, depthTest: false }));
   rideStub.renderOrder = 998;
   rideStub.frustumCulled = false;
@@ -1251,7 +1328,8 @@ async function bootSim() {
         const { behind, ahead } = splitRoute(trip, frac);
         setLine(routeAhead, ahead);
         setLine(routeDone, behind);
-        routeAhead.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
+        // 12b: the walked route shares the day strip's 걷기 colour.
+        routeAhead.material.color.set(WALK_ROUTE_CSS);
       }
       routeAhead.visible = true;
       routeDone.visible = true;
@@ -1991,10 +2069,13 @@ async function bootSim() {
   // --- sim UI: A/B homes, speeds, day jump, compare ---
   function simUrl(home, d, m, f) {
     const p = new URLSearchParams({
-      mode: "sim", scenario: scenarioName, home,
+      mode: "sim", home,
       day: String(d + 1),
       t: `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.floor(m % 60)).padStart(2, "0")}`,
     });
+    // A custom run carries its scenario in IndexedDB, not /scenarios.
+    if (customId) p.set("custom", customId);
+    else p.set("scenario", scenarioName);
     if (f) p.set("follow", String(f));
     return `${location.pathname}?${p}`;
   }
@@ -2026,8 +2107,92 @@ async function bootSim() {
   applyFollowDim();
   document.title = `주거 시뮬레이터 — ${homeLabel} · ${run.meta.complex}`;
 
+  // --- 12b day-at-a-glance timeline -------------------------------------------
+  // Published once per day/follow/home change (the UI moves the
+  // playhead underneath from clock.minute). Member 1 stands in when
+  // the camera is free, so the strip never goes blank.
+  let otherRun = null;
+  let otherRunLabel = null;
+
+  function timelineMember(r, followIdx) {
+    const hh = (r.agents || []).filter((a) => a.household);
+    if (hh.length === 0) return null;
+    const i = followIdx > 0 ? Math.min(followIdx - 1, hh.length - 1) : 0;
+    return hh[i].key;
+  }
+
+  async function ensureOtherRun() {
+    if (homes.length < 2) return null;
+    const other = (homes.find((h) => h.label !== homeLabel) || {}).label;
+    if (!other) return null;
+    if (otherRun && otherRunLabel === other) return otherRun;
+    if (customRecord && customRecord.runs[other]) {
+      otherRun = customRecord.runs[other];
+      otherRunLabel = other;
+      return otherRun;
+    }
+    try {
+      const file = await loadRunFile(scenarioName, other);
+      if (file) {
+        otherRun = file;
+        otherRunLabel = other;
+        return otherRun;
+      }
+      const via = await workerRuns(scenarioName, [other]);
+      if (via && via[other]) {
+        otherRun = via[other];
+        otherRunLabel = other;
+        return otherRun;
+      }
+    } catch {
+      // The B strip stays empty (honest gap, never a guess).
+    }
+    return null;
+  }
+
+  async function paintStripB() {
+    if (!store.getState().stripCompare) {
+      if (store.getState().dayStripB) store.set({ dayStripB: null });
+      return;
+    }
+    const other = await ensureOtherRun();
+    if (!other) {
+      if (store.getState().dayStripB) store.set({ dayStripB: null });
+      return;
+    }
+    const key = timelineMember(other, follow);
+    const otherDay = Math.min(day, (other.meta.days || days) - 1);
+    store.set({ dayStripB: key === null ? null : {
+      home: other.meta.home || otherRunLabel,
+      segments: daySegments({ run: other, agentKey: key, day: otherDay }),
+    } });
+  }
+
+  function paintTimeline() {
+    const key = timelineMember(run, follow);
+    if (key === null) {
+      store.set({ dayStrip: null, routeSteps: null, monthStrip: null });
+    } else {
+      store.set({
+        dayStrip: { segments: daySegments({ run, agentKey: key, day }) },
+        routeSteps: { outings: outingStepsFor({ run, agentKey: key, day }) },
+        monthStrip: monthStrip({ run, agentKey: key }),
+      });
+    }
+    paintStripB();
+  }
+
   async function paintCompare() {
     store.set({ compareLoading: true });
+    // A custom run compares its in-memory runs (no CLI files exist).
+    if (customRecord) {
+      const labs = (customRecord.labels || []).slice(0, 2);
+      if (labs.length === 2 && customRecord.runs[labs[0]] && customRecord.runs[labs[1]]) {
+        store.set({ compareLoading: false,
+          compare: compareRuns(customRecord.runs[labs[0]], customRecord.runs[labs[1]]) });
+        return;
+      }
+    }
     let cmp = await fetch(`/data/sim/${scenarioName}-compare.json`)
       .then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (!cmp && homes.length >= 2) {
@@ -2162,6 +2327,7 @@ async function bootSim() {
       paintClock();
       paintFollow(0.016, true);
       ensureItinerary();
+      paintTimeline();
     },
     setMinute: (next) => {
       minute = Math.min(1439, Math.max(0, next));
@@ -2175,6 +2341,11 @@ async function bootSim() {
       applyFollowDim();
       paintFollow(0.016, true);
       ensureItinerary();
+      paintTimeline();
+    },
+    toggleStripCompare: async () => {
+      store.set({ stripCompare: !store.getState().stripCompare });
+      await paintStripB();
     },
     setJourneyView: (next) => {
       if (["auto", "low", "high"].includes(next)) {
@@ -2265,16 +2436,15 @@ async function bootSim() {
   document.getElementById("fade").classList.add("clear");
   paintClock();
   paintFollow(0.016, true);
+  paintTimeline();
   store.set({ ready: true });
   // Itinerary preload: the followed member's work-area detail + corridor.
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
-  // The agent panel stays closed unless the viewer left it open, the
-  // URL asks (?agent=1), or the tour reaches the agent step (?tour=demo
-  // drives it per step). ?share=1 opens the result card.
-  if (loadAgentOpen()) store.set({ consultOpen: true });
-  if (PARAMS.get("agent") === "1") store.set({ consultOpen: true });
+  // 12b: the floating agent is gone — ?agent=1 (incl. the tour's agent
+  // step) shows the tour card, and the chat answers from there on.
+  // ?share=1 opens the result card.
   if (PARAMS.get("share") === "1") store.set({ shareOpen: true });
   // ?tab=<id> opens the compare card on that tab (old ids keep working).
   const wantTab = resolveTabId(PARAMS.get("tab"));
@@ -2303,6 +2473,8 @@ async function bootSim() {
           minute = 1439;
           playing = false;
           store.set({ playing: false });
+        } else {
+          paintTimeline();
         }
       }
       const m = Math.floor(minute);
@@ -2342,6 +2514,9 @@ async function bootSim() {
 }
 
 loadAreasList().then(() => {
-  if (PARAMS.get("mode") === "sim") bootSim();
-  else bootTour();
+  // 12b: / (no routing params) is the landing, ?chat= the
+  // conversation; ?mode=sim… / ?tour=demo deep links keep working.
+  const route = routeForSearch(location.search);
+  if (route === "sim") bootSim();
+  else bootTour(route); // tour | landing | chat (same scene, own UI)
 });

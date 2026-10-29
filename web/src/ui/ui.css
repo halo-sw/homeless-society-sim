@@ -23,10 +23,9 @@
    (right of it is the docked consult panel, outside the canvas). */
 .ui-simbar {
   position: absolute; left: 12px; bottom: 26px;
-  width: max-content; max-width: min(560px, 60vw);
+  width: max-content; max-width: min(680px, 62vw);
+  max-height: calc(100vh - 120px); overflow: auto;
 }
-.ui-simbar-sliders { display: flex; gap: 12px; }
-.ui-simbar-sliders > * { min-width: 140px; }
 
 .ui-caption {
   position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
@@ -59,49 +58,12 @@ body.sim .ui-legend { bottom: 218px; }
 .ui-dots { display: flex; gap: 6px; justify-content: center; }
 .ui-panel-spacer { flex: 1 1 auto; }
 
-/* Floating agent (FAB + Popover panel over the canvas). */
-.ui-agent-fab { position: absolute; bottom: 26px; z-index: 30; }
-.ui-agent-bottom-right { right: 12px; }
-.ui-agent-bottom-left { left: 12px; }
-.ui-agent-trigger { display: flex; gap: 8px; align-items: center; }
-.ui-agent-panel { display: flex; flex-direction: column; min-height: 0; padding: 12px; }
-/* One clean header row: title + badge + menu + icon actions, no wrap. */
-.ui-agent-head { display: flex; gap: 6px; align-items: center; flex: none; flex-wrap: nowrap; }
-.ui-agent-head > * { flex: none; }
-.ui-agent-head .ui-panel-spacer { flex: 1 1 auto; }
-.ui-agent-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding-top: 8px; }
-.ui-agent-body > * { height: 100%; }
-.ui-agent-chips { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 8px; }
-.ui-agent-nudge { position: absolute; bottom: 92px; right: 12px; z-index: 31; max-width: min(340px, 80vw); }
-.ui-agent-bottom-left ~ .ui-agent-nudge, .ui-agent-nudge-left { right: auto; left: 12px; }
-/* Stage 11 drawer: a flex sibling of the canvas — the canvas narrows and
-   the right column shifts left with it, so nothing is under the panel.
-   (The sim boot observes #scene-wrap and refits the renderer.) */
-body.agent-drawer-open #panel-root {
-  display: block; flex: none; width: 404px; height: 100%; overflow: auto;
-  background: rgba(255, 253, 248, 0.97);
-  border-left: 1px solid var(--border, #d8d2c4);
+/* 12b: the floating agent is replaced by the chat screen (?chat=).
+   The tour's agent step shows a tour card (bottom-right, any hour). */
+.ui-agenttour {
+  position: absolute; right: 12px; bottom: 26px; z-index: 30;
+  width: 360px; max-width: 86vw; max-height: 70vh; overflow: auto;
 }
-.ui-agent-drawer { height: 100%; padding: 4px; }
-.ui-agent-drawer .ui-agent-panel { height: 100%; }
-/* Stage 11 bottom sheet (narrow viewports): the sim bar and tour bar ride
-   above it and the cards cap their height, so the right card scrolls
-   above the sheet instead of under it. */
-.ui-agent-sheet {
-  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 29;
-  max-height: min(420px, 46vh); overflow: auto;
-  background: rgba(255, 253, 248, 0.97); border: 1px solid var(--border, #d8d2c4);
-  border-radius: 12px;
-}
-body.agent-sheet-open .ui-compare {
-  max-height: calc(100vh - 76px - min(420px, 46vh) - 24px);
-}
-body.agent-sheet-open .ui-simleft {
-  max-height: calc(100vh - 76px - min(420px, 46vh) - 12px);
-}
-body.agent-sheet-open .ui-simbar { bottom: calc(min(420px, 46vh) + 24px); }
-body.agent-sheet-open .ui-tour { bottom: calc(min(420px, 46vh) + 24px); }
-.ui-consult-meta { display: flex; justify-content: space-between; align-items: center; }
 .ui-listing-paste { width: 100%; box-sizing: border-box; font: inherit; padding: 8px;
   border: 1px solid var(--border, #d8d2c4); border-radius: 8px; background: #fffdf8; }
 /* Share dialog + print page. */
@@ -171,8 +133,7 @@ body.printing-share #share-print { display: block !important; padding: 24px;
   width: 520px; max-width: 92vw; max-height: 82vh; overflow: auto;
 }
 
-/* Decision/departure ticks under the sim sliders (buttons, calm dots). */
-.ui-ticks { position: relative; height: 12px; margin: 0 4px; }
+/* Decision/departure ticks on the day strip (buttons, calm dots). */
 .ui-tick {
   position: absolute; top: 2px; width: 8px; height: 8px; margin-left: -4px;
   border: none; border-radius: 50%; padding: 0; cursor: pointer;
@@ -208,3 +169,88 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 
 /* Glossary terms: dotted underline, native tooltip on hover/tap. */
 .ui-gloss { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
+
+/* ---------- 12b: landing ---------- */
+.ui-landing { position: absolute; inset: 0; }
+.ui-landing-scrim {
+  position: absolute; inset: 0;
+  background: rgba(12, 14, 18, 0.62);
+  backdrop-filter: blur(6px) saturate(0.8);
+  -webkit-backdrop-filter: blur(6px) saturate(0.8);
+}
+.ui-landing-body { position: absolute; inset: 0; overflow: auto; }
+.ui-landing-body h1, .ui-landing-body h2 { color: #fff; }
+.ui-landing-body p { color: rgba(255, 255, 255, 0.88); }
+
+/* ---------- 12b: chat shell ---------- */
+.ui-chat { position: absolute; inset: 0; display: flex; }
+.ui-chat > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
+.ui-chat main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; }
+.ui-chat-main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; }
+.ui-chat-thread {
+  flex: none; width: 440px; min-height: 0; height: 100%;
+  display: flex; flex-direction: column;
+  background: rgba(255, 253, 248, 0.98);
+  border-right: 1px solid var(--border, #d8d2c4);
+}
+.ui-chat-thread > :first-child { flex: 1 1 auto; min-height: 0; }
+.ui-chat-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 12px 0; }
+.ui-chat-thread > p { padding: 4px 12px 8px; }
+.ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
+  overflow: auto; padding: 12px; pointer-events: none; }
+.ui-chat-workcol { pointer-events: none; }
+.ui-chat-workcol > * { pointer-events: auto; }
+.ui-chat-narrowtabs { display: none; }
+/* Responsive contract: < 1100px the work area becomes a tab. */
+@media (max-width: 1099px) {
+  .ui-chat-narrowtabs { display: block; }
+  .ui-chat-thread { width: 100%; border-right: none; }
+  .ui-chat-work { display: none; }
+  .ui-chat-narrow-work .ui-chat-thread { display: none; }
+  .ui-chat-narrow-work .ui-chat-work { display: block; }
+}
+
+/* ---------- 12b: preview cards ---------- */
+.ui-photos { position: relative; }
+.ui-photos-flag { position: absolute; top: 8px; left: 8px; }
+.ui-photo { display: flex; flex-direction: column; gap: 4px; width: 220px; flex: none; }
+.ui-photo img { width: 220px; height: 132px; object-fit: cover; border-radius: 8px; }
+.ui-thumb { margin: 0; }
+.ui-thumb img { width: 100%; border-radius: 8px; display: block; }
+.ui-thumb-loading {
+  border: 1px dashed var(--border, #d8d2c4); border-radius: 8px;
+  padding: 12px; text-align: center;
+}
+
+/* ---------- 12b: timeline ---------- */
+.ui-strip { position: relative; height: 26px; border-radius: 6px;
+  background: rgba(61, 50, 39, 0.12); touch-action: none; }
+.ui-strip-seg {
+  position: absolute; top: 0; bottom: 0; border: none; padding: 0;
+  cursor: pointer; opacity: 0.92;
+}
+.ui-strip-seg:first-of-type { border-radius: 6px 0 0 6px; }
+.ui-strip-head {
+  position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px;
+  background: #3d3227; pointer-events: none;
+}
+.ui-strip-tick { top: -4px; z-index: 1; }
+.ui-stepwrap { display: inline-flex; align-items: center; gap: 4px; }
+.ui-step-arrow { color: rgba(61, 50, 39, 0.55); }
+.ui-month { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; }
+.ui-month-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 0; padding: 3px 1px; cursor: pointer;
+  border: 1px solid rgba(61, 50, 39, 0.2); border-radius: 5px;
+  background: rgba(255, 253, 248, 0.7); font: inherit;
+}
+.ui-month-wk { background: rgba(178, 90, 51, 0.12); }
+.ui-month-sel { outline: 2px solid rgba(178, 90, 51, 0.7); }
+.ui-month-bar { width: 60%; min-width: 4px; border-radius: 2px;
+  background: rgba(74, 123, 167, 0.75); }
+.ui-month-num { font-size: 10px; line-height: 1.2; color: rgba(61, 50, 39, 0.8); }
+@media (max-width: 800px) {
+  .ui-month { grid-template-columns: repeat(10, 1fr); }
+  .ui-simbar { max-width: calc(100vw - 24px); }
+  .ui-photo, .ui-photo img { width: 180px; }
+}

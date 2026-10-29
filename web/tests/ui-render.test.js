@@ -30,6 +30,7 @@ import { fatigueFor, householdNow, nowCardFor, simMetaFor,
   tickerFor } from "../src/nowcard.js";
 import { journeyBanner, rideStateFor } from "../src/journey.js";
 import { highlightFor } from "../src/highlight.js";
+import { daySegments, monthStrip, outingStepsFor } from "../src/timeline.js";
 import { compare as compareRuns } from "../src/engine/simulate.js";
 
 register("./jsx-loader.mjs", import.meta.url);
@@ -80,11 +81,14 @@ describe("stage 10b selectors: stable snapshots", () => {
   });
 
   it("components wire the stable selectors (crash-site tripwires)", () => {
-    const consult = readFileSync(join(ROOT, "web/src/ui/consult.jsx"), "utf8");
-    assert.ok(consult.includes("selectAgentNudge(store.getState())"),
-      "AgentNudge must read through the memoised selector");
-    assert.ok(!consult.includes("return { journey:"),
-      "consult.jsx must not build a fresh snapshot object in getSnapshot");
+    // 12b: the floating panel is gone — the chat screen holds the same
+    // getSnapshot contract (stable store.getState, server snapshot for
+    // SSR; no fresh objects per call).
+    const chat = readFileSync(join(ROOT, "web/src/ui/chat.jsx"), "utf8");
+    assert.ok(chat.includes("useSyncExternalStore(store.subscribe, store.getState, store.getState)"),
+      "chat store reads must use the stable getSnapshot + server snapshot");
+    assert.ok(!/useSyncExternalStore\(store\.subscribe,\s*\(\)\s*=>\s*\{/.test(chat),
+      "chat.jsx must not build a fresh snapshot object in getSnapshot");
     const share = readFileSync(join(ROOT, "web/src/ui/share.jsx"), "utf8");
     assert.ok(share.includes("selectShareOpen(store.getState())"),
       "ShareDialog must read through the stable selector");
@@ -126,7 +130,7 @@ const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m %
 describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
   let runA; let runB; let scenario; let money; let homes;
   let indexedA; let indexedB; let areaById;
-  let React; let renderToString; let App; let store; let AgentPanel;
+  let React; let renderToString; let App; let store; let AgentTourCard;
 
   before(async () => {
     runA = json(P.runA);
@@ -146,15 +150,16 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     ({ renderToString } = await import("react-dom/server"));
     ({ App } = await import("../src/ui/app.jsx"));
     ({ store } = await import("../src/ui/store.js"));
-    ({ AgentPanel } = await import("../src/ui/consult.jsx"));
+    ({ AgentTourCard } = await import("../src/ui/chat.jsx"));
   });
 
-  // Mirror bootSim + paintNow publishing for one clock position.
+  // Mirror bootSim + paintNow + paintTimeline publishing for one clock position.
   function simPatch({ home, day, minute, follow, search }) {
     const run = home === "B" ? runB : runA;
     const indexed = home === "B" ? indexedB : indexedA;
     const household = run.agents.filter((a) => a.household);
     const agentKey = follow > 0 ? household[follow - 1].key : null;
+    const stripKey = agentKey || household[0].key; // free camera: member 1
     const events = (money.homes[home] && money.homes[home].spending_events) || [];
     let journey = null;
     if (agentKey) {
@@ -198,6 +203,10 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
       judgeFlash: "",
       journey, journeyView: "auto", journeyLoading: "",
       region: { network: true, congestion: true, corridors: 1 },
+      dayStrip: { segments: daySegments({ run, agentKey: stripKey, day }) },
+      dayStripB: null, stripCompare: false,
+      routeSteps: { outings: outingStepsFor({ run, agentKey: stripKey, day }) },
+      monthStrip: monthStrip({ run, agentKey: stripKey }),
       compare: compareRuns(runA, runB), compareLoading: false,
       money, moneyLoading: false, moneyTenure: { ...(money.default_tenure || {}) },
       legend: legendFor(areaById[run.meta.area] || { buildings: [] }, home, run),
@@ -328,31 +337,72 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     }
   });
 
-  it("renders the agent panel header as one row (no truncated actions)", () => {
-    store.set({ agentNudges: true });
+  it("renders the agent tour card with the recorded reply (?agent=1&ask=switch)", () => {
+    // 12b: the floating panel is replaced by the chat; the tour's agent
+    // step shows the recorded Q&A inline + a handoff to the chat.
+    globalThis.window = { location: { search: "?mode=sim&agent=1&ask=switch", href: "" } };
     const errors = [];
     const orig = console.error;
     console.error = (...args) => { errors.push(args.map(String).join(" ")); };
     let html = "";
     try {
-      html = renderToString(React.createElement(AgentPanel, {
-        scenarioName: "demo-two-homes", pending: null, onConsumed: () => {},
-        provider: "meta", setProvider: () => {}, corner: "bottom-right",
-        minimized: false, setMinimized: () => {}, onMove: () => {},
-        onClose: () => {}, height: 560, showMove: true,
-      }));
+      html = renderToString(React.createElement(AgentTourCard));
     } finally {
       console.error = orig;
+      delete globalThis.window;
     }
     assert.equal(errors.length, 0, `React errors: ${errors.join(" | ").slice(0, 1000)}`);
-    assert.ok(html.includes("물어보기"), "title");
-    assert.ok(html.includes("Muse Spark 1.3"), "model badge");
-    assert.ok(html.includes("다른 쪽으로 옮기기"), "move action label");
-    assert.ok(html.includes("작게 접기"), "minimise action label");
-    assert.ok(html.includes("닫기"), "close action label");
-    assert.ok(html.includes("설정"), "settings menu");
-    assert.ok(!html.includes("왼쪽으로"), "no truncated text buttons");
-    assert.ok(!html.includes("조건 정하기 · 결과 설명"), "no long subtitle");
+    assert.ok(html.includes("B로 바꾸면"), "recorded question");
+    assert.ok(html.includes("기록된 답변"), "recorded badge");
+    assert.ok(html.includes("대화에서 계속하기"), "handoff to the chat");
+  });
+
+  it("renders the landing with no React errors", () => {
+    const html = renderCase({ mode: "landing", ready: true,
+      area: { id: "songpa-jamsil", label: "송파·잠실" } }, null);
+    assert.ok(html.includes("계약 전에, 그 집에서 30일 먼저 살아 봐요"), "heading");
+    assert.ok(html.includes("다루는 지역 11곳"), "coverage line");
+  });
+
+  it("renders the chat shell with no React errors", () => {
+    const html = renderCase({ mode: "chat", ready: true,
+      area: { id: "st-미금", label: "미금역 인근" } }, "?chat=");
+    assert.ok(html.includes("주거 시뮬레이터"), "product name");
+    assert.ok(html.includes("새로 시작"), "reset action");
+    assert.ok(html.includes("지금 보는 장면"), "work area");
+  });
+
+  it("renders the day strip + route steps + month strip at A 08:50", () => {
+    const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:50"), follow: 1 });
+    const html = renderCase(patch,
+      "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1");
+    assert.ok(html.includes("2호선 잠실→강남 (9분, 혼잡 91% 실측)"), "ride step");
+    assert.ok(html.includes("강남 환승 4분"), "transfer step");
+    assert.ok(html.includes("이전 이동"), "prev trip");
+    assert.ok(html.includes("다음 이동"), "next trip");
+    assert.ok(html.includes("08:21–08:35 걷기"), "walk segment title");
+    assert.ok(html.includes("30일 고르기"), "month strip");
+    assert.ok(html.includes("A·B 하루 같이 보기"), "strip compare toggle");
+    assert.ok(html.includes("재생"), "playback stays");
+  });
+
+  it("stacks both homes' day strips when stripCompare is on", () => {
+    const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:50"), follow: 1 });
+    patch.stripCompare = true;
+    patch.dayStripB = { home: "B",
+      segments: daySegments({ run: runB, agentKey: "h1", day: 0 }) };
+    const html = renderCase(patch,
+      "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1");
+    assert.ok(html.includes("같은 시각"), "B strip label");
+  });
+
+  it("offers 대화 from the sim at any hour, following or not (11b carryover)", () => {
+    for (const [minute, follow] of [[0, 0], [420, 1], [1158, 1], [1439, 0]]) {
+      const patch = simPatch({ home: "A", day: 0, minute, follow });
+      const html = renderCase(patch,
+        `?mode=sim&scenario=demo-two-homes&home=A&day=1&t=${hhmm(minute)}&follow=${follow}`);
+      assert.ok(html.includes("대화"), `reopen entry at ${hhmm(minute)} follow=${follow}`);
+    }
   });
 
   it("renders the compare groups with full tab labels (no squeezed tabs)", () => {

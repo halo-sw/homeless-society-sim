@@ -451,7 +451,14 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
     if (areas && typeof areas.get === "function" && areas.get(home.scene)) {
       complexName = complexNameForHome(home, areas.get(home.scene)) || home.name;
     }
-    return { label, area: home.scene, complex_name: complexName };
+    const out = { label, area: home.scene, complex_name: complexName };
+    // 12b: footprint centroid for the coordinate anchor (officetels
+    // and villas often form no named complex in the scene).
+    if (Number.isFinite(home.lon) && Number.isFinite(home.lat)) {
+      out.lon = home.lon;
+      out.lat = home.lat;
+    }
+    return out;
   });
 
   const stationName = {};

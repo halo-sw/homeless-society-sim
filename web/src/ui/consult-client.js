@@ -1,9 +1,10 @@
 // Consult browser client: thin fetch wrappers (no React, no keys).
 //
-// Live chat posts to /api/consult (vite dev only); the production build
-// never calls it and shows a recorded demo transcript instead. Nothing
-// here imports server modules or provider code, so no key material can
-// enter the bundle.
+// The chat's free questions post to /api/consult (vite dev only); the
+// fixed flow (profile → candidates → simulation) runs keyless in the
+// browser, and ?ask=… replays recorded replies. Nothing here imports
+// server modules or provider code, so no key material can enter the
+// bundle.
 
 export async function postConsult({ provider, messages, scenario, context = null }) {
   const r = await fetch("/api/consult", {
@@ -27,18 +28,6 @@ export async function loadScenario(name) {
   const r = await fetch(`/scenarios/${name}.json`);
   if (!r.ok) throw new Error(`시나리오를 불러오지 못했습니다 (${name})`);
   return r.json();
-}
-
-// Recorded demo transcript for the production build. Written by the
-// orchestrator later; absent (404) means "empty state", not an error.
-export async function loadDemoTranscript() {
-  const r = await fetch("/scenarios/consult-demo.json");
-  if (!r.ok) return null;
-  try {
-    return await r.json();
-  } catch {
-    return null;
-  }
 }
 
 export function formatUsage(usage) {

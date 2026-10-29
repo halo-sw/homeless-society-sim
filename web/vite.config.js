@@ -18,13 +18,14 @@ const SCEN_DIR = normalize(join(ROOT, "..", "scenarios"));
 // only — never served to the browser.
 const RAW_DIR = normalize(join(ROOT, "..", "data", "raw"));
 
-function serveDir(mount, dir, { jsonOnly = false } = {}) {
+function serveDir(mount, dir, { jsonOnly = false, allow = [] } = {}) {
   return async (req, res, next) => {
     try {
       const rel = normalize((req.url || "").replace(/^\/+/, "").split("?")[0]);
       const full = join(dir, rel);
       const outside = relative(dir, full).startsWith("..") || full.includes(`${sep}..${sep}`);
-      if (outside || !full.startsWith(dir) || (jsonOnly && !full.endsWith(".json"))) {
+      const allowed = allow.includes(rel);
+      if (outside || !full.startsWith(dir) || (jsonOnly && !full.endsWith(".json") && !allowed)) {
         res.statusCode = 403;
         res.end("forbidden");
         return;
@@ -36,7 +37,8 @@ function serveDir(mount, dir, { jsonOnly = false } = {}) {
         return;
       }
       const body = await readFile(full);
-      res.setHeader("Content-Type", full.endsWith(".json") ? "application/json" : "application/octet-stream");
+      res.setHeader("Content-Type", full.endsWith(".json") ? "application/json"
+        : full.endsWith(".csv") ? "text/csv; charset=utf-8" : "application/octet-stream");
       res.end(body);
     } catch {
       next();
@@ -49,7 +51,10 @@ function areaDataPlugin() {
     name: "area-data",
     configureServer(server) {
       server.middlewares.use("/data", serveDir("/data", DATA_DIR));
-      server.middlewares.use("/scenarios", serveDir("/scenarios", SCEN_DIR, { jsonOnly: true }));
+      // 12b: the chat derives ride minutes client-side from the
+      // committed inter-station schedule (one CSV, allowlisted).
+      server.middlewares.use("/scenarios", serveDir("/scenarios", SCEN_DIR,
+        { jsonOnly: true, allow: [`transit${sep}seoul-metro-interstation.csv`] }));
     },
   };
 }

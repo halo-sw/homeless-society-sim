@@ -669,7 +669,10 @@ SLIM_SUMMARY = "summary.json"
 
 def slim_home(home: dict) -> dict:
     """Card fields only: id, name, kind, region, lon/lat, year, buckets,
-    station walk, scene, match + OSM name when relevant."""
+    station walk, scene, match + OSM name when relevant, and the PNU so
+    the browser can join picked homes to scene complexes exactly like
+    the server's build_scenario (12b; PNU is public parcel data the
+    browser already receives inside area buildings)."""
     station = home.get("station") or {}
     return {
         "id": home.get("id"),
@@ -685,6 +688,7 @@ def slim_home(home: dict) -> dict:
             "walk_minutes": station.get("walk_minutes"),
         } if station.get("station") else None),
         "scene": home.get("scene"),
+        "pnu": home.get("pnu"),
         "match": home.get("match", "register"),
         "osm_name": ((home.get("osm") or {}).get("name")
                      if home.get("match") == "osm_name" else None),

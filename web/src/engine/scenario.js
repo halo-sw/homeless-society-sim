@@ -254,6 +254,13 @@ export function parseScenario(raw) {
     }
     if (seenLabels.has(h.label)) fail(`duplicate home label ${JSON.stringify(h.label)}`);
     seenLabels.add(h.label);
+    // 12b: optional footprint-centroid lon/lat for the coordinate
+    // anchor (picked homes that form no named complex).
+    for (const key of ["lon", "lat"]) {
+      if (h[key] !== undefined && h[key] !== null && !Number.isFinite(h[key])) {
+        fail(`homes[${i}].${key} wants a finite degree number`);
+      }
+    }
   }
   const background = raw.background === undefined ? DEFAULT_BACKGROUND : raw.background;
   if (!Number.isInteger(background) || background < 0) fail("background wants an int ≥ 0");
@@ -271,7 +278,14 @@ export function parseScenario(raw) {
       fail(`household.members[${i}].clinic_visits_per_month wants 0..31`);
     }
   }
-  const homesOut = homes.map((h) => ({ label: h.label, area: h.area, complex_name: h.complex_name }));
+  const homesOut = homes.map((h) => {
+    const out = { label: h.label, area: h.area, complex_name: h.complex_name };
+    if (Number.isFinite(h.lon) && Number.isFinite(h.lat)) {
+      out.lon = h.lon;
+      out.lat = h.lat;
+    }
+    return out;
+  });
   if (raw.workday_minutes !== undefined
       && (!Number.isFinite(raw.workday_minutes) || raw.workday_minutes < 0)) {
     fail("workday_minutes wants a number >= 0");
@@ -449,26 +463,68 @@ function buildingAnchorLonLat(building) {
 // Resolve a home: the verbatim complex, and the household entrance —
 // the graph node nearest to a building of that complex. Deterministic:
 // lowest anchor distance wins, ties break on (building id, node id).
+//
+// 12b coordinate fallback: picked homes (officetels, villas) often form
+// no named complex in the scene. When the name matches nothing but the
+// home carries footprint-centroid lon/lat, anchor the entrance at the
+// graph node nearest to that point, with the nearest building as the
+// home building. Same determinism rules; the returned anchor says
+// which path was taken (recorded in run.meta.home_anchor).
 export function resolveHome(area, home, router) {
   const matches = (area.complexes || [])
     .filter((c) => c.name === home.complex_name)
     .sort((a, b) => (a.id < b.id ? -1 : 1));
-  if (matches.length === 0) fail(`home ${home.label}: no complex named ${JSON.stringify(home.complex_name)}`);
-  const complex = matches[0];
   const byId = new Map((area.buildings || []).map((b) => [b.id, b]));
-  let best = null;
-  for (const bid of [...complex.building_ids].sort()) {
-    const b = byId.get(bid);
-    if (!b || !b.geometry) continue;
-    const [lon, lat] = buildingAnchorLonLat(b);
-    const n = router.nearestNode(lon, lat);
-    if (n.id === null) continue;
-    if (best === null || n.distM < best.distM
-        || (n.distM === best.distM && (bid < best.buildingId
-          || (bid === best.buildingId && n.id < best.nodeId)))) {
-      best = { buildingId: bid, nodeId: n.id, distM: n.distM };
+  if (matches.length > 0) {
+    const complex = matches[0];
+    let best = null;
+    for (const bid of [...complex.building_ids].sort()) {
+      const b = byId.get(bid);
+      if (!b || !b.geometry) continue;
+      const [lon, lat] = buildingAnchorLonLat(b);
+      const n = router.nearestNode(lon, lat);
+      if (n.id === null) continue;
+      if (best === null || n.distM < best.distM
+          || (n.distM === best.distM && (bid < best.buildingId
+            || (bid === best.buildingId && n.id < best.nodeId)))) {
+        best = { buildingId: bid, nodeId: n.id, distM: n.distM };
+      }
     }
+    if (best === null) fail(`home ${home.label}: complex ${JSON.stringify(home.complex_name)} has no graph-anchored building`);
+    return { complex, buildingId: best.buildingId, nodeId: best.nodeId,
+      anchor: { method: "complex", complex_name: complex.name } };
   }
-  if (best === null) fail(`home ${home.label}: complex ${JSON.stringify(home.complex_name)} has no graph-anchored building`);
-  return { complex, buildingId: best.buildingId, nodeId: best.nodeId };
+  if (Number.isFinite(home.lon) && Number.isFinite(home.lat)) {
+    const n = router.nearestNode(home.lon, home.lat);
+    if (n.id === null) fail(`home ${home.label}: no graph node near ${home.lon},${home.lat}`);
+    let best = null;
+    for (const b of [...(area.buildings || [])].sort((x, y) =>
+        (String(x.id) < String(y.id) ? -1 : 1))) {
+      if (!b || !b.geometry) continue;
+      const [lon, lat] = buildingAnchorLonLat(b);
+      const d = Math.hypot(lon - home.lon, lat - home.lat);
+      const res = (b.residential && b.residential !== "none") ? 0 : 1;
+      const key = [res, d, String(b.id)];
+      if (best === null || keyLess(key, best.key)) {
+        best = { key, buildingId: b.id };
+      }
+    }
+    if (best === null) fail(`home ${home.label}: no building near ${home.lon},${home.lat}`);
+    return {
+      complex: { name: home.complex_name },
+      buildingId: best.buildingId,
+      nodeId: n.id,
+      anchor: { method: "coordinate", lon: home.lon, lat: home.lat,
+        node_dist_m: Math.round(n.distM * 10) / 10 },
+    };
+  }
+  fail(`home ${home.label}: no complex named ${JSON.stringify(home.complex_name)}`);
+}
+
+function keyLess(a, b) {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] < b[i]) return true;
+    if (a[i] > b[i]) return false;
+  }
+  return a.length < b.length;
 }

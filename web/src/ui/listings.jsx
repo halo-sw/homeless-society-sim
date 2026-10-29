@@ -52,7 +52,7 @@ function initialText() {
   return "";
 }
 
-function PasteCheck() {
+export function PasteCheck({ onAsk } = {}) {
   const [text, setText] = useState(initialText);
   const [parsed, setParsed] = useState(null);
   const [filled, setFilled] = useState({});
@@ -77,9 +77,13 @@ function PasteCheck() {
   };
 
   const askCheck = () => {
+    const text = `다음 매물을 check_listing으로 확인해줘: ${JSON.stringify(merged())}`;
+    if (onAsk) {
+      onAsk(text);
+      return;
+    }
     try {
-      store.act("consultSend",
-        `다음 매물을 check_listing으로 확인해줘: ${JSON.stringify(merged())}`);
+      store.act("consultSend", text);
     } catch {
       /* consult not mounted (tour boot): the agent button still shows */
     }
@@ -87,16 +91,20 @@ function PasteCheck() {
 
   const liveIn = () => {
     const m = merged();
+    const text = `다음 매물을 add_listing_c로 C에 추가해줘: ${JSON.stringify({
+      complex: check && check.complex ? check.complex : m.complex_name,
+      area: check && check.area ? check.area : undefined,
+      deal_type: m.deal_type, area_m2: m.area_m2,
+      price_won: m.price_won, deposit_won: m.deposit_won,
+      monthly_won: m.monthly_won,
+      maintenance_won_month: m.maintenance_won_month, floor: m.floor,
+    })}`;
+    if (onAsk) {
+      onAsk(text);
+      return;
+    }
     try {
-      store.act("consultSend",
-        `다음 매물을 add_listing_c로 C에 추가해줘: ${JSON.stringify({
-          complex: check && check.complex ? check.complex : m.complex_name,
-          area: check && check.area ? check.area : undefined,
-          deal_type: m.deal_type, area_m2: m.area_m2,
-          price_won: m.price_won, deposit_won: m.deposit_won,
-          monthly_won: m.monthly_won,
-          maintenance_won_month: m.maintenance_won_month, floor: m.floor,
-        })}`);
+      store.act("consultSend", text);
     } catch { /* same as above */ }
   };
 

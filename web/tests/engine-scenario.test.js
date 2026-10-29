@@ -110,7 +110,26 @@ describe("engine scenario", () => {
     assert.equal(r1.complex.name, "알파");
     assert.equal(r1.buildingId, "b-home");
     assert.equal(r1.nodeId, "a");
+    assert.equal(r1.anchor.method, "complex");
     assert.deepEqual(r1, r2);
     assert.throws(() => resolveHome(area, { label: "X", complex_name: "없는단지" }, router), /no complex named/);
+  });
+
+  it("anchors picked homes without a named complex on their coordinates (12b)", () => {
+    const area = tinyArea();
+    const router = new Router(area.graph);
+    const home = { label: "A", area: "tiny", complex_name: "이름없는오피스텔",
+      lon: 127.001, lat: 37.501 };
+    const r1 = resolveHome(area, home, router);
+    const r2 = resolveHome(area, home, router);
+    assert.equal(r1.anchor.method, "coordinate");
+    assert.ok(r1.nodeId !== null && r1.buildingId !== null);
+    assert.deepEqual(r1, r2);
+    // Still strict without coordinates.
+    assert.throws(() => resolveHome(area,
+      { label: "X", complex_name: "없는단지" }, router), /no complex named/);
+    assert.throws(() => parseScenario(tinyScenario({
+      homes: [{ label: "A", area: "tiny", complex_name: "알파", lon: "x", lat: 37.5 }],
+    })), /finite degree/);
   });
 });

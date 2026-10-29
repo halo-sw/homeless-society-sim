@@ -429,6 +429,11 @@ export function find_homes(profile, index, opts = {}) {
       lon: home.lon,
       lat: home.lat,
       build_year: home.build_year,
+      // 12b: match (register|osm_name) for the card's 위치 line, pnu
+      // for the scene-complex join (same as build_scenario).
+      match: home.match || "register",
+      pnu: home.pnu || null,
+      osm_name: home.osm_name || (home.osm && home.osm.name) || null,
       tenures: shown,
       deals_in_bucket: dealCount,
       monthly_cost_won: monthly.length > 0 ? Math.min(...monthly) : null,
