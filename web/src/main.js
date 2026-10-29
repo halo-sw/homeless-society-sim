@@ -47,8 +47,8 @@ import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMat
 import { flatHeightAt, makeHeightAt, seatOnTerrain } from "./scene/height.js";
 import { loadScene, toTypedMesh } from "./scene/load.js";
 import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
-import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
-import { setSway, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
+import { MARKINGS_HIDE_M, buildRoadMarkings, buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
+import { fillStreetTrees, setSway, treeColour, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
 // Stage 14b: procedural motion — pure state (motion/) evaluated at sim time.
 import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
 import { MAX_PEDS_HIGH, buildCrowd, pedCapFor, stationCongestionScale } from "./motion/pedestrians.js";
@@ -85,6 +85,35 @@ const HEIGHT_SWATCH = { osm_height: "#7ba05b", osm_levels: "#a9bf8e", register_h
 // ?time=HH:MM overrides the tour sun for day/golden/blue/night captures.
 const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
 const SUN_MINUTE = 15 * 60;
+// Painted leaf colours (14e) read the sim date: the tour's fixed day is
+// 2026-10-15 (inside the autumn window); sim runs use scenario start.
+const TOUR_DATE_ISO = "2026-10-15";
+function simDateISO(startDate, day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startDate || "");
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    + (Number(day) || 0) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+// Building footprint exterior rings in scene coords ([x, z] plan) for
+// the rule-filled street trees (skip spots on/near footprints).
+function footprintRings(buildings, origin) {
+  const rings = [];
+  for (const b of buildings || []) {
+    const g = b.geometry;
+    if (!g) continue;
+    const polys = g.type === "Polygon" ? [g.coordinates]
+      : g.type === "MultiPolygon" ? g.coordinates : [];
+    for (const poly of polys) {
+      const ring = (poly[0] || []).map(([lon, lat]) => {
+        const [x, y] = lonLatToXY(lon, lat, origin);
+        return [x, -y];
+      });
+      if (ring.length >= 3) rings.push(ring);
+    }
+  }
+  return rings;
+}
 const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
 // 12b: map-route colours shared with the day strip (timeline.js).
@@ -182,7 +211,9 @@ async function fetchArea(wantId) {
 // Static world shared by tour and sim modes: renderer, camera, lights,
 // ground, buildings, trees. Returns every handle the modes need.
 // scene14 is the box's scene.json (or null → flat fallback).
-function buildWorld(area, scene14) {
+// opts.treeDateISO (YYYY-MM-DD) drives the painted autumn leaf window.
+function buildWorld(area, scene14, opts = {}) {
+  const treeDateISO = opts.treeDateISO ?? null;
   const origin = originOf(area);
   const box = bboxToXY(area.bbox, origin);
   const cx = (box.minX + box.maxX) / 2;
@@ -311,6 +342,23 @@ function buildWorld(area, scene14) {
       scene.add(sceneWaterMesh);
     }
   }
+  // Painted road paint (14e, one merged mesh): dashes + yellow centre +
+  // zebras from the ribbon stations. The ground lane paint would double
+  // it, so it sits out in painted scene mode (flat mode keeps it).
+  let sceneMarkingsMesh = null;
+  if (scene14 && STYLE === "painted") {
+    if (markMesh) markMesh.visible = false;
+    const mk = buildRoadMarkings(scene14.roads, heightAt);
+    if (mk.mesh.triangles > 0) {
+      const mat = markingMaterial();
+      mat.polygonOffset = true; // paint wins over ribbons at any range
+      mat.polygonOffsetFactor = -4;
+      mat.polygonOffsetUnits = -4;
+      sceneMarkingsMesh = new THREE.Mesh(toIndexedGeometry(mk.mesh), mat);
+      sceneMarkingsMesh.receiveShadow = true;
+      scene.add(sceneMarkingsMesh);
+    }
+  }
 
   // --- buildings: one PBR wall mesh per facade class + podium + roofs ---
   const built = buildBuildings(area.buildings, area.complexes, origin,
@@ -361,9 +409,19 @@ function buildWorld(area, scene14) {
   // --- trees: OSM forest/park placements (scene) or decorative (flat) ---
   const treeMeshes = [];
   let trees = [];
+  let fillTrees = 0;
   const tintColor = new THREE.Color();
   if (scene14) {
     trees = scene14.trees;
+    // Painted: rule-fill street trees along empty roads (가정값, see the
+    // legend note) and seed per-instance leaf colours by sim date.
+    const paintedTrees = STYLE === "painted";
+    if (paintedTrees) {
+      const fill = fillStreetTrees(scene14.roads, scene14.trees,
+        footprintRings(area.buildings, origin));
+      fillTrees = fill.trees.length;
+      if (fillTrees > 0) trees = [...scene14.trees, ...fill.trees];
+    }
     const bySpecies = [[], [], []];
     for (const t of trees) bySpecies[t[3]].push(t);
     bySpecies.forEach((list, species) => {
@@ -377,7 +435,15 @@ function buildWorld(area, scene14) {
         dummy.rotation.set(0, treeRotation(x, z), 0);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
-        mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+        // Conifers stay evergreen (greens only); broadleaf/shrub follow
+        // the sim date into the autumn window. Photo keeps the grey tint.
+        const seed = `${x.toFixed(1)},${z.toFixed(1)}`;
+        if (paintedTrees) {
+          mesh.setColorAt(i, tintColor.setHex(
+            treeColour(seed, species === 0 ? null : treeDateISO)));
+        } else {
+          mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+        }
       });
       mesh.count = list.length;
       mesh.castShadow = true;
@@ -518,8 +584,9 @@ function buildWorld(area, scene14) {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
     dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
-    trees, treeMeshes, streetMeshes, crowd, crowdMeshes, dummy, heightAt,
-    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh,
+    trees, treeMeshes, fillTrees, streetMeshes, crowd, crowdMeshes,
+    dummy, heightAt,
+    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh, sceneMarkingsMesh,
     nightMats, applyPaintedNight,
   };
 }
@@ -597,8 +664,10 @@ async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
-    streetMeshes, crowdMeshes, trees, treeMeshes, waterMesh, sceneWaterMesh,
-    dummy, heightAt, applyPaintedNight } = buildWorld(area, scene14);
+    streetMeshes, crowdMeshes, trees, treeMeshes, fillTrees, waterMesh,
+    sceneWaterMesh, sceneMarkingsMesh, dummy, heightAt,
+    applyPaintedNight } = buildWorld(area, scene14,
+      { treeDateISO: TOUR_DATE_ISO });
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
     const [x, y] = lonLatToXY(lon, lat, origin);
@@ -665,7 +734,7 @@ async function bootTour(uiMode = "tour") {
   // The landing and the chat reuse the tour scene as a backdrop; only
   // the tour shows captions, the legend and the area switcher.
   if (uiMode === "tour") {
-    buildUI(area, plan, !!scene14);
+    buildUI(area, plan, !!scene14, fillTrees);
   } else {
     store.set({ area: { id: areaId, label: area.label || areaId } });
     document.title = uiMode === "chat" ? "주거 시뮬레이터 — 대화" : "주거 시뮬레이터";
@@ -791,6 +860,9 @@ async function bootTour(uiMode = "tour") {
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
     if (archLens) levelCamera();
+    if (sceneMarkingsMesh) {
+      sceneMarkingsMesh.visible = (tourFramedWidth ?? 0) <= MARKINGS_HIDE_M;
+    }
     renderCtl.renderFrame({ bloom: tourBloom, framedWidthM: tourFramedWidth }, dt);
     frames++;
     if (frames === 30) {
@@ -1014,8 +1086,10 @@ export const MOTION_NOTE_TOUR_FLAT = "나무는 장식용 모의 표시, 차량�
 export const MOTION_NOTE_SIM_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
 export const MOTION_NOTE_SIM_FLAT = "나무는 장식용 모의 표시, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
 export const MOTION_CONG_SUFFIX = " 역 주변 인파는 실측 혼잡도 기반입니다.";
+// 14e: rule-filled street trees are assumption values, like mock motion.
+export const FILL_TREES_SUFFIX = " 가로수 위치 일부는 규칙으로 채운 값(가정값)입니다.";
 
-function buildUI(area, plan, sceneOn = false) {
+function buildUI(area, plan, sceneOn = false, fillCount = 0) {
   const { resRows, heightRows } = legendRows(area);
   store.set({
     areaOptions: AREAS.map((a) => ({ value: a.id, label: a.label })),
@@ -1024,7 +1098,8 @@ function buildUI(area, plan, sceneOn = false) {
       title: "범례",
       resRows,
       heightRows,
-      note: sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT,
+      note: (sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT)
+        + (fillCount > 0 ? FILL_TREES_SUFFIX : ""),
     },
   });
   if (plan.stops.length === 0) store.set({ tourPlaying: false });
@@ -1208,9 +1283,10 @@ async function bootSim() {
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
-    crowd, crowdMeshes, treeMeshes, waterMesh, sceneWaterMesh,
-    wallMeshes, podiumMesh, roofMesh, heightAt,
-    nightMats, applyPaintedNight } = buildWorld(area, scene14);
+    crowd, crowdMeshes, treeMeshes, fillTrees, waterMesh, sceneWaterMesh,
+    sceneMarkingsMesh, wallMeshes, podiumMesh, roofMesh, heightAt,
+    nightMats, applyPaintedNight } = buildWorld(area, scene14,
+      { treeDateISO: simDateISO(run.meta.start_date, 0) });
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
   // pulse animation when the OS asks for reduced motion.
@@ -2460,7 +2536,8 @@ async function bootSim() {
   }
 
   // --- sim UI state (published) + actions (UI calls scene) ---
-  simLegendBase = scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT;
+  simLegendBase = (scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT)
+    + (fillTrees > 0 ? FILL_TREES_SUFFIX : "");
   const { resRows, heightRows } = legendRows(area);
   store.set({
     home: homeLabel,
@@ -2892,6 +2969,9 @@ async function bootSim() {
     }
     trackSimViewOffset(camera); // 13e5: stage centre, not canvas centre
     controls.update();
+    if (sceneMarkingsMesh) {
+      sceneMarkingsMesh.visible = (simFramedWidth ?? 0) <= MARKINGS_HIDE_M;
+    }
     renderCtl.renderFrame({ bloom: simBloom, framedWidthM: simFramedWidth }, dt);
     frames++;
     if (frames === 30) {
