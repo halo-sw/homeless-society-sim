@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { join, normalize, relative, sep } from "node:path";
+import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { buildPrompt } from "./src/judge/context.js";
@@ -18,14 +18,70 @@ const SCEN_DIR = normalize(join(ROOT, "..", "scenarios"));
 // only — never served to the browser.
 const RAW_DIR = normalize(join(ROOT, "..", "data", "raw"));
 
+// 14b: pure helper — decode the URL path (Korean area ids arrive
+// percent-encoded), NFC-normalize, then containment-check. Throws with
+// err.code 400 (malformed URI) or 403 (traversal/absolute).
+export function resolveDataPath(dir, url) {
+  const raw = (url || "").replace(/^\/+/, "").split("?")[0];
+  let decoded;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    const err = new Error("malformed URI");
+    err.code = 400;
+    throw err;
+  }
+  decoded = decoded.normalize("NFC");
+  if (isAbsolute(decoded)) {
+    const err = new Error("forbidden");
+    err.code = 403;
+    throw err;
+  }
+  if (decoded.split(/[\\/]/).includes("..")) {
+    const err = new Error("forbidden");
+    err.code = 403;
+    throw err;
+  }
+  const rel = normalize(decoded);
+  if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)
+      || rel.includes(`${sep}..${sep}`)) {
+    const err = new Error("forbidden");
+    err.code = 403;
+    throw err;
+  }
+  const full = join(dir, rel);
+  const outside = relative(dir, full).startsWith("..") || !full.startsWith(dir);
+  if (outside) {
+    const err = new Error("forbidden");
+    err.code = 403;
+    throw err;
+  }
+  return { rel, full };
+}
+
 function serveDir(mount, dir, { jsonOnly = false, allow = [] } = {}) {
   return async (req, res, next) => {
+    let rel;
+    let full;
     try {
-      const rel = normalize((req.url || "").replace(/^\/+/, "").split("?")[0]);
-      const full = join(dir, rel);
-      const outside = relative(dir, full).startsWith("..") || full.includes(`${sep}..${sep}`);
+      ({ rel, full } = resolveDataPath(dir, req.url || ""));
+    } catch (err) {
+      if (err && err.code === 400) {
+        res.statusCode = 400;
+        res.end("bad request");
+        return;
+      }
+      if (err && err.code === 403) {
+        res.statusCode = 403;
+        res.end("forbidden");
+        return;
+      }
+      next();
+      return;
+    }
+    try {
       const allowed = allow.includes(rel);
-      if (outside || !full.startsWith(dir) || (jsonOnly && !full.endsWith(".json") && !allowed)) {
+      if (jsonOnly && !full.endsWith(".json") && !allowed) {
         res.statusCode = 403;
         res.end("forbidden");
         return;
