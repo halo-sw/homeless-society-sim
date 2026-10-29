@@ -42,13 +42,13 @@ import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
 import { placeStreetlife } from "./render/streetlife.js";
 import { buildStreetMeshes } from "./render/streetmeshes.js";
-import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, setNightGain, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
+import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, setNightGain, setWaterTime, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
 // Stage 14: terrain + OSM road/forest/tree scene layers.
 import { flatHeightAt, makeHeightAt, seatOnTerrain } from "./scene/height.js";
 import { loadScene, toTypedMesh } from "./scene/load.js";
 import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
 import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
-import { treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
+import { setSway, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
 // Stage 14b: procedural motion — pure state (motion/) evaluated at sim time.
 import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
 import { MAX_PEDS_HIGH, buildCrowd, pedCapFor, stationCongestionScale } from "./motion/pedestrians.js";
@@ -56,6 +56,7 @@ import { buildCrowdMeshes } from "./render/crowd.js";
 import { buildTrainTable } from "./motion/trains.js";
 import { buildTrainPulse } from "./render/trainpulse.js";
 import { INTERSTATION_CSV_URL, parseInterstationCsv } from "./transit/schedule.js";
+import { swayDayFactor } from "./motion/nature.js";
 
 // 12a: the area list comes from the built data/build/areas-index.json
 // (id, label, center, bbox, station, size) — never a hard-coded array.
@@ -529,7 +530,8 @@ async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
-    streetMeshes, crowdMeshes, trees, dummy, heightAt } = buildWorld(area, scene14);
+    streetMeshes, crowdMeshes, trees, treeMeshes, waterMesh, sceneWaterMesh,
+    dummy, heightAt } = buildWorld(area, scene14);
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
     const [x, y] = lonLatToXY(lon, lat, origin);
@@ -607,6 +609,7 @@ async function bootTour(uiMode = "tour") {
   // --- tour sun/sky (?time=HH:MM override; static through the tour) ---
   const { date: tourDate, minute: tourMinute } = tourSun();
   const fillTourLit = makeLitFiller(litMeshes, householdsById);
+  let tourEmissive = 0;
   let tourBloom = 0;
   let tourLitDone = false;
   function updateTourSky() {
@@ -617,6 +620,7 @@ async function bootTour(uiMode = "tour") {
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
       shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM, look: LOOK });
     tourBloom = p.bloom;
+    tourEmissive = p.emissive;
     setGlobalNight(p.emissive);
     streetMeshes.setLampGlow(p.emissive);
     // No run in tour mode: light residential windows from the evening
@@ -708,6 +712,9 @@ async function bootTour(uiMode = "tour") {
     const tourTMin = tourMinute + t / 60;
     const tourVeh = streetMeshes.updateVehicles(tourTMin, vehicleCapFor(renderCtl.quality));
     const tourPed = crowdMeshes.update(tourTMin, { cap: pedCapFor(renderCtl.quality) });
+    for (const tm of treeMeshes) setSway(tm.material, tourTMin * 60, swayDayFactor(tourEmissive));
+    if (waterMesh) setWaterTime(waterMesh.material, tourTMin * 60);
+    if (sceneWaterMesh) setWaterTime(sceneWaterMesh.material, tourTMin * 60);
     logMotion(tourTMin, { cars: tourVeh.active, peds: tourPed.active,
       ms: tourVeh.ms + tourPed.ms });
     updateTourSky(); // follows the camera target (shadow frustum)
@@ -1130,7 +1137,7 @@ async function bootSim() {
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
-    crowd, crowdMeshes,
+    crowd, crowdMeshes, treeMeshes, waterMesh, sceneWaterMesh,
     wallMeshes, podiumMesh, roofMesh, heightAt } = buildWorld(area, scene14);
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
@@ -1607,6 +1614,7 @@ async function bootSim() {
   // buildings with real households) fill the aLit vertex attributes at
   // 30-minute granularity. Daytime emissive is off (uNight = 0).
   let simBloom = 0;
+  let simEmissive = 0;
   let lastLightKey = "";
   let lastLitKey = "";
 
@@ -1620,6 +1628,7 @@ async function bootSim() {
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
       shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM, look: LOOK });
     simBloom = p.bloom;
+    simEmissive = p.emissive;
     const key = `${day}:${m}`;
     if (key === lastLightKey) return;
     lastLightKey = key;
@@ -2779,6 +2788,9 @@ async function bootSim() {
     const simPed = crowdMeshes.update(simTMin,
       { congScale, cap: pedCapFor(renderCtl.quality) });
     if (trainPulse) trainPulse.update(simTMin);
+    for (const tm of treeMeshes) setSway(tm.material, simTMin * 60, swayDayFactor(simEmissive));
+    if (waterMesh) setWaterTime(waterMesh.material, simTMin * 60);
+    if (sceneWaterMesh) setWaterTime(sceneWaterMesh.material, simTMin * 60);
     logMotion(simTMin, { cars: simVeh.active, peds: simPed.active,
       trains: trainTable ? trainTable.trains : 0,
       ms: simVeh.ms + simPed.ms });

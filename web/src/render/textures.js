@@ -192,12 +192,56 @@ export function markingMaterial() {
 }
 
 export function waterMaterial() {
-  return new THREE.MeshPhysicalMaterial({
+  const mat = new THREE.MeshPhysicalMaterial({
     color: WATER_PBR,
     roughness: 0.07,
     metalness: 0.05,
     envMapIntensity: 1.6,
   });
+  // 14b: slow procedural normal drift from world xz + t.
+  const uniforms = { uWaterTime: { value: 0 } };
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uWaterTime = uniforms.uWaterTime;
+    shader.vertexShader = patchWaterVertex(shader.vertexShader);
+    shader.fragmentShader = patchWaterFragment(shader.fragmentShader);
+  };
+  mat.customProgramCacheKey = () => "waterDrift1";
+  mat.userData.water = uniforms;
+  return mat;
+}
+
+export function setWaterTime(material, tSec) {
+  const u = material && material.userData && material.userData.water;
+  if (!u) return;
+  u.uWaterTime.value = tSec;
+}
+
+// Pure string transforms (tested): world-xz varying + normal wobble.
+export function patchWaterVertex(src) {
+  return src
+    .replace("#include <common>",
+      "#include <common>\nvarying vec2 vWaterXZ;")
+    .replace("#include <begin_vertex>", `#include <begin_vertex>
+{
+  vec4 wwp = vec4( transformed, 1.0 );
+  #ifdef USE_INSTANCING
+    wwp = instanceMatrix * wwp;
+  #endif
+  vWaterXZ = ( modelMatrix * wwp ).xz;
+}`);
+}
+
+export function patchWaterFragment(src) {
+  return src
+    .replace("#include <common>",
+      "#include <common>\nvarying vec2 vWaterXZ;\nuniform float uWaterTime;")
+    .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+{
+  vec2 wUv = vWaterXZ * 0.08;
+  float wob = sin( wUv.x * 3.1 + uWaterTime * 0.35 )
+    * sin( wUv.y * 2.7 - uWaterTime * 0.28 );
+  normal = normalize( normal + vec3( wob * 0.06, 0.0, wob * 0.045 ) );
+}`);
 }
 
 export function vegetationMaterial() {

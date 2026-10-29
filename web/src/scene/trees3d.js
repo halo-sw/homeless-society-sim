@@ -126,7 +126,46 @@ export function treeShadowMaterial() {
 }
 
 export function treeMaterial() {
-  return new THREE.MeshStandardMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.9, metalness: 0,
   });
+  // 14b: procedural sway — vertex shader driven by t and a
+  // per-instance seed (≤ 2 % of tree height; calm at night).
+  const uniforms = { uSwayTime: { value: 0 }, uSwayAmp: { value: 1 } };
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSwayTime = uniforms.uSwayTime;
+    shader.uniforms.uSwayAmp = uniforms.uSwayAmp;
+    shader.vertexShader = patchSwayVertex(shader.vertexShader);
+  };
+  mat.customProgramCacheKey = () => "treeSway1";
+  mat.userData.sway = uniforms;
+  return mat;
+}
+
+export function setSway(material, tSec, amp) {
+  const u = material && material.userData && material.userData.sway;
+  if (!u) return;
+  u.uSwayTime.value = tSec;
+  u.uSwayAmp.value = amp;
+}
+
+// Pure string transform (tested): sway displacement after begin_vertex.
+export function patchSwayVertex(src) {
+  return src
+    .replace("#include <common>",
+      "#include <common>\nuniform float uSwayTime;\nuniform float uSwayAmp;")
+    .replace("#include <begin_vertex>", `#include <begin_vertex>
+{
+  float swayH = clamp( transformed.y / 7.0, 0.0, 1.0 );
+  float swayK = uSwayAmp * 0.12 * swayH * swayH;
+  #ifdef USE_INSTANCING
+    vec2 swaySeed = vec2( instanceMatrix[3][0], instanceMatrix[3][2] );
+  #else
+    vec2 swaySeed = vec2( 0.0 );
+  #endif
+  float swayPhase = fract( sin( dot( swaySeed, vec2( 12.9898, 78.233 ) ) )
+    * 43758.5453 ) * 6.2831853;
+  transformed.x += sin( uSwayTime * 1.1 + swayPhase ) * swayK;
+  transformed.z += cos( uSwayTime * 0.9 + swayPhase * 1.7 ) * swayK * 0.6;
+}`);
 }
