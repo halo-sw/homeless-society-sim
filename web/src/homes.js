@@ -108,7 +108,7 @@ function profileValue(profile, key) {
 
 export const SAME_STATION_KO = "직장역과 같은 역 · 지하철 안 타요";
 
-function commuteSummary(home, workplace, network, schedule = null, walkgraphs = null) {
+function commuteSummary(home, workplace, network, schedule = null, walkgraphs = null, walkMps = null) {
   let walk = home.station && Number.isFinite(home.station.walk_minutes)
     ? { minutes: home.station.walk_minutes, station: home.station.station, known: true }
     : { minutes: null, station: null, known: false };
@@ -117,7 +117,8 @@ function commuteSummary(home, workplace, network, schedule = null, walkgraphs = 
       && Number.isFinite(home.lon) && Number.isFinite(home.lat)) {
     const graph = walkgraphs.get(home.region);
     if (graph) {
-      const best = nearestStationByWalk(graph, home.lon, home.lat);
+      const best = nearestStationByWalk(graph, home.lon, home.lat,
+        Number.isFinite(walkMps) ? walkMps : undefined);
       if (best) {
         walk = { minutes: best.minutes, station: best.station, known: true, via: "walkgraph" };
       }
@@ -396,6 +397,7 @@ export function find_homes(profile, index, opts = {}) {
   const boxes = opts.boxes || null; // Map boxId -> {graph, pois}
   const manifest = opts.photos || null;
   const walkgraphs = opts.walkgraphs || null; // Map region -> walk graph
+  const walkMps = Number.isFinite(opts.walkMps) ? opts.walkMps : null; // 가정 바꾸기 override
 
   const budgets = {
     jeonse: profileValue(profile, "depositMax"),
@@ -410,7 +412,7 @@ export function find_homes(profile, index, opts = {}) {
   for (const home of homes) {
     if (regions && !regions.includes(home.region)) continue;
     if (kind && home.kind !== kind) continue;
-    const commute = commuteSummary(home, workplace, network, schedule, walkgraphs);
+    const commute = commuteSummary(home, workplace, network, schedule, walkgraphs, walkMps);
     if (commuteMax !== null && commute.walk.known
         && commute.walk.minutes > commuteMax) continue;
     // Tenure buckets: median within budget (or no budget set).
@@ -471,6 +473,8 @@ export function find_homes(profile, index, opts = {}) {
       monthly_cost_won: monthly.length > 0 ? Math.min(...monthly) : null,
       commute,
       commute_ko: commuteLine(commute),
+      // 13: sceneless homes with graph-measured walks run the 2D map sim.
+      walkgraph: !home.scene && commute.walk.known && commute.walk.via === "walkgraph",
       must_have_minutes: mustHaveMinutes,
       scene: home.scene || null,
       photos: manifest ? photosNear(home.lon, home.lat, manifest, { limit: 6 }) : [],

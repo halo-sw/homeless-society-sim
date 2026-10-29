@@ -189,7 +189,7 @@ export function OrbView({ data, onRegion, highlightKey }) {
           mount.removeChild(renderer.domElement);
         }
       }
-    });
+    };
   }, []);
 
   const tipFacts = tip && tip.region && tip.region.facts;

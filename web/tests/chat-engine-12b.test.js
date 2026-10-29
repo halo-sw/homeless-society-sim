@@ -188,7 +188,10 @@ describe("chat engine steps on synthetic data", () => {
     const ready = simReadyFor(found.candidates[0], null);
     assert.equal(ready.ready, true);
     assert.equal(ready.anchor, "coordinate"); // no area: coordinate preview
-    assert.equal(simReadyFor({ ...found.candidates[0], scene: null }, null).ready, false);
+    // 13: no scene but walk + position → 2D map simulation (Part 8).
+    const mapReady = simReadyFor({ ...found.candidates[0], scene: null }, null);
+    assert.equal(mapReady.ready, true);
+    assert.equal(mapReady.kind, "map");
     assert.equal(simReadyFor({ ...found.candidates[0],
       commute: { walk: { known: false } } }, null).ready, false);
   });

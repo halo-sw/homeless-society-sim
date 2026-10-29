@@ -398,7 +398,7 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 .ui-cand-label {
   position: absolute; left: 8px; top: 8px; font-size: 12px; max-width: calc(100% - 16px);
   background: rgba(255, 253, 248, 0.94); border-radius: 8px; padding: 1px 7px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  word-break: keep-all; overflow-wrap: anywhere;
 }
 .ui-cand-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
 .ui-cand-price { font-size: 22px; font-weight: 800; line-height: 1.25; }

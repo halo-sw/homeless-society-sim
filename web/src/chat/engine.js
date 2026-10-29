@@ -28,6 +28,7 @@ export const PHOTOS_MANIFEST_URL = "/scenarios/places/commons-photos.json";
 export const NAMED_PHOTOS_URL = "/scenarios/places/commons-named.json";
 export const REGIONS_URL = "/data/regions.json";
 export const BOX_AREA_URL = (boxId) => `/data/${boxId}/area.json`;
+export const WALKGRAPH_URL = (regionId) => `/data/walkgraph/${regionId}.json`;
 
 export function stationNames(network) {
   const names = new Set();
@@ -167,7 +168,19 @@ export function searchStep(profile, index, data = {}, opts = {}) {
 }
 
 // …then re-run with the loaded box graphs so must-have minutes filter
-// honestly (same two-pass shape as the server tool).
+// honestly (same two-pass shape as the server tool). 13: region walk
+// graphs load too, so sceneless homes get real measured walk minutes
+// ("도보 미확인" only when the graph can't reach a station).
+export async function loadWalkgraph(fetchJson, regionId) {
+  if (!regionId) return null;
+  try {
+    const doc = await fetchJson(WALKGRAPH_URL(regionId));
+    return doc && doc.nodes && doc.stations ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function searchWithBoxes(fetchJson, profile, index, prelim, data = {}, opts = {}) {
   const boxes = new Map();
   const ids = [...new Set((prelim.candidates || []).map((h) => h.scene).filter(Boolean))].slice(0, 12);
@@ -179,6 +192,13 @@ export async function searchWithBoxes(fetchJson, profile, index, prelim, data = 
       // Unloadable box: minutes stay null (honest unknown).
     }
   }
+  const walkgraphs = data.walkgraphs instanceof Map ? data.walkgraphs : new Map();
+  const regionIds = [...new Set((prelim.candidates || []).map((h) => h.region).filter(Boolean))].slice(0, 12);
+  for (const id of regionIds) {
+    if (walkgraphs.has(id)) continue;
+    const graph = await loadWalkgraph(fetchJson, id);
+    if (graph) walkgraphs.set(id, graph);
+  }
   return find_homes(profile, index, {
     sort: opts.sort || prelim.sort || DEFAULT_HOME_SORT,
     limit: opts.limit !== undefined ? opts.limit : 6,
@@ -188,6 +208,8 @@ export async function searchWithBoxes(fetchJson, profile, index, prelim, data = 
     schedule: data.schedule || null,
     boxes,
     photos: data.manifest || null,
+    walkgraphs,
+    walkMps: Number.isFinite(opts.walkMps) ? opts.walkMps : null,
   });
 }
 
@@ -226,20 +248,24 @@ export function complexNameForCandidate(candidate, area) {
   return null;
 }
 
-// Can this candidate run? Scene + station walk + a home position.
-// Homes without a named complex in the scene (officetels, villas)
-// anchor on their footprint centroid (engine coordinate fallback);
-// the returned anchor says which path the run will take.
+// Can this candidate run? Three kinds: "3d" (scene + walk + position),
+// "map" (no scene, but walk + position — 2D map simulation), or not
+// ready. Homes without a named complex in the scene (officetels,
+// villas) anchor on their footprint centroid (engine coordinate
+// fallback); the returned anchor says which path the run will take.
 export function simReadyFor(candidate, area) {
-  if (!candidate || !candidate.scene) return { ready: false, reason: "3D 장면이 없어요" };
+  if (!candidate) return { ready: false, kind: "none", reason: "후보 정보가 없어요" };
   if (!candidate.commute || !candidate.commute.walk || !candidate.commute.walk.known) {
-    return { ready: false, reason: "도보 시간이 확인되지 않아요" };
+    return { ready: false, kind: "none", reason: "도보 시간이 확인되지 않아요" };
   }
   if (!Number.isFinite(candidate.lon) || !Number.isFinite(candidate.lat)) {
-    return { ready: false, reason: "집 위치가 확인되지 않아요" };
+    return { ready: false, kind: "none", reason: "집 위치가 확인되지 않아요" };
+  }
+  if (!candidate.scene) {
+    return { ready: true, kind: "map", complex: null, anchor: "coordinate", reason: "" };
   }
   const complex = area ? complexNameForCandidate(candidate, area) : null;
-  return { ready: true, complex,
+  return { ready: true, kind: "3d", complex,
     anchor: complex ? "complex" : "coordinate", reason: "" };
 }
 
