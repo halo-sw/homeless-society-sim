@@ -185,13 +185,9 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
             onMouseLeave={() => onHover && onHover(null)}>
             <VStack gap={1}>
               <CandidateCard candidate={c} tenure={tenure} destName={destName}
-                photos={photos} index={i}
-                onLive={() => { onTogglePick(c); if (c.scene && onPreview3D) onPreview3D(c); }}
+                photos={photos} index={i} picked={picks.includes(c.id)}
+                onLive={() => onTogglePick(c)}
                 onJeonse={() => onJeonse(c)} onDetail={() => onDetail && onDetail(c)} />
-              {picks.includes(c.id) && (
-                <Button size="sm" variant="secondary" label="비교에서 빼기"
-                  onClick={() => onTogglePick(c)} />
-              )}
               {readinessNote(c) && (
                 <Text type="supporting">{`살아 보기 불가: ${readinessNote(c)}`}</Text>
               )}
@@ -1246,7 +1242,7 @@ function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
                 <Button size="sm" variant="ghost" label="닫기" onClick={onCloseDetail} />
               </HStack>
               <CandidateCard candidate={detail} tenure={tenure} destName={destName}
-                photos={detailPhotos}
+                photos={detailPhotos} picked={picks.includes(detail.id)}
                 onLive={() => onTogglePick(detail)}
                 onJeonse={() => onJeonse(detail)} onDetail={null} />
             </VStack>

@@ -65,7 +65,7 @@ export function SourceDot({ source }) {
 }
 
 export function CandidateCard({ candidate, tenure, destName, photos, index,
-  onLive, onJeonse, onDetail }) {
+  onLive, onJeonse, onDetail, picked = false }) {
   const [slide, setSlide] = useState(0);
   const [openHow, setOpenHow] = useState(false);
   const price = tenurePriceLine(candidate, tenure);
@@ -99,7 +99,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         {(photo || fallback) && (
           <span className="ui-cand-label">{photo ? photo.label : fallbackLabelFor(fallback)}</span>
         )}
-        {slots.length > 1 && (
+        {slots.length > 0 && (
           <span className="ui-cand-count ui-num">{`${slide + 1}/${slots.length}`}</span>
         )}
         {slots.length > 1 && (
@@ -132,7 +132,9 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         </div>
         {photo && <div className="ui-cand-credit">{photo.credit}</div>}
         <div className="ui-cand-actions">
-          <Button size="sm" label="살아 보기" onClick={() => onLive && onLive(candidate)} />
+          <Button size="sm" variant={picked ? "secondary" : "primary"}
+            label={picked ? "담김 ✓ (빼기)" : "살아 보기"}
+            onClick={() => onLive && onLive(candidate)} />
           <Button size="sm" variant="ghost" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />
           <Button size="sm" variant="ghost" label="자세히" onClick={() => onDetail && onDetail(candidate)} />
         </div>
