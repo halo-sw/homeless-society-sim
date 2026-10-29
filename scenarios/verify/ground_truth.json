@@ -183,6 +183,10 @@
         "엘리베이터",
         "morning"
       ],
+      "exclude": [
+        "아침 식사",
+        "아침 메뉴"
+      ],
       "engine": "none",
       "engine_source": "no event kind: morning_routine"
     }
@@ -225,6 +229,9 @@
             "횡단보도",
             "안전",
             "traffic"
+          ],
+          "exclude": [
+            "투자"
           ],
           "engine": "none",
           "engine_source": "no event kind: child_outing"
@@ -275,6 +282,9 @@
             "소아과",
             "병원",
             "pediatric"
+          ],
+          "exclude": [
+            "병원비"
           ],
           "engine": "partial",
           "engine_source": "clinic trips (purpose=clinic)"
@@ -524,6 +534,9 @@
             "의원",
             "hospital",
             "clinic"
+          ],
+          "exclude": [
+            "병원비"
           ],
           "engine": "partial",
           "engine_source": "clinic trips (purpose=clinic)"

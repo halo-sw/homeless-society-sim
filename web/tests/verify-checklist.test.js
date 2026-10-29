@@ -5,6 +5,11 @@
 // passed/must 1.0/weighted 1.0), hard-coded below. Fixes: every audit
 // false positive (2026-10-29) no longer covers its target, the
 // one-line keyword salad fails, negation fails.
+//
+// Stage 16b: 2+ syllable Korean keywords are substrings like the
+// reference (병원비/안전한 투자/아침 식사 메뉴 now blocked by item
+// `exclude` data), persona items win contested lines over common
+// should items, and five natural checklists match Python passed + must.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -38,10 +43,16 @@ describe("matchKeyword: the whole-word rule", () => {
     ["park", "park 근처", 1],
     ["call", "recall", 0],
     ["call", "화상 call 품질", 1],
-    ["안전", "안전한 투자", 0],
+    ["안전", "안전한 투자", 1], // substring now; "투자" exclude blocks F02 at item level
     ["안전", "차량 안전", 1],
-    ["병원", "병원비", 0],
+    ["병원", "병원비", 1], // substring now; "병원비" exclude blocks F05/M02 at item level
     ["병원", "병원 접근성", 1],
+    // 2+ syllable compounds, particles and stems all match (16b).
+    ["어린이집", "어린이집까지 걸어서 몇 분인지", 1],
+    ["소아과", "소아과까지 가는 시간", 1],
+    ["소음", "층간소음이 심한지", 1],
+    ["미끄", "바닥재 미끄럼", 1],
+    ["바닥", "바닥재 미끄럼", 1],
     // Longer keywords keep reference substring behaviour.
     ["commute", "my COMMUTE route", 1],
     ["night", "midnight snack", 1],
@@ -114,6 +125,7 @@ describe("audit false positives no longer cover", () => {
     ["안전한 투자", "young_family", ["F02"]],
     ["병원비", "young_family", ["F05"]],
     ["병원비", "multigen_family", ["M02"]],
+    ["아침 식사 메뉴", "young_family", ["C09"]],
     ["소음은 확인하지 않았어요", "young_family", ["C03"]],
     ["소음 확인을 못 했어요", "young_family", ["C03"]],
     ["noise not checked", "young_family", ["C03"]],
@@ -127,10 +139,29 @@ describe("audit false positives no longer cover", () => {
   }
   it("one line covers at most one item (엘리베이터 대기)", async () => {
     const young = await scoreChecklist(loadGroundTruth(GT, "young_family"), ["엘리베이터 대기"]);
-    assert.deepEqual(young.covered, ["C09"]);
+    assert.deepEqual(young.covered, ["F04"]); // persona should wins over common should
     assert.equal(young.passed, false);
     const multi = await scoreChecklist(loadGroundTruth(GT, "multigen_family"), ["엘리베이터 대기"]);
     assert.deepEqual(multi.covered, ["M01"]); // must wins over should
+  });
+  it("persona item takes the contested line (16b tie-break)", async () => {
+    const stroller = await scoreChecklist(loadGroundTruth(GT, "young_family"),
+      ["유모차로 엘리베이터 이용이 편한지"]);
+    assert.deepEqual(stroller.covered, ["F04"]);
+    const bath = await scoreChecklist(loadGroundTruth(GT, "multigen_family"),
+      ["욕실 낙상 위험"]);
+    assert.deepEqual(bath.covered, ["M03"]);
+    const rooms = await scoreChecklist(loadGroundTruth(GT, "multigen_family"),
+      ["방 수와 욕실 수로 사생활 보장"]);
+    assert.deepEqual(rooms.covered, ["M04"]);
+  });
+  it("must still wins over should across origins", async () => {
+    const noise = await scoreChecklist(loadGroundTruth(GT, "young_family"),
+      ["층간소음이 심한지"]);
+    assert.deepEqual(noise.covered, ["C03"]); // common must wins over persona should (F06)
+    const stepFree = await scoreChecklist(loadGroundTruth(GT, "multigen_family"),
+      ["무단차 출입과 엘리베이터"]);
+    assert.deepEqual(stepFree.covered, ["M01"]); // must wins over common should (C09)
   });
   it("one-line keyword salad fails", async () => {
     const salad = "통근 월세 소음 채광 마트 귀갓길 수납 하자 아침 어린이집 차량 놀이터 유모차 소아과 이웃";
@@ -140,10 +171,12 @@ describe("audit false positives no longer cover", () => {
     assert.equal(res.weighted_coverage, 0.12);
     assert.equal(res.passed, false);
   });
-  it("FP lines together still fail (아침 stays ambiguous, needs the judge)", async () => {
-    // "아침 식사 메뉴" still matches C09 on the standalone word 아침 —
-    // no deterministic boundary rule separates it from "아침 동선".
-    // The checklist still fails: must_coverage is 0.
+  it("FP lines together still fail (16b: 아침 via exclude data)", async () => {
+    // Every trap line is blocked from its target: 향후/짐작/parking/
+    // recall/negation by the 16a rules, 병원비/안전한 투자/아침 식사
+    // 메뉴 by the item exclude lists. ("주차장(parking)" still covers
+    // C09 on 주차 — parking is part of that item, same as the Python
+    // reference; the trap was F03's "park", which stays blocked.)
     const lines = ["향후 이사 계획", "짐작", "주차장(parking)", "안전한 투자",
       "아침 식사 메뉴", "병원비", "소음은 확인하지 않았어요"];
     const res = await scoreChecklist(loadGroundTruth(GT, "young_family"), lines);
@@ -193,4 +226,20 @@ describe("partial coverage and judge fallback", () => {
     assert.equal(res.passed, true);
     assert.equal(res.weighted_coverage, 1.0);
   });
+});
+
+describe("natural checklists match Python passed + must (16b)", () => {
+  const NATURAL = JSON.parse(readFileSync(
+    join(HERE, "fixtures", "verify-natural.json"), "utf-8"));
+  for (const [persona, fixture] of Object.entries(NATURAL.personas)) {
+    it(`${persona}: passed and must equal Python, weighted within 0.1`, async () => {
+      const res = await scoreChecklist(loadGroundTruth(GT, persona), fixture.items);
+      assert.equal(res.passed, fixture.python.passed);
+      assert.equal(res.must_coverage, fixture.python.must_coverage);
+      assert.ok(res.weighted_coverage <= fixture.python.weighted_coverage + 1e-9,
+        `JS weighted ${res.weighted_coverage} above Python ${fixture.python.weighted_coverage}`);
+      assert.ok(fixture.python.weighted_coverage - res.weighted_coverage <= 0.1 + 1e-9,
+        `JS weighted ${res.weighted_coverage} more than 0.1 below Python ${fixture.python.weighted_coverage}`);
+    });
+  }
 });

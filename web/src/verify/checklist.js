@@ -1,11 +1,16 @@
 // Stage 16a part 2: checklist scorer (pure, no DOM / network).
 //
 // JS port of tools/verify_checklist.py (the reference spec) with the
-// orchestrator's audit fixes (2026-10-29):
-//   1. Short keywords match as whole words only (matchKeyword, below).
+// orchestrator's audit fixes (2026-10-29, narrowed 2026-10-30 in 16b):
+//   1. 1-syllable Korean keywords and <= 4-letter Latin keywords match
+//      as whole words only (matchKeyword, below); 2+ syllable Korean
+//      keywords are plain substrings like the Python reference, with
+//      audit traps ("병원비", "투자", "아침 식사/메뉴") as per-item
+//      `exclude` data in ground_truth.json.
 //   2. A keyword next to a negation marker does not cover its item.
 //   3. One-to-one matching: each agent line covers at most one
-//      ground-truth item (greedy: must first, then longest keyword).
+//      ground-truth item (greedy: must first, persona before common
+//      should, then longest keyword).
 //
 // Scoring contract (same numbers as the Python reference on clean input):
 // same items (common + persona), same weights, must_coverage and
@@ -25,18 +30,28 @@ export function isHangul(ch) {
   return HANGUL_RE.test(ch);
 }
 
+// Hangul syllable blocks (U+AC00-U+D7A3) in a keyword. Only
+// 1-syllable Korean keywords use the whole-word rule; 2+ syllables
+// are plain substrings like the Python reference.
+function koreanSyllables(kw) {
+  const m = String(kw).match(/[\uAC00-\uD7A3]/g);
+  return m ? m.length : 0;
+}
+
 // The whole-word rule, in one function. Returns start indices of every
 // match of `keyword` in `text`:
 //   - Latin keyword of <= 4 letters: \b on both sides ("park" matches
 //     "park 근처" but not "parking"; "call" but not "recall").
-//   - Korean keyword (any length: the audit's "안전한 투자" and "병원비"
-//     show 2-syllable keywords need boundaries too): the match must start
-//     at a word start (string start or non-Hangul before) and end at a
-//     word end (string end, non-Hangul, or a particle after). So "향"
-//     matches "향이" but not "향후"/"방향"; "남향" matches via its own
-//     full keyword, not via "향".
-//   - Anything else (longer Latin, mixed): case-insensitive substring,
-//     exactly like the Python reference.
+//   - 1-syllable Korean keyword: the match must start at a word start
+//     (string start or non-Hangul before) and end at a word end
+//     (string end, non-Hangul, or a particle after). So "향" matches
+//     "향이" but not "향후"/"방향"; "남향" matches via its own full
+//     keyword, not via "향".
+//   - Anything else (2+ syllable Korean, longer Latin, mixed):
+//     case-insensitive substring, exactly like the Python reference.
+//     The audit traps this reopens ("병원비", "안전한 투자", "아침 식사
+//     메뉴") are handled as data: the item's `exclude` list in
+//     ground_truth.json (see itemOccurrences).
 export function matchKeyword(keyword, text) {
   const kw = String(keyword ?? "");
   const s = String(text ?? "");
@@ -48,7 +63,7 @@ export function matchKeyword(keyword, text) {
     while ((m = re.exec(s)) !== null) out.push(m.index);
     return out;
   }
-  if (KOREAN_RE.test(kw)) {
+  if (KOREAN_RE.test(kw) && koreanSyllables(kw) < 2) {
     const out = [];
     let from = 0;
     while (true) {
@@ -116,7 +131,8 @@ export function loadGroundTruth(json, persona) {
   }
   return {
     persona,
-    items: [...(gt.common_items || []), ...gt.personas[persona].items],
+    items: [...(gt.common_items || []).map((it) => ({ ...it, _common: true })),
+      ...gt.personas[persona].items.map((it) => ({ ...it, _common: false }))],
     acceptance: gt.acceptance,
   };
 }
@@ -124,6 +140,12 @@ export function loadGroundTruth(json, persona) {
 // Non-negated occurrences of one ground-truth item's keywords in one
 // agent line, summarised for the greedy matcher.
 function itemOccurrences(gtItem, agentText) {
+  const line = String(agentText ?? "");
+  for (const ph of gtItem.exclude || []) {
+    if (line.toLowerCase().includes(String(ph).toLowerCase())) {
+      return { longest: 0, count: 0 };
+    }
+  }
   let longest = 0;
   let count = 0;
   for (const kw of gtItem.keywords || []) {
@@ -174,16 +196,21 @@ export async function scoreChecklist(loaded, agentItems, opts = {}) {
     return n;
   };
 
-  // Greedy, one-to-one: must items first, then longest keyword; each
-  // item claims its most specific still-free agent line (longest
-  // keyword, most keyword hits, fewest hits for other items).
+  // Greedy, one-to-one: must items first, then persona items before
+  // common should items (a common must still wins over a persona
+  // should), then longest keyword; each item claims its most specific
+  // still-free agent line (longest keyword, most keyword hits, fewest
+  // hits for other items).
+  const isCommonShould = (it) => (it.priority === "must" || it._common === false
+    || (it._common === undefined && !String(it.id || "").startsWith("C")) ? 0 : 1);
   const order = items.map((it, idx) => ({
     idx,
     must: it.priority === "must" ? 0 : 1,
+    commonShould: isCommonShould(it),
     longest: Math.max(0, ...occ[idx].map((o) => o.longest)),
     id: it.id,
-  })).sort((a, b) => (a.must - b.must) || (b.longest - a.longest)
-    || (a.id < b.id ? -1 : 1));
+  })).sort((a, b) => (a.must - b.must) || (a.commonShould - b.commonShould)
+    || (b.longest - a.longest) || (a.id < b.id ? -1 : 1));
   const claimed = new Set();
   const coveredIdx = new Set();
   for (const { idx } of order) {
