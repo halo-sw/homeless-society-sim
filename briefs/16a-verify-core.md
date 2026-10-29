@@ -19,6 +19,13 @@ Measured by running the reference scorer on all five personas (2026-10-29):
 3. **One line can cover many items.** "엘리베이터 대기" covers C09, F04 and M01 at once. A single line that lists one keyword per item passes every persona at 100 %.
 4. Overlaps per persona: young_family C03~F06, C09~F04 · remote_worker C03~R02, C04~R05 · newlywed C01~N01, C06~N03 · multigen C09~M01/M03/M04, M03~M04.
 
+## Decision (user, 2026-10-30): unsupported personas stay "미지원"
+- Until the deadline (11-05), `remote_worker`, `multigen_family` and `pet_owner` have **no scenario and no new engine events**. Do not add scenarios, event kinds or listing fields for them in this stage, and do not touch the engine.
+- Their checklist scoring (part 2) still works, because it only reads the agent's proposed items. Their report checks (parts 3–4) return `{ status: "미지원", reason_ko: "이 가족 유형은 아직 시뮬레이션 시나리오가 없어요" }` and never `pass: true`.
+- The demo uses the two supported personas: `young_family` (dual-income-child) and `newlywed_couple` (newlywed-couple).
+- Items with `engine: "none"` inside the supported personas follow the part 3 rule: shown as 미지원, never counted as covered or failed.
+- `16a-RESULT.md` lists, per persona, what stays 미지원 and what engine work would unlock it (event kind or listing field), for after the deadline.
+
 ## 1. Ground truth: engine support map
 - Our engine cannot back every item yet. Add to each item in `ground_truth.json` an `engine` field: `"supported"`, `"partial"` or `"none"`, plus `engine_source` (what backs it), using exactly this table (the orchestrator checked the code):
   - supported: C01 (commute trips), N01 (per-member commute), C05 (errand trips), F03 / P02 (park trips)
