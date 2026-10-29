@@ -250,3 +250,37 @@ export function projectedOrbBounds(shapes, aspect = 16 / 9, fovDeg = 42) {
     fillX, fillY, fill,
   };
 }
+
+// ---- 13e5: idle drift pivots on the map centre ----
+// The orb root sits at the fitted centre and sways ±ORB_DRIFT_DEG,
+// so the drift cannot swing the map off-camera. Must match
+// ui/orb.jsx (root.position = centerV, inner offset by -centerV).
+export const ORB_DRIFT_DEG = 6;
+
+function rotateAboutPivot(corners, cx, cz, angleDeg) {
+  const t = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(t), sin = Math.sin(t);
+  return corners.map(([px, pz]) => {
+    const dx = px - cx, dz = pz - cz;
+    return [cx + dx * cos + dz * sin, cz - dx * sin + dz * cos];
+  });
+}
+
+// NDC bounds of the FITTED view after a Y-rotation about the pivot
+// (map centre), in three.js rotation.y convention. The fitted centre
+// and distance stay fixed: only the corners rotate.
+export function rotatedOrbBounds(shapes, angleDeg, aspect = 16 / 9, fovDeg = 42) {
+  const view = fitOrbView(shapes, aspect, fovDeg);
+  const halfFov = (fovDeg * Math.PI) / 360;
+  const tanF = Math.tan(halfFov);
+  const { vy, vz } = orbCameraTilt();
+  const box = ndcBounds(
+    rotateAboutPivot(shapeCorners(shapes), view.center[0], view.center[1], angleDeg),
+    view.center[0], view.center[1], view.distance, aspect, tanF, vy, vz);
+  const { fillX, fillY, fill } = fillsFor(box, aspect);
+  return {
+    nx0: box.x0, ny0: box.y0, nx1: box.x1, ny1: box.y1,
+    centerX: (box.x0 + box.x1) / 2, centerY: (box.y0 + box.y1) / 2,
+    fillX, fillY, fill,
+  };
+}

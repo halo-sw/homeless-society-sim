@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Text } from "@astryxdesign/core/Text";
 import { fmtWon } from "../money/format.js";
-import { fitOrbView, projectLonLat, slabDepth } from "../orb.js";
+import { fitOrbView, projectLonLat, slabDepth, ORB_DRIFT_DEG } from "../orb.js";
 
 export function OrbView({ data, onRegion, highlightKey }) {
   const mountRef = useRef(null);
@@ -52,8 +52,15 @@ export function OrbView({ data, onRegion, highlightKey }) {
       const sun = new THREE.DirectionalLight(0xffffff, 1.1);
       sun.position.set(6, 10, 4);
       scene.add(sun);
+      // 13e5: pivot on the map centre so idle drift cannot swing
+      // the map off-camera. root sits at centerV; inner offsets the
+      // world-positioned children by -centerV.
       const root = new THREE.Group();
+      root.position.copy(centerV);
       scene.add(root);
+      const inner = new THREE.Group();
+      inner.position.set(-centerV.x, 0, -centerV.z);
+      root.add(inner);
       // Project lon/lat to a tilted disc (pure helper in orb.js).
       const project = (lon, lat) => projectLonLat(lon, lat);
       const regionMeshes = [];
@@ -73,13 +80,13 @@ export function OrbView({ data, onRegion, highlightKey }) {
           new THREE.MeshLambertMaterial({ color: base }));
         mesh.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
         mesh.userData.region = s;
-        root.add(mesh);
+        inner.add(mesh);
         regionMeshes.push(mesh);
         const edge = new THREE.LineSegments(
           new THREE.EdgesGeometry(mesh.geometry),
           new THREE.LineBasicMaterial({ color: base.clone().multiplyScalar(0.62) }));
         edge.position.copy(mesh.position);
-        root.add(edge);
+        inner.add(edge);
       });
       const dotGeo = new THREE.SphereGeometry(0.09, 8, 8);
       const dotMeshes = [];
@@ -88,7 +95,7 @@ export function OrbView({ data, onRegion, highlightKey }) {
         const m = new THREE.Mesh(dotGeo,
           new THREE.MeshBasicMaterial({ color: 0x57534a }));
         m.position.set(x, 0.3, z);
-        root.add(m);
+        inner.add(m);
       }
       for (const dot of (orb.dots || []).slice(0, 4000)) {
         const [x, z] = project(dot.lon, dot.lat);
@@ -97,13 +104,15 @@ export function OrbView({ data, onRegion, highlightKey }) {
         m.position.set(x, dot.found ? 0.55 : 0.35, z);
         m.scale.setScalar(dot.found ? 1.6 : 0.8);
         m.userData.dot = dot;
-        root.add(m);
+        inner.add(m);
         dotMeshes.push(m);
       }
       drawCalls = renderer.info.render.calls;
       // eslint-disable-next-line no-console
       console.info(`[orb] draw calls: ${drawCalls}`);
       let rotY = 0.5;
+      const ORB_DRIFT_RAD = (ORB_DRIFT_DEG * Math.PI) / 180;
+      const ORB_DRIFT_SPEED = 0.35; // ~18 s per sway
       let zoom = 1;
       let dragging = false;
       let lastX = 0;
@@ -159,8 +168,12 @@ export function OrbView({ data, onRegion, highlightKey }) {
         last = now;
         ft.push(dt);
         if (ft.length > 120) ft.shift();
-        if (idle) rotY += (dt / 1000) * 0.12; // slow drift
-        root.rotation.y = rotY;
+        // 13e5: idle drift is a ±6° oscillation about the drag
+        // angle, pivoting on the map centre — never a continuous
+        // spin. Reduced motion starts idle=false, so no drift.
+        const drift = idle
+          ? Math.sin(now / 1000 * ORB_DRIFT_SPEED) * ORB_DRIFT_RAD : 0;
+        root.rotation.y = rotY + drift;
         camera.position.sub(centerV).setLength(fitDist / zoom).add(centerV);
         camera.lookAt(centerV);
         // Card hover highlight: pulse the matching dot.
@@ -212,6 +225,9 @@ export function OrbView({ data, onRegion, highlightKey }) {
         // 13e4: re-fit the projected bounds to the new aspect.
         view = fitOrbView(orb.shapes, w / h, 42);
         centerV.set(view.center[0], 0, view.center[1]);
+        // 13e5: keep the pivot on the re-fitted map centre.
+        root.position.copy(centerV);
+        inner.position.set(-centerV.x, 0, -centerV.z);
         fitDist = view.distance;
         camera.updateProjectionMatrix();
       };
