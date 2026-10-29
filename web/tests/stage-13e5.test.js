@@ -6,6 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ORB_DRIFT_DEG, rotatedOrbBounds } from "../src/orb.js";
+import { simViewOffset } from "../src/stage-tags.js";
 
 const SHAPES = [
   { id: "seongdong", label: "성동", bbox: [127.0, 37.5, 127.08, 37.55] },
@@ -35,4 +36,37 @@ describe("13e5 orb pivot drift", () => {
       });
     }
   }
+});
+
+describe("13e5 sim view offset", () => {
+  it("1440 wide with a 380 px drawer centres on the stage", () => {
+    const o = simViewOffset(1440, 380);
+    assert.equal(o.overlap, 380);
+    assert.equal(o.x, 190);
+    assert.equal(o.y, 0);
+    assert.equal(o.fullW, 1440);
+    assert.equal(o.width, 1440);
+    assert.equal(o.stageWidth, 1060);
+    assert.equal(o.stageCenterX, 530);
+    // The orbit target (canvas centre 720) slides left by x → 530.
+    assert.equal(1440 / 2 - o.x, o.stageCenterX);
+  });
+
+  it("no drawer means no offset", () => {
+    const o = simViewOffset(1440, 0);
+    assert.equal(o.overlap, 0);
+    assert.equal(o.x, 0);
+    assert.equal(o.stageWidth, 1440);
+    assert.equal(o.stageCenterX, 720);
+  });
+
+  it("clamps overlap to the canvas", () => {
+    const o = simViewOffset(1000, 2000);
+    assert.equal(o.overlap, 1000);
+    assert.equal(o.x, 500);
+    assert.equal(o.stageWidth, 0);
+    const neg = simViewOffset(1000, -50);
+    assert.equal(neg.overlap, 0);
+    assert.equal(neg.x, 0);
+  });
 });

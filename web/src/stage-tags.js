@@ -41,3 +41,21 @@ export function rectsIntersect(a, b) {
 export function tagBoxBlocked(tagBox, blockers) {
   return (blockers || []).some((r) => rectsIntersect(tagBox, r));
 }
+
+// 13e5: camera view offset so the orbit target renders at the centre
+// of the STAGE (canvas minus the right-drawer overlap), never under
+// the drawer. three.js setViewOffset(fullW, fullH, x, y, w, h) with
+// w == fullW keeps the image size and slides the content left by x
+// px, so x = overlap / 2 lands the target on the stage centre. DOM
+// tags project through the same camera, so they stay aligned.
+// Caller: camera.setViewOffset(o.fullW, h, o.x, 0, o.width, h) — or
+// camera.clearViewOffset() when o.overlap is 0.
+export function simViewOffset(canvasWidth, drawerOverlap) {
+  const fullW = Math.max(canvasWidth || 0, 0);
+  const overlap = Math.min(Math.max(drawerOverlap || 0, 0), fullW);
+  const stageWidth = fullW - overlap;
+  return {
+    x: overlap / 2, y: 0, fullW, width: fullW, overlap, stageWidth,
+    stageCenterX: stageWidth / 2,
+  };
+}

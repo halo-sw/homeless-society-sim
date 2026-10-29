@@ -13,7 +13,7 @@ import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
-import { placeTag, tagBoxBlocked } from "./stage-tags.js";
+import { placeTag, simViewOffset, tagBoxBlocked } from "./stage-tags.js";
 import { commuteSegments, corridorFor, journeyBanner, journeyCameraState, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
@@ -343,6 +343,39 @@ function refitToWrap(camera, renderCtl) {
   camera.aspect = Math.max(0.2, w / Math.max(1, h));
   camera.updateProjectionMatrix();
   renderCtl.fitContainer();
+}
+
+// 13e5: keep the sim camera's projection centred on the STAGE (the
+// canvas minus the right-drawer overlap) instead of the full canvas,
+// so nothing important renders under the drawer. Same drawer probe
+// as paintTag; cached so updateProjectionMatrix runs only when the
+// layout actually changes (drawer mounts after boot, hence per-frame
+// tracking instead of a one-shot refit).
+let simViewCache = null;
+function trackSimViewOffset(camera) {
+  const canvasEl = document.getElementById("scene");
+  const drawerEl = document.querySelector(".ui-sim13-drawer")
+    || document.querySelector('.ui-chat-drawer[data-open="true"]');
+  const c = canvasEl ? canvasEl.getBoundingClientRect() : null;
+  let overlap = 0;
+  if (drawerEl && c) {
+    const dr = drawerEl.getBoundingClientRect();
+    if (dr.width > 0 && dr.height > 0 && dr.right >= c.right - 1 && dr.left > c.left) {
+      overlap = Math.min(c.right - dr.left, c.width);
+    }
+  }
+  const w = c ? c.width : innerWidth;
+  const h = c ? c.height : innerHeight;
+  const key = `${w}x${h}+${overlap}`;
+  if (key === simViewCache) return;
+  simViewCache = key;
+  const off = simViewOffset(w, overlap);
+  if (off.overlap > 0) {
+    camera.setViewOffset(off.fullW, h, off.x, 0, off.width, h);
+  } else {
+    camera.clearViewOffset();
+  }
+  camera.updateProjectionMatrix();
 }
 
 async function bootTour(uiMode = "tour") {
@@ -2545,6 +2578,7 @@ async function bootSim() {
         || jfTrain.phase === "descending")) {
       journeyLayer.updateStationLabels(camera);
     }
+    trackSimViewOffset(camera); // 13e5: stage centre, not canvas centre
     controls.update();
     renderCtl.renderFrame({ bloom: simBloom }, dt);
     frames++;

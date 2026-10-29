@@ -515,7 +515,15 @@ body.printing-share #share-print { display: block !important; padding: 24px;
   grid-template-columns: minmax(0, 1fr) 380px;
   grid-template-areas: "top top" "stage drawer";
 }
-.ui-sim13-top { grid-area: top; min-width: 0; }
+/* 13e5: the top strip is opaque like the drawer (same background,
+   flush grid, hairline between) so no canvas pixels — and no tag
+   peeking out from under the drawer — show between them. */
+.ui-sim13 { gap: 0; }
+.ui-sim13-top {
+  grid-area: top; min-width: 0;
+  background: rgba(255, 253, 248, 0.98);
+  border-bottom: 1px solid var(--border, #d8d2c4);
+}
 .ui-sim13-top .ui-topbar { position: static; padding: 8px 12px; }
 .ui-sim13-top .ui-topbar-inner { max-width: none; }
 .ui-sim13-stage {
