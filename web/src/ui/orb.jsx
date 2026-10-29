@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Text } from "@astryxdesign/core/Text";
 import { fmtWon } from "../money/format.js";
+import { fitOrbView, projectLonLat, slabDepth } from "../orb.js";
 
 export function OrbView({ data, onRegion, highlightKey }) {
   const mountRef = useRef(null);
@@ -24,6 +25,7 @@ export function OrbView({ data, onRegion, highlightKey }) {
     let disposed = false;
     let renderer = null;
     let raf = 0;
+    let roCleanup = null;
     let drawCalls = 0;
     const reduced = window.matchMedia
       && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -35,42 +37,54 @@ export function OrbView({ data, onRegion, highlightKey }) {
       renderer.setSize(W, H, false);
       mount.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x101318);
-      const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 100);
-      camera.position.set(0, 7.5, 9);
-      camera.lookAt(0, 0, 0);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 0.9));
-      const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+      scene.background = new THREE.Color(0xf4f1ea);
+      const orb = dataRef.current || { shapes: [], points: [], dots: [] };
+      // 13e2: fit the camera to the shapes' bounds (8 % margin, centred).
+      const view = fitOrbView(orb.shapes, W / H, 42);
+      const centerV = new THREE.Vector3(view.center[0], 0, view.center[1]);
+      const viewDir = new THREE.Vector3(0, 7.5, 9).normalize();
+      const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 200);
+      camera.position.copy(centerV).addScaledVector(viewDir, view.distance);
+      camera.lookAt(centerV);
+      scene.add(new THREE.HemisphereLight(0xfffdf8, 0x8a8478, 0.95));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.1);
       sun.position.set(6, 10, 4);
       scene.add(sun);
       const root = new THREE.Group();
       scene.add(root);
-      // Project lon/lat to a tilted disc.
-      const project = (lon, lat) => [(lon - 127.08) * 60, (37.62 - lat) * 60];
-      const orb = dataRef.current || { shapes: [], points: [], dots: [] };
+      // Project lon/lat to a tilted disc (pure helper in orb.js).
+      const project = (lon, lat) => projectLonLat(lon, lat);
       const regionMeshes = [];
-      const palette = [0x3b82f6, 0x22c55e, 0xf59e0b, 0xef4444, 0x8b5cf6,
-        0x14b8a6, 0xec4899, 0x84cc16, 0x64748b];
+      // Calm, desaturated slab palette for the light stage.
+      const palette = [0x9db8ad, 0xb3bfa4, 0xcfc0a3, 0xc0a89b, 0xa3b4c2,
+        0xaeafc0, 0xbd9fae, 0x93b3a6, 0xb5a79b];
+      const slabH = slabDepth(view.width);
       orb.shapes.forEach((s, i) => {
         const b = s.bbox || [127.0, 37.4, 127.16, 37.55];
         const [x0, z0] = project(b[0], b[3]);
         const [x1, z1] = project(b[2], b[1]);
         const w = Math.max(Math.abs(x1 - x0), 0.4);
         const d = Math.max(Math.abs(z1 - z0), 0.4);
+        const base = new THREE.Color(palette[i % palette.length]);
         const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(w, 0.35, d),
-          new THREE.MeshLambertMaterial({ color: palette[i % palette.length] }));
+          new THREE.BoxGeometry(w, slabH, d),
+          new THREE.MeshLambertMaterial({ color: base }));
         mesh.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
         mesh.userData.region = s;
         root.add(mesh);
         regionMeshes.push(mesh);
+        const edge = new THREE.LineSegments(
+          new THREE.EdgesGeometry(mesh.geometry),
+          new THREE.LineBasicMaterial({ color: base.clone().multiplyScalar(0.62) }));
+        edge.position.copy(mesh.position);
+        root.add(edge);
       });
       const dotGeo = new THREE.SphereGeometry(0.09, 8, 8);
       const dotMeshes = [];
       for (const p of orb.points || []) {
         const [x, z] = project(p.lon, p.lat);
         const m = new THREE.Mesh(dotGeo,
-          new THREE.MeshBasicMaterial({ color: 0xffffff }));
+          new THREE.MeshBasicMaterial({ color: 0x57534a }));
         m.position.set(x, 0.3, z);
         root.add(m);
       }
@@ -145,7 +159,8 @@ export function OrbView({ data, onRegion, highlightKey }) {
         if (ft.length > 120) ft.shift();
         if (idle) rotY += (dt / 1000) * 0.12; // slow drift
         root.rotation.y = rotY;
-        camera.position.setLength(11.5 / zoom);
+        camera.position.sub(centerV).setLength(view.distance / zoom).add(centerV);
+        camera.lookAt(centerV);
         // Card hover highlight: pulse the matching dot.
         const hi = hiRef.current;
         for (const m of dotMeshes) {
@@ -160,8 +175,32 @@ export function OrbView({ data, onRegion, highlightKey }) {
           // eslint-disable-next-line no-console
           console.info(`[orb] frame render ${ms.toFixed(2)}ms (budget 2ms)`);
         }
+        // 13e2: region labels track the projected centroid, clipped to the stage.
+        const lw = mount.clientWidth || W;
+        const lh = mount.clientHeight || H;
+        for (const m of regionMeshes) {
+          const elLabel = labelEls.get(m.userData.region.id);
+          if (!elLabel) continue;
+          m.getWorldPosition(labelV);
+          labelV.y += slabH;
+          labelV.project(camera);
+          if (labelV.z > 1) {
+            elLabel.style.display = "none";
+            continue;
+          }
+          const px = Math.min(Math.max((labelV.x * 0.5 + 0.5) * lw, 28), lw - 28);
+          const py = Math.min(Math.max((-labelV.y * 0.5 + 0.5) * lh, 12), lh - 12);
+          elLabel.style.display = "";
+          elLabel.style.left = `${px.toFixed(1)}px`;
+          elLabel.style.top = `${py.toFixed(1)}px`;
+        }
         raf = requestAnimationFrame(tick);
       };
+      const labelEls = new Map();
+      for (const elLabel of mount.querySelectorAll(".ui-orb-label")) {
+        labelEls.set(elLabel.getAttribute("data-region"), elLabel);
+      }
+      const labelV = new THREE.Vector3();
       raf = requestAnimationFrame(tick);
       const onResize = () => {
         const w = mount.clientWidth || 640;
@@ -170,19 +209,29 @@ export function OrbView({ data, onRegion, highlightKey }) {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
       };
-      window.addEventListener("resize", onResize);
+      // 13e2: size the renderer from the container, not the window.
+      let ro = null;
+      if (typeof ResizeObserver !== "undefined") {
+        ro = new ResizeObserver(onResize);
+        ro.observe(mount);
+        roCleanup = () => ro.disconnect();
+      } else {
+        window.addEventListener("resize", onResize);
+      }
       return () => {
         el.removeEventListener("pointerdown", onDown);
         window.removeEventListener("pointerup", onUp);
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("click", onClick);
         el.removeEventListener("wheel", onWheel);
-        window.removeEventListener("resize", onResize);
+        if (ro) ro.disconnect();
+        else window.removeEventListener("resize", onResize);
       };
     }).catch(() => {});
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      if (roCleanup) roCleanup();
       if (renderer) {
         renderer.dispose();
         if (renderer.domElement.parentNode === mount) {
@@ -193,8 +242,14 @@ export function OrbView({ data, onRegion, highlightKey }) {
   }, []);
 
   const tipFacts = tip && tip.region && tip.region.facts;
+  const labels = (data && data.shapes) || [];
   return (
     <div className="ui-orb" ref={mountRef} aria-label="서울·경기 동남부 지역 공">
+      <div className="ui-orb-labels" aria-hidden="true">
+        {labels.map((s) => (
+          <span key={s.id} className="ui-orb-label" data-region={s.id}>{s.label}</span>
+        ))}
+      </div>
       {tipFacts && (
         <div className="ui-orb-tip" style={{ left: tip.x, top: tip.y }}>
           <div><strong>{tip.region.label}</strong></div>

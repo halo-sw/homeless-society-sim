@@ -454,7 +454,7 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 .ui-src-row > * + * { margin-top: 2px; }
 
 /* ---------- 13: orb + map sim ---------- */
-.ui-orb { position: relative; width: 100%; height: 100%; min-height: 320px; overflow: hidden; }
+.ui-orb { position: absolute; inset: 0; overflow: hidden; background: #f4f1ea; }
 .ui-orb canvas { width: 100%; height: 100%; display: block; }
 .ui-orb-tip {
   position: absolute; pointer-events: none; z-index: 5; max-width: 240px;
@@ -478,7 +478,7 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 .ui-chat-stage {
   flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   display: flex; flex-direction: column; overflow: hidden;
-  background: #101318;
+  background: #f4f1ea;
 }
 .ui-chat-stage-body { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
 .ui-chat-drawer {
@@ -580,3 +580,12 @@ body.printing-share #share-print { display: block !important; padding: 24px;
 .ui-chat-stage { overflow: hidden; }
 .ui-chat-stage-body { overflow: hidden; }
 .ui-chat-drawer { overflow-y: auto; }
+
+/* ---------- 13e2-2: orb fills the stage, region labels ---------- */
+.ui-orb-labels { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
+.ui-orb-label {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+  font-size: 12px; font-weight: 600; color: #3d3227; white-space: nowrap;
+  background: rgba(255, 253, 248, 0.88); border: 1px solid rgba(61, 50, 39, 0.25);
+  border-radius: 999px; padding: 1px 8px;
+}

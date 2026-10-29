@@ -105,3 +105,64 @@ export function litDots(orbData, candidateIds) {
   const want = new Set(candidateIds || []);
   return (orbData.dots || []).filter((d) => want.has(d.id));
 }
+
+// ---- 13e2: pure camera-fit + label geometry (no three.js) ----
+// Projection shared with ui/orb.jsx: lon/lat to tilted-disc x/z.
+export const ORB_PROJECT = { lon0: 127.08, lat0: 37.62, scale: 60 };
+export const ORB_DEFAULT_BBOX = [127.0, 37.4, 127.16, 37.55];
+export const ORB_FIT_MARGIN = 0.08;
+
+export function projectLonLat(lon, lat) {
+  return [(lon - ORB_PROJECT.lon0) * ORB_PROJECT.scale,
+    (ORB_PROJECT.lat0 - lat) * ORB_PROJECT.scale];
+}
+
+export function shapeProjectedBounds(shape) {
+  const b = (shape && shape.bbox) || ORB_DEFAULT_BBOX;
+  const [x0, z0] = projectLonLat(b[0], b[3]);
+  const [x1, z1] = projectLonLat(b[2], b[1]);
+  return {
+    x0: Math.min(x0, x1), z0: Math.min(z0, z1),
+    x1: Math.max(x0, x1), z1: Math.max(z0, z1),
+  };
+}
+
+export function shapeCentroid(shape) {
+  const r = shapeProjectedBounds(shape);
+  return [(r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2];
+}
+
+export function labelCentroids(shapes) {
+  return (shapes || []).map((s) => {
+    const [x, z] = shapeCentroid(s);
+    return { id: s.id, label: s.label || s.id, x, z };
+  });
+}
+
+// Slab extrusion depth: at most 2 % of the map width.
+export function slabDepth(mapWidth) {
+  return Math.max(mapWidth * 0.02, 0.01);
+}
+
+// Fit the camera to the shapes' bounds with ORB_FIT_MARGIN margin,
+// centred. Returns the world-space centre, the fitted width/depth
+// (margin included) and the distance that frames them at fovDeg.
+export function fitOrbView(shapes, aspect = 16 / 9, fovDeg = 42) {
+  let bounds = null;
+  for (const s of shapes || []) {
+    const r = shapeProjectedBounds(s);
+    bounds = bounds ? {
+      x0: Math.min(bounds.x0, r.x0), z0: Math.min(bounds.z0, r.z0),
+      x1: Math.max(bounds.x1, r.x1), z1: Math.max(bounds.z1, r.z1),
+    } : { ...r };
+  }
+  if (!bounds) bounds = shapeProjectedBounds(null);
+  const cx = (bounds.x0 + bounds.x1) / 2;
+  const cz = (bounds.z0 + bounds.z1) / 2;
+  const width = Math.max(bounds.x1 - bounds.x0, 0.4) * (1 + ORB_FIT_MARGIN);
+  const depth = Math.max(bounds.z1 - bounds.z0, 0.4) * (1 + ORB_FIT_MARGIN);
+  const halfFov = (fovDeg * Math.PI) / 360;
+  const fitH = (depth / 2) / Math.tan(halfFov);
+  const fitW = (width / 2) / (Math.tan(halfFov) * aspect);
+  return { center: [cx, cz], width, depth, distance: Math.max(fitH, fitW) };
+}
