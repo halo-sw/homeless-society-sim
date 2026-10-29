@@ -80,3 +80,8 @@ link to this file or the sources above.
 ## Wikimedia Commons (neighbourhood photos, stage 12)
 
 `scenarios/places/commons-photos.json` lists freely licensed, geotagged photos from Wikimedia Commons (CC0, public domain, CC BY, CC BY-SA) near the 11 areas, fetched 2026-10-29 with the MediaWiki API. The repository stores only the manifest (title, author, licence, link, coordinates). Thumbnails load from upload.wikimedia.org. Every photo shown in the app carries its author, licence and a link to its Commons page. These photos show the neighbourhood, never a specific listing.
+
+## 서울교통공사 역간거리 및 소요시간 (stage 12a2)
+- File: `scenarios/transit/seoul-metro-interstation.csv` (UTF-8 copy of the file on 서울 열린데이터광장, dataset OA-12034, downloaded 2026-10-29; lines 1–8, standard running time per station gap, reference date 2024-03-25).
+- Source: 서울교통공사, https://data.seoul.go.kr/dataList/OA-12034/S/1/datasetView.do
+- Licence: 공공누리 제1유형 (출처표시). Running times are the operator's standard schedule; real trips vary.
