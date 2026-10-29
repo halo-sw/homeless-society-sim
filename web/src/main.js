@@ -22,7 +22,7 @@ import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
-import { assignWalkers, sampleWalker } from "./walkers.js";
+
 import { areasOrFallback, FALLBACK_AREAS } from "./areas-index.js";
 import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
@@ -51,6 +51,8 @@ import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
 import { treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
 // Stage 14b: procedural motion — pure state (motion/) evaluated at sim time.
 import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
+import { MAX_PEDS_HIGH, buildCrowd, pedCapFor, stationCongestionScale } from "./motion/pedestrians.js";
+import { buildCrowdMeshes } from "./render/crowd.js";
 
 // 12a: the area list comes from the built data/build/areas-index.json
 // (id, label, center, bbox, station, size) — never a hard-coded array.
@@ -417,6 +419,14 @@ function buildWorld(area, scene14) {
     { heightAt, fleet });
   scene.add(streetMeshes.group);
 
+  // --- ambient crowd: seeded OD pairs on the walk graph (motion) ---
+  // Household agents render separately; this crowd never replaces them.
+  const crowd = buildCrowd({ graph: area.graph, buildings: area.buildings,
+    pois: area.pois, station: area.station, seed: area.area || areaId,
+    maxPeds: MAX_PEDS_HIGH });
+  const crowdMeshes = buildCrowdMeshes(crowd, { origin, heightAt });
+  scene.add(crowdMeshes.group);
+
   // Real household counts per building (register API) for the night
   // lighting fallback (buildings without simulated residents).
   const householdsById = new Map();
@@ -444,8 +454,8 @@ function buildWorld(area, scene14) {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
     dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
-    trees, treeMeshes, streetMeshes, dummy, heightAt, ground0, terrainMesh,
-    sceneRoadMeshes, sceneWaterMesh,
+    trees, treeMeshes, streetMeshes, crowd, crowdMeshes, dummy, heightAt,
+    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh,
   };
 }
 
@@ -516,25 +526,13 @@ async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
-    streetMeshes, trees, dummy, heightAt } = buildWorld(area, scene14);
+    streetMeshes, crowdMeshes, trees, dummy, heightAt } = buildWorld(area, scene14);
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
     const [x, y] = lonLatToXY(lon, lat, origin);
     return [x, heightAt(x, -y) + lift, -y];
   };
   for (const { mesh } of fadeMeshes) makeFadeable(mesh);
-
-  // --- preview walkers (instanced capsules, simulated) ---
-  const walkers = assignWalkers(area.buildings, area.graph);
-  const walkerMesh = new THREE.InstancedMesh(
-    new THREE.CapsuleGeometry(0.32, 1.0, 3, 8),
-    agentMaterial(), Math.max(walkers.length, 1));
-  const coatColors = [0x5a6e8c, 0x8c5a5a, 0x5a8c6e, 0x777788, 0xb25a33, 0x3d5a5a];
-  walkers.forEach((w, i) => walkerMesh.setColorAt(i, new THREE.Color(coatColors[i % coatColors.length])));
-  walkerMesh.count = walkers.length;
-  walkerMesh.castShadow = true;
-  if (walkerMesh.instanceColor) walkerMesh.instanceColor.needsUpdate = true;
-  scene.add(walkerMesh);
 
   // --- tour plan + route line ---
   const plan = selectTourStops(area);
@@ -704,10 +702,11 @@ async function bootTour(uiMode = "tour") {
     const dt = Math.min(clock.getDelta(), 0.1);
     const t = clock.elapsedTime;
     player.update(dt);
-    updateWalkers(walkerMesh, walkers, area.graph.nodes, origin, t, dummy, heightAt);
     const tourTMin = tourMinute + t / 60;
     const tourVeh = streetMeshes.updateVehicles(tourTMin, vehicleCapFor(renderCtl.quality));
-    logMotion(tourTMin, { cars: tourVeh.active, ms: tourVeh.ms });
+    const tourPed = crowdMeshes.update(tourTMin, { cap: pedCapFor(renderCtl.quality) });
+    logMotion(tourTMin, { cars: tourVeh.active, peds: tourPed.active,
+      ms: tourVeh.ms + tourPed.ms });
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
     if (archLens) levelCamera();
@@ -715,7 +714,7 @@ async function bootTour(uiMode = "tour") {
     frames++;
     if (frames === 30) {
       console.log(`[scene] area=${areaId} buildings=${area.buildings.length} ` +
-        `trees=${trees.length} walkers=${walkers.length} cars=${streetMeshes.parked}+${streetMeshes.moverCount} ` +
+        `trees=${trees.length} peds=${crowdMeshes.slots} cars=${streetMeshes.parked}+${streetMeshes.moverCount} ` +
         `lamps=${streetMeshes.lampCount} arch=${archLens}`);
     }
   });
@@ -726,19 +725,6 @@ async function bootTour(uiMode = "tour") {
   };
   addEventListener("resize", refitTour);
   new ResizeObserver(refitTour).observe(document.getElementById("scene-wrap"));
-}
-
-function updateWalkers(mesh, walkers, nodes, origin, t, dummy, heightAt = null) {
-  walkers.forEach((w, i) => {
-    const s = sampleWalker(w, nodes, t);
-    const [x, y] = lonLatToXY(s.lon, s.lat, origin);
-    dummy.position.set(x, (heightAt ? heightAt(x, -y) : 0) + 0.95, -y);
-    dummy.rotation.set(0, Math.atan2(Math.cos(s.heading), Math.sin(s.heading)), 0);
-    dummy.scale.setScalar(1);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-  });
-  mesh.instanceMatrix.needsUpdate = true;
 }
 
 // --- tour player: glide legs, 3 s dwell per stop, outro pull-back ---
@@ -1135,6 +1121,7 @@ async function bootSim() {
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
+    crowd, crowdMeshes,
     wallMeshes, podiumMesh, roofMesh, heightAt } = buildWorld(area, scene14);
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
@@ -1869,6 +1856,23 @@ async function bootSim() {
       regionCongestion = null;
     }
     return regionCongestion;
+  }
+  // 14b: near-station crowd scaling wants the table even off-journey.
+  ensureCongestion();
+
+  // 14b: congestion scale for the crowd, refreshed per 30-minute slot.
+  let congKey = "";
+  let congScale = 1;
+  let congLabel = "가정값";
+  function refreshCongestion() {
+    const key = `${day}:${Math.floor(minute / 30)}:${regionCongestion ? 1 : 0}`;
+    if (key === congKey) return;
+    congKey = key;
+    const hit = stationCongestionScale(regionCongestion, {
+      dayKind: dayKindFor(weekdayOfDay(day)),
+      station: area.station && area.station.name, minute });
+    congScale = hit.scale;
+    congLabel = hit.hasData ? "실측 혼잡도 기반" : "가정값";
   }
 
   function networkStopCoords() {
@@ -2716,7 +2720,11 @@ async function bootSim() {
     placeAgents(day, minute);
     const simTMin = day * 1440 + minute;
     const simVeh = streetMeshes.updateVehicles(simTMin, vehicleCapFor(renderCtl.quality));
-    logMotion(simTMin, { cars: simVeh.active, ms: simVeh.ms });
+    refreshCongestion();
+    const simPed = crowdMeshes.update(simTMin,
+      { congScale, cap: pedCapFor(renderCtl.quality) });
+    logMotion(simTMin, { cars: simVeh.active, peds: simPed.active,
+      ms: simVeh.ms + simPed.ms });
     updateLighting();
     paintFollow(dt, false);
     paintHighlightFrame();
