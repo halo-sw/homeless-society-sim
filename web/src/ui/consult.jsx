@@ -35,7 +35,8 @@ import { store, selectAgentNudge, selectAgentNudges, selectCompareOpen,
 import { recordedReplyFor } from "./demotour.js";
 import { postConsult, loadScenario, loadDemoTranscript, formatUsage } from "./consult-client.js";
 import { agentContext, chipsFor, citationsFor, nextAgentCorner,
-  nudgeAllowed, nudgeFor, placeAgentPanel, saveAgentOpen, toolActionKo,
+  nudgeAllowed, nudgeFor, placeAgentPanel, saveAgentOpen,
+  shouldShowAgentFab, toolActionKo,
   viewSystemLine, AGENT_PANEL_W, AGENT_PANEL_H } from "./agent-float.js";
 
 const IS_DEV = import.meta.env.DEV;
@@ -616,18 +617,18 @@ export function ConsultPanel() {
     <>
       {createPortal(
         <>
-          {(!consultOpen || effMode === "float") && (
+          {shouldShowAgentFab(consultOpen, effMode) && (
             <div className={`ui-agent-fab overlay ui-agent-${corner}`}>
-              <Popover placement="above" alignment={corner === "bottom-right" ? "end" : "start"}
-                width={AGENT_PANEL_W} padding={0} label="시뮬레이션 상담"
-                isOpen={consultOpen && effMode === "float"} onOpenChange={setOpen} hasLightDismiss={false}
-                content={panel}>
-                <div className="ui-agent-trigger">
+              <div className="ui-agent-trigger">
+                <Popover placement="above" alignment={corner === "bottom-right" ? "end" : "start"}
+                  width={AGENT_PANEL_W} padding={0} label="시뮬레이션 상담"
+                  isOpen={consultOpen && effMode === "float"} onOpenChange={setOpen} hasLightDismiss={false}
+                  content={panel}>
                   <Avatar name="상담 에이전트" size="md" tooltip={false}
                     onClick={() => setOpen(!consultOpen)} />
-                  <Button size="md" label="물어보기" onClick={() => setOpen(!consultOpen)} />
-                </div>
-              </Popover>
+                </Popover>
+                <Button size="md" label="물어보기" onClick={() => setOpen(!consultOpen)} />
+              </div>
             </div>
           )}
           {consultOpen && effMode === "sheet" && (

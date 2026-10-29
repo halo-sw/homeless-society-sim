@@ -102,3 +102,60 @@ drawer/sheet layout at 1440×900 and narrow widths, Astryx Popover/Menu/Progress
 visuals, PNG legibility at phone size, and the print page. All of the above is
 build-verified here (608 JS + 168 Python green, `vite build` green, no keys/raw data in
 git or bundle) but not eyeballed on a real GPU.
+
+## Stage 11b — the ride view shows a map, and the share card shows numbers
+
+Base `https://…/?mode=sim&scenario=demo-two-homes` + params below (`vite build` green,
+JS 636/636, Python 168/168).
+
+Ride view (was: an empty grey plane — 3 of 65 tiles fetched, clock-paced):
+
+- Full-corridor background preload (`journey-scene.js` `preloadCorridor`): when a ride
+  starts or a static `?t=` load lands inside one, every tile of the active corridor
+  loads in a background loop (6 in flight), independent of the sim clock. Cap is the
+  corridor's own tile count (`tileCapFor`); unloading happens only on corridor change
+  (`setManifest`). Measured stats log once per ride
+  (`[journey] corridor tiles=65/65 triangles=… drawCalls=… renderTriangles=…`).
+- Base map under the corridor, always there before the first tile: a land-coloured
+  ground plane sized from the manifest `bounds` (`baseMapBounds`), closed water +
+  open waterways in blue (flats + 20 m ribbons), and major roads as 16 m ribbons.
+  Colours come from the look table (`regionalGround 0xa9a68e`, `regionalWater
+  0x5b8fc4`, `regionalRoad 0x6e6a5e`, `?look=`-able as decimals); the 120 km fringe
+  plane uses the same land colour so the seam disappears.
+- Camera: oblique train-following cruise (`journeyCruisePose` — 35° elevation, i.e.
+  55° from vertical, ~3.5 km of corridor in frame), so blocks read as blocks. The
+  전체 경로 override keeps the whole-path overview. The line stays full-opacity on
+  top (renderOrder 990–992, depthTest off); station names ride along it as `.jostation`
+  tags (street phases hide them).
+- While tiles stream in, the journey card shows a `지도 불러오는 중 n/65` chip
+  (`journeyLoading`, Astryx info Badge), cleared when every tile was attempted.
+
+Share card (was: "—" in every A/B cell on `&tab=money&share=1` and the tour share step,
+because `s.compare` loads only with the A·B 비교 tab — and the dialog never
+re-rendered when the docs arrived):
+
+- Opening the dialog calls `requestShareLoads(store)` (`share.js`, pure
+  `shareLoadPlan` over the store state): missing/errored docs load through a new
+  `ensureShareData` scene action that reuses `paintCompare`/`paintMoney` and skips
+  what is there. Same path covers the tour's share step. Until both docs are clean
+  the dialog shows `비교 숫자 불러오는 중…` (PNG/인쇄 disabled); a failed load
+  renders with an error note instead of spinning.
+
+Small: the bottom-corner trigger could lose its "물어보기" button (it nested two
+`<button>`s inside one automatic-mode Popover trigger, which expects one). The
+Popover now anchors on the avatar alone and the button is a plain sibling, shown
+whenever the panel is closed (`shouldShowAgentFab`, in every mode).
+
+Tests: `ride-11b.test.js` (load plan covers all 65, cap/concurrency, cruise pitch
+50–60° off vertical + 3–4 km frame, bounds from the real c1 manifest, ribbon widths,
+headless-three.js preload: all fetched, ≤6 in flight, progress, idempotent, cancel on
+corridor change), `share-load.test.js` (empty store triggers loads, no-op when ready
+or action-less, demo fixtures show A+B values everywhere but the honestly blank
+peak-B cell), look-snapshot + `?look=` colour update, FAB visibility + trigger
+tripwire, SSR share-values/loading/tour-share cases.
+
+Capture URLs to check: ride `&home=A&day=1&t=08:50&follow=1` (map + line + stations +
+chip clearing); share `&tab=money&share=1` (numbers, no "—") and
+`&tour=demo&step=10` (same via the tour); night `&home=A&day=1&t=19:18&follow=1`
+("물어보기" bottom-right). What only the real GPU can confirm: cruise readability at
+1440×900, ribbon/line separation, measured draw-call comfort, chip timing.

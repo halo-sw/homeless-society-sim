@@ -50,6 +50,24 @@ export function tourOffset(distance, pitchDeg = TOUR_PITCH_DEG,
   return [(horiz * azimuth[0]) / len, vert, (horiz * azimuth[1]) / len];
 }
 
+// --- journey cruise (oblique, train-following, stage 11b) ---
+//
+// The whole-path overview read as thin specks from near top-down. The
+// cruise instead follows the train with ~3–4 km of corridor in frame at
+// an oblique pitch (55° from vertical), so buildings read as blocks.
+// Pure: train is [worldX, worldZ]; returns {pos, look, dist} in metres.
+export const JOURNEY_CRUISE_PITCH_DEG = 35; // 55° from vertical
+export const JOURNEY_CRUISE_FRAME_M = 3500;
+
+export function journeyCruisePose(train, aspect,
+    { frameM = JOURNEY_CRUISE_FRAME_M, pitchDeg = JOURNEY_CRUISE_PITCH_DEG,
+      fovDeg = TOUR_FOV_DEG, azimuth = TOUR_AZIMUTH } = {}) {
+  const [tx, tz] = train || [0, 0];
+  const dist = distanceForWidth(frameM, fovDeg, aspect);
+  const [ox, oy, oz] = tourOffset(dist, pitchDeg, azimuth);
+  return { pos: [tx + ox, oy, tz + oz], look: [tx, 0, tz], dist };
+}
+
 // --- architectural lens (two-point perspective, stage 5b) ---
 //
 // A level camera keeps vertical lines vertical; a wide symmetric

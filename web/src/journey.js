@@ -265,6 +265,19 @@ export function tilesFor({ manifest, focus, loaded = [], loadRadiusM = 2500, unl
   return { load, unload };
 }
 
+// Full-corridor load plan: every tile of the active corridor, in
+// manifest order, minus the ids already loaded. Clock-free on purpose —
+// the journey layer preloads this list in a background loop (small
+// concurrency) when a ride starts or a static load lands inside one, so
+// a paused clock never stalls the map. Returns {ids, total, loaded}.
+// Unloading happens only when the corridor changes (setManifest).
+export function corridorLoadPlan(manifest, { loaded = [] } = {}) {
+  const all = ((manifest && manifest.tiles) || []).map((t) => t.id).filter(Boolean);
+  const have = new Set(loaded || []);
+  const ids = all.filter((id) => !have.has(id));
+  return { ids, total: all.length, loaded: all.length - ids.length };
+}
+
 // Corridor manifest matching a ride (same endpoints), or null.
 export function corridorFor(index, fromName, toName) {
   const norm = (s) => String(s || "").trim().replace(/역$/, "");

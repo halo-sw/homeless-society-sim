@@ -268,6 +268,35 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     const html = renderCase(patch,
       "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:30&follow=1&tab=money&share=1");
     assert.ok(html.includes("결과 공유"), "share dialog title");
+    // Stage 11b: with both docs present the rows show numbers, not "—".
+    assert.ok(html.includes("27시간 50분"), "walked-hours A value");
+    assert.ok(html.includes("38시간 3분"), "walked-hours B value");
+  });
+
+  it("shows a loading state until the share docs arrive (stage 11b)", () => {
+    const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:30"), follow: 1 });
+    patch.compareOpen = true;
+    patch.compareTab = "money";
+    patch.shareOpen = true;
+    patch.compare = null; // the A·B 비교 tab never opened
+    patch.compareLoading = true;
+    const html = renderCase(patch,
+      "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:30&follow=1&tab=money&share=1");
+    assert.ok(html.includes("비교 숫자 불러오는 중"), "short loading state");
+    assert.ok(!html.includes("27시간 50분"), "no half-rendered rows");
+  });
+
+  it("renders the tour share step with the loading state (stage 11b)", () => {
+    const step = DEMO_TOUR_STEPS.length - 1;
+    assert.equal(DEMO_TOUR_STEPS[step].id, "share");
+    const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:30"), follow: 0 });
+    patch.shareOpen = true;
+    patch.compare = null; // tour share lands without the compare doc
+    const html = renderCase(patch,
+      `?mode=sim&scenario=demo-two-homes&tour=demo&step=${step}`);
+    assert.ok(html.includes("3분 둘러보기"), "tour bar");
+    assert.ok(html.includes("결과 공유"), "share dialog title");
+    assert.ok(html.includes("비교 숫자 불러오는 중"), "loading state on the tour step");
   });
 
   it("renders the ride-time journey card (t=08:40) with no React errors", () => {

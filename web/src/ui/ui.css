@@ -198,5 +198,13 @@ body.printing-share #share-print { display: block !important; padding: 24px;
   background: rgba(30, 26, 22, 0.82); color: #f5efe4; pointer-events: none;
 }
 
+/* Journey station names along the travelled line (in #tags, positioned
+   per frame by the journey layer; hidden at street level). */
+.jostation {
+  position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
+  font-size: 12px; line-height: 1.4; padding: 1px 7px; border-radius: 9px;
+  background: rgba(30, 26, 22, 0.82); color: #f5efe4; pointer-events: none;
+}
+
 /* Glossary terms: dotted underline, native tooltip on hover/tap. */
 .ui-gloss { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }

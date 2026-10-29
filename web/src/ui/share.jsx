@@ -15,9 +15,10 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { Text } from "@astryxdesign/core/Text";
-import { store, selectShareOpen } from "./store.js";
+import { store, selectShareData, selectShareOpen } from "./store.js";
 import { PRIORITY_GROUPS } from "../priorities.js";
-import { resultCardData, renderShareCard, shareSourceKo } from "./share.js";
+import { resultCardData, renderShareCard, requestShareLoads,
+  shareLoadPlan, shareSourceKo } from "./share.js";
 
 function todayISO() {
   try {
@@ -91,25 +92,34 @@ function CardPreview({ data }) {
 export function ShareDialog() {
   const open = useSyncExternalStore(store.subscribe,
     () => selectShareOpen(store.getState()), () => selectShareOpen(store.getState()));
+  // The full share snapshot (stable selector): the card re-renders when
+  // the docs arrive, not just when the dialog opens.
+  const snap = useSyncExternalStore(store.subscribe,
+    () => selectShareData(store.getState()), () => selectShareData(store.getState()));
   const canvasRef = useRef(null);
   const [pngUrl, setPngUrl] = useState("");
   const [pngError, setPngError] = useState("");
+  // Opening the dialog (or landing on the tour's share step) ensures
+  // both docs are loaded even when the A·B 비교 tab never opened.
+  useEffect(() => {
+    if (open) requestShareLoads(store);
+  }, [open]);
+  const plan = shareLoadPlan(snap);
   const data = useMemo(() => {
-    const s = store.getState();
-    const simMeta = s.simMeta || {};
+    const simMeta = snap.simMeta || {};
     const members = Array.isArray(simMeta.members) ? simMeta.members.join(" · ") : "";
     return resultCardData({
-      money: s.money && !s.money.error ? s.money : null,
-      compare: s.compare && !s.compare.error ? s.compare : null,
-      tenures: s.moneyTenure,
+      money: snap.money && !snap.money.error ? snap.money : null,
+      compare: snap.compare && !snap.compare.error ? snap.compare : null,
+      tenures: snap.moneyTenure,
       priorities: { groups: PRIORITY_GROUPS.map((g) => ({ id: g.id, title: g.title })) },
-      weights: s.priorityWeights, scenarioName: s.scenarioName,
+      weights: snap.priorityWeights, scenarioName: snap.scenarioName,
       householdLine: members,
       simStart: simMeta.startDate || "",
       simDays: simMeta.days || 0,
       date: todayISO(),
     });
-  }, [open]);
+  }, [open, snap]);
 
   const makePng = () => {
     setPngError("");
@@ -145,15 +155,20 @@ export function ShareDialog() {
         <DialogHeader title="결과 공유" onOpenChange={(v) => store.set({ shareOpen: v })} />
         <VStack gap={2}>
           <div className="ui-share-scroll">
-            <CardPreview data={data} />
+            {plan.loading ? (
+              <Text type="supporting">비교 숫자 불러오는 중…</Text>
+            ) : (
+              <CardPreview data={data} />
+            )}
           </div>
           <canvas ref={canvasRef} className="ui-share-canvas" aria-hidden="true" />
           <HStack gap={2} vAlign="center" wrap="wrap">
-            <Button size="sm" label="PNG 저장" onClick={makePng} />
+            <Button size="sm" label="PNG 저장" onClick={makePng} isDisabled={plan.loading} />
             {pngUrl && (
               <a href={pngUrl} download={`우리집-비교-${data.date}.png`}>PNG 내려받기</a>
             )}
-            <Button size="sm" variant="secondary" label="인쇄" onClick={print} />
+            <Button size="sm" variant="secondary" label="인쇄" onClick={print}
+              isDisabled={plan.loading} />
             <Button size="sm" variant="ghost" label="닫기"
               onClick={() => store.set({ shareOpen: false })} />
           </HStack>

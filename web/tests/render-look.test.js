@@ -49,7 +49,16 @@ describe("look parsing (?look=key:value,…)", () => {
       corridorDarken: 0.82,
       corridorRoofLift: 1.12,
       lineOpacity: 1,
+      regionalGround: 0xa9a68e,
+      regionalWater: 0x5b8fc4,
+      regionalRoad: 0x6e6a5e,
     });
+  });
+
+  it("accepts base-map colours as decimal ?look= overrides", () => {
+    const r = resolveLook("?look=regionalWater:6000000");
+    assert.equal(r.regionalWater, 6000000);
+    assert.equal(r.regionalGround, DEFAULT_LOOK.regionalGround);
   });
 });
 

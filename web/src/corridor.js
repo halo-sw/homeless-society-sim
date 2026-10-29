@@ -9,7 +9,7 @@
 // the journey line and both detailed areas coincide.
 
 import * as THREE from "three";
-import { lonLatToXY } from "./frame.js";
+import { bboxToXY, lonLatToXY } from "./frame.js";
 
 export const CORRIDOR_BUILDING = [0.79, 0.76, 0.7]; // flat Bone
 // Stage 11: roof caps read lighter than the walls (× corridorRoofLift,
@@ -92,8 +92,9 @@ export function tileLines(tile, origin) {
   return { positions, colors, segments: positions.length / 6 };
 }
 
-// Closed water bodies as flat triangulated caps.
-export function tileWater(tile, origin) {
+// Closed water bodies as flat triangulated caps. `color` overrides the
+// default flat (the journey layer passes the look table's regionalWater).
+export function tileWater(tile, origin, color = CORRIDOR_WATER) {
   const out = emptySoup();
   const up = [0, 1, 0];
   for (const w of tile.water || []) {
@@ -105,13 +106,87 @@ export function tileWater(tile, origin) {
       const faces = THREE.ShapeUtils.triangulateShape(contour, []);
       for (const [a, i, c] of faces) {
         const p = (k) => [ring[k][0], 0.8, -ring[k][1]];
-        pushTri(out, p(a), p(i), p(c), CORRIDOR_WATER, up);
+        pushTri(out, p(a), p(i), p(c), color, up);
       }
     } catch {
       // Degenerate water ring: skip it.
     }
   }
   return out;
+}
+
+// sRGB hex int (the look table form) -> [r, g, b] 0..1 vertex triple.
+export function hexToRgb(hex) {
+  const n = Number(hex);
+  if (!Number.isFinite(n)) return [0, 0, 0];
+  const v = Math.max(0, Math.min(0xffffff, Math.floor(n)));
+  return [((v >> 16) & 0xff) / 255, ((v >> 8) & 0xff) / 255, (v & 0xff) / 255];
+}
+
+// Corridor base-map ground rect from the manifest bounds, in three.js
+// world space (x east, z -north): {cx, cz, w, d, minX, maxX, minZ, maxZ}.
+// The journey layer sizes its land-coloured plane from this, so the view
+// is never an empty plane even before the first tile lands.
+export function baseMapBounds(manifest, origin) {
+  const empty = { cx: 0, cz: 0, w: 0, d: 0, minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
+  const b = manifest && manifest.bounds;
+  if (!b || b.length < 4 || !origin) return empty;
+  const box = bboxToXY(b, origin);
+  const minX = box.minX;
+  const maxX = box.maxX;
+  const minZ = -box.maxY;
+  const maxZ = -box.minY;
+  return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2,
+    w: Math.max(0, maxX - minX), d: Math.max(0, maxZ - minZ),
+    minX, maxX, minZ, maxZ };
+}
+
+// Flat ribbon quads along polylines (roads / open waterways): 1 px line
+// segments are invisible at regional distance, so the base map draws
+// them as triangle strips of `widthM` metres at `lift` height. Returns a
+// triangle soup in the given flat colour. Per-segment quads (no mitring —
+// small notches at sharp joints are invisible from the cruise height).
+export function ribbonSoup(polylines, origin, { widthM = 16, lift = 0.3, color = CORRIDOR_ROAD } = {}) {
+  const out = emptySoup();
+  const up = [0, 1, 0];
+  const half = Math.max(0.5, Number(widthM) || 16) / 2;
+  for (const pts of polylines || []) {
+    const xy = (pts || []).map(([lon, lat]) => lonLatToXY(lon, lat, origin));
+    for (let i = 0; i + 1 < xy.length; i++) {
+      const [x0, y0] = xy[i];
+      const [x1, y1] = xy[i + 1];
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len = Math.hypot(dx, dy);
+      if (!(len > 1e-9)) continue;
+      const nx = (-dy / len) * half;
+      const ny = (dx / len) * half;
+      // World space: x east, z = -north; the offset mirrors on z.
+      const a = [x0 + nx, lift, -(y0 + ny)];
+      const b = [x0 - nx, lift, -(y0 - ny)];
+      const c = [x1 + nx, lift, -(y1 + ny)];
+      const d = [x1 - nx, lift, -(y1 - ny)];
+      pushTri(out, a, b, c, color, up);
+      pushTri(out, b, d, c, color, up);
+    }
+  }
+  return out;
+}
+
+// Major roads of one tile as readable-width ribbons (all corridor road
+// classes are major: motorway / trunk / primary).
+export function tileRoadRibbons(tile, origin, opts = {}) {
+  return ribbonSoup((tile.roads || []).map((r) => r.pts || []), origin, {
+    widthM: 16, lift: 0.3, color: CORRIDOR_ROAD, ...opts });
+}
+
+// Open waterways (streams, river stretches) as blue ribbons; closed
+// bodies stay with tileWater. Same soup shape, so the journey layer
+// merges both into one water mesh.
+export function tileWaterRibbons(tile, origin, opts = {}) {
+  const open = (tile.water || []).filter((w) => !w.closed).map((w) => w.pts || []);
+  return ribbonSoup(open, origin, {
+    widthM: 20, lift: 0.5, color: CORRIDOR_WATER, ...opts });
 }
 
 // Sub-polyline between the vertices nearest to two lon/lat points

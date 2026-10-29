@@ -147,6 +147,17 @@ export const selectAgentNudges = (s) => s.agentNudges;
 export const selectConsultOpen = (s) => s.consultOpen;
 export const selectScenarioName = (s) => s.scenarioName;
 export const selectShareOpen = (s) => s.shareOpen;
+export const selectShareData = memoizeByState((s) => ({
+  shareOpen: s.shareOpen,
+  money: s.money,
+  compare: s.compare,
+  moneyLoading: s.moneyLoading,
+  compareLoading: s.compareLoading,
+  moneyTenure: s.moneyTenure,
+  priorityWeights: s.priorityWeights,
+  simMeta: s.simMeta,
+  scenarioName: s.scenarioName,
+}));
 export const selectAgentNudge = memoizeByState((s) => ({
   journey: s.journey,
   judgeLog: s.judgeLog,

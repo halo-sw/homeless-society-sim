@@ -7,7 +7,7 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -1498,7 +1498,8 @@ async function bootSim() {
   // tiles. A second detailed area loads when the followed member's day
   // touches one (itinerary-driven). All phasing derives from the sim
   // minute, so ?t= captures are deterministic at any speed.
-  const journeyLayer = createJourneyLayer(scene, origin, { look: LOOK });
+  const journeyLayer = createJourneyLayer(scene, origin,
+    { look: LOOK, tags: document.getElementById("tags") });
   let regionNetwork = null;
   let regionCongestion = null; // lazy: 1.2 MB, fetched on first journey
   let corridorsIndex = null;
@@ -1509,10 +1510,11 @@ async function bootSim() {
   const maxAniso2 = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const baseFog = { near: scene.fog.near, far: scene.fog.far };
   const baseClip = { near: camera.near, far: camera.far };
-  // Regional base plane (the home plane only spans ~1.8 km).
+  // Regional base plane (the home plane only spans ~1.8 km), in the
+  // look table's land colour so it meets the corridor base map seamlessly.
   const regionalBase = new THREE.Mesh(
     new THREE.PlaneGeometry(120000, 120000),
-    new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 }));
+    new THREE.MeshStandardMaterial({ color: LOOK.regionalGround, roughness: 1, metalness: 0 }));
   regionalBase.rotation.x = -Math.PI / 2;
   regionalBase.position.y = -0.4;
   regionalBase.visible = false;
@@ -1656,7 +1658,7 @@ async function bootSim() {
   }
 
   // Itinerary preload for the followed member's day: work-area detail +
-  // the corridor manifest (tiles stay lazy around the train).
+  // the corridor manifest (tiles then preload in full, in the background).
   let itineraryKey = "";
   async function ensureItinerary() {
     await ensureRegion();
@@ -1816,6 +1818,20 @@ async function bootSim() {
       look: new THREE.Vector3(center.x, 0, center.z), dist };
   }
 
+  // Oblique train-following cruise (stage 11b): ~3–4 km of corridor in
+  // frame at 55° from vertical, so buildings read as blocks. Falls back
+  // to the boarding/destination street when the marker has no geometry.
+  function cruisePose(jf) {
+    const pos = jf.ride ? trainPosition(regionNetwork, jf.ride, jf.elapsed) : null;
+    const lonLat = pos ? [pos.lon, pos.lat]
+      : (jf.phase === "descending" ? jf.destLonLat : jf.boardLonLat);
+    if (!lonLat) return regionalPose();
+    const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
+    const pose = journeyCruisePose([x, -y], camera.aspect);
+    return { pos: new THREE.Vector3(...pose.pos),
+      look: new THREE.Vector3(...pose.look), dist: pose.dist };
+  }
+
   const smooth = (t) => t * t * (3 - 2 * t);
 
   // Journey camera: progress-driven (speed-independent). Returns true
@@ -1837,6 +1853,7 @@ async function bootSim() {
         controls.target.copy(pose.look);
       }
       controls.enabled = false;
+      journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
       return true;
     }
@@ -1847,10 +1864,13 @@ async function bootSim() {
         controls.target.copy(pose.look);
       }
       controls.enabled = false;
+      journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
       return true;
     }
-    const regional = regionalPose();
+    // Auto: the oblique train-following cruise. The 전체 경로 override
+    // keeps the whole-path overview instead.
+    const regional = journeyView === "high" ? regionalPose() : cruisePose(jf);
     if (!regional || !jf.boardLonLat || !jf.destLonLat) return false;
     const streetA = streetPose(jf.boardLonLat);
     const streetB = streetPose(jf.destLonLat);
@@ -1896,7 +1916,21 @@ async function bootSim() {
     scene.fog.far += (baseFog.far - scene.fog.far) * k;
   }
 
-  // Per-minute journey maintenance: path rebuilds, banner, tile pacing.
+  // Corridor tile progress chip (one stable listener: the preload
+  // dedupes it, so minute ticks never pile listeners up).
+  function onTileProgress({ loaded, total }) {
+    if (total > 0 && loaded < total) {
+      store.set({ journeyLoading: `지도 불러오는 중 ${loaded}/${total}` });
+    } else if (store.getState().journeyLoading.startsWith("지도 불러오는 중")) {
+      store.set({ journeyLoading: "" });
+    }
+  }
+  const corridorMeasured = new Set(); // ride keys with stats logged
+
+  // Per-minute journey maintenance: path rebuilds, banner, and the
+  // background full-corridor preload (clock-independent: it starts when
+  // a ride starts or a static load lands inside one, and a paused clock
+  // never stalls it).
   async function paintJourneyMinute() {
     const jf = journeyFrame();
     const active = jf.phase === "rising" || jf.phase === "cruise"
@@ -1920,16 +1954,23 @@ async function bootSim() {
       hasDetailDest: jf.hasDetailDest, detailNote: jf.detailNote,
       corridorLabel: "간략 지도 (건물 높이 추정)",
       congestionSource: "서울교통공사 지하철혼잡도정보 (2026-09-30 기준)" } });
-    const pos = trainPosition(regionNetwork, jf.ride, jf.elapsed);
-    const focus = pos || (jf.phase === "hold" && jf.destLonLat
-      ? { lon: jf.destLonLat[0], lat: jf.destLonLat[1] } : null);
-    if (focus) {
-      const { loaded, pending } = await journeyLayer.updateTiles(focus, fetchJson);
-      if (pending > 0 || loaded > 0) {
-        console.log(`[journey] tiles loaded=${loaded} pending=${pending} ` +
-          `drawCalls=${renderer.info.render.calls}`);
+    journeyLayer.preloadCorridor(fetchJson, onTileProgress).then((done) => {
+      // Finished (every tile attempted): the map is final, so the chip
+      // clears even if a tile 404'd. Cancelled: a new corridor owns it.
+      if (!done.cancelled
+          && store.getState().journeyLoading.startsWith("지도 불러오는 중")) {
+        store.set({ journeyLoading: "" });
       }
-    }
+      if (done.cancelled || corridorMeasured.has(key)) return;
+      corridorMeasured.add(key);
+      // One frame later, so the measured render includes the new tiles.
+      requestAnimationFrame(() => {
+        console.log(`[journey] corridor tiles=${done.loaded}/${done.total} ` +
+          `triangles=${done.triangles} ` +
+          `drawCalls=${renderer.info.render.calls} ` +
+          `renderTriangles=${renderer.info.render.triangles}`);
+      });
+    });
   }
 
   // --- sim UI: A/B homes, speeds, day jump, compare ---
@@ -2012,6 +2053,22 @@ async function bootSim() {
     store.set({ moneyLoading: false, money: doc,
       moneyTenure: { ...(doc.default_tenure || {}), ...store.getState().moneyTenure } });
     refreshHighlight(); // QoL hover ids ride on the money doc
+  }
+
+  // The share dialog (and the tour's share step) needs both docs even
+  // when the A·B 비교 tab never opened: reuse the same loaders, skipping
+  // what is already there. Errors retry (the money loader's early return
+  // covers only a present doc, so a stale error is cleared first).
+  async function ensureShareData() {
+    const s = store.getState();
+    if (!s.compare || s.compare.error) {
+      await paintCompare();
+    }
+    const m = store.getState().money;
+    if (!m || m.error) {
+      if (m && m.error) store.set({ money: null });
+      await paintMoney();
+    }
   }
 
   async function paintCriteria() {
@@ -2141,6 +2198,7 @@ async function bootSim() {
         await paintMoney();
       }
     },
+    ensureShareData: () => ensureShareData(),
     setCompareTab: async (tab) => {
       if (!VALID_COMPARE_TABS.includes(tab)) return;
       store.set({ compareTab: tab });
@@ -2248,6 +2306,11 @@ async function bootSim() {
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
       journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed);
+    }
+    // Station names ride along the line during the regional phases only.
+    if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
+        || jfTrain.phase === "descending")) {
+      journeyLayer.updateStationLabels(camera);
     }
     controls.update();
     renderCtl.renderFrame({ bloom: simBloom }, dt);

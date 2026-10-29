@@ -88,6 +88,13 @@ export function nextAgentCorner(corner) {
   return corner === "bottom-left" ? "bottom-right" : "bottom-left";
 }
 
+// The bottom-corner trigger (avatar + "물어보기" button) is always on
+// screen while the panel is closed, in every placement mode; once open
+// it stays only as the floating panel's anchor.
+export function shouldShowAgentFab(consultOpen, effMode) {
+  return !consultOpen || effMode === "float";
+}
+
 // --- per-tab suggested prompts -----------------------------------------------
 
 const CHIPS = {

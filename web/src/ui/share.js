@@ -236,6 +236,40 @@ export const SHARE_ROW_IDS = ["commute_mode", "commute_day", "ride_30d",
   "walk_30d", "fatigue_arrival", "peak", "housing", "burden", "remaining",
   "jeonse_ratio", "convenience", "evening_30d"];
 
+// Which share docs are still missing? Pure over the store state: the
+// dialog (and the tour's share step) shows a short loading state until
+// both the compare and the money doc are present and clean.
+export function shareLoadPlan(state = {}) {
+  const compareMissing = !state.compare;
+  const moneyMissing = !state.money;
+  const compareBad = compareMissing || !!state.compare.error;
+  const moneyBad = moneyMissing || !!state.money.error;
+  const fetching = !!(state.compareLoading || state.moneyLoading);
+  const failed = !!((state.compare && state.compare.error)
+    || (state.money && state.money.error));
+  return {
+    needsCompare: compareBad && !state.compareLoading,
+    needsMoney: moneyBad && !state.moneyLoading,
+    // A short loading state until both docs are there; a failed load
+    // renders what it has (with the error noted) instead of spinning.
+    loading: (fetching || compareMissing || moneyMissing) && !failed,
+    ready: !compareBad && !moneyBad,
+    failed,
+  };
+}
+
+// Ask the scene for the missing share docs (no-op when everything is
+// there, already loading, or the scene action is not registered — e.g.
+// tour boot). Returns the plan. Takes the store so tests pass a fake.
+export function requestShareLoads(st) {
+  const plan = shareLoadPlan(st ? st.getState() : {});
+  if ((plan.needsCompare || plan.needsMoney)
+      && st && typeof st.hasAction === "function" && st.hasAction("ensureShareData")) {
+    st.act("ensureShareData");
+  }
+  return plan;
+}
+
 export function resultCardData({ money, compare = null, tenures = {},
     priorities = null, weights = null, scenarioName = "", personaTitle = "",
     householdLine = "", simStart = "", simDays = 0, date = null } = {}) {

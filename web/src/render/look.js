@@ -18,6 +18,9 @@
 // - corridorRoofLift: journey-tile roof-cap lift over the walls, so
 //   blocks separate from each other and the ground.
 // - lineOpacity: journey-line opacity.
+// - regionalGround / regionalWater / regionalRoad: the journey base-map
+//   colours as decimal sRGB ints (e.g. regionalWater:6000000), so the
+//   `?look=` number parser accepts them.
 
 export const DEFAULT_LOOK = {
   fogStreetNear: 2.5,
@@ -35,6 +38,9 @@ export const DEFAULT_LOOK = {
   corridorDarken: 0.82,
   corridorRoofLift: 1.12,
   lineOpacity: 1,
+  regionalGround: 0xa9a68e,
+  regionalWater: 0x5b8fc4,
+  regionalRoad: 0x6e6a5e,
 };
 
 export const LOOK_KEYS = Object.keys(DEFAULT_LOOK);

@@ -2,11 +2,17 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { tinyArea, tinyScenario } from "./engine-fixture.js";
 import { runTurn, formatAgentContext } from "../src/consult/agent.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { agentContext, chipsFor, citationsFor, contextLine,
   loadAgentOpen, nextAgentCorner, nudgeAllowed, nudgeFor, placeAgentPanel,
-  saveAgentOpen, toolActionKo, viewSystemLine, DEFAULT_CHIPS,
+  saveAgentOpen, shouldShowAgentFab, toolActionKo, viewSystemLine, DEFAULT_CHIPS,
   AGENT_PANEL_W, AGENT_PANEL_H, AGENT_DRAWER_W,
   AGENT_NARROW_W } from "../src/ui/agent-float.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, "..", "..");
 
 const VIEW = { w: 1280, h: 800 };
 
@@ -288,5 +294,29 @@ describe("tool actions and citations", () => {
     const bare = citationsFor(["get_safety", "get_journey"]);
     assert.equal(bare[0].url, null);
     assert.deepEqual(citationsFor(["set_view", "nope"]), []);
+  });
+});
+
+describe("ask trigger visibility (stage 11b)", () => {
+  it("always shows while the panel is closed, in every mode", () => {
+    for (const mode of ["float", "drawer", "sheet"]) {
+      assert.equal(shouldShowAgentFab(false, mode), true, mode);
+    }
+    assert.equal(shouldShowAgentFab(true, "float"), true);
+    assert.equal(shouldShowAgentFab(true, "drawer"), false);
+    assert.equal(shouldShowAgentFab(true, "sheet"), false);
+  });
+
+  it("keeps the 물어보기 button outside the Popover trigger", () => {
+    const src = readFileSync(join(ROOT, "web/src/ui/consult.jsx"), "utf8");
+    assert.ok(src.includes("shouldShowAgentFab(consultOpen, effMode)"),
+      "FAB visibility runs through the helper");
+    const open = src.indexOf("<Popover");
+    const close = src.indexOf("</Popover>");
+    assert.ok(open >= 0 && close > open, "one Popover wraps the panel");
+    const trigger = src.slice(open, close);
+    assert.ok(!trigger.includes('label="물어보기"'),
+      "the ask button must not nest inside the Popover trigger");
+    assert.ok(src.includes('label="물어보기"'), "the ask button still exists");
   });
 });

@@ -351,7 +351,7 @@ function JourneyCard({ state }) {
               ))}
             </HStack>
           </HStack>
-          {loading && <Text type="supporting">{loading}</Text>}
+          {loading && <Badge variant="info" label={loading} />}
           {journey && (
             <>
               <HStack gap={1} vAlign="center">
