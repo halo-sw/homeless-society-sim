@@ -449,6 +449,9 @@ function buildWorld(area, scene14) {
       { seed: area.area || areaId, maxMovers: 0 }),
     { heightAt, fleet });
   scene.add(streetMeshes.group);
+  // 14e: additive lamp halos sit out of the painted depth prepass (they
+  // would punch depth blobs under the override material). Photo ignores it.
+  if (streetMeshes.halo) streetMeshes.halo.userData.noPaintedDepth = true;
 
   // --- ambient crowd: seeded OD pairs on the walk graph (motion) ---
   // Household agents render separately; this crowd never replaces them.
@@ -676,10 +679,12 @@ async function bootTour(uiMode = "tour") {
   const fillTourLit = makeLitFiller(litMeshes, householdsById);
   let tourEmissive = 0;
   let tourBloom = 0;
+  let tourFramedWidth = null;
   let tourLitDone = false;
   function updateTourSky() {
     const framedWidth = frameWidthFor(
       camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
+    tourFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
@@ -786,7 +791,7 @@ async function bootTour(uiMode = "tour") {
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
     if (archLens) levelCamera();
-    renderCtl.renderFrame({ bloom: tourBloom }, dt);
+    renderCtl.renderFrame({ bloom: tourBloom, framedWidthM: tourFramedWidth }, dt);
     frames++;
     if (frames === 30) {
       console.log(`[scene] area=${areaId} buildings=${area.buildings.length} ` +
@@ -1682,6 +1687,7 @@ async function bootSim() {
   // 30-minute granularity. Daytime emissive is off (uNight = 0).
   let simBloom = 0;
   let simEmissive = 0;
+  let simFramedWidth = null;
   let lastLightKey = "";
   let lastLitKey = "";
 
@@ -1690,6 +1696,7 @@ async function bootSim() {
     const instant = simInstant(run.meta.start_date, day, m);
     const framedWidth = frameWidthFor(
       camera.position.distanceTo(controls.target), CAM.fovDeg, camera.aspect);
+    simFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
@@ -2885,7 +2892,7 @@ async function bootSim() {
     }
     trackSimViewOffset(camera); // 13e5: stage centre, not canvas centre
     controls.update();
-    renderCtl.renderFrame({ bloom: simBloom }, dt);
+    renderCtl.renderFrame({ bloom: simBloom, framedWidthM: simFramedWidth }, dt);
     frames++;
     if (frames === 30) {
       console.log(`[sim] area=${run.meta.area} agents=${run.meta.agents} ` +
