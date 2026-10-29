@@ -145,3 +145,109 @@ the laptop captures; the 4×/9× ranges are asserted in
   journey corridor tiles keep the photo darkening.
 - Sim leaf dates use the scenario start date (day 1); multi-day runs
   crossing 15 Oct / 1 Dec keep opening-day foliage.
+
+---
+
+# Stage 14f — RESULT: make the painted look actually show
+
+Date: 2026-10-30. Brief: stage-14f prompt (fix the four 14e capture
+findings). All product code by Muse (agent mode). Commits on `ui-13f`:
+`2ab3123` (fog), `055205b` (lighting), `61d2d54` (outlines/AO),
+`f6c5986` (framing).
+
+## What caused the blue cast (found in code, not guessed)
+
+Four stacked contributors, all painted-only fixed; one suspect ruled out:
+
+1. **Blue hemisphere fill** (`render/sky.js` `SKY_COLORS.hemiSkyDay
+   #b8cfe4`, B−R = 44): every shaded face — building shadows, road
+   surface away from the sun — took a strong blue fill.
+2. **Blue PMREM environment** (`render/rig.js`): the environment is
+   captured from the Preetham sky dome, so every `MeshStandardMaterial`
+   (roads, walls) also took blue diffuse IBL (`envIntensity` 0.55 by
+   day) even in direct sun.
+3. **Full-strength shadows** (`sun.shadow.intensity = 1.0`): shade was
+   lit *only* by the two blue sources above → the large translucent
+   blue shadow shapes.
+4. **Fog starting just behind the target**: the 4×-framed-width near
+   plane sat ~0.4 widths behind the target (painted camera ≈ 3.6× the
+   width away at 10° FOV), washing the frame in cool `fogDay #d9dee2`.
+5. Ruled out: the grade (warm highlights, neutral shadows — shadows
+   keep their hue) and the palette itself (roads `#5b5d60` B−R = 5,
+   near-neutral per the 14e test).
+
+Fix (`055205b`): painted days use `PAINTED_LIGHT` (`sky.js`, blended by
+daylight so nights keep photo colours) — hemi `#f2ece0`/`#b9ad98`,
+fog `#e2d8c4`, shadows 45 %, no sky IBL. Pure test resolves the rig at
+14:00 and asserts B−R ≤ 10 on hemi/fog. The ΔE ≤ 10 on-screen check
+needs the laptop capture (direct sun, `?time=14:00`).
+
+## What caused the invisible outlines / AO (found, not guessed)
+
+1. **Kuwahara erased the outlines.** The chain drew 1 px / 35 % edges
+   and *then* ran the least-variance Kuwahara: a thin dark line raises
+   the variance of every quadrant containing it, so a clean quadrant
+   (flat facade) wins and the line pixel returns to facade colour.
+   Axis-aligned lines weaken ~4× (≈ 9 %, invisible); diagonals vanish.
+   Fix: the chain now runs AO → Kuwahara → outline — `render → ao →
+   kuwahara → outline → bloom → grade → output` — from ONE shared
+   packed-depth prepass, so Kuwahara still reads the post-AO colour and
+   the 1 px edge lands on the smoothed frame at full strength.
+2. **AO tolerance swallowed contact shadows.** `eps = 0.05 + c×0.005`
+   sits at 5 m+ in tour range (30 m+ regional) while contact deltas are
+   ~1 m → `occ = 0` everywhere. Fix: footprint-scaled `eps = 0.05 +
+   c×0.0006`, `scl = 0.5 + c×0.002` (pure `aoEps`/`aoScale`/`aoTap`).
+3. **Edge threshold too coarse at km distances**: `smoothstep(0.02,
+   0.12)` needs ≥ 2 % steps → `smoothstep(0.008, 0.06)` (a 10 m step at
+   1 km edges; 2 m facade relief stays clean — pure `outlineEdge`,
+   tested; JS consts are the single source, interpolated into the GLSL).
+4. Ruled out by reading the three r170 sources in `node_modules`: the
+   depth prepass itself is sound — the depth shader has no fog chunks,
+   tone mapping applies only to canvas renders (never render targets),
+   `packDepthToRGBA(1)` is white (matches the white clear), and the
+   readBuffer/writeBuffer plumbing matches `ShaderPass` exactly.
+
+Also in this stage: painted fog measures from the camera distance
+(`paintedFogRange`: near = camDist + 2w, far = camDist + 6w, photo
+unchanged — `2ab3123`); painted tour framing is 450 m stops (POI
+close-ups too) / 700 m glide with the 14e zoom clamp kept, and corridor
+tiles drop the 0.74 photo darkening so walls/roofs read on the painted
+split with base-map water `#3f6f8f` and partial (~45 %) outlines at the
+3.5 km regional view (fade now 1.5 → 5 km — `f6c5986`). Corridor tiles
+carry no park polygons (buildings/roads/boundaries/water only), so no
+painted park green can appear there — "not present" per the brief.
+
+## Debug URLs (all painted-only; ignored under `?style=photo`)
+
+Base: the dev server root (`npm run dev` in `web/`). Debug views work
+at every `?q=` (they run their own prepass, no composer).
+
+- `/?area=songpa-jamsil&shot=0` — tour day, now a 450 m neighbourhood
+  frame (was one tower at 300 m); glide views 700 m.
+- `/?area=songpa-jamsil&shot=0&debug=albedo` — unlit palette colours
+  (no sun/fill/IBL/shadows); compare with the plain URL to split
+  palette from lighting. Same flag on any sim URL.
+- `/?area=songpa-jamsil&shot=0&debug=depth` — linear depth fullscreen
+  (near black → far white): proves the prepass the outlines read.
+- `/?area=songpa-jamsil&shot=0&debug=outline` — edge mask fullscreen
+  (white 1 px edges on black, AO red-tinted): proves each term.
+- `/?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1`
+  — sim morning incl. the regional journey view (painted corridor
+  palette + outlines); append `&debug=outline` for its mask.
+- Console: `[post] style=painted
+  passes=render+ao+kuwahara+outline+bloom+grade+output`, `[render]
+  initial … style=painted debug=…`.
+
+## Tests and build
+
+- `cd web && npm test`: 966/967 pass. The single failure is still
+  `share.test.js` "result card on the real demo build", the known
+  engine-stage failure from main — allowed to remain per the brief.
+- New pure tests: `paintedFogRange` + painted/photo fog routing,
+  painted rig at 14:00 (B−R ≤ 10, shadows ≤ 45 %, env 0),
+  `?debug=` routing, edge/AO maths (10 m step at 1 km edges, 1 m
+  contact occludes), AO/edge depth sharing, fade to 5 km,
+  `tourFrameWidths`, painted corridor darken.
+- `node --check` on every edited file; interpolated GLSL brace-checked
+  via node import (three.js shader compile still needs the laptop —
+  confirm on the first `?debug=depth` capture).
