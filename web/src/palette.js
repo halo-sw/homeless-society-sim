@@ -6,10 +6,10 @@
 // yellow/orange with some green. All colors are 0xRRGGBB ints.
 
 export const PAPER = 0xfbf7ee;
-export const GROUND_PLATE = 0xeadfc4;
-// Stage 6: asphalt reads darker than pavement and grass (was washed out).
-export const ROAD = 0xa9adb0;
-export const ROAD_MAJOR = 0x9ba1a4;
+// Stage 11: ground/road base darkened a step (day reads milky otherwise).
+export const GROUND_PLATE = 0xd8cdb2;
+export const ROAD = 0x959a9e;
+export const ROAD_MAJOR = 0x878d90;
 export const FOOTWAY = 0xe9e3d5;
 export const CROSSWALK = 0xffffff;
 export const WATER = 0x93bcd6;

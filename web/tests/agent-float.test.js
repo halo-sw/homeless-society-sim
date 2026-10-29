@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { tinyArea, tinyScenario } from "./engine-fixture.js";
 import { runTurn, formatAgentContext } from "../src/consult/agent.js";
 import { agentContext, chipsFor, citationsFor, contextLine,
-  nextAgentCorner, nudgeAllowed, nudgeFor, placeAgentPanel,
-  toolActionKo, viewSystemLine, DEFAULT_CHIPS,
-  AGENT_PANEL_W, AGENT_PANEL_H } from "../src/ui/agent-float.js";
+  loadAgentOpen, nextAgentCorner, nudgeAllowed, nudgeFor, placeAgentPanel,
+  saveAgentOpen, toolActionKo, viewSystemLine, DEFAULT_CHIPS,
+  AGENT_PANEL_W, AGENT_PANEL_H, AGENT_DRAWER_W,
+  AGENT_NARROW_W } from "../src/ui/agent-float.js";
 
 const VIEW = { w: 1280, h: 800 };
 
@@ -33,14 +34,16 @@ describe("floating panel placement", () => {
     assert.equal(p.overlap, 0);
   });
 
-  it("minimises overlap when both corners are busy", () => {
+  it("docks as a drawer when both corners are busy (stage 11: never overlaps)", () => {
     const p = placeAgentPanel({ viewport: VIEW,
       avoid: [
         { x: 0, y: 0, w: 1280, h: 700 }, // full-width band: both overlap
         { x: 900, y: 100, w: 380, h: 600 }, // extra weight on the right
       ] });
-    assert.equal(p.corner, "bottom-left");
-    assert.ok(p.overlap > 0);
+    assert.equal(p.mode, "drawer");
+    assert.equal(p.overlap, 0);
+    assert.equal(p.shiftLeft, AGENT_DRAWER_W);
+    assert.ok(p.w === AGENT_DRAWER_W && p.h === VIEW.h);
   });
 
   it("clamps to small viewports and toggles corners", () => {
@@ -49,6 +52,102 @@ describe("floating panel placement", () => {
     assert.ok(p.x >= 0 && p.y >= 0);
     assert.equal(nextAgentCorner("bottom-right"), "bottom-left");
     assert.equal(nextAgentCorner("bottom-left"), "bottom-right");
+  });
+});
+
+// Stage 11: the 1440×900 GPU captures. Obstacle rects measured from the
+// captures' layout (compare card right, Now/left column, sim bar,
+// tour bar, followed resident near the centre).
+const GPU1440 = { w: 1440, h: 900 };
+const GPU_AVOID_FULL = [
+  { x: 1028, y: 76, w: 400, h: 702 }, // .ui-compare (right column card)
+  { x: 12, y: 76, w: 330, h: 500 }, // .ui-simleft (Now card + left column)
+  { x: 12, y: 700, w: 560, h: 174 }, // .ui-simbar (timeline bar)
+  { x: 440, y: 790, w: 560, h: 100 }, // .ui-tour (demo tour bar)
+  { x: 518, y: 252, w: 403, h: 396 }, // followed resident (central box)
+];
+
+function intersects(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+describe("stage 11 placement on the 1440x900 captures", () => {
+  it("floats bottom-right with zero overlap when the right card is shut", () => {
+    const p = placeAgentPanel({ viewport: GPU1440,
+      avoid: [GPU_AVOID_FULL[1]] }); // only the left column
+    assert.equal(p.mode, "float");
+    assert.equal(p.corner, "bottom-right");
+    assert.equal(p.overlap, 0);
+  });
+
+  it("floats bottom-left when only the right column is open", () => {
+    const p = placeAgentPanel({ viewport: GPU1440,
+      avoid: [GPU_AVOID_FULL[0]] });
+    assert.equal(p.mode, "float");
+    assert.equal(p.corner, "bottom-left");
+    assert.equal(p.overlap, 0);
+  });
+
+  it("docks as a drawer on the full capture (both corners busy)", () => {
+    const p = placeAgentPanel({ viewport: GPU1440, avoid: GPU_AVOID_FULL });
+    assert.equal(p.mode, "drawer");
+    assert.equal(p.overlap, 0);
+    assert.ok(p.shiftLeft > 0);
+    // The canvas narrows by shiftLeft: nothing ends up under the drawer.
+    assert.ok(p.x + p.w <= GPU1440.w + 1);
+  });
+
+  it("falls back to a bottom sheet on narrow viewports (< 1100 px)", () => {
+    const viewport = { w: 1000, h: 800 };
+    const rightCard = { x: 588, y: 76, w: 400, h: 620 };
+    const p = placeAgentPanel({ viewport,
+      avoid: [rightCard, { x: 12, y: 76, w: 330, h: 500 },
+        { x: 12, y: 620, w: 560, h: 154 }] });
+    assert.ok(viewport.w < AGENT_NARROW_W);
+    assert.equal(p.mode, "sheet");
+    assert.ok(p.x >= 0 && p.y >= 0 && p.x + p.w <= viewport.w && p.y + p.h <= viewport.h);
+    // The sheet CSS caps the right card so it ends above the sheet top:
+    // the capped card must clear the sheet and stay usable.
+    const capped = { ...rightCard, h: p.y - 12 - rightCard.y };
+    assert.ok(capped.h > 200, `capped card keeps usable height (${capped.h})`);
+    assert.equal(intersects(p, capped), false, "capped card scrolls above the sheet");
+  });
+
+  it("still floats on narrow viewports when a corner is free", () => {
+    const p = placeAgentPanel({ viewport: { w: 1000, h: 800 },
+      avoid: [{ x: 12, y: 76, w: 330, h: 500 }] });
+    assert.equal(p.mode, "float");
+    assert.equal(p.overlap, 0);
+  });
+});
+
+describe("stage 11 open/closed memory", () => {
+  const fakeStorage = (initial = {}) => {
+    const data = { ...initial };
+    return {
+      getItem: (k) => (k in data ? data[k] : null),
+      setItem: (k, v) => { data[k] = String(v); },
+    };
+  };
+
+  it("defaults to closed and round-trips", () => {
+    const s = fakeStorage();
+    assert.equal(loadAgentOpen(s), false);
+    assert.equal(saveAgentOpen(true, s), true);
+    assert.equal(loadAgentOpen(s), true);
+    saveAgentOpen(false, s);
+    assert.equal(loadAgentOpen(s), false);
+  });
+
+  it("survives missing or throwing storage", () => {
+    assert.equal(loadAgentOpen(null), false);
+    assert.equal(saveAgentOpen(true, null), false);
+    const bad = {
+      getItem: () => { throw new Error("denied"); },
+      setItem: () => { throw new Error("denied"); },
+    };
+    assert.equal(loadAgentOpen(bad), false);
+    assert.equal(saveAgentOpen(true, bad), false);
   });
 });
 

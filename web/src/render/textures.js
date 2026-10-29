@@ -13,10 +13,12 @@
 import * as THREE from "three";
 import { FACADE_TILES, TEX_SIZE, synthFacade, synthGroundDetail } from "./facades.js";
 import { WATER_PBR } from "../palette.js";
+import { DEFAULT_LOOK } from "./look.js";
 
 const cache = new Map();
 const litMaterials = new Set();
 let pendingNight = 0; // shaders compile lazily; new programs start here
+let pendingGain = DEFAULT_LOOK.nightGain;
 
 function canvasFrom(buf, size) {
   if (typeof document === "undefined") {
@@ -66,9 +68,11 @@ export function groundDetailTexture({ seed = 1, aniso = 4 } = {}) {
   return cache.get("ground");
 }
 
-// Night emissive gain (stage 9c): 2.4 blew lit façades into white blocks
-// under bloom; 1.15 keeps the window grid readable at full night.
-export const FACADE_NIGHT_GAIN = 1.15;
+// Night emissive gain (stage 11, from the look table): 9c's 1.15 still
+// blew lit towers into solid white blocks on the real GPU; 0.85 keeps
+// the window grid readable at full night. A uGain uniform (not a baked
+// literal) so `?look=nightGain:` retunes it without a rebuild.
+export const FACADE_NIGHT_GAIN = DEFAULT_LOOK.nightGain;
 
 // Patch a facade material: per-vertex lit fraction + night gate.
 // aLit attribute + uNight uniform; chain-safe (composes with the
@@ -79,17 +83,18 @@ export function patchLitMaterial(material) {
   material.onBeforeCompile = (shader, renderer) => {
     if (prevCompile) prevCompile.call(material, shader, renderer);
     shader.uniforms.uNight = { value: pendingNight };
+    shader.uniforms.uGain = { value: pendingGain };
     shader.uniforms.uLampColor = { value: new THREE.Color(1.0, 0.72, 0.42) };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float aLit;\nvarying float vLit;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLit = aLit;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uLampColor;\nvarying float vLit;")
+      .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform float uGain;\nuniform vec3 uLampColor;\nvarying float vLit;")
       .replace("#include <emissivemap_fragment>",
         "#ifdef USE_EMISSIVEMAP\n" +
         "\tvec4 litTex = texture2D( emissiveMap, vEmissiveMapUv );\n" +
         "\tfloat litOn = step( litTex.g, vLit ) * litTex.r;\n" +
-        `\ttotalEmissiveRadiance = uLampColor * ( litOn * uNight * ${FACADE_NIGHT_GAIN} );\n` +
+        "\ttotalEmissiveRadiance = uLampColor * ( litOn * uNight * uGain );\n" +
         "#endif\n");
     material.userData.shader = shader;
   };
@@ -110,6 +115,17 @@ export function setGlobalNight(v) {
     const shader = m.userData.shader;
     if (shader) shader.uniforms.uNight.value = v;
   }
+}
+
+// uGain across every lit facade material (look.nightGain, from ?look=).
+export function setNightGain(v) {
+  const n = Number(v);
+  pendingGain = Number.isFinite(n) && n >= 0 ? n : DEFAULT_LOOK.nightGain;
+  for (const m of litMaterials) {
+    const shader = m.userData.shader;
+    if (shader && shader.uniforms.uGain) shader.uniforms.uGain.value = pendingGain;
+  }
+  return pendingGain;
 }
 
 export function clearTextureCache() {

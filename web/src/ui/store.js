@@ -33,6 +33,7 @@ export const INITIAL_STATE = {
   moneyLoading: false,
   moneyTenure: {}, // {A: "전세", ...} UI-selected tenure per home
   moneyCandidates: [], // recommend_public_rental results (agent) for "C로 추가"
+  priorityWeights: null, // {explicit, weights} published by the 내 기준 tab (share card bars)
   legend: null, // {title, resRows, heightRows, note, simNote?}
   loading: "지역을 불러오는 중…",
   ready: false,
@@ -141,6 +142,7 @@ function memoizeByState(pick) {
 
 export const selectState = (s) => s;
 export const selectCompareTab = (s) => s.compareTab;
+export const selectCompareOpen = (s) => s.compareOpen;
 export const selectAgentNudges = (s) => s.agentNudges;
 export const selectConsultOpen = (s) => s.consultOpen;
 export const selectScenarioName = (s) => s.scenarioName;

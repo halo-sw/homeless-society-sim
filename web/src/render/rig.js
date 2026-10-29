@@ -12,6 +12,7 @@ import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { sunDirection } from "../lighting.js";
 import { skyParams, fogRangeFor } from "./sky.js";
+import { DEFAULT_LOOK } from "./look.js";
 import { SHADOW_BIAS, shadowFit, shadowHalfExtent, snapTargetToTexel } from "./shadows.js";
 
 // Fixed moon direction when the sun is down (unit-ish, y-up world).
@@ -49,15 +50,16 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
   const sunDir = new THREE.Vector3();
   const bg = new THREE.Color();
 
-  function syncSkyUniforms(skyMesh, p, dir) {
+  function syncSkyUniforms(skyMesh, p, dir, look) {
     const u = skyMesh.material.uniforms;
     u.turbidity.value = p.turbidity;
-    u.rayleigh.value = p.rayleigh;
+    u.rayleigh.value = p.rayleigh * (look.rayleighGain || 1);
     u.sunPosition.value.copy(dir);
   }
 
-  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null, maxHeightM = 250 }) {
+  function update({ lat, lon, date, minute, target = { x: 0, z: 0 }, shadowSpan = 240, envKey = null, framedWidth = null, maxHeightM = 250, look = null }) {
     const p = skyParams(lat, lon, date, minute);
+    const l = look || DEFAULT_LOOK;
     // Sun above the horizon; moonlight below it.
     if (p.altitude > -1) {
       const [x, y, z] = sunDirection(lat, lon, date);
@@ -80,7 +82,7 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
       snapped.z + sunDir.z * dist);
     sun.target.position.set(snapped.x, snapped.y, snapped.z);
     sun.color.setHex(p.sunColor);
-    sun.intensity = p.sunIntensity;
+    sun.intensity = p.sunIntensity * (l.sunGain || 1);
     sun.shadow.bias = fit.bias;
     sun.shadow.normalBias = fit.normalBias;
     const sc = sun.shadow.camera;
@@ -94,11 +96,11 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
 
     hemi.color.setHex(p.hemiSky);
     hemi.groundColor.setHex(p.hemiGround);
-    hemi.intensity = p.hemiIntensity;
+    hemi.intensity = p.hemiIntensity * (l.hemiGain || 1);
 
     sky.visible = p.skyVisible;
     if (p.skyVisible) {
-      syncSkyUniforms(sky, p, sunDir);
+      syncSkyUniforms(sky, p, sunDir, l);
       scene.background = null;
     } else {
       bg.setHex(p.skyColor);
@@ -107,19 +109,19 @@ export function createSkyRig(scene, renderer, { span = 1000 } = {}) {
     if (scene.fog) {
       scene.fog.color.setHex(p.fogColor);
       // Distance cueing follows the framing (stage 6): crisp stops, haze
-      // only far beyond the frame.
-      const range = fogRangeFor(framedWidth === null ? span : framedWidth);
+      // only far beyond the frame. Factors from the look table.
+      const range = fogRangeFor(framedWidth === null ? span : framedWidth, l);
       scene.fog.near = range.near;
       scene.fog.far = range.far;
     }
-    renderer.toneMappingExposure = p.exposure;
+    renderer.toneMappingExposure = p.exposure * (l.exposureGain || 1);
     if ("environmentIntensity" in scene) scene.environmentIntensity = p.envIntensity;
 
     // Environment capture, throttled by key (day/golden only).
     const key = envKey !== null ? envKey : `${p.phase}:${Math.round(p.altitude)}:${Math.round(p.azimuth)}`;
     if (p.skyVisible && key !== lastEnvKey) {
       lastEnvKey = key;
-      syncSkyUniforms(envSky, p, sunDir);
+      syncSkyUniforms(envSky, p, sunDir, l);
       const rt = pmrem.fromScene(envScene);
       if (envRT) envRT.dispose();
       envRT = rt;

@@ -18,6 +18,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { qualitySettings } from "./quality.js";
+import { DEFAULT_LOOK } from "./look.js";
 
 const TiltShiftShader = {
   uniforms: {
@@ -60,6 +61,7 @@ const GradeShader = {
     vignette: { value: 0.22 },
     grain: { value: 0.0 },
     time: { value: 0.0 },
+    saturation: { value: DEFAULT_LOOK.gradeSaturation },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -73,6 +75,7 @@ const GradeShader = {
     uniform float vignette;
     uniform float grain;
     uniform float time;
+    uniform float saturation;
     varying vec2 vUv;
     float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7)) + time * 13.0) * 43758.5453);
@@ -82,11 +85,11 @@ const GradeShader = {
       vec4 c = texture2D(tDiffuse, vUv);
       // Gentle colour grade (stage 6): warm highlights, neutral shadows,
       // a touch more saturation. Shadows keep their hue (no split-tone).
+      // Saturation from the look table (stage 11: 1.12 default).
       float l = luma(c.rgb);
       float hi = smoothstep(0.45, 1.0, l);
       c.rgb *= mix(vec3(1.0), vec3(1.045, 1.005, 0.955), hi);
-      float sat = 1.06;
-      c.rgb = mix(vec3(l), c.rgb, sat);
+      c.rgb = mix(vec3(l), c.rgb, saturation);
       vec2 q = vUv - 0.5;
       c.rgb *= 1.0 - vignette * dot(q, q) * 2.2;
       if (grain > 0.0) {
@@ -147,6 +150,12 @@ export function createPost(renderer, scene, camera, opts = {}) {
     tilt: opts.tilt !== false,
     grain: opts.grain === true,
     saoOff: opts.sao === false, // ?sao=0 escape hatch
+    // Stage 11: bloom threshold above window brightness (only lamps
+    // bloom) and grade saturation, both from the look table (?look=).
+    bloomThreshold: Number.isFinite(opts.bloomThreshold)
+      ? opts.bloomThreshold : DEFAULT_LOOK.bloomThreshold,
+    gradeSaturation: Number.isFinite(opts.gradeSaturation)
+      ? opts.gradeSaturation : DEFAULT_LOOK.gradeSaturation,
     composer: null,
     sao: null,
     bloom: null,
@@ -186,7 +195,8 @@ export function createPost(renderer, scene, camera, opts = {}) {
       state.sao = null;
     }
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-    const bloom = new UnrealBloomPass(size.clone().multiplyScalar(0.5), 0.0, 0.55, 0.82);
+    const bloom = new UnrealBloomPass(size.clone().multiplyScalar(0.5), 0.0, 0.55,
+      state.bloomThreshold);
     state.bloom = bloom;
     composer.addPass(bloom);
     const tiltPass = new ShaderPass(TiltShiftShader);
@@ -195,6 +205,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
     composer.addPass(tiltPass);
     const grade = new ShaderPass(GradeShader);
     grade.uniforms.grain.value = state.grain ? 0.045 : 0.0;
+    grade.uniforms.saturation.value = state.gradeSaturation;
     state.grade = grade;
     composer.addPass(grade);
     composer.addPass(new OutputPass());

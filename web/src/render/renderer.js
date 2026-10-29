@@ -11,6 +11,7 @@ import { createPost, frameIsUniform } from "./post.js";
 import {
   AUTO_DROP_FPS, AUTO_DROP_FRAMES, parseQuality, qualitySettings, shouldDropToLow,
 } from "./quality.js";
+import { resolveLook } from "./look.js";
 
 export const STAT_FRAMES = [30, 120];
 // Black-frame guard sample points (checked only on high, where the SAO
@@ -24,6 +25,7 @@ export function createRenderer({ canvas, params }) {
   const tilt = search.get("tilt") !== "0";
   const grain = search.get("grain") === "1";
   const sao = search.get("sao") !== "0";
+  const look = resolveLook(search); // ?look=key:value,… (stage 11)
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.toneMapping = THREE.AgXToneMapping;
@@ -57,7 +59,8 @@ export function createRenderer({ canvas, params }) {
       scene = nextScene;
       camera = nextCamera;
       container = nextContainer;
-      post = createPost(renderer, scene, camera, { quality, tilt, grain, sao });
+      post = createPost(renderer, scene, camera, { quality, tilt, grain, sao,
+        bloomThreshold: look.bloomThreshold, gradeSaturation: look.gradeSaturation });
       ctl.fitContainer();
     },
     fitContainer() {

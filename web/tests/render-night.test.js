@@ -20,8 +20,10 @@ describe("night calm", () => {
     assert.equal(clampBloom(NaN), 0);
   });
 
-  it("keeps the facade gain near unity so the window grid survives", () => {
-    assert.ok(FACADE_NIGHT_GAIN > 1 && FACADE_NIGHT_GAIN <= 1.2);
+  it("keeps the facade gain below unity so the window grid survives (stage 11)", () => {
+    // 9c's 1.15 still blew towers into white blocks on the real GPU.
+    assert.ok(FACADE_NIGHT_GAIN >= 0.7 && FACADE_NIGHT_GAIN < 1);
+    assert.ok(LAMP_HEAD_GAIN > FACADE_NIGHT_GAIN * 1.5, "lamps stay brighter than windows");
   });
 
   it("glows lamps as small warm points", () => {

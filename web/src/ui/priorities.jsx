@@ -17,6 +17,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { Text } from "@astryxdesign/core/Text";
 import { PRIORITY_GROUPS, PRIORITY_METRICS, defaultWeights, weightedView } from "../priorities.js";
+import { store } from "./store.js";
 import { fmtWon, fmtPct, fmtMinutes, fmtCount, fmtIndex, badgeFor } from "../money/format.js";
 import { tenureOf } from "./money.jsx";
 import { Gloss } from "./gloss.jsx";
@@ -134,7 +135,13 @@ export function PrioritiesTab({ state }) {
         <HStack gap={2} vAlign="center" wrap="wrap">
           {PRIORITY_GROUPS.map((g) => (
             <WeightStepper key={g.id} group={g} value={weights[g.id]}
-              onChange={(v) => setWeights({ ...weights, [g.id]: v })} />
+              onChange={(v) => {
+                const next = { ...weights, [g.id]: v };
+                setWeights(next);
+                // The share card's bars read this (published on change
+                // only — untouched stays null, "비중을 정하지 않았어요").
+                store.set({ priorityWeights: { explicit: true, weights: next } });
+              }} />
           ))}
         </HStack>
         <Text type="supporting">0 = 안 봄 · 5 = 가장 중요. 이 비중이 집을 비교하는 유일한 가중치입니다.</Text>

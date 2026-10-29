@@ -38,10 +38,10 @@ describe("stage 6 render", () => {
     assert.equal(frameIsUniform(null), false);
   });
 
-  it("starts fog beyond 1.5x the framed width", () => {
-    assert.deepEqual(fogRangeFor(300), { near: 450, far: 1800 });
-    assert.deepEqual(fogRangeFor(2000), { near: 3000, far: 12000 });
-    assert.deepEqual(fogRangeFor(null), { near: 450, far: 1800 });
+  it("starts fog beyond 2.5x the framed width (stage 11: 1.5x read milky)", () => {
+    assert.deepEqual(fogRangeFor(300), { near: 750, far: 1800 });
+    assert.deepEqual(fogRangeFor(2000), { near: 5000, far: 12000 });
+    assert.deepEqual(fogRangeFor(null), { near: 750, far: 1800 });
   });
 
   it("keeps night sky deep blue and blue hour distinct", () => {

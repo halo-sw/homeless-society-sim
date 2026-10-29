@@ -339,15 +339,16 @@ function PublicNotices({ doc }) {
   );
 }
 
-export function ListingsTab({ state }) {
+export function ListingsTab({ state, sub = "" }) {
   const doc = state.money;
   useEffect(() => {
     try {
-      if (new URLSearchParams(window.location.search).get("sub") === "public") {
+      if (sub === "public"
+        || new URLSearchParams(window.location.search).get("sub") === "public") {
         document.getElementById("public-listings")?.scrollIntoView({ block: "start" });
       }
     } catch { /* non-browser render */ }
-  }, []);
+  }, [sub]);
   if (!doc || doc.error) return <Text type="supporting">생활비 문서를 먼저 만드세요.</Text>;
   return (
     <VStack gap={3}>

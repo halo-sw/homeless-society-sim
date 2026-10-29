@@ -24,16 +24,19 @@ import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_T
 import { assignWalkers, sampleWalker } from "./walkers.js";
 import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
+import { loadAgentOpen } from "./ui/agent-float.js";
+import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
 import { eveningHomeFraction, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
+import { capLitFraction, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
 import { placeStreetlife } from "./render/streetlife.js";
 import { buildStreetMeshes } from "./render/streetmeshes.js";
-import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
+import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMaterial, setGlobalNight, setNightGain, trunkMaterial, vegetationMaterial, waterMaterial } from "./render/textures.js";
 
 const AREAS = [
   { id: "pangyo", label: "판교" },
@@ -54,10 +57,12 @@ const HEIGHT_SWATCH = { osm_height: "#7ba05b", osm_levels: "#a9bf8e", register_h
 // ?time=HH:MM overrides the tour sun for day/golden/blue/night captures.
 const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
 const SUN_MINUTE = 15 * 60;
-const BASE_GROUND = 0xa9a79b; // unmapped fringe under the ground layer
+const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
 
 const PARAMS = new URLSearchParams(location.search);
+// Stage-11 look table (?look=key:value,… retunes without a rebuild).
+const LOOK = resolveLook(PARAMS);
 const areaId = PARAMS.get("area") || DEFAULT_AREA;
 
 // Tour sun from ?time=HH:MM (validated) or the fixed afternoon default.
@@ -100,11 +105,11 @@ function makeLitFiller(litMeshes, householdsById) {
     for (const { mesh, ranges } of litMeshes) {
       const attr = mesh.geometry.attributes.aLit;
       for (const [bid, r] of ranges) {
-        const v = litFractionWithFallback(occ ? occ.get(bid) : null, {
+        const v = capLitFraction(litFractionWithFallback(occ ? occ.get(bid) : null, {
           households: householdsById.get(bid) || 0,
           globalHomeFrac: globalFrac,
           hash01: hashUnit(hashString(bid), 3),
-        });
+        }), LOOK);
         attr.array.fill(v, r.start, r.start + r.count);
       }
       attr.needsUpdate = true;
@@ -141,7 +146,9 @@ function buildWorld(area) {
   const renderer = renderCtl.renderer;
   const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(FOG_DAY, span * 1.6, span * 3.2);
+  const streetFog0 = streetFogRange(span, LOOK);
+  scene.fog = new THREE.Fog(FOG_DAY, streetFog0.near, streetFog0.far);
+  setNightGain(LOOK.nightGain);
   const wrap0 = document.getElementById("scene-wrap");
   const aspect0 = wrap0 && wrap0.clientHeight > 0
     ? wrap0.clientWidth / wrap0.clientHeight : innerWidth / innerHeight;
@@ -410,7 +417,7 @@ async function bootTour() {
       camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute, target: { x: controls.target.x, z: controls.target.z },
-      shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM });
+      shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM, look: LOOK });
     tourBloom = p.bloom;
     setGlobalNight(p.emissive);
     streetMeshes.setLampGlow(p.emissive);
@@ -1299,7 +1306,7 @@ async function bootSim() {
       camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m, target: { x: controls.target.x, z: controls.target.z },
-      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM });
+      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM, look: LOOK });
     simBloom = p.bloom;
     const key = `${day}:${m}`;
     if (key === lastLightKey) return;
@@ -1491,7 +1498,7 @@ async function bootSim() {
   // tiles. A second detailed area loads when the followed member's day
   // touches one (itinerary-driven). All phasing derives from the sim
   // minute, so ?t= captures are deterministic at any speed.
-  const journeyLayer = createJourneyLayer(scene, origin);
+  const journeyLayer = createJourneyLayer(scene, origin, { look: LOOK });
   let regionNetwork = null;
   let regionCongestion = null; // lazy: 1.2 MB, fetched on first journey
   let corridorsIndex = null;
@@ -1866,11 +1873,15 @@ async function bootSim() {
     controls.target.copy(look);
     controls.enabled = false;
     // Regional depth range + fog (the street fit only spans ~1 km).
+    // Fog follows the live camera-to-target distance (not altitude): the
+    // line, the train and the stations stay clear of the haze. Far ≥ 6×.
     camera.near = Math.max(2, regional.dist / 200);
     camera.far = Math.max(30000, regional.dist * 4);
     camera.updateProjectionMatrix();
-    scene.fog.near += ((regional.dist * 1.1) - scene.fog.near) * Math.min(1, dt * 3);
-    scene.fog.far += ((regional.dist * 3.2) - scene.fog.far) * Math.min(1, dt * 3);
+    const camDist = camera.position.distanceTo(controls.target);
+    const rfog = regionalFogRange(camDist, LOOK);
+    scene.fog.near += (rfog.near - scene.fog.near) * Math.min(1, dt * 3);
+    scene.fog.far += (rfog.far - scene.fog.far) * Math.min(1, dt * 3);
     return true;
   }
 
@@ -2131,8 +2142,7 @@ async function bootSim() {
       }
     },
     setCompareTab: async (tab) => {
-      if (!["compare", "priorities", "money", "worthit", "quality", "safety",
-        "jeonse", "support", "listings", "criteria"].includes(tab)) return;
+      if (!VALID_COMPARE_TABS.includes(tab)) return;
       store.set({ compareTab: tab });
       if (tab === "criteria") await paintCriteria();
       else if (tab !== "compare") await paintMoney();
@@ -2187,16 +2197,15 @@ async function bootSim() {
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
-  // Tour deep links: ?agent=1 opens the floating agent, ?share=1 the
-  // result card (?tour=demo drives them per step).
+  // The agent panel stays closed unless the viewer left it open, the
+  // URL asks (?agent=1), or the tour reaches the agent step (?tour=demo
+  // drives it per step). ?share=1 opens the result card.
+  if (loadAgentOpen()) store.set({ consultOpen: true });
   if (PARAMS.get("agent") === "1") store.set({ consultOpen: true });
   if (PARAMS.get("share") === "1") store.set({ shareOpen: true });
-  // ?tab=money|quality|priorities|safety|criteria|worthit|jeonse|support|listings opens the compare card on that tab.
-  const wantTab = PARAMS.get("tab");
-  if (wantTab === "money" || wantTab === "quality" || wantTab === "compare"
-      || wantTab === "criteria" || wantTab === "priorities" || wantTab === "safety"
-      || wantTab === "worthit" || wantTab === "jeonse" || wantTab === "support"
-      || wantTab === "listings") {
+  // ?tab=<id> opens the compare card on that tab (old ids keep working).
+  const wantTab = resolveTabId(PARAMS.get("tab"));
+  if (wantTab) {
     store.set({ compareOpen: true, compareTab: wantTab });
     paintCompare();
     paintMoney();

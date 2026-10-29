@@ -12,6 +12,7 @@ import { lonLatToXY } from "./frame.js";
 import { BAND_COLORS, patternById, tilesFor, trainPosition } from "./journey.js";
 import { sliceGeometry, tileBuildings, tileLines, tileWater } from "./corridor.js";
 import { congestionBand } from "./engine/journey.js";
+import { DEFAULT_LOOK } from "./render/look.js";
 
 // Visible-tile cap: 12 tiles × 3 meshes + line + dots + train ≈ 40
 // added draw calls (the corridor budget; main.js logs the measured
@@ -35,14 +36,19 @@ export function stopCoords(network) {
   return out;
 }
 
-export function createJourneyLayer(scene, origin) {
+export function createJourneyLayer(scene, origin, { look = null } = {}) {
+  const l = look || DEFAULT_LOOK;
   const group = new THREE.Group();
   group.visible = false;
   scene.add(group);
   const tileGroup = new THREE.Group();
   group.add(tileGroup);
 
+  // Stage 11: corridor buildings read slightly darker (material colour
+  // multiplies the vertex colours) so the line, the train and the
+  // stations separate from the blocks on the regional view.
   const buildingMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+  buildingMat.color.setScalar(Number.isFinite(l.corridorDarken) ? l.corridorDarken : 1);
   const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 });
   const waterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0 });
   const trainMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95 });
@@ -157,7 +163,8 @@ export function createJourneyLayer(scene, origin) {
       geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
       lineMesh = new THREE.LineSegments(geo,
         new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false,
-          transparent: true, opacity: 0.95 }));
+          transparent: true,
+          opacity: Number.isFinite(l.lineOpacity) ? l.lineOpacity : 0.95 }));
       lineMesh.renderOrder = 990;
       lineMesh.frustumCulled = false;
       group.add(lineMesh);

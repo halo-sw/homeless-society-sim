@@ -8,6 +8,7 @@
 
 import { solarPosition } from "../lighting.js";
 import { daylightFactor, duskFactor } from "../sim.js";
+import { streetFogRange } from "./look.js";
 
 export const PHASES = ["day", "golden", "blue", "night"];
 
@@ -98,10 +99,10 @@ export function skyParams(lat, lon, date, minute) {
   };
 }
 
-// Fog is distance cueing only: it starts beyond 1.5× the framed width so
-// the stop framing itself stays crisp, and ends at 6× so the skyline
-// melts into the sky colour. Pure; the rig applies it per frame.
-export function fogRangeFor(framedWidthM) {
-  const w = Math.max(50, Number(framedWidthM) || 300);
-  return { near: w * 1.5, far: w * 6 };
+// Fog is distance cueing only: it starts beyond 2.5× the framed width so
+// the stop framing itself stays crisp (1.5× read milky), and ends at 6×
+// so the skyline melts into the sky colour. Pure; the rig applies it per
+// frame. Factors live in the look table (render/look.js).
+export function fogRangeFor(framedWidthM, look) {
+  return streetFogRange(framedWidthM, look);
 }

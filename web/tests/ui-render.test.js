@@ -126,7 +126,7 @@ const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m %
 describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
   let runA; let runB; let scenario; let money; let homes;
   let indexedA; let indexedB; let areaById;
-  let React; let renderToString; let App; let store;
+  let React; let renderToString; let App; let store; let AgentPanel;
 
   before(async () => {
     runA = json(P.runA);
@@ -146,6 +146,7 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     ({ renderToString } = await import("react-dom/server"));
     ({ App } = await import("../src/ui/app.jsx"));
     ({ store } = await import("../src/ui/store.js"));
+    ({ AgentPanel } = await import("../src/ui/consult.jsx"));
   });
 
   // Mirror bootSim + paintNow publishing for one clock position.
@@ -296,6 +297,46 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
       assert.ok(html.includes(DEMO_TOUR_STEPS[step].caption),
         `step ${step} caption`);
     }
+  });
+
+  it("renders the agent panel header as one row (no truncated actions)", () => {
+    store.set({ agentNudges: true });
+    const errors = [];
+    const orig = console.error;
+    console.error = (...args) => { errors.push(args.map(String).join(" ")); };
+    let html = "";
+    try {
+      html = renderToString(React.createElement(AgentPanel, {
+        scenarioName: "demo-two-homes", pending: null, onConsumed: () => {},
+        provider: "meta", setProvider: () => {}, corner: "bottom-right",
+        minimized: false, setMinimized: () => {}, onMove: () => {},
+        onClose: () => {}, height: 560, showMove: true,
+      }));
+    } finally {
+      console.error = orig;
+    }
+    assert.equal(errors.length, 0, `React errors: ${errors.join(" | ").slice(0, 1000)}`);
+    assert.ok(html.includes("물어보기"), "title");
+    assert.ok(html.includes("Muse Spark 1.3"), "model badge");
+    assert.ok(html.includes("다른 쪽으로 옮기기"), "move action label");
+    assert.ok(html.includes("작게 접기"), "minimise action label");
+    assert.ok(html.includes("닫기"), "close action label");
+    assert.ok(html.includes("설정"), "settings menu");
+    assert.ok(!html.includes("왼쪽으로"), "no truncated text buttons");
+    assert.ok(!html.includes("조건 정하기 · 결과 설명"), "no long subtitle");
+  });
+
+  it("renders the compare groups with full tab labels (no squeezed tabs)", () => {
+    const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:30"), follow: 1 });
+    patch.compareOpen = true;
+    patch.compareTab = "money";
+    const html = renderCase(patch,
+      "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:30&follow=1&tab=money");
+    for (const g of ["비교", "돈", "안심", "매물"]) {
+      assert.ok(html.includes(g), `group ${g}`);
+    }
+    assert.ok(html.includes("생활비"), "money tab label");
+    assert.ok(html.includes("살 만한가?"), "worthit tab label");
   });
 
   it("fatigue helper stays finite on the rendered clock (no NaN progress)", () => {

@@ -12,6 +12,10 @@ import * as THREE from "three";
 import { lonLatToXY } from "./frame.js";
 
 export const CORRIDOR_BUILDING = [0.79, 0.76, 0.7]; // flat Bone
+// Stage 11: roof caps read lighter than the walls (× corridorRoofLift,
+// 1.12) so blocks separate from each other and the ground on the
+// regional view; the journey material darkens the whole tile on top.
+export const CORRIDOR_ROOF = [0.88, 0.85, 0.78];
 export const CORRIDOR_ROAD = [0.42, 0.44, 0.46];
 export const CORRIDOR_BOUNDARY = [0.55, 0.4, 0.3];
 export const CORRIDOR_WATER_LINE = [0.45, 0.65, 0.78];
@@ -60,7 +64,7 @@ export function tileBuildings(tile, origin) {
       const faces = THREE.ShapeUtils.triangulateShape(contour, []);
       for (const [a, i, c] of faces) {
         const p = (k) => [ring[k][0], LIFT + h, -ring[k][1]];
-        pushTri(out, p(a), p(i), p(c), CORRIDOR_BUILDING, up);
+        pushTri(out, p(a), p(i), p(c), CORRIDOR_ROOF, up);
       }
     } catch {
       // Degenerate footprint: walls already drawn, skip the cap.

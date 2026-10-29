@@ -16,6 +16,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useState } from "react";
 import { store } from "./store.js";
+import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup } from "./compare-tabs.js";
 import { ConsultPanel } from "./consult.jsx";
 import { CriteriaTab } from "./criteria.jsx";
 import { MoneyTab, QualityTab } from "./money.jsx";
@@ -553,21 +554,14 @@ function CompareTabBody({ state }) {
   );
 }
 
-const COMPARE_TABS = [
-  { value: "compare", label: "A·B 비교" },
-  { value: "priorities", label: "내 기준으로 보기" },
-  { value: "money", label: "생활비" },
-  { value: "worthit", label: "살 만한가?" },
-  { value: "quality", label: "삶의 질" },
-  { value: "safety", label: "안전·교육" },
-  { value: "jeonse", label: "전세 점검" },
-  { value: "support", label: "지원 제도" },
-  { value: "listings", label: "매물" },
-  { value: "criteria", label: "계산 기준" },
-];
-
 function CompareCard({ state }) {
   if (!state.compareOpen) return null;
+  // Two levels so every label fits: the group row (비교 · 돈 · 안심 ·
+  // 매물) then the tabs inside the active group. Switching groups jumps
+  // to the group's first tab.
+  const group = groupForTab(state.compareTab);
+  const groupItems = COMPARE_GROUPS.map((g) => ({ value: g.id, label: g.label }));
+  const tabItems = tabsInGroup(group).map((v) => ({ value: v, label: labelForTab(v) }));
   return (
     <div className="ui-compare overlay">
       <Card>
@@ -579,8 +573,10 @@ function CompareCard({ state }) {
               onClick={() => store.set({ shareOpen: true })} />
             <Button size="sm" variant="ghost" label="닫기" onClick={() => act("toggleCompare")} />
           </HStack>
+          <SegControl label="비교 묶음" value={group}
+            onChange={(g) => act("setCompareTab", tabsInGroup(g)[0])} items={groupItems} />
           <SegControl label="비교 탭" value={state.compareTab}
-            onChange={(v) => act("setCompareTab", v)} items={COMPARE_TABS} />
+            onChange={(v) => act("setCompareTab", v)} items={tabItems} />
           {state.compareTab === "compare" && <CompareTabBody state={state} />}
           {state.compareTab === "priorities" && <PrioritiesTab state={state} />}
           {state.compareTab === "money" && <MoneyTab state={state} />}
@@ -590,6 +586,7 @@ function CompareCard({ state }) {
           {state.compareTab === "jeonse" && <JeonseTab state={state} />}
           {state.compareTab === "support" && <SupportTab state={state} />}
           {state.compareTab === "listings" && <ListingsTab state={state} />}
+          {state.compareTab === "listings-public" && <ListingsTab state={state} sub="public" />}
           {state.compareTab === "criteria" && <CriteriaTab state={state} />}
         </VStack>
       </Card>

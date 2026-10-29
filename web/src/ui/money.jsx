@@ -407,7 +407,7 @@ export function QualityTab({ state }) {
         <QolHome key={label} label={label} doc={doc}
           tenure={tenureOf(state, label, doc)} active={state.home === label} />
       ))}
-      <Text type="supporting">내가 정한 비중으로 나란히 보려면 내 기준으로 보기 탭을 여세요. 종합 점수는 매기지 않아요.</Text>
+      <Text type="supporting">내가 정한 비중으로 나란히 보려면 내 기준 탭을 여세요. 종합 점수는 매기지 않아요.</Text>
     </VStack>
   );
 }

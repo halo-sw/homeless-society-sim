@@ -4,6 +4,10 @@
 
 #ui-root {
   position: absolute; inset: 0; pointer-events: none; z-index: 10;
+  /* Stage 11: Korean labels wrap at spaces, never cut mid-word; long
+     unbroken strings (URLs, pasted text) may still break anywhere. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 #ui-root .overlay { pointer-events: auto; }
 
@@ -61,17 +65,57 @@ body.sim .ui-legend { bottom: 218px; }
 .ui-agent-bottom-left { left: 12px; }
 .ui-agent-trigger { display: flex; gap: 8px; align-items: center; }
 .ui-agent-panel { display: flex; flex-direction: column; min-height: 0; padding: 12px; }
-.ui-agent-head { display: flex; gap: 8px; align-items: center; flex: none; }
+/* One clean header row: title + badge + menu + icon actions, no wrap. */
+.ui-agent-head { display: flex; gap: 6px; align-items: center; flex: none; flex-wrap: nowrap; }
+.ui-agent-head > * { flex: none; }
+.ui-agent-head .ui-panel-spacer { flex: 1 1 auto; }
 .ui-agent-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding-top: 8px; }
 .ui-agent-body > * { height: 100%; }
 .ui-agent-chips { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 8px; }
 .ui-agent-nudge { position: absolute; bottom: 92px; right: 12px; z-index: 31; max-width: min(340px, 80vw); }
 .ui-agent-bottom-left ~ .ui-agent-nudge, .ui-agent-nudge-left { right: auto; left: 12px; }
+/* Stage 11 drawer: a flex sibling of the canvas — the canvas narrows and
+   the right column shifts left with it, so nothing is under the panel.
+   (The sim boot observes #scene-wrap and refits the renderer.) */
+body.agent-drawer-open #panel-root {
+  display: block; flex: none; width: 404px; height: 100%; overflow: auto;
+  background: rgba(255, 253, 248, 0.97);
+  border-left: 1px solid var(--border, #d8d2c4);
+}
+.ui-agent-drawer { height: 100%; padding: 4px; }
+.ui-agent-drawer .ui-agent-panel { height: 100%; }
+/* Stage 11 bottom sheet (narrow viewports): the sim bar and tour bar ride
+   above it and the cards cap their height, so the right card scrolls
+   above the sheet instead of under it. */
+.ui-agent-sheet {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 29;
+  max-height: min(420px, 46vh); overflow: auto;
+  background: rgba(255, 253, 248, 0.97); border: 1px solid var(--border, #d8d2c4);
+  border-radius: 12px;
+}
+body.agent-sheet-open .ui-compare {
+  max-height: calc(100vh - 76px - min(420px, 46vh) - 24px);
+}
+body.agent-sheet-open .ui-simleft {
+  max-height: calc(100vh - 76px - min(420px, 46vh) - 12px);
+}
+body.agent-sheet-open .ui-simbar { bottom: calc(min(420px, 46vh) + 24px); }
+body.agent-sheet-open .ui-tour { bottom: calc(min(420px, 46vh) + 24px); }
 .ui-consult-meta { display: flex; justify-content: space-between; align-items: center; }
 .ui-listing-paste { width: 100%; box-sizing: border-box; font: inherit; padding: 8px;
   border: 1px solid var(--border, #d8d2c4); border-radius: 8px; background: #fffdf8; }
 /* Share dialog + print page. */
 .ui-share-scroll { max-height: 50dvh; overflow: auto; }
+/* A·B comparison rows: label + sources | A | B. */
+.ui-share-rows { display: flex; flex-direction: column; }
+.ui-share-row {
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px;
+  padding: 6px 0; border-top: 1px solid rgba(61, 50, 39, 0.12);
+  align-items: start;
+}
+.ui-share-row > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ui-share-head { border-top: none; padding-bottom: 2px; }
+.ui-share-head > span { font-weight: 700; }
 .ui-share-canvas { position: absolute; left: -9999px; top: 0; }
 #share-print { display: none; }
 body.printing-share #app { display: none !important; }

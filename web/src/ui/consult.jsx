@@ -19,22 +19,23 @@ import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { Markdown } from "@astryxdesign/core/Markdown";
+import { MoreMenu } from "@astryxdesign/core/MoreMenu";
 import { Popover } from "@astryxdesign/core/Popover";
-import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { Toast } from "@astryxdesign/core/Toast";
-import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import {
   ChatLayout, ChatMessageList, ChatMessage, ChatMessageBubble,
   ChatComposer, ChatToolCalls, ChatSystemMessage,
 } from "@astryxdesign/core/Chat";
-import { store, selectAgentNudge, selectAgentNudges, selectCompareTab,
-  selectConsultOpen, selectScenarioName } from "./store.js";
+import { store, selectAgentNudge, selectAgentNudges, selectCompareOpen,
+  selectCompareTab, selectConsultOpen, selectScenarioName } from "./store.js";
 import { recordedReplyFor } from "./demotour.js";
 import { postConsult, loadScenario, loadDemoTranscript, formatUsage } from "./consult-client.js";
 import { agentContext, chipsFor, citationsFor, nextAgentCorner,
-  nudgeAllowed, nudgeFor, placeAgentPanel, toolActionKo,
+  nudgeAllowed, nudgeFor, placeAgentPanel, saveAgentOpen, toolActionKo,
   viewSystemLine, AGENT_PANEL_W, AGENT_PANEL_H } from "./agent-float.js";
 
 const IS_DEV = import.meta.env.DEV;
@@ -150,19 +151,16 @@ function mergeMoneyResults(messages) {
   }
 }
 
-function LiveChat({ scenarioName, pending, onConsumed }) {
+function LiveChat({ scenarioName, pending, onConsumed, provider }) {
   const [history, setHistory] = useState([{ role: "assistant", content: GREETING }]);
   const [toolRows, setToolRows] = useState({});
   const [scenario, setScenario] = useState(null);
-  const [provider, setProvider] = useState("meta");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [usage, setUsage] = useState({ prompt_tokens: 0, completion_tokens: 0, est_usd: 0 });
   const busyRef = useRef(false);
   const compareTab = useSyncExternalStore(store.subscribe,
     () => selectCompareTab(store.getState()), () => selectCompareTab(store.getState()));
-  const nudgesOn = useSyncExternalStore(store.subscribe,
-    () => selectAgentNudges(store.getState()), () => selectAgentNudges(store.getState()));
 
   useEffect(() => {
     let cancelled = false;
@@ -261,15 +259,6 @@ function LiveChat({ scenarioName, pending, onConsumed }) {
 
   return (
     <VStack gap={2}>
-      <HStack gap={2} vAlign="center">
-        <SegmentedControl label="상담 제공자" value={provider} onChange={setProvider} size="sm">
-          <SegmentedControlItem value="meta" label="Spark 1.3" />
-          <SegmentedControlItem value="baseten" label="Spark Open" />
-        </SegmentedControl>
-        <Badge variant="blue" label={PROVIDER_BADGE[provider]} />
-        <ToggleButton size="sm" label="알림" isPressed={nudgesOn}
-          onPressedChange={(v) => store.set({ agentNudges: v })} />
-      </HStack>
       <div className="ui-consult-meta">
         <Text type="supporting">대화는 이 브라우저에만 저장됩니다</Text>
         <Text type="supporting" hasTabularNumbers>{formatUsage(usage)}</Text>
@@ -322,7 +311,7 @@ function DemoTranscript() {
   if ((!doc || !Array.isArray(doc.messages) || doc.messages.length === 0) && !recorded) {
     return (
       <EmptyState isCompact title="아직 데모 대화가 없습니다"
-        description="로컬 개발 서버에서 Muse 키로 상담을 실행하면 여기에 기록이 표시됩니다." />
+        description="상담 · 조건 정하기 · 결과 설명 · 다시 실행 — 로컬 개발 서버에서 Muse 키로 상담을 실행하면 여기에 기록이 표시됩니다." />
     );
   }
   const messages = [
@@ -405,19 +394,90 @@ function AgentNudge({ corner, onAsk }) {
   );
 }
 
+// Obstacle rects measured from the real DOM: the right column card, the
+// Now card / left column, the sim bar, the tour bar and the intro card.
+// Note: these are CSS px in the scene-wrap frame; the canvas narrows
+// with the drawer, so drawer mode needs no rects.
+const AVOID_SELECTORS = [".ui-compare", ".ui-simleft", ".ui-simbar", ".ui-tour", ".ui-intro"];
+
 function measureAvoid() {
   if (typeof document === "undefined" || typeof window === "undefined") return [];
   const rects = [];
-  const now = document.querySelector(".ui-simleft");
-  if (now) {
-    const r = now.getBoundingClientRect();
+  for (const sel of AVOID_SELECTORS) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) rects.push({ x: r.x, y: r.y, w: r.width, h: r.height });
   }
   // The followed resident stays near the frame centre: keep a generous
-  // central box clear (approximation, documented).
-  rects.push({ x: window.innerWidth * 0.36, y: window.innerHeight * 0.28,
-    w: window.innerWidth * 0.28, h: window.innerHeight * 0.44 });
+  // central box clear (approximation, documented). Free camera: no box.
+  try {
+    if (store.getState().follow > 0) {
+      rects.push({ x: window.innerWidth * 0.36, y: window.innerHeight * 0.28,
+        w: window.innerWidth * 0.28, h: window.innerHeight * 0.44 });
+    }
+  } catch { /* store unreadable (tests): skip the box */ }
   return rects;
+}
+
+// One clean header row: title + model badge, a 설정 menu (provider +
+// nudge setting live there now, not in a second row), and icon-only
+// actions with labels + tooltips. `height` constrains the panel per
+// placement mode (float: fixed, drawer: full, sheet: auto inside the
+// sheet wrapper); `showMove` only in float mode.
+export function AgentPanel({ scenarioName, pending, onConsumed, provider, setProvider,
+    corner, minimized, setMinimized, onMove, onClose, height, showMove }) {
+  const nudgesOn = useSyncExternalStore(store.subscribe,
+    () => selectAgentNudges(store.getState()), () => selectAgentNudges(store.getState()));
+  const settingsItems = [
+    ...(IS_DEV ? [
+      { id: "provider-meta",
+        label: `${provider === "meta" ? "✓ " : ""}Spark 1.3 (Muse Spark 1.3)`,
+        onClick: () => setProvider("meta") },
+      { id: "provider-baseten",
+        label: `${provider === "baseten" ? "✓ " : ""}Spark Open (Muse Spark Open)`,
+        onClick: () => setProvider("baseten") },
+      { type: "divider" },
+    ] : []),
+    { id: "nudges", label: `알림 ${nudgesOn ? "끄기" : "켜기"}`,
+      onClick: () => store.set({ agentNudges: !nudgesOn }) },
+  ];
+  return (
+    <div className="ui-agent-panel"
+      style={minimized || height === undefined ? undefined : { height }}>
+      <div className="ui-agent-head">
+        <Heading level={4}>물어보기</Heading>
+        <Badge variant="blue" label={PROVIDER_BADGE[provider] || PROVIDER_BADGE.meta} />
+        <span className="ui-panel-spacer" />
+        <MoreMenu label="설정" variant="ghost" size="sm" items={settingsItems} />
+        {showMove && (
+          <IconButton size="sm" variant="ghost" label="다른 쪽으로 옮기기"
+            tooltip="다른 쪽으로 옮기기"
+            icon={<Icon icon={corner === "bottom-right" ? "chevronsLeft" : "chevronsRight"} />}
+            onClick={onMove} />
+        )}
+        <IconButton size="sm" variant="ghost" label={minimized ? "펼치기" : "작게 접기"}
+          tooltip={minimized ? "펼치기" : "작게 접기"}
+          icon={<Icon icon={minimized ? "arrowUp" : "chevronDown"} />}
+          onClick={() => setMinimized(!minimized)} />
+        <IconButton size="sm" variant="ghost" label="닫기" tooltip="닫기"
+          icon={<Icon icon="close" />} onClick={onClose} />
+      </div>
+      {!minimized && (
+        <div className="ui-agent-body">
+          {IS_DEV ? (
+            <LiveChat scenarioName={scenarioName} pending={pending}
+              onConsumed={onConsumed} provider={provider} />
+          ) : (
+            <VStack gap={2}>
+              <Banner status="info" title="상담은 로컬 개발 서버에서 Muse 키로 동작합니다" />
+              <DemoTranscript />
+            </VStack>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ConsultPanel() {
@@ -425,21 +485,101 @@ export function ConsultPanel() {
     () => selectConsultOpen(store.getState()), () => selectConsultOpen(store.getState()));
   const scenarioName = useSyncExternalStore(store.subscribe,
     () => selectScenarioName(store.getState()), () => selectScenarioName(store.getState()));
+  const compareTab = useSyncExternalStore(store.subscribe,
+    () => selectCompareTab(store.getState()), () => selectCompareTab(store.getState()));
+  const compareOpen = useSyncExternalStore(store.subscribe,
+    () => selectCompareOpen(store.getState()), () => selectCompareOpen(store.getState()));
   const [pending, setPending] = useState(null);
   const [minimized, setMinimized] = useState(false);
   const [corner, setCorner] = useState("bottom-right");
+  const [provider, setProvider] = useState("meta");
+  const [mode, setMode] = useState("float");
+  const preferRef = useRef(null);
+  const openRef = useRef(consultOpen);
+  openRef.current = consultOpen;
+  // The drawer docks as a flex sibling of the canvas (sim layout); tour
+  // mode has no compare card and always floats. Mode never changes
+  // without a reload, so one read is enough.
+  const [simMode] = useState(() => {
+    try {
+      return store.getState().mode !== "tour";
+    } catch {
+      return true;
+    }
+  });
+
+  const remeasure = () => {
+    if (typeof window === "undefined") return;
+    const placed = placeAgentPanel({
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      avoid: measureAvoid(),
+      panel: { w: AGENT_PANEL_W, h: AGENT_PANEL_H },
+      prefer: preferRef.current,
+    });
+    const next = placed.mode === "drawer" && !simMode ? "float" : placed.mode;
+    setMode(next);
+    if (next === "float") setCorner(placed.corner);
+  };
+  const remeasureRef = useRef(remeasure);
+  remeasureRef.current = remeasure;
+
   const setOpen = (next) => {
     if (next && typeof window !== "undefined") {
-      const placed = placeAgentPanel({
-        viewport: { w: window.innerWidth, h: window.innerHeight },
-        avoid: measureAvoid(),
-        panel: { w: AGENT_PANEL_W, h: AGENT_PANEL_H },
-      });
-      setCorner(placed.corner);
+      remeasureRef.current();
       setMinimized(false);
     }
     store.set({ consultOpen: next });
   };
+  const setOpenRef = useRef(setOpen);
+  setOpenRef.current = setOpen;
+
+  // Remember open/closed per viewer (every path funnels through the store).
+  useEffect(() => {
+    saveAgentOpen(consultOpen);
+  }, [consultOpen]);
+
+  // Re-run placement when the obstacles change: tab change, card
+  // collapse/expand (compareOpen), and open.
+  useEffect(() => {
+    if (consultOpen) remeasureRef.current();
+  }, [consultOpen, compareTab, compareOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resize + Now-card height / card size changes (ResizeObserver).
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return undefined;
+    }
+    const onResize = () => {
+      if (openRef.current) remeasureRef.current();
+    };
+    window.addEventListener("resize", onResize);
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(onResize);
+      for (const sel of AVOID_SELECTORS) {
+        const el = document.querySelector(sel);
+        if (el) ro.observe(el);
+      }
+    }
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (ro) ro.disconnect();
+    };
+  }, []);
+
+  // Drawer/sheet layout flags for the canvas + cards.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const cls = document.body.classList;
+    const drawer = consultOpen && mode === "drawer"
+      && !!document.getElementById("panel-root");
+    cls.toggle("agent-drawer-open", drawer);
+    cls.toggle("agent-sheet-open", consultOpen && mode === "sheet");
+    return () => {
+      cls.remove("agent-drawer-open");
+      cls.remove("agent-sheet-open");
+    };
+  }, [consultOpen, mode]);
 
   // The money tab's "C로 추가" sends through the agent (server tools own
   // the scenario + housing lookups). Opens the panel and queues the text.
@@ -447,65 +587,68 @@ export function ConsultPanel() {
     store.registerActions({
       consultSend: (text) => {
         setPending({ text: String(text || ""), at: Date.now() });
-        setOpen(true);
+        setOpenRef.current(true);
       },
     });
   }, []);
 
   const host = typeof document === "undefined" ? null : document.getElementById("ui-root");
   if (!host) return null;
-  return createPortal(
+  const drawerHost = mode === "drawer" && typeof document !== "undefined"
+    ? document.getElementById("panel-root") : null;
+  // No drawer mount (tour boot, tests): fall back to floating.
+  const effMode = mode === "drawer" && !drawerHost ? "float" : mode;
+  const panel = (
+    <AgentPanel scenarioName={scenarioName} pending={pending}
+      onConsumed={() => setPending(null)} provider={provider} setProvider={setProvider}
+      corner={corner} minimized={minimized} setMinimized={setMinimized}
+      onMove={() => {
+        const next = nextAgentCorner(corner);
+        preferRef.current = next;
+        setCorner(next);
+        remeasureRef.current();
+      }}
+      onClose={() => setOpenRef.current(false)}
+      height={effMode === "drawer" ? "100%" : effMode === "sheet" ? undefined : AGENT_PANEL_H}
+      showMove={effMode === "float"} />
+  );
+  return (
     <>
-      <div className={`ui-agent-fab overlay ui-agent-${corner}`}>
-        <Popover placement="above" alignment={corner === "bottom-right" ? "end" : "start"}
-          width={AGENT_PANEL_W} padding={0} label="시뮬레이션 상담"
-          isOpen={consultOpen} onOpenChange={setOpen} hasLightDismiss={false}
-          content={(
-            <div className="ui-agent-panel"
-              style={minimized ? undefined : { height: AGENT_PANEL_H }}>
-              <div className="ui-agent-head">
-                <Avatar name="상담 에이전트" size="sm" tooltip={false} />
-                <VStack gap={0}>
-                  <Heading level={4}>물어보기</Heading>
-                  <Text type="supporting">조건 정하기 · 결과 설명 · 다시 실행</Text>
-                </VStack>
-                <span className="ui-panel-spacer" />
-                <Button size="sm" variant="ghost"
-                  label={corner === "bottom-right" ? "왼쪽으로" : "오른쪽으로"}
-                  onClick={() => setCorner(nextAgentCorner(corner))} />
-                <Button size="sm" variant="ghost" label={minimized ? "펴기" : "접기"}
-                  onClick={() => setMinimized(!minimized)} />
-                <Button size="sm" variant="ghost" label="닫기"
-                  onClick={() => setOpen(false)} />
-              </div>
-              {!minimized && (
-                <div className="ui-agent-body">
-                  {IS_DEV ? (
-                    <LiveChat scenarioName={scenarioName} pending={pending}
-                      onConsumed={() => setPending(null)} />
-                  ) : (
-                    <VStack gap={2}>
-                      <Banner status="info" title="상담은 로컬 개발 서버에서 Muse 키로 동작합니다" />
-                      <DemoTranscript />
-                    </VStack>
-                  )}
+      {createPortal(
+        <>
+          {(!consultOpen || effMode === "float") && (
+            <div className={`ui-agent-fab overlay ui-agent-${corner}`}>
+              <Popover placement="above" alignment={corner === "bottom-right" ? "end" : "start"}
+                width={AGENT_PANEL_W} padding={0} label="시뮬레이션 상담"
+                isOpen={consultOpen && effMode === "float"} onOpenChange={setOpen} hasLightDismiss={false}
+                content={panel}>
+                <div className="ui-agent-trigger">
+                  <Avatar name="상담 에이전트" size="md" tooltip={false}
+                    onClick={() => setOpen(!consultOpen)} />
+                  <Button size="md" label="물어보기" onClick={() => setOpen(!consultOpen)} />
                 </div>
-              )}
+              </Popover>
             </div>
-          )}>
-          <div className="ui-agent-trigger">
-            <Avatar name="상담 에이전트" size="md" tooltip={false}
-              onClick={() => setOpen(!consultOpen)} />
-            <Button size="md" label="물어보기" onClick={() => setOpen(!consultOpen)} />
-          </div>
-        </Popover>
-      </div>
-      <AgentNudge corner={corner} onAsk={(question) => {
-        setPending({ text: question, at: Date.now() });
-        setOpen(true);
-      }} />
-    </>,
-    host,
+          )}
+          {consultOpen && effMode === "sheet" && (
+            <div className="ui-agent-sheet overlay">
+              {panel}
+            </div>
+          )}
+          <AgentNudge corner={corner} onAsk={(question) => {
+            setPending({ text: question, at: Date.now() });
+            setOpen(true);
+          }} />
+        </>,
+        host,
+      )}
+      {consultOpen && effMode === "drawer" && drawerHost && createPortal(
+        <div className="ui-agent-drawer overlay">
+          {panel}
+        </div>,
+        drawerHost,
+      )}
+    </>
   );
 }
 

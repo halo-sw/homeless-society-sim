@@ -9,6 +9,15 @@ export const AGENT_PANEL_W = 380;
 export const AGENT_PANEL_H = 560;
 export const AGENT_MARGIN = 12;
 export const AGENT_CORNERS = ["bottom-right", "bottom-left"];
+// Stage 11: the panel never covers a card. Narrow viewports (< 1100 px)
+// fall back to a bottom sheet; wide viewports with both bottom corners
+// busy dock the panel as a right-side drawer (a flex sibling of the
+// canvas, so the canvas narrows and the right column shifts left with
+// it — nothing ends up under the panel).
+export const AGENT_NARROW_W = 1100;
+export const AGENT_DRAWER_W = 404;
+export const AGENT_SHEET_H_MAX = 420;
+export const AGENT_SHEET_H_FRAC = 0.46;
 
 // rect: {x, y, w, h} in CSS px, origin top-left.
 function overlapArea(a, b) {
@@ -27,16 +36,26 @@ function panelRectAt(viewport, corner, panel = {}) {
   return { x, y, w, h };
 }
 
-// Choose the bottom corner whose panel rect overlaps the avoid rects
-// (followed resident, Now card) least. Ties prefer bottom-right.
-// Returns {corner, x, y, w, h} (panel top-left + size).
-export function placeAgentPanel({ viewport, avoid = [], panel = {}, prefer = null } = {}) {
+// Choose where the panel goes given the viewport and the obstacle rects
+// (right column card, Now card / left column, sim bar, tour bar, followed
+// resident — measured from the DOM by the caller):
+// (a) the bottom corner with zero overlap when one is free ("float"),
+// (b) else a right-side drawer on wide viewports ("drawer": the caller
+// docks the panel as a flex sibling of the canvas and the canvas narrows
+// by shiftLeft, so nothing is under it),
+// (c) else a bottom sheet on narrow viewports ("sheet": the caller lifts
+// the sim bar and tour bar above it and caps the cards' height).
+// Ties prefer bottom-right, then the caller's `prefer` corner.
+// Returns {mode, corner, x, y, w, h, overlap, shiftLeft}.
+export function placeAgentPanel({ viewport, avoid = [], panel = {},
+    prefer = null, drawerW = AGENT_DRAWER_W } = {}) {
   const w = Math.max(1, (viewport && viewport.w) || 1280);
   const h = Math.max(1, (viewport && viewport.h) || 800);
   const v = { w, h };
+  const rects = (avoid || []).filter((r) => r && r.w > 0 && r.h > 0);
   const scores = AGENT_CORNERS.map((corner) => {
     const rect = panelRectAt(v, corner, panel);
-    const overlap = (avoid || []).reduce((a, r) => a + overlapArea(rect, r), 0);
+    const overlap = rects.reduce((a, r) => a + overlapArea(rect, r), 0);
     return { corner, ...rect, overlap };
   });
   scores.sort((a, b) => {
@@ -45,8 +64,24 @@ export function placeAgentPanel({ viewport, avoid = [], panel = {}, prefer = nul
     if (prefer && b.corner === prefer) return 1;
     return AGENT_CORNERS.indexOf(a.corner) - AGENT_CORNERS.indexOf(b.corner);
   });
-  const { overlap, ...best } = scores[0];
-  return { ...best, overlap };
+  const best = scores[0];
+  if (best.overlap === 0) {
+    const { overlap, ...rest } = best;
+    return { ...rest, mode: "float", overlap, shiftLeft: 0 };
+  }
+  if (w < AGENT_NARROW_W) {
+    const sheetH = Math.max(160, Math.min(panel.h || AGENT_PANEL_H,
+      AGENT_SHEET_H_MAX, Math.floor(h * AGENT_SHEET_H_FRAC),
+      h - AGENT_MARGIN * 2));
+    const rect = { x: AGENT_MARGIN,
+      y: Math.max(AGENT_MARGIN, h - sheetH - AGENT_MARGIN),
+      w: w - AGENT_MARGIN * 2, h: sheetH };
+    const overlap = rects.reduce((a, r) => a + overlapArea(rect, r), 0);
+    return { mode: "sheet", corner: prefer || best.corner, ...rect, overlap, shiftLeft: 0 };
+  }
+  const dw = Math.max(280, Math.min(drawerW || AGENT_DRAWER_W, Math.floor(w * 0.4)));
+  return { mode: "drawer", corner: prefer || "bottom-right",
+    x: w - dw, y: 0, w: dw, h, overlap: 0, shiftLeft: dw };
 }
 
 export function nextAgentCorner(corner) {
@@ -71,7 +106,41 @@ const CHIPS = {
 export const DEFAULT_CHIPS = ["이 화면 설명해 주세요", "A랑 B 뭐가 달라요?", "전세로 살면 매달 얼마예요?"];
 
 export function chipsFor(tab) {
-  return CHIPS[tab] || DEFAULT_CHIPS;
+  const key = tab === "listings-public" ? "listings" : tab;
+  return CHIPS[key] || DEFAULT_CHIPS;
+}
+
+// --- open/closed memory (per viewer, try/catch storage) ----------------------
+// Default state is closed; the boot reads the stored bit (?agent=1 forces
+// open) and every toggle persists it. Takes an injectable storage-like
+// object so Node tests pass a fake.
+
+export const AGENT_OPEN_KEY = "sim.consultOpen.v1";
+
+function defaultAgentStorage() {
+  try {
+    return typeof globalThis !== "undefined" ? globalThis.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+export function loadAgentOpen(storage = defaultAgentStorage()) {
+  try {
+    return !!storage && storage.getItem(AGENT_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveAgentOpen(open, storage = defaultAgentStorage()) {
+  try {
+    if (!storage) return false;
+    storage.setItem(AGENT_OPEN_KEY, open ? "1" : "0");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- context payload ----------------------------------------------------------
@@ -80,7 +149,7 @@ export const TAB_KO = {
   compare: "A·B 비교", priorities: "내 기준으로 보기", money: "생활비",
   worthit: "살 만한가?", quality: "삶의 질", safety: "안전·교육",
   jeonse: "전세 점검", support: "지원 제도", criteria: "계산 기준",
-  listings: "매물",
+  listings: "매물", "listings-public": "공공 공고",
 };
 
 const hhmm = (m) => {

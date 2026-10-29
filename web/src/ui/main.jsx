@@ -17,14 +17,11 @@ import { App } from "./app.jsx";
 
 let mounted = false;
 
+// Stage 11: the agent panel stays closed until the customer opens it
+// (the old first-visit auto-open covered the cards on every fresh
+// profile). Open/closed persists per viewer via the boot (agent-float.js).
 function FirstVisit() {
   useEffect(() => {
-    try {
-      if (!localStorage.getItem("consult-seen")) {
-        localStorage.setItem("consult-seen", "1");
-        store.set({ consultOpen: true });
-      }
-    } catch { /* private mode: stay closed */ }
     const timer = setInterval(() => {
       if (store.getState().viewChip) store.set({ viewChip: "" });
     }, 8000);
