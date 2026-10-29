@@ -187,3 +187,42 @@ Captures: `briefs/img/13e4-chat.png`, `briefs/img/13e4-sim.png` (1440×900).
   `aria-label`s and code comparisons untouched.
 - Tests: `stage-13e4.test.js` title block —
   `criterionTitle("C-commute-depart")` is "출근·등교 출발 시각" (2).
+
+# Stage 13e5 — RESULT (orb pivot, sim scene clear of the drawer)
+
+Full suite: `cd web && npm test` → **849 pass / 0 fail** (`vite build` ✓).
+
+## 1. Orb pivots on its centre — `13e5: orb pivots on its centre`
+- Diagnosis: `root.rotation.y` spun about the world origin while the
+  shapes sit at `view.center`, so the idle drift swung the map into
+  the top-right corner. `fitOrbView` untouched.
+- `web/src/ui/orb.jsx`: `root` now sits at `centerV` with an `inner`
+  group offset by `-centerV` (all meshes/edges/dots parented to
+  `inner`); re-fit on resize moves both. Drift is a ±6° sway about
+  the drag angle (`sin(t·0.35)·6°`, ~18 s), never a spin; reduced
+  motion starts `idle=false` so no drift. Labels still track
+  `getWorldPosition` — the same transform.
+- `web/src/orb.js`: new `ORB_DRIFT_DEG` (6) and pure
+  `rotatedOrbBounds(shapes, deg, aspect, fov)` (corners rotated about
+  the fitted pivot, three.js `rotation.y` convention).
+- Tests: `web/tests/stage-13e5.test.js` orb block — ±6° keeps the
+  projected box centred ±5 % for the 2-slab and 9-slab samples at
+  1000×811 (5).
+
+## 2. Sim scene clear of the drawer — `13e5: sim scene clear of the drawer`
+- Finding: no WebGL sprite label path exists — `render/` + `main.js`
+  have no `Sprite` for labels (`CanvasTexture` is lamp halos and
+  facades only); work/home labels are DOM `#tags` (`.hhtag`/`.hopin`
+  via `paintTag`, hidden over drawer/top bar since 13e4). The peek
+  at x≈1058–1092, y≈55–68 is covered two ways:
+- (a) `web/src/stage-tags.js`: new pure `simViewOffset(canvasW,
+  overlap)` — `setViewOffset(fullW, h, overlap/2, 0, fullW, h)`
+  slides content left so the orbit target lands on the stage centre.
+  `web/src/main.js`: `trackSimViewOffset(camera)` in the sim loop
+  (same drawer probe as `paintTag`, cached; clears when overlap
+  is 0). DOM tags project through the same camera, staying aligned.
+- (b) `web/src/ui/ui.css`: `.ui-sim13-top` gets the drawer's
+  background (`rgba(255,253,248,0.98)`, flush grid, hairline
+  border) so no canvas pixels show between top bar and drawer.
+- Tests: `stage-13e5.test.js` view-offset block — 1440 + 380 px
+  drawer → x=190, stage 1060, centre 530; zero/clamp cases (3).
