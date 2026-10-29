@@ -1,10 +1,12 @@
 // Station-ride journeys: path, ride-minutes split, congestion, fatigue (pure).
 //
-// A station ride keeps the customer's ride_minutes total (C-ride-minutes)
-// and, when the scenario names a destination station and the region network
-// is loaded, draws the real path on the OSM station graph (C-journey-path:
-// shortest line km + transfer penalty), splits the total across legs in
-// proportion to line distance after per-transfer walk/wait (C-ride-split),
+// A station ride keeps the ride_minutes total — the customer's number
+// when given, else the operator-schedule derived number (C-ride-minutes)
+// — and, when the scenario names a destination station and the region
+// network is loaded, draws the real path on the OSM station graph
+// (C-journey-path: shortest line km + transfer penalty), splits the
+// total across legs in proportion to line distance after per-transfer
+// walk/wait (C-ride-split),
 // looks up the boarding-station congestion for the ride's 30-minute slot
 // (C-congestion), and accrues the stated fatigue model (C-fatigue-load /
 // C-fatigue-recovery: 가정 모델이며 건강·의학적 판단이 아닙니다).
@@ -132,9 +134,12 @@ export function findPath(network, fromName, toName, penaltyKm) {
   let totalKm = 0;
   const outLegs = legs.map((leg) => {
     let km = 0;
+    const edgeKm = [];
     for (let i = 0; i + 1 < leg.length; i++) {
       const hit = adj.get(leg[i]).find(([v, , via]) => v === leg[i + 1] && via !== "transfer");
-      if (hit) km += hit[1];
+      const w = hit ? hit[1] : 0;
+      edgeKm.push(Math.round(w * 1000) / 1000);
+      km += w;
     }
     totalKm += km;
     return {
@@ -143,6 +148,7 @@ export function findPath(network, fromName, toName, penaltyKm) {
       stops: leg.map((id) => stops.get(id).name),
       stopIds: [...leg],
       distanceKm: Math.round(km * 1000) / 1000,
+      edgeKm,
     };
   });
   return { from: fromName, to: toName, legs: outLegs,
@@ -317,6 +323,7 @@ export function splitLine(rides, rideSource) {
       bits.push(`환승 ${rides.out.transfers[i] ? rides.out.transfers[i].minutes : 0}분`);
     }
   });
-  const src = rideSource === "user_input" ? "고객 입력" : "가정값";
+  const src = rideSource === "user_input" ? "고객 입력"
+    : rideSource === "derived" ? "운행시간표·추정" : "가정값";
   return `${bits.join(" · ")} — 합계는 ${src} ${rides.out.minutesTotal}분`;
 }

@@ -207,7 +207,7 @@ export async function runTurn(opts) {
     loadPayroll = null, loadRtms = null, loadHousing = null,
     loadSafety = null, loadPersona = null, loadAssumption = null,
     loadHomes = null, loadPhotos = null, loadAreasIndex = null,
-    loadStationBoxes = null,
+    loadStationBoxes = null, loadTransit = null,
     fetchImpl = null, completeFn = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
@@ -216,7 +216,7 @@ export async function runTurn(opts) {
   const session = createSession({
     scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion, loadAreaMeta,
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
-    loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes,
+    loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];

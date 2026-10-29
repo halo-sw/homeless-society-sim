@@ -13,6 +13,7 @@ import { runTurn } from "./agent.js";
 import { createRunCache } from "./tools.js";
 import { createCsvBackend } from "../money/rtms.js";
 import { normalizeSnapshot, createHousingApi, HOUSING_KEY_ENV } from "../money/housing.js";
+import { parseInterstationCsv } from "../transit/schedule.js";
 
 export const CONSULT_BODY_MAX = 1048576; // 1 MB (scenario + history)
 
@@ -182,6 +183,14 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     }
     return stationBoxesCache;
   };
+  let transitCache = null;
+  const loadTransit = async () => {
+    if (!transitCache) {
+      const text = await readFile(join(scenDir, "transit", "seoul-metro-interstation.csv"), "utf8");
+      transitCache = parseInterstationCsv(text);
+    }
+    return transitCache;
+  };
   const assumptionCache = new Map();
   const ASSUMPTION_ALLOWLIST = new Set([
     "kr-payroll.json", "kr-ownership-costs.json", "kr-jeonse-checklist.json",
@@ -235,7 +244,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         loadSafety: () => loadSafetyFs(dataDir),
         loadPersona: (id) => loadPersonaFs(scenDir, id),
         loadAssumption,
-        loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes,
+        loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
         fetchImpl,
       });
       res.setHeader("Content-Type", "application/json");

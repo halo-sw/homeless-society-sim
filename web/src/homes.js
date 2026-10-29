@@ -9,15 +9,18 @@
 //
 // Commute honesty: walk minutes come from the built-box graph when the
 // home is inside one (else "도보 미확인"); the ride path (lines,
-// transfers, km) comes from the stage-8 network; ride minutes stay the
-// customer's number (C-ride-minutes — the app cannot know transit
-// times), else "승차 미확인". Nothing is guessed, never straight-line.
+// transfers, km) comes from the stage-8 network; ride minutes are the
+// customer's number when given, else derived from the operator's
+// schedule (서울교통공사 표준 운행시간) or the 1–8-line average-speed
+// estimate, labelled per leg (C-ride-minutes). Only a missing path
+// stays "승차 미확인". Nothing is guessed, never straight-line.
 //
 // find_public_rentals(profile, snapshot, opts) applies the same
 // budget/size rules to the public-rental snapshot (stage 6/10 rules)
 // and reports per-region coverage ("이 지역 공공임대 자료 없음").
 
 import { findPath } from "./engine/journey.js";
+import { rideMinutes } from "./transit/schedule.js";
 import { photosNear, PHOTOS_DISCLAIMER } from "./places/photos.js";
 
 export const HOME_SORTS = ["commute", "monthly", "deals", "priority"];
@@ -33,6 +36,8 @@ export const SOURCE_BADGES = {
   rtms: "실거래(국토교통부 25.10–26.10)",
   graph: "도보(그래프)",
   network: "노선도(OSM)",
+  schedule: "서울교통공사 표준 운행시간",
+  estimate: "추정 · 1~8호선 평균 속도",
   photos: "주변 사진",
   public: "공공임대(LH·마이홈)",
 };
@@ -100,11 +105,14 @@ function profileValue(profile, key) {
   return f ? f.value : null;
 }
 
-function commuteSummary(home, workplace, network) {
+function commuteSummary(home, workplace, network, schedule = null) {
   const walk = home.station && Number.isFinite(home.station.walk_minutes)
     ? { minutes: home.station.walk_minutes, station: home.station.station, known: true }
     : { minutes: null, station: null, known: false };
-  let ride = { known: false, lines: [], transfers: [], distanceKm: null };
+  let ride = {
+    known: false, lines: [], transfers: [], distanceKm: null,
+    minutes: null, source: null, note: null,
+  };
   const dest = workplace && workplace.resolved && workplace.resolved.station;
   if (walk.station && dest && network) {
     const path = findPath(network, walk.station, dest, 2.0);
@@ -114,12 +122,29 @@ function commuteSummary(home, workplace, network) {
         lines: (path.legs || []).map((l) => l.lineName || l.line),
         transfers: path.transfers || [],
         distanceKm: path.distanceKm,
+        minutes: null, source: null, note: null,
       };
+      if (schedule) {
+        const derived = rideMinutes(walk.station, dest, path, schedule);
+        if (derived) {
+          ride = {
+            ...ride, known: true, minutes: derived.minutes,
+            source: "derived", note: derived.note, derived,
+          };
+        }
+      }
     }
   }
+  // The customer's own number beats every derivation, with or without
+  // a path (a path only adds the lines/transfers/km description).
   const customerRide = workplace && Number.isFinite(workplace.ride_minutes)
     ? workplace.ride_minutes : null;
-  if (customerRide !== null) ride = { ...ride, known: true, minutes: customerRide };
+  if (customerRide !== null) {
+    ride = {
+      ...ride, known: true, minutes: customerRide, source: "customer",
+      note: "고객님이 알려주신 값", derived: null,
+    };
+  }
   return { walk, ride };
 }
 
@@ -136,9 +161,15 @@ export function commuteLine(summary) {
       ? ` (환승 ${summary.ride.transfers.length}회: ${summary.ride.transfers.join(", ")})` : "";
     bits.push(`${route}${xfer} · 노선 ${summary.ride.distanceKm} km`);
   }
-  bits.push(summary.ride.known
-    ? `승차 ${summary.ride.minutes}분 (고객님이 알려주신 값)`
-    : "승차 미확인 — 몇 분 걸리는지 알려주세요");
+  if (summary.ride.source === "customer") {
+    bits.push(`승차 ${summary.ride.minutes}분 (고객님이 알려주신 값)`);
+  } else if (summary.ride.source === "derived" && summary.ride.note) {
+    bits.push(`승차 약 ${summary.ride.minutes}분 (${summary.ride.note})`);
+  } else if (summary.ride.known) {
+    bits.push(`승차 ${summary.ride.minutes}분`);
+  } else {
+    bits.push("승차 미확인 — 노선도에 경로가 없어요");
+  }
   return bits.join(" · ");
 }
 
@@ -284,12 +315,17 @@ function sortResults(rows, sort, profile, boxes) {
     return commuteKey(r);
   };
   const commuteKey = (r) => {
-    // Known walk first (minutes), then fewer transfers, then shorter
-    // line km; unknown walk last. Ride minutes stay the customer's.
-    const w = r.commute.walk.known ? r.commute.walk.minutes : 1e9;
+    // Known walk first, then known ride minutes, then the shortest
+    // walk+ride total; fewer transfers and shorter line km break ties.
+    // Unknown walk sorts after known.
+    const w = r.commute.walk.known ? 0 : 1;
+    const mins = r.commute.ride.minutes;
+    const rk = Number.isFinite(mins) ? 0 : 1;
+    const total = (r.commute.walk.known ? r.commute.walk.minutes : 0)
+      + (Number.isFinite(mins) ? mins : 0);
     const t = (r.commute.ride.transfers || []).length;
     const km = r.commute.ride.distanceKm === null ? 1e9 : r.commute.ride.distanceKm;
-    return w * 1e6 + t * 1e4 + km;
+    return w * 1e12 + rk * 1e11 + total * 1e6 + t * 1e4 + km;
   };
   const rowsOut = [...rows].sort((a, b) => {
     const ka = key(a);
@@ -301,6 +337,15 @@ function sortResults(rows, sort, profile, boxes) {
     return String(a.id) < String(b.id) ? -1 : 1;
   });
   return { rows: rowsOut, sort_note: note };
+}
+
+function rideSourceBadges(ride) {
+  if (!ride || ride.source !== "derived" || !ride.derived) return [];
+  const methods = ride.derived.methodsUsed || [];
+  const out = [];
+  if (methods.includes("schedule")) out.push(SOURCE_BADGES.schedule);
+  if (methods.includes("estimate")) out.push(SOURCE_BADGES.estimate);
+  return out;
 }
 
 export function find_homes(profile, index, opts = {}) {
@@ -316,6 +361,7 @@ export function find_homes(profile, index, opts = {}) {
   const sort = opts.sort || DEFAULT_HOME_SORT;
   const limit = Math.max(1, Math.min(12, opts.limit || 6));
   const network = opts.network || null;
+  const schedule = opts.schedule || null; // parsed interstation schedule
   const boxes = opts.boxes || null; // Map boxId -> {graph, pois}
   const manifest = opts.photos || null;
 
@@ -332,7 +378,7 @@ export function find_homes(profile, index, opts = {}) {
   for (const home of homes) {
     if (regions && !regions.includes(home.region)) continue;
     if (kind && home.kind !== kind) continue;
-    const commute = commuteSummary(home, workplace, network);
+    const commute = commuteSummary(home, workplace, network, schedule);
     if (commuteMax !== null && commute.walk.known
         && commute.walk.minutes > commuteMax) continue;
     // Tenure buckets: median within budget (or no budget set).
@@ -396,6 +442,7 @@ export function find_homes(profile, index, opts = {}) {
         SOURCE_BADGES.rtms,
         ...(commute.walk.known ? [SOURCE_BADGES.graph] : []),
         ...(commute.ride.lines.length > 0 ? [SOURCE_BADGES.network] : []),
+        ...rideSourceBadges(commute.ride),
       ],
     });
   }

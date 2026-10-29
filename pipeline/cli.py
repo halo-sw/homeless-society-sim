@@ -376,7 +376,8 @@ def cmd_homes(args) -> int:
                         if args.regions else None,
                         photos_path=Path(args.photos)
                         if args.photos else None,
-                        limit=args.limit)
+                        limit=args.limit,
+                        skip_osm_names=args.skip_osm_names)
     print(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False))
     return 0
 
@@ -503,6 +504,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="commons-photos.json path (default: scenarios/places/commons-photos.json)")
     h.add_argument("--limit", type=int, default=None,
                    help="debug: stop after N RTMS rows per file")
+    h.add_argument("--skip-osm-names", action="store_true",
+                   help="debug: skip the OSM complex-name second join")
     h.set_defaults(func=cmd_homes)
 
     r = sub.add_parser("register-fill",

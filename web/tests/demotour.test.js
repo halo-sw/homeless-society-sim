@@ -8,6 +8,7 @@ import { DEMO_TOUR_STEPS, DEMO_TOUR_TOTAL_SECS, tourStepFromSearch,
   RECORDED_AGENT_REPLIES } from "../src/ui/demotour.js";
 import { extract_profile } from "../src/profile.js";
 import { find_homes } from "../src/homes.js";
+import { parseInterstationCsv } from "../src/transit/schedule.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
@@ -99,11 +100,12 @@ describe("demo tour step machine", () => {
     assert.ok(rec);
     assert.match(rec.q, /판교로 출근하는 신입/);
     assert.match(rec.a, /예시로 찾아봤어요/);
-    assert.match(rec.a, /2,917곳 중 6곳/);
-    assert.match(rec.a, /오피스텔·빌라/);
-    assert.match(rec.a, /하우징허브.*1\.69억/);
+    assert.match(rec.a, /2,934곳 중 6곳/);
+    assert.match(rec.a, /6곳 모두 판교 근처 오피스텔/);
+    assert.match(rec.a, /천사의도시Ⅱ오피스텔.*1\.85억/);
     assert.match(rec.a, /오라타워.*1\.25억/);
-    assert.match(rec.a, /승차 미확인/);
+    assert.match(rec.a, /승차 약 6\.6분/);
+    assert.match(rec.a, /대기 시간 제외/);
     assert.match(rec.a, /3D로 살아 보기 가능/);
     assert.deepEqual(rec.tools.map((t) => t.name),
       ["extract_profile", "find_homes"]);
@@ -124,13 +126,20 @@ describe("demo tour step machine", () => {
     const rec = recordedReplyFor("profile_search");
     const ex = extract_profile(rec.q, null, { stations: [...stations] });
     assert.equal(ex.ok, true);
+    const schedule = parseInterstationCsv(await readFile(join(REPO, "scenarios",
+      "transit", "seoul-metro-interstation.csv"), "utf8"));
     const r = find_homes(ex.profile, build.index,
-      { network: build.network, photos: build.photos, limit: 6 });
-    assert.equal(r.total_matching, 2917);
+      { network: build.network, schedule, photos: build.photos, limit: 6 });
+    assert.equal(r.total_matching, 2934);
     assert.deepEqual(r.candidates.map((c) => c.name), [
-      "하우징허브", "양지빌라A동(449-10)", "오라타워", "브라운스톤천호",
-      "동인 레반트 오피스텔", "(1-25)",
+      "천사의도시Ⅱ오피스텔", "오라타워", "시그마 3", "분당오벨리스크",
+      "노블리치1오피스텔", "성남 메트로칸",
     ]);
     assert.ok(r.candidates.every((c) => c.scene));
+    // Every result carries a ride number with a source (12a2 brief §1).
+    for (const c of r.candidates) {
+      assert.ok(Number.isFinite(c.commute.ride.minutes), c.name);
+      assert.ok(["customer", "derived"].includes(c.commute.ride.source), c.name);
+    }
   });
 });

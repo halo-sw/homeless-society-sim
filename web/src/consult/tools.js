@@ -276,6 +276,7 @@ export function createSession(opts) {
     loadPhotos: opts.loadPhotos || null,
     loadAreasIndex: opts.loadAreasIndex || null,
     loadStationBoxes: opts.loadStationBoxes || null,
+    loadTransit: opts.loadTransit || null,
     provider: opts.provider || "meta",
     fetchImpl: opts.fetchImpl || null,
     museRunsPrior: opts.museRunsPrior || 0,

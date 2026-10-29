@@ -1,6 +1,6 @@
 # Stage 12b — Start from a question, continue in a conversation, preview real places, read the day at a glance (brief for Muse)
 
-Agent mode, rules in `AGENTS.md`. Read `briefs/12a-RESULT.md` first (the APIs this stage builds on: `extract_profile`, `find_homes`, `find_public_rentals`, `photosNear`, `sceneThumbnail`, `scenarioFromProfile`, `areas-index.json`). Astryx references are offline:
+Agent mode, rules in `AGENTS.md`. Read `briefs/12a-RESULT.md` and `briefs/12a2-RESULT.md` first. They give the APIs this stage builds on: `extract_profile`, `find_homes`, `find_public_rentals`, `photosNear`, `sceneThumbnail`, `scenarioFromProfile`, `areas-index.json`, ride times with sources, and the per-region `data/build/homes/<region>.json` the browser should load instead of the 18 MB full index. Astryx references are offline:
 - Templates the user asked for: `docs/astryx/templates/{ai-chat-landing,ai-chat,shell-top-nav,shell-side-nav}.source.tsx` and `.skeleton.txt` (spacing annotations).
 - Layout guides: `docs/astryx/docs-layout.md` and `docs/astryx/layout/*.md` (scaffold, structure, headers-and-footers, side-panels, layout-spacing, responsive), plus `docs/astryx/docs-spacing.md` and `docs/astryx/docs-tokens.md`.
 - The user's commands, which you should run inside `web/` (the CLI works offline with `--no-install`; adapt the paths to this Vite app, TSX is fine, or port to JSX):
@@ -30,7 +30,11 @@ Sub-agents allowed (Muse only).
 4. No demo numbers appear unless the customer picked an **예시** profile, and then each one is labelled 예시.
 
 ## Part C — real-estate preview cards with real photos
-For each candidate: a photo strip (`photosNear`, up to 6, swipe/arrow, lazy, alt text from the description) with an overlay label "주변 사진 · 이 매물 사진이 아니에요" and an attribution line per photo (author, licence, link). Then our own 3D thumbnail (`sceneThumbnail`) when there is a scene, else a small map. Then name, kind, built year, area, and the real-transaction median and range for the customer's tenure with deal count and a 실거래 badge. Then commute (ride + walk, or "도보 미확인"), monthly cost in plain words (stage 10 copy), and the 전세가율 signal where available. Actions: "3D로 살아 보기" (only if scene), "전세 점검", "비교에 넣기". Use Astryx Card/ClickableCard, Badge, Token, Carousel or a simple HStack scroller, following the spacing guide (one content line per region, consistent gaps; no ad-hoc margins).
+For each candidate: a photo strip (`photosNear`, up to 6, swipe/arrow, lazy, alt text from the description) with an overlay label "주변 사진 · 이 매물 사진이 아니에요" and an attribution line per photo (author, licence, link). Then our own 3D thumbnail (`sceneThumbnail`) when there is a scene, else a small map. Then name, kind, built year, area, and the real-transaction median and range for the customer's tenure with deal count and a 실거래 badge. Then commute (ride + walk, or "도보 미확인"), monthly cost in plain words (stage 10 copy), and the 전세가율 signal where available. Show the ride source next to the number ("서울교통공사 표준 운행시간" / "추정" / "내가 말한 값"), and "위치: OSM 단지 이름 일치" when the match is the OSM name join. Actions: "3D로 살아 보기" (only if scene), "전세 점검", "비교에 넣기".
+
+Image sources are pluggable. Commons photos and our 3D thumbnail are the sources today. Leave a small `previewSources` registry with two disabled slots, `roadview` (Kakao Roadview JS SDK) and `aerial` (VWorld WMTS). Each slot turns on only when a public browser key is configured (`VITE_KAKAO_JS_KEY` / `VITE_VWORLD_KEY`, domain-restricted keys, never committed), and renders nothing otherwise. Don't add any scraping of listing portals or social media; their terms forbid it, and the project rules exclude it.
+
+Use Astryx Card/ClickableCard, Badge, Token, Carousel or a simple HStack scroller, following the spacing guide (one content line per region, consistent gaps; no ad-hoc margins).
 
 ## Part D — the day you can read at a glance (timeline)
 Today: two sliders (일차, 시간) and dots; following the route is hard.
@@ -42,6 +46,8 @@ Today: two sliders (일차, 시간) and dots; following the route is hard.
 
 ## Part E — spacing and polish
 Follow `docs/astryx/layout/layout-spacing.md`: one content line per region, gap scale from tokens only (no raw px margins in new code), consistent card padding, headers pinned per `headers-and-footers.md`, responsive rules per `responsive.md` (≥ 1440, 1280, 1100, 800). Check text never truncates mid-word (stage 11 rule) and contrast on the landing.
+
+Carried over from 11b: at night while following (e.g. 19:18), the "물어보기" entry is missing at bottom-right. With the chat replacing the floating agent, make sure the chat can always be reopened from the work area at any time of day, and add a test for it.
 
 ## Tests
 Landing → chat transition, profile card rendering of sources, candidates card sort change, "no demo numbers without 예시" (render scan), photo strip attribution present for every photo, day-strip segment building from a trip list (pure), route-steps builder (pure, the 08:50 A example), 30-day strip data, keyboard handlers, server-render smoke test of the new screens (extend `ui-render.test.js`). All existing tests green, `vite build`, no keys in bundle.

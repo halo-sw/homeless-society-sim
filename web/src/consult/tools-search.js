@@ -114,6 +114,15 @@ async function needPhotos(session) {
   }
 }
 
+async function needTransit(session) {
+  if (!session.loadTransit) return null;
+  try {
+    return await session.loadTransit();
+  } catch {
+    return null;
+  }
+}
+
 function stationNames(network) {
   const names = new Set();
   for (const line of (network && network.lines) || []) {
@@ -168,6 +177,7 @@ async function find_homes(session, args) {
   const index = await needHomes(session);
   const network = await needNetwork(session);
   const manifest = await needPhotos(session);
+  const schedule = await needTransit(session);
   const regions = args.regions ? regionsForNames(args.regions) : null;
   const kind = kindForName(args.kind);
   if (args.kind && !kind) {
@@ -177,11 +187,11 @@ async function find_homes(session, args) {
   // Two passes: prelim without box graphs, then reload with boxes so
   // must-have minutes filter honestly.
   const prelim = findHomesCore(profile, index, {
-    sort, limit: 12, regions, kind, network, boxes: null, photos: manifest,
+    sort, limit: 12, regions, kind, network, schedule, boxes: null, photos: manifest,
   });
   const boxes = await boxesForHomes(session, prelim.candidates);
   const final = findHomesCore(profile, index, {
-    sort, limit, regions, kind, network, boxes, photos: manifest,
+    sort, limit, regions, kind, network, schedule, boxes, photos: manifest,
   });
   return {
     ok: true,
@@ -245,9 +255,11 @@ async function build_scenario(session, args) {
       return fail(`cannot load scene ${h.scene}: ${String((err && err.message) || err).slice(0, 200)}`);
     }
   }
+  const network = await needNetwork(session);
+  const schedule = await needTransit(session);
   let scenario;
   try {
-    scenario = scenarioFromProfile(profile, homes, { areas });
+    scenario = scenarioFromProfile(profile, homes, { areas, network, schedule });
   } catch (err) {
     return fail(String((err && err.message) || err).slice(0, 300));
   }
@@ -275,7 +287,7 @@ export const SEARCH_TOOL_DEFS = [
           description: "Current profile to extend (omit for a fresh one)." },
       }, required: ["text"] } } },
   { type: "function", function: { name: "find_homes",
-    description: "Candidate homes from real transactions for the profile: tenure+budget medians, size, commute (graph walk where known, network path; unknown walk/ride are labelled, never guessed), must-haves inside built boxes. Sorting is the customer's choice (default 출퇴근 짧은 순, shown). No score, no ranking. Each result carries numbers, source badges, scene (box id or null) and up to 6 nearby photos.",
+    description: "Candidate homes from real transactions for the profile: tenure+budget medians, size, commute (graph walk where known; ride minutes are the customer's number when given, else the operator schedule / 1–8-line average estimate with source labels; unknown walk/ride are labelled, never guessed), must-haves inside built boxes. Sorting is the customer's choice (default 출퇴근 짧은 순, shown). No score, no ranking. Each result carries numbers, source badges, scene (box id or null) and up to 6 nearby photos.",
     parameters: { type: "object", additionalProperties: false,
       properties: {
         profile: { type: "object", additionalProperties: true },

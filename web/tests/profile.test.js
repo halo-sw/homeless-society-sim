@@ -6,6 +6,7 @@ import {
   parseKoreanMoney, scenarioFromProfile, complexNameForHome,
   EXAMPLE_PROFILE_LABEL,
 } from "../src/profile.js";
+import { parseInterstationCsv } from "../src/transit/schedule.js";
 
 const STATIONS = ["판교", "정자", "미금", "서현", "수내", "강남", "잠실", "모란"];
 
@@ -165,5 +166,61 @@ describe("example profile", () => {
   it("engine defaults are labelled constants only", () => {
     assert.equal(ENGINE_DEFAULTS.walk_mps.value, 1.3);
     assert.match(ENGINE_DEFAULTS.walk_mps.note, /엔진 기본값/);
+  });
+});
+
+describe("scenarioFromProfile ride minutes (12a2)", () => {
+  const LINE2 = { lines: [{ id: "line2", name: "2호선",
+    stops: [
+      { id: "a", key: "A", name: "A" },
+      { id: "b", key: "B", name: "B" },
+      { id: "c", key: "C", name: "C" },
+    ],
+    patterns: [{ id: "p", stops: ["a", "b", "c"], chainage_km: [0, 1.0, 1.8] }],
+  }] };
+  const SCHEDULE = parseInterstationCsv([
+    "연번,호선,역명,소요시간,역간거리(km),호선별누계(km)",
+    "1,2,A,00:00,0,0",
+    "2,2,B,02:00,1.0,1.0",
+    "3,2,C,01:30,0.8,1.8",
+  ].join("\n"));
+  const profile = (rideMinutes) => {
+    const p = emptyProfile();
+    p.members = field([{ role: "adult" }], "customer", "");
+    const wp = { member: 0, text: "C", resolved: { station: "C" } };
+    if (rideMinutes !== undefined) wp.ride_minutes = rideMinutes;
+    p.workplaces = field([wp], "customer", "");
+    return p;
+  };
+  const home = (id, station) => ({
+    id, name: `집${id}`, pnu: `pnu${id}`, scene: `st-${id}`, station: { station, walk_minutes: 5 },
+  });
+
+  it("fills schedule-derived minutes and records the derived source", () => {
+    const s = scenarioFromProfile(profile(), [home("h1", "A"), home("h2", "B")],
+      { network: LINE2, schedule: SCHEDULE });
+    const work = s.household.members[0].work;
+    assert.deepEqual(work.ride_minutes, { A: 3.5, B: 1.5 });
+    assert.equal(work.ride_minutes_source, "derived");
+    assert.equal(work.needs_user_input, false);
+    assert.equal(work.destination_station, "C");
+  });
+
+  it("lets the customer's number fill every home", () => {
+    const s = scenarioFromProfile(profile(25), [home("h1", "A"), home("h2", "B")],
+      { network: LINE2, schedule: SCHEDULE });
+    const work = s.household.members[0].work;
+    assert.deepEqual(work.ride_minutes, { A: 25, B: 25 });
+    assert.equal(work.ride_minutes_source, "user_input");
+    assert.equal(work.needs_user_input, false);
+  });
+
+  it("keeps needs_user_input for homes without a path", () => {
+    const s = scenarioFromProfile(profile(), [home("h1", "A"), home("h2", "ZZZ")],
+      { network: LINE2, schedule: SCHEDULE });
+    const work = s.household.members[0].work;
+    assert.deepEqual(work.ride_minutes, { A: 3.5 });
+    assert.equal(work.ride_minutes_source, "derived");
+    assert.equal(work.needs_user_input, true);
   });
 });

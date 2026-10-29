@@ -19,7 +19,9 @@ from pipeline.network import (
     _chain_ways,
     _chainage_km,
     _direction_for,
+    _line_of_relation,
     _mirror_pattern,
+    _with_branch_patterns,
     build_network,
     ensure_prefilter,
     haversine_m,
@@ -182,6 +184,63 @@ def test_build_network_on_fixture(tmp_path):
     assert pat["direction"] == "toward"
     assert pat["distance_km"] > 0
     assert len(pat["geometry"]) >= 2
+
+
+def test_line_of_relation_new_lines_and_exclusions():
+    def spec_of(name):
+        spec = _line_of_relation({"type": "route", "route": "subway",
+                                  "name": name})
+        return spec["id"] if spec else None
+
+    assert spec_of("수도권 전철 3호선: 대화 → 오금") == "line3"
+    assert spec_of("서울 지하철 5호선: 방화 → 마천") == "line5"
+    assert spec_of("서울 지하철 7호선: 장암 → 석남") == "line7"
+    assert spec_of("수도권 전철 경강선: 판교 → 여주") == "gyeonggang"
+    # 신분당선 wins over 분당선 (it contains it); other cities excluded.
+    assert spec_of("신분당선: 신사 → 광교") == "sinbundang"
+    assert spec_of("부산 도시철도 3호선 (대저방향)") is None
+    assert spec_of("서울 지하철 2호선 성수지선: 신설동 → 성수") == "line2"
+
+
+def test_with_branch_patterns_keeps_only_station_adding():
+    def pat(rid, stops):
+        return {"rel_id": rid, "name": f"r{rid}",
+                "stops": [{"name": s} for s in stops]}
+
+    main = pat(1, ["방화", "강동", "상일동", "하남검단산"])
+    rev = pat(2, ["하남검단산", "상일동", "강동", "방화"])
+    branch = pat(3, ["마천", "강동", "상일동", "방화"])
+    shuttle = pat(4, ["마천", "강동"])
+    out = _with_branch_patterns([main, rev], [main, rev, branch, shuttle])
+    assert [p["rel_id"] for p in out] == [1, 2, 3]
+
+
+@needs_raw
+def test_real_pbf_new_lines_and_briefed_transfers():
+    rel_file, mem_file = ensure_prefilter(RAW_PBF, CACHE_DIR,
+                                          osmium_bin="osmium")
+    network = build_network(rel_file, mem_file, None)
+    by_id = {line["id"]: line for line in network["lines"]}
+    assert {"line3", "line5", "line7", "gyeonggang"} <= set(by_id)
+    names = {lid: [s["name"] for s in line["stops"]]
+             for lid, line in by_id.items()}
+    # Both line-5 branches; the 하남 extension; 경강선 from 판교.
+    for want in ("마천", "둔촌동", "강일", "하남검단산", "천호", "고덕"):
+        assert want in names["line5"], want
+    for want in ("대치", "도곡", "수서", "가락시장", "오금"):
+        assert want in names["line3"], want
+    for want in ("청담", "강남구청", "건대입구"):
+        assert want in names["line7"], want
+    assert names["gyeonggang"][0] == "경기광주"  # sorted stop list
+    assert "판교" in names["gyeonggang"]
+    got = {t["station"]: set(t["lines"]) for t in network["transfers"]}
+    assert got["천호"] >= {"line5", "line8"}
+    assert got["가락시장"] >= {"line3", "line8"}
+    assert got["수서"] >= {"bundang", "line3"}
+    assert got["건대입구"] >= {"line2", "line7"}
+    assert got["강남구청"] >= {"bundang", "line7"}
+    assert got["판교"] >= {"gyeonggang", "sinbundang"}
+    assert got["잠실"] >= {"line2", "line8"}
 
 
 @needs_raw

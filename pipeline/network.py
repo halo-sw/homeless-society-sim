@@ -10,11 +10,13 @@ transfers. The life engine routes station rides on this graph
 Line model: OSM carries one relation per directed service pattern
 (``서울 지하철 2호선: 내선순환``, ``수인·분당선: 왕십리 → 고색``,
 ``신분당선: 신사 → 광교``, …). 급행 (express) patterns are skipped: the
-local stop order covers every station and the ride-minutes total stays the
-customer's number. Per line the two longest opposite local patterns become
-the canonical directions; every other local pattern is kept for geometry
-only when it adds stations (it never does for the five lines today, so the
-output keeps exactly the canonical pair — deterministic, no silent extras).
+local stop order covers every station; the ride-minutes total is the
+customer's number when given, else the operator-schedule derivation
+(web/src/transit/schedule.js). Per line the two longest opposite local
+patterns become the canonical directions; every other local pattern is
+kept only when it adds stations the pair misses (5호선's 마천 branch:
+the 마천↔방화 pair joins the 하남검단산 canonical pair). Patterns that
+add no station are dropped — deterministic, no silent extras.
 
 Direction labels (for the congestion lookup):
   * 2호선: ``내선`` / ``외선`` from the relation name (내선순환/외선순환).
@@ -47,15 +49,25 @@ DEFAULT_BUILD_DIR = REPO_ROOT / "data" / "build"
 REGION_DIR = "region"
 NETWORK_FILE = "network.json"
 
-# Lines the stage-8 journey view needs. "match" substrings hit the OSM
-# relation name; 신분당선 is matched before 분당선 (it contains it).
+# Lines the journey view needs (stage 8: five; 12a2 adds 3/5/7/경강선).
+# "match" substrings hit the OSM relation name; match order is explicit
+# below because 신분당선 contains 분당선.
 LINE_SPECS = (
     {"id": "line2", "name": "2호선", "match": ("서울 지하철 2호선", "수도권 전철 2호선"), "circle": True},
+    {"id": "line3", "name": "3호선", "match": ("서울 지하철 3호선", "수도권 전철 3호선"), "circle": False},
+    {"id": "line5", "name": "5호선", "match": ("서울 지하철 5호선", "수도권 전철 5호선"), "circle": False},
+    {"id": "line7", "name": "7호선", "match": ("서울 지하철 7호선", "수도권 전철 7호선"), "circle": False},
     {"id": "line8", "name": "8호선", "match": ("서울 지하철 8호선", "수도권 전철 8호선"), "circle": False},
     {"id": "line9", "name": "9호선", "match": ("서울 지하철 9호선", "수도권 전철 9호선"), "circle": False},
     {"id": "sinbundang", "name": "신분당선", "match": ("신분당선",), "circle": False},
     {"id": "bundang", "name": "수인·분당선", "match": ("수인·분당선", "수인분당선", "분당선"), "circle": False},
+    {"id": "gyeonggang", "name": "경강선", "match": ("경강선",), "circle": False},
 )
+
+# Match precedence over LINE_SPECS (신분당선 before 분당선, which it
+# contains; the rest are mutually exclusive).
+MATCH_ORDER = ("sinbundang", "bundang", "line2", "line3", "line5",
+               "line7", "line8", "line9", "gyeonggang")
 
 ROUTE_VALUES = {"subway", "train", "light_rail"}
 STOP_ROLES = {"stop", "stop_exit_only", "stop_entry_only", "platform",
@@ -96,7 +108,9 @@ def _line_of_relation(tags: dict) -> dict | None:
     if any(w in name for w in NON_METRO_WORDS):
         return None
     # Order matters: 신분당선 contains 분당선.
-    for spec in (LINE_SPECS[3], LINE_SPECS[4], LINE_SPECS[0], LINE_SPECS[1], LINE_SPECS[2]):
+    by_id = {spec["id"]: spec for spec in LINE_SPECS}
+    for line_id in MATCH_ORDER:
+        spec = by_id[line_id]
         if any(k in name for k in spec["match"]):
             return spec
     return None
@@ -193,7 +207,8 @@ def ensure_prefilter(raw_pbf: Path, cache_dir: Path,
         for i in sorted(way_ids):
             fh.write(f"w{i}\n")
     cmd = [osmium_bin, "getid", str(raw_pbf), "-i", str(id_file),
-           "-o", str(mem_file), "--no-progress", "--overwrite"]
+           "-o", str(mem_file), "--no-progress", "--overwrite",
+           "-r"]  # referenced way nodes: without them ways have no geometry
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"osmium getid failed: {proc.stderr.strip()}")
@@ -450,8 +465,12 @@ def build_network(rel_file: Path, mem_file: Path,
             continue
         # Canonical pair: the two longest opposite patterns. Opposite =
         # reversed endpoint order (loops: the 내선/외선 pair by name).
-        patterns.sort(key=lambda p: len(p["stops"]), reverse=True)
+        # Plus any further pattern that adds uncovered stations (line
+        # 5's 마천 branch); patterns adding none are dropped.
+        patterns.sort(key=lambda p: (-len(p["stops"]), p["rel_id"]))
         chosen = _canonical_pair(spec, patterns)
+        chosen = _with_branch_patterns(chosen, patterns)
+        chosen.sort(key=lambda p: p["rel_id"])
         line_stops: dict[str, dict] = {}
         line_patterns = []
         for p in chosen:
@@ -547,6 +566,28 @@ def _mirror_pattern(short: dict, long: dict) -> None:
     short["mirrored_from"] = long["id"]
     if "_edge_methods" in long:
         short["_edge_methods"] = list(reversed(long["_edge_methods"]))
+
+
+def _with_branch_patterns(chosen: list[dict],
+                          patterns: list[dict]) -> list[dict]:
+    """Keep further patterns that add uncovered stations (branches).
+
+    ``patterns`` must already be sorted longest-first (deterministic);
+    subset patterns (short turns, shuttles) are dropped.
+    """
+    covered = {normalize_station(s["name"])
+               for p in chosen for s in p["stops"]}
+    chosen_ids = {p["rel_id"] for p in chosen}
+    out = list(chosen)
+    for p in patterns:
+        if p["rel_id"] in chosen_ids:
+            continue
+        names = [normalize_station(s["name"]) for s in p["stops"]]
+        if any(n not in covered for n in names):
+            out.append(p)
+            chosen_ids.add(p["rel_id"])
+            covered.update(names)
+    return out
 
 
 def _canonical_pair(spec: dict, patterns: list[dict]) -> list[dict]:

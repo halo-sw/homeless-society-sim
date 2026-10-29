@@ -11,8 +11,14 @@
 // extract_profile(text, current) fills only values present in the text:
 // every number must appear in the customer's words (same guard as
 // parse_listing). Korean money words: 4천, 2억 5천, 월 80.
-// scenarioFromProfile(profile, homes, {areas}) builds a runnable
-// scenario from the profile + chosen homes (deterministic).
+// scenarioFromProfile(profile, homes, {areas, network, schedule})
+// builds a runnable scenario from the profile + chosen homes
+// (deterministic). Ride minutes per home: the customer's number when
+// given, else derived from the operator schedule (labelled derived);
+// homes without either keep needs_user_input (never a guess).
+
+import { findPath } from "./engine/journey.js";
+import { rideMinutes as derivedRideMinutes } from "./transit/schedule.js";
 
 export const PROFILE_SOURCES = ["customer", "default", "derived"];
 
@@ -432,6 +438,8 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
   const members = v("members") || [{ role: "adult" }];
   const workplaces = v("workplaces") || [];
   const areas = opts.areas || null; // Map areaId -> area doc (for PNU join)
+  const network = opts.network || null;
+  const schedule = opts.schedule || null;
 
   const scenarioHomes = list.map((home, i) => {
     const label = HOME_LABELS[i];
@@ -446,7 +454,6 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
     return { label, area: home.scene, complex_name: complexName };
   });
 
-  const rideMinutes = {};
   const stationName = {};
   for (const h of scenarioHomes) {
     const home = list[scenarioHomes.indexOf(h)];
@@ -457,6 +464,15 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
         + " — pick a candidate with a scene and a station");
     }
   }
+  // Operator-schedule ride minutes for one home→workplace pair, or
+  // null when either end is unknown or the network has no path.
+  const derivedRideFor = (fromStation, destStation) => {
+    if (!network || !schedule || !fromStation || !destStation) return null;
+    const path = findPath(network, fromStation, destStation, 2.0);
+    if (!path) return null;
+    const d = derivedRideMinutes(fromStation, destStation, path, schedule);
+    return d ? d.minutes : null;
+  };
   const commuteKnown = v("commuteMax");
   const membersOut = members.map((m, i) => {
     const wp = workplaces[i] || workplaces[0] || null;
@@ -477,12 +493,29 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
       return out;
     }
     if (Object.keys(stationName).length > 0) {
+      // Precedence: the customer's number for this workplace fills
+      // every home; else the schedule-derived number per home; homes
+      // with neither keep needs_user_input (the engine then records
+      // unavailable, never a guess).
+      const custRide = wp && Number.isFinite(wp.ride_minutes)
+        ? wp.ride_minutes : null;
+      const rideMap = {};
+      for (const h of scenarioHomes) {
+        if (custRide !== null) {
+          rideMap[h.label] = custRide;
+          continue;
+        }
+        const d = derivedRideFor(stationName[h.label], dest);
+        if (d !== null) rideMap[h.label] = d;
+      }
+      const filled = Object.keys(rideMap).length;
       const work = {
         type: "station_ride",
         station_name: { ...stationName },
-        ride_minutes: { ...rideMinutes },
-        ride_minutes_source: "user_input",
-        needs_user_input: true,
+        ride_minutes: rideMap,
+        ride_minutes_source: custRide !== null ? "user_input"
+          : filled > 0 ? "derived" : "user_input",
+        needs_user_input: filled < scenarioHomes.length,
       };
       if (dest) {
         work.destination_station = dest;
@@ -502,7 +535,7 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
   }));
   return {
     name: "from-profile",
-    _note: "고객 프로필 + 고른 집에서 만든 시나리오. 승차 시간은 고객님이 말해야 채워집니다.",
+    _note: "고객 프로필 + 고른 집에서 만든 시나리오. 승차 시간은 고객님이 말한 값, 없으면 운행시간표·추정(derived)으로 채우고 출처를 기록합니다.",
     start_date: "2026-11-02",
     days: 30,
     seed,

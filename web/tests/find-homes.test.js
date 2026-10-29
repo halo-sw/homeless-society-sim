@@ -6,6 +6,7 @@ import {
   DEFAULT_HOME_SORT, HOME_SORT_KO,
 } from "../src/homes.js";
 import { field, emptyProfile } from "../src/profile.js";
+import { parseInterstationCsv } from "../src/transit/schedule.js";
 
 function bucket(center, trade, jeonse, wolse) {
   const stat = (count, median, min, max) => count === null ? null
@@ -266,5 +267,76 @@ describe("find_public_rentals", () => {
     assert.equal(regionOfAddress("경기도 성남시 분당구 정자일로 1"), "bundang");
     assert.equal(regionOfAddress("경기도 하남시 위례동"), "wirye");
     assert.equal(regionOfAddress("부산광역시 해운대구"), null);
+  });
+});
+
+describe("find_homes derived ride minutes (12a2)", () => {
+  const SCHEDULE = parseInterstationCsv([
+    "연번,호선,역명,소요시간,역간거리(km),호선별누계(km)",
+    "1,2,A,00:00,0,0",
+    "2,2,B,02:00,1.0,1.0",
+    "3,2,C,01:30,0.8,1.8",
+  ].join("\n"));
+  const LINE2 = { lines: [{ id: "line2", name: "2호선",
+    stops: [
+      { id: "a", key: "A", name: "A" },
+      { id: "b", key: "B", name: "B" },
+      { id: "c", key: "C", name: "C" },
+    ],
+    patterns: [{ id: "p", stops: ["a", "b", "c"], chainage_km: [0, 1.0, 1.8] }],
+  }] };
+  const lineProfile = (extra = {}) => profile({
+    workplaces: field([{ member: 0, text: "C",
+      resolved: { station: "C" } }], "customer", ""),
+    ...extra,
+  });
+  const lineHome = (id, station, walk) => home({ id,
+    station: station ? { station, walk_minutes: walk, source: "graph" } : null });
+
+  it("derives schedule minutes on covered lines with the source label", () => {
+    const r = find_homes(lineProfile(), { homes: [lineHome("h1", "A", 5)] },
+      { network: LINE2, schedule: SCHEDULE });
+    const c = r.candidates[0];
+    assert.equal(c.commute.ride.source, "derived");
+    assert.equal(c.commute.ride.minutes, 3.5);
+    assert.match(c.commute_ko, /승차 약 3\.5분/);
+    assert.match(c.commute_ko, /서울교통공사 표준 운행시간/);
+    assert.match(c.commute_ko, /대기 시간 제외/);
+    assert.ok(c.sources.includes("서울교통공사 표준 운행시간"));
+  });
+
+  it("estimates non-covered lines from the file median and labels it", () => {
+    const r = find_homes(profile(), { homes: [lineHome("h1", "정자", 8)] },
+      { network: NETWORK, schedule: SCHEDULE });
+    const c = r.candidates[0];
+    // 3.0 km × median((2/1, 1.5/0.8)) = 3 × 1.9375 = 5.8125 → 5.8.
+    assert.equal(c.commute.ride.source, "derived");
+    assert.equal(c.commute.ride.minutes, 5.8);
+    assert.match(c.commute_ko, /추정 · 1~8호선 평균 속도 적용/);
+    assert.ok(c.sources.includes("추정 · 1~8호선 평균 속도"));
+  });
+
+  it("lets the customer's number override every derivation", () => {
+    const p = lineProfile({
+      workplaces: field([{ member: 0, text: "C",
+        resolved: { station: "C" }, ride_minutes: 25 }], "customer", ""),
+    });
+    const r = find_homes(p, { homes: [lineHome("h1", "A", 5)] },
+      { network: LINE2, schedule: SCHEDULE });
+    const c = r.candidates[0];
+    assert.equal(c.commute.ride.source, "customer");
+    assert.equal(c.commute.ride.minutes, 25);
+    assert.match(c.commute_ko, /승차 25분 \(고객님이 알려주신 값\)/);
+  });
+
+  it("sorts the default commute by walk+ride total, unknown walk last", () => {
+    const index = { homes: [
+      lineHome("far", "A", 5), // ride 3.5 → total 8.5
+      lineHome("near", "B", 5), // ride 1.5 → total 6.5
+      lineHome("unknown", null, null),
+    ] };
+    const r = find_homes(lineProfile(), index,
+      { network: LINE2, schedule: SCHEDULE });
+    assert.deepEqual(r.candidates.map((c) => c.id), ["near", "far", "unknown"]);
   });
 });
