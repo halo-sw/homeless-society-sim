@@ -1,0 +1,703 @@
+{
+  "version": "0.1",
+  "description": "Ground-truth checklists for the 30-day housing simulator. The agent's proposed checklist is compared against these; it passes when all 'must' items are covered AND weighted coverage >= threshold.",
+  "acceptance": {
+    "must_coverage": 1.0,
+    "weighted_coverage_threshold": 0.8,
+    "weights": {
+      "must": 3,
+      "should": 1
+    },
+    "max_retries": 3,
+    "on_fail_after_retries": "escalate_to_user"
+  },
+  "verification_types": {
+    "deterministic": "Value is computed from listing/map/route data in code; the report's number must match the computed value (no invented numbers).",
+    "judge": "LLM-as-a-judge checks that the claim cites at least one simulation log event (event_id) that supports it."
+  },
+  "common_items": [
+    {
+      "id": "C01",
+      "priority": "must",
+      "verify": "deterministic",
+      "label_ko": "주 통근·통학 시간",
+      "label_en": "Main commute / school travel time",
+      "data_field": "route.commute_minutes",
+      "rule": "report value within ±5 min of computed value",
+      "keywords": [
+        "통근",
+        "출퇴근",
+        "통학",
+        "commute"
+      ],
+      "engine": "supported",
+      "engine_source": "commute trips (purpose=commute)"
+    },
+    {
+      "id": "C02",
+      "priority": "must",
+      "verify": "deterministic",
+      "label_ko": "월 주거비 총액 (월세·관리비·공과금)",
+      "label_en": "Total monthly housing cost",
+      "data_field": "listing.monthly_total",
+      "rule": "report value equals rent + maintenance + estimated utilities",
+      "keywords": [
+        "월세",
+        "관리비",
+        "주거비",
+        "공과금",
+        "rent",
+        "cost"
+      ],
+      "engine": "partial",
+      "engine_source": "jeonse money timeline; monthly rent/maintenance only when the listing has them"
+    },
+    {
+      "id": "C03",
+      "priority": "must",
+      "verify": "judge",
+      "label_ko": "소음 (층간·도로·상가)",
+      "label_en": "Noise (neighbors, traffic, commercial)",
+      "evidence_events": [
+        "noise"
+      ],
+      "keywords": [
+        "소음",
+        "층간",
+        "시끄",
+        "noise"
+      ],
+      "engine": "none",
+      "engine_source": "no event kind: noise"
+    },
+    {
+      "id": "C04",
+      "priority": "should",
+      "verify": "deterministic",
+      "label_ko": "채광·향",
+      "label_en": "Daylight / orientation",
+      "data_field": "listing.orientation",
+      "rule": "orientation stated matches listing data",
+      "keywords": [
+        "채광",
+        "햇빛",
+        "남향",
+        "향",
+        "daylight",
+        "sunlight"
+      ],
+      "engine": "none",
+      "engine_source": "no listing field: orientation"
+    },
+    {
+      "id": "C05",
+      "priority": "should",
+      "verify": "deterministic",
+      "label_ko": "생필품 접근성 (마트·편의점 도보 거리)",
+      "label_en": "Grocery / convenience store access",
+      "data_field": "poi.grocery_walk_minutes",
+      "rule": "report value within ±2 min of computed value",
+      "keywords": [
+        "마트",
+        "편의점",
+        "장보기",
+        "grocery"
+      ],
+      "engine": "supported",
+      "engine_source": "errand trips (purpose=errand)"
+    },
+    {
+      "id": "C06",
+      "priority": "should",
+      "verify": "judge",
+      "label_ko": "야간 귀갓길 안전",
+      "label_en": "Night-time walk-home safety",
+      "evidence_events": [
+        "late_return"
+      ],
+      "keywords": [
+        "귀갓길",
+        "야간",
+        "밤길",
+        "가로등",
+        "safety",
+        "night"
+      ],
+      "engine": "none",
+      "engine_source": "no event kind: late_return"
+    },
+    {
+      "id": "C07",
+      "priority": "should",
+      "verify": "judge",
+      "label_ko": "수납·짐 배치",
+      "label_en": "Storage / furniture fit",
+      "evidence_events": [
+        "move_in",
+        "storage"
+      ],
+      "keywords": [
+        "수납",
+        "짐",
+        "가구",
+        "storage"
+      ],
+      "engine": "none",
+      "engine_source": "no event kinds: move_in, storage"
+    },
+    {
+      "id": "C08",
+      "priority": "should",
+      "verify": "judge",
+      "label_ko": "하자·관리 상태 (결로·누수·곰팡이)",
+      "label_en": "Defects / upkeep (condensation, leaks, mold)",
+      "evidence_events": [
+        "maintenance_issue"
+      ],
+      "keywords": [
+        "결로",
+        "누수",
+        "곰팡이",
+        "하자",
+        "관리 상태",
+        "mold",
+        "leak"
+      ],
+      "engine": "none",
+      "engine_source": "no event kind: maintenance_issue"
+    },
+    {
+      "id": "C09",
+      "priority": "should",
+      "verify": "judge",
+      "label_ko": "아침 동선 혼잡 (욕실·주차·엘리베이터 대기)",
+      "label_en": "Morning routine congestion",
+      "evidence_events": [
+        "morning_routine"
+      ],
+      "keywords": [
+        "아침",
+        "동선",
+        "욕실",
+        "주차",
+        "엘리베이터",
+        "morning"
+      ],
+      "exclude": [
+        "아침 식사",
+        "아침 메뉴"
+      ],
+      "engine": "none",
+      "engine_source": "no event kind: morning_routine"
+    }
+  ],
+  "personas": {
+    "young_family": {
+      "label_ko": "맞벌이 + 미취학 자녀 가족",
+      "label_en": "Dual-income family with a young child",
+      "items": [
+        {
+          "id": "F01",
+          "priority": "must",
+          "verify": "deterministic",
+          "label_ko": "어린이집·유치원 거리",
+          "label_en": "Daycare / kindergarten distance",
+          "data_field": "poi.daycare_walk_minutes",
+          "rule": "report value within ±2 min of computed value",
+          "keywords": [
+            "어린이집",
+            "유치원",
+            "등원",
+            "daycare",
+            "kindergarten"
+          ],
+          "engine": "partial",
+          "engine_source": "school trips (purpose=school); daycare is the child's school anchor"
+        },
+        {
+          "id": "F02",
+          "priority": "must",
+          "verify": "judge",
+          "label_ko": "단지 출입구 주변 차량 안전",
+          "label_en": "Traffic safety near the entrance",
+          "evidence_events": [
+            "child_outing"
+          ],
+          "keywords": [
+            "차량",
+            "도로",
+            "횡단보도",
+            "안전",
+            "traffic"
+          ],
+          "exclude": [
+            "투자"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: child_outing"
+        },
+        {
+          "id": "F03",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "놀이터·공원 접근성",
+          "label_en": "Playground / park access",
+          "data_field": "poi.park_walk_minutes",
+          "rule": "report value within ±2 min",
+          "keywords": [
+            "놀이터",
+            "공원",
+            "playground",
+            "park"
+          ],
+          "engine": "supported",
+          "engine_source": "park trips (purpose=park)"
+        },
+        {
+          "id": "F04",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "유모차 이동 (엘리베이터·계단)",
+          "label_en": "Stroller access (elevator, stairs)",
+          "data_field": "listing.has_elevator",
+          "rule": "elevator presence matches listing",
+          "keywords": [
+            "유모차",
+            "엘리베이터",
+            "계단",
+            "stroller"
+          ],
+          "engine": "none",
+          "engine_source": "no listing field: elevator"
+        },
+        {
+          "id": "F05",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "소아과 접근성",
+          "label_en": "Pediatric clinic access",
+          "data_field": "poi.pediatric_minutes",
+          "rule": "report value within ±3 min",
+          "keywords": [
+            "소아과",
+            "병원",
+            "pediatric"
+          ],
+          "exclude": [
+            "병원비"
+          ],
+          "engine": "partial",
+          "engine_source": "clinic trips (purpose=clinic)"
+        },
+        {
+          "id": "F06",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "아이 소음으로 인한 이웃 갈등 위험",
+          "label_en": "Risk of neighbor complaints from child noise",
+          "evidence_events": [
+            "noise"
+          ],
+          "keywords": [
+            "층간소음",
+            "이웃",
+            "뛰",
+            "complaint"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: noise"
+        }
+      ]
+    },
+    "remote_worker": {
+      "label_ko": "1인 재택근무자",
+      "label_en": "Single remote worker",
+      "items": [
+        {
+          "id": "R01",
+          "priority": "must",
+          "verify": "judge",
+          "label_ko": "업무 공간 분리 가능 여부",
+          "label_en": "Separate workspace possible",
+          "evidence_events": [
+            "work_session"
+          ],
+          "keywords": [
+            "업무 공간",
+            "작업 공간",
+            "책상",
+            "workspace",
+            "desk"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: work_session"
+        },
+        {
+          "id": "R02",
+          "priority": "must",
+          "verify": "judge",
+          "label_ko": "낮 시간대 소음 (화상회의)",
+          "label_en": "Daytime noise during calls",
+          "evidence_events": [
+            "work_session",
+            "noise"
+          ],
+          "keywords": [
+            "화상회의",
+            "낮 소음",
+            "공사",
+            "call"
+          ],
+          "engine": "none",
+          "engine_source": "no event kinds: work_session, noise"
+        },
+        {
+          "id": "R03",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "인터넷 회선 품질",
+          "label_en": "Internet quality",
+          "data_field": "listing.internet_mbps",
+          "rule": "stated speed matches listing data",
+          "keywords": [
+            "인터넷",
+            "와이파이",
+            "회선",
+            "internet",
+            "wifi"
+          ],
+          "engine": "none",
+          "engine_source": "no listing field: internet"
+        },
+        {
+          "id": "R04",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "카페·코워킹 접근성",
+          "label_en": "Cafe / coworking access",
+          "data_field": "poi.cafe_walk_minutes",
+          "rule": "report value within ±2 min",
+          "keywords": [
+            "카페",
+            "코워킹",
+            "cafe",
+            "coworking"
+          ],
+          "engine": "none",
+          "engine_source": "no trip purpose for cafe/coworking visits"
+        },
+        {
+          "id": "R05",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "근무 시간대 채광·환기",
+          "label_en": "Daylight and ventilation during work hours",
+          "evidence_events": [
+            "work_session"
+          ],
+          "keywords": [
+            "환기",
+            "채광",
+            "ventilation"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: work_session"
+        }
+      ]
+    },
+    "newlywed_couple": {
+      "label_ko": "맞벌이 신혼부부",
+      "label_en": "Dual-income newlywed couple",
+      "items": [
+        {
+          "id": "N01",
+          "priority": "must",
+          "verify": "deterministic",
+          "label_ko": "두 사람 통근 시간 균형",
+          "label_en": "Balance between both commutes",
+          "data_field": "route.commute_minutes_by_member",
+          "rule": "both members' values reported and within ±5 min of computed",
+          "keywords": [
+            "두 사람",
+            "각자",
+            "통근 균형",
+            "both commutes"
+          ],
+          "engine": "supported",
+          "engine_source": "per-member commute (purpose=commute by member)"
+        },
+        {
+          "id": "N02",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "택배·배송 수령",
+          "label_en": "Parcel delivery handling",
+          "evidence_events": [
+            "delivery"
+          ],
+          "keywords": [
+            "택배",
+            "배송",
+            "무인택배",
+            "parcel",
+            "delivery"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: delivery"
+        },
+        {
+          "id": "N03",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "늦은 귀가 시 대중교통 막차",
+          "label_en": "Late-night transit availability",
+          "evidence_events": [
+            "late_return"
+          ],
+          "keywords": [
+            "막차",
+            "심야",
+            "late-night",
+            "last train"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: late_return"
+        },
+        {
+          "id": "N04",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "향후 자녀 계획 시 확장성 (방 수·학군)",
+          "label_en": "Future flexibility (rooms, school district)",
+          "evidence_events": [],
+          "keywords": [
+            "방 수",
+            "학군",
+            "확장",
+            "future"
+          ],
+          "engine": "none",
+          "engine_source": "no listing field: rooms"
+        },
+        {
+          "id": "N05",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "주말 여가 시설 접근성",
+          "label_en": "Weekend leisure access",
+          "data_field": "poi.leisure_minutes",
+          "rule": "report value within ±3 min",
+          "keywords": [
+            "여가",
+            "운동",
+            "헬스",
+            "산책",
+            "leisure",
+            "gym"
+          ],
+          "engine": "none",
+          "engine_source": "no trip purpose for leisure visits"
+        }
+      ]
+    },
+    "multigen_family": {
+      "label_ko": "고령 부모 동거 3세대 가족",
+      "label_en": "Three-generation family with elderly parents",
+      "items": [
+        {
+          "id": "M01",
+          "priority": "must",
+          "verify": "deterministic",
+          "label_ko": "무단차·엘리베이터 이동",
+          "label_en": "Step-free access / elevator",
+          "data_field": "listing.step_free",
+          "rule": "step-free status matches listing",
+          "keywords": [
+            "단차",
+            "계단",
+            "엘리베이터",
+            "step-free"
+          ],
+          "engine": "none",
+          "engine_source": "no listing field: step-free, elevator"
+        },
+        {
+          "id": "M02",
+          "priority": "must",
+          "verify": "deterministic",
+          "label_ko": "병원 접근성",
+          "label_en": "Hospital / clinic access",
+          "data_field": "poi.hospital_minutes",
+          "rule": "report value within ±3 min",
+          "keywords": [
+            "병원",
+            "의원",
+            "hospital",
+            "clinic"
+          ],
+          "exclude": [
+            "병원비"
+          ],
+          "engine": "partial",
+          "engine_source": "clinic trips (purpose=clinic)"
+        },
+        {
+          "id": "M03",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "욕실 미끄럼·낙상 위험",
+          "label_en": "Bathroom slip / fall risk",
+          "evidence_events": [
+            "daily_routine"
+          ],
+          "keywords": [
+            "미끄럼",
+            "낙상",
+            "욕실",
+            "slip",
+            "fall"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: daily_routine"
+        },
+        {
+          "id": "M04",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "세대별 사생활 (방 수·욕실 수)",
+          "label_en": "Privacy between generations (rooms, bathrooms)",
+          "data_field": "listing.rooms_bathrooms",
+          "rule": "room and bathroom counts match listing",
+          "keywords": [
+            "방 수",
+            "욕실 수",
+            "사생활",
+            "privacy"
+          ],
+          "engine": "none",
+          "engine_source": "no listing field: rooms"
+        },
+        {
+          "id": "M05",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "어르신 낮 시간 활동 (경로당·산책로)",
+          "label_en": "Daytime activity for elders (senior center, walking path)",
+          "evidence_events": [
+            "elder_outing"
+          ],
+          "keywords": [
+            "경로당",
+            "산책로",
+            "복지관",
+            "senior"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: elder_outing"
+        }
+      ]
+    },
+    "pet_owner": {
+      "label_ko": "반려견 가구",
+      "label_en": "Dog-owning household",
+      "items": [
+        {
+          "id": "P01",
+          "priority": "must",
+          "verify": "deterministic",
+          "label_ko": "반려동물 허용 여부",
+          "label_en": "Pets allowed",
+          "data_field": "listing.pets_allowed",
+          "rule": "stated policy matches listing",
+          "keywords": [
+            "반려동물 허용",
+            "반려견 가능",
+            "pets allowed"
+          ],
+          "engine": "none",
+          "engine_source": "no listing field: pets"
+        },
+        {
+          "id": "P02",
+          "priority": "must",
+          "verify": "deterministic",
+          "label_ko": "산책로·공원 거리",
+          "label_en": "Walking route / park distance",
+          "data_field": "poi.park_walk_minutes",
+          "rule": "report value within ±2 min",
+          "keywords": [
+            "산책",
+            "공원",
+            "walk"
+          ],
+          "engine": "supported",
+          "engine_source": "park trips (purpose=park)"
+        },
+        {
+          "id": "P03",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "짖음 소음 민원 위험",
+          "label_en": "Risk of barking complaints",
+          "evidence_events": [
+            "noise"
+          ],
+          "keywords": [
+            "짖",
+            "민원",
+            "barking"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: noise"
+        },
+        {
+          "id": "P04",
+          "priority": "should",
+          "verify": "deterministic",
+          "label_ko": "동물병원 접근성",
+          "label_en": "Vet access",
+          "data_field": "poi.vet_minutes",
+          "rule": "report value within ±3 min",
+          "keywords": [
+            "동물병원",
+            "vet"
+          ],
+          "engine": "none",
+          "engine_source": "no trip purpose for vet visits"
+        },
+        {
+          "id": "P05",
+          "priority": "should",
+          "verify": "judge",
+          "label_ko": "바닥재 미끄럼 (관절 부담)",
+          "label_en": "Slippery flooring (joint strain)",
+          "evidence_events": [
+            "daily_routine"
+          ],
+          "keywords": [
+            "바닥",
+            "미끄",
+            "관절",
+            "flooring"
+          ],
+          "engine": "none",
+          "engine_source": "no event kind: daily_routine"
+        }
+      ]
+    },
+    "single_firstjob": {
+      "label_ko": "사회초년생 1인 가구",
+      "label_en": "Single first-job worker",
+      "alias_of": "common",
+      "items": []
+    }
+  },
+  "persona_map": {
+    "young_family": "scenarios/personas/dual-income-child.json",
+    "newlywed_couple": "scenarios/personas/newlywed-couple.json",
+    "single_firstjob": "scenarios/personas/single-firstjob.json",
+    "remote_worker": null,
+    "multigen_family": null,
+    "pet_owner": null
+  }
+}
