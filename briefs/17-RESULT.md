@@ -240,3 +240,120 @@ readable with outlines.
   near the ground tone — the capture measures the mixed frame.
 - Night rails keep day albedo (moonlit → dark); only carriageways
   got the lamp band.
+
+---
+
+# Stage 17c — RESULT: the screen matches the tests
+
+Date: 2026-10-30. Brief: stage-17c prompt (two views still wrong on
+the laptop-GPU capture of 17b, 1440×900, 2026-10-30 04:52). All
+product code by Muse (agent mode). No sub-agents. Commits on
+`ithaca-17`: `e17de05` (part 1), `a699960` (part 2), `4df71ee`
+(part 3).
+
+Method: a pure tracer resolved one flat pixel through the real
+painted chain (rig params + look gains + Lambert ÷ π + fog + grade
++ output) before any fix. It reproduces the capture within 6 levels
+on every spot — ground (165,143,115) vs (161,137,109), road
+(81,70,61) vs (86,74,62), albedo ground/wall/road within 3 — so the
+causes below are found, not guessed. The tracer ships as
+`web/src/render/chain.js` (`resolvePaintedPixel`, using the same
+`skyParams` / `paintedSkyParams` / `resolveLook` / fog-range
+functions the renderer uses) with the targets pinned in
+`web/tests/painted-17c.test.js`.
+
+## What changed
+
+**1. Sim regional view** (`e17de05`). Found cause, per step at
+08:50: the irradiance itself is brown and dim — sun `#ffd5ab`
+(B/R = 0.4 in linear, warmed toward golden by the low morning
+altitude) dominates, E×exposure/π = (0.57, 0.45, 0.34); the grade
+(saturation 1.2) then cuts blue another 18 %; AgX darkens ~10 % and
+desaturates (albedo 207,196,173 → 186,180,170, roof/ground gap 19
+→ 8). Fog is exonerated (factor 0 at the cruise distance), as is
+the albedo sourcing (corridor/base/regional are the 17b linear
+targets — the grey was AgX, not the palette). Fixes, all painted
+only: neutral white day sun + a uniform ×1.8 day gain over sun and
+fill (`PAINTED_LIGHT.sunDay`/`dayLight`, blended by dayF — the
+shade ratio is gain-invariant, 17b's ≥ 0.55 bar untouched), neutral
+grade (saturation 1.0, warm triplet gated off), linear output
+transform (photo keeps AgX). The screen "roof darker than ground"
+spot is a sun-away wall under fill only (model (125,117,109) vs
+measured (131,117,97)) — true roofs were always lighter in the
+flat model. Before → after (helper): ground (165,143,115) →
+(204,191,166), ΔE 2.2 vs beige; roof +19.2 over ground; road
+(89,91,92), |R−B| = 3, 102 darker; albedo ground ΔE 1.8, roof
++19.8. Pin updates with justification: `hemiBoost` → `dayLight`,
+day-sun passthrough → white, painted saturation → 1.0 (17b
+precedent; every behaviour contract stays green untouched).
+
+**2. Night ground and roads** (`a699960`). Found cause: at 21:00
+E/π ≈ (0.012, 0.015, 0.030) — moonlight leaves every diffuse near
+black, and the 17b glow (0x2a2118) predicts (38,24,12) on a
+carriageway while the capture reads (3,1,0): the spot found a
+non-glow surface (foot/rail ribbons and ground gaps have no glow),
+i.e. coverage, not mechanism — facade emissive proves emissive
+reaches the screen. Fix: every painted night entry self-lights to
+its own night albedo (`nightEmissiveHex`: glow wins, else the
+entry's night target, else navy); the road emissive becomes the
+lamp-lit band (`PAINTED_NIGHT_ROAD_LIT` = warm + glow added in
+linear). Moon/fill stay dim, so untinted surfaces (trees,
+markings, corridor, rails) stay dark and lit windows keep their
+fractions. Before → after (helper): ground (0,0,0) → (26,32,45),
+Δ(3,3,3) vs navy; road (79,68,57), +38 and warmer; wall
+(53,60,76), +28. Fog exonerated again (factor 0).
+
+**3. Sim marker** (`4df71ee`). The followed-person marker during a
+ride is the journey train cone (90 m) plus station dots (36 m);
+both are authored for the cruise, so near street level the cone
+covers ~200 px. Pure `markerScaleFor` (journey.js) clamps by
+camera distance (cone ≤ 28 px, dots ≤ 14 px, never enlarges, never
+vanishes); the layer rescales every frame, with a 1 px dark edge
+child on the cone and a dark ×1.25 hull under the dots so white
+reads on beige.
+
+## Capture URLs
+
+Base: the dev server root (`npm run dev` in `web/`).
+
+- Sim colours + marker (parts 1, 3): \\
+  `/?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1`
+  \\ plus `&debug=albedo` for the palette check.
+- Night (part 2): `/?area=songpa-jamsil&shot=0&q=high&time=21:00`
+
+Checks: beige ground with lighter roofs and neutral dark roads at
+08:50; navy ground with warm lit roads and slate walls at 21:00
+(lit windows still on); the train cone ≤ 28 px with a dark edge at
+every journey phase.
+
+## Tests and build
+
+- `cd web && npm test`: **1151 pass, 0 fail, 1 skipped** (the skip
+  is pre-existing). Includes `painted-17c.test.js` (20 tests) and
+  the justified pin updates (`painted-17b`, `render-sky`,
+  `render-look`).
+- `npx vite build` still hits the known sandbox EPERM
+  (`node_modules/.vite-temp`, same as 14e/17/17b). Stand-ins, all
+  green: `node --check` on every edited file and the touched test
+  files, plus a full esbuild bundle of `src/main.js` (5.0 MB,
+  warnings only) in `/tmp/17c-bundle`.
+
+## Known limitations / follow-ups
+
+- Painted noon is brighter (sunlit beige 248, no clip): the
+  ×1.8 day gain fits mid-morning exactly, so noon renders hot —
+  correct for sunlit flats, worth one glance on the day tour.
+- Painted golden hour keeps the warm sky/fog but a neutral sun
+  (the white blends by dayF, not phase, so the running clock never
+  pops); dusk past dayF < 1 warms progressively. Photo golden hour
+  is untouched.
+- Walls still match the ground in albedo by design (both G 196);
+  they separate through shade on screen (17b's model, still ≥ 15).
+- `ground.js` plates/paint still push raw sRGB vertex colours
+  (the 17b bug class, one layer up): fixing it would shift photo
+  pixels, so it stays — the cruise frame is corridor-dominated.
+- Lit windows keep their fractions but render through the linear
+  output + neutral grade, so they read slightly purer than under
+  AgX (still lamp-orange grids).
+- The sim-night corridor keeps day albedo under moonlight (dark,
+  like trees); only the detailed box self-lights (tour URL above).
