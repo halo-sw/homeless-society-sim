@@ -100,6 +100,15 @@ export const phrases = { ...tablePhrases, ...seedPhrases };
 // pre-empt a longer pattern that contains the same separator.
 // US area (26c-26e): dollar amounts and bike/walk lines.
 const usPatterns = [
+  // Day strip date: the weekday is fixed text, so 월 never reads as "monthly".
+  { ko: "{0}월 {1}일(월) {2} · {3}일차/{4}", en: "{0}/{1} (Mon) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(화) {2} · {3}일차/{4}", en: "{0}/{1} (Tue) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(수) {2} · {3}일차/{4}", en: "{0}/{1} (Wed) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(목) {2} · {3}일차/{4}", en: "{0}/{1} (Thu) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(금) {2} · {3}일차/{4}", en: "{0}/{1} (Fri) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(토) {2} · {3}일차/{4}", en: "{0}/{1} (Sat) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(일) {2} · {3}일차/{4}", en: "{0}/{1} (Sun) {2} · Day {3}/{4}" },
+
   { ko: "{0}까지 자전거 {1}분 · 걷기 {2}분 · 추정 (속도 가정)", en: "{0}: bike {1} min · walk {2} min · estimate (assumed speed)" },
   { ko: "{0}까지 걷기 {1}분 · 자전거 {2}분 · 추정 (속도 가정)", en: "{0}: walk {1} min · bike {2} min · estimate (assumed speed)" },
   { ko: "월세 월 ${0} · ZIP {1} 추정 (Zillow)", en: "Rent ${0}/mo · ZIP {1} estimate (Zillow)" },

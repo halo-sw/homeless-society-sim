@@ -53,5 +53,6 @@ export const WORDS = {
   "모두": "all", "각": "each", "총": "total", "차이": "difference",
   "동안": "during", "이번": "this", "다음날": "next day", "시": "o'clock",
   "걸려요": "takes", "빨라요": "faster", "느려요": "slower",
+  "숫자는": "numbers are", "편도(추정)": "one-way (estimate)", "자전거": "bike", "달러": "dollars",
   "많아요": "more", "적어요": "fewer", "가까워요": "closer", "멀어요": "farther",
 };
