@@ -152,6 +152,49 @@ function decisionFacts(run) {
 
 const KIND_ORDER = ["commute", "crowded", "evening", "late", "decision"];
 
+function commuteMinutes(f) {
+  const nums = (f && f.numbers) || [];
+  // Commute text is "<day>일째 출근 <span>분 ...": the span is the number
+  // right after 출근. Fall back to the largest number.
+  const m = String((f && f.text_ko) || "").match(/출근\s*(\d+(?:\.\d+)?)\s*분/);
+  if (m) return Number(m[1]);
+  return nums.length > 0 ? Math.max(...nums) : -Infinity;
+}
+
+// Evenly spaced sample of k items from a day-sorted list, always
+// including mustInclude (for commute: the longest commute). Returns the
+// original fact objects; the must-include fact carries _longest = true.
+export function spreadPick(list, k, mustInclude = null) {
+  const n = list.length;
+  const quota = Math.max(0, Math.min(k, n));
+  if (quota <= 0) return [];
+  if (quota >= n) {
+    if (mustInclude) mustInclude._longest = true;
+    return [...list];
+  }
+  const idx = new Set();
+  if (quota === 1) {
+    idx.add(0);
+  } else {
+    for (let i = 0; i < quota; i++) {
+      idx.add(Math.round((i * (n - 1)) / (quota - 1)));
+    }
+  }
+  if (mustInclude && ![...idx].some((j) => list[j] === mustInclude)) {
+    const mustIdx = list.indexOf(mustInclude);
+    let farthest = -1;
+    let farthestDist = -1;
+    for (const j of idx) {
+      const d = Math.abs(j - mustIdx);
+      if (d > farthestDist) { farthestDist = d; farthest = j; }
+    }
+    idx.delete(farthest);
+    idx.add(mustIdx);
+  }
+  if (mustInclude) mustInclude._longest = true;
+  return [...idx].sort((a, b) => a - b).map((j) => list[j]);
+}
+
 export function runDigest(run, label, { name = "", maxFacts = 40 } = {}) {
   const r = run || {};
   const hh = householdKeys(r);
@@ -170,12 +213,31 @@ export function runDigest(run, label, { name = "", maxFacts = 40 } = {}) {
   if (all.length <= maxFacts) {
     facts = all.sort((a, b) => (a.day - b.day) || (a.minute - b.minute));
   } else {
+    // Over cap: per-kind quotas keep every kind represented, each kind
+    // takes an evenly spaced sample across the month (first week, middle,
+    // last week) so the diary spans the whole month. For commute the
+    // longest-commute fact is always included and marked.
+    const kinds = KIND_ORDER.filter((k) => byKind[k].length > 0);
+    const base = Math.floor(maxFacts / kinds.length);
+    const extra = maxFacts % kinds.length;
     const picked = [];
-    const queues = KIND_ORDER.map((k) => [...byKind[k]]);
-    while (picked.length < maxFacts && queues.some((q) => q.length > 0)) {
-      for (const q of queues) {
-        if (picked.length >= maxFacts) break;
-        if (q.length > 0) picked.push(q.shift());
+    kinds.forEach((k, ki) => {
+      const list = byKind[k];
+      const quota = Math.min(list.length, base + (ki < extra ? 1 : 0));
+      if (quota <= 0) return;
+      let must = null;
+      if (k === "commute") {
+        must = list.reduce((a, b) => (commuteMinutes(b) > commuteMinutes(a) ? b : a), list[0]);
+      }
+      for (const f of spreadPick(list, quota, must)) picked.push(f);
+    });
+    for (const f of picked) {
+      if (f.kind === "commute" && f._longest) {
+        delete f._longest;
+        if (!String(f.text_ko || "").endsWith(" (30일 중 가장 오래)")) {
+          f.text_ko = `${f.text_ko} (30일 중 가장 오래)`;
+        }
+        if (!f.numbers.includes(30)) f.numbers = [...f.numbers, 30];
       }
     }
     facts = picked.sort((a, b) => (a.day - b.day) || (a.minute - b.minute));

@@ -270,6 +270,15 @@ export function scrollChatToEnd(root) {
   }
 }
 
+// 27g: client safety net — a stray [[다음: ...]] marker never reaches
+// the screen (same end-anchored split as splitSuggestions in agent.js).
+function stripNextMarker(reply) {
+  const text = String(reply || "");
+  const m = text.match(/\[\[\s*(?:다음|Next)\s*:\s*([^\]]+?)\s*\]\]\s*$/);
+  if (!m) return text;
+  return text.slice(0, m.index).trim();
+}
+
 // 27f: one bubble per turn — pure part of askAgent message merging.
 export function turnBubble(out) {
   const msgs = (out && out.messages) || [];
@@ -291,7 +300,7 @@ export function turnBubble(out) {
       for (const c of m.tool_calls) tool_calls.push(c);
     }
   }
-  return { content, tool_calls };
+  return { content: stripNextMarker(content), tool_calls };
 }
 
 // 27f: diary failure fallback line — pure, tested.
@@ -1150,6 +1159,15 @@ export function ChatScreen() {
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
   const [workOpen, setWorkOpen] = useState(false);
+  const [dataTick, setDataTick] = useState(0);
+  void dataTick;
+  // 27g: the Muse path fills dataRef without re-rendering — refilling it
+  // must kick a re-render so the map shows right after the search.
+  useEffect(() => {
+    if (workOpen && !dataRef.current) {
+      ensureData(null).then(() => setDataTick((t) => t + 1)).catch(() => {});
+    }
+  }, [workOpen]);
   // 27c1: the embedded 3D scene ({ url, title } | null) shown in the
   // work panel instead of the map while set.
   const [scene, setScene] = useState(null);
@@ -1753,6 +1771,20 @@ export function ChatScreen() {
       pushMsg({ role: "assistant", kind: "text", content: bubble.content || "",
         tool_calls: bubble.tool_calls, suggestions: [...suggestions] });
       appendToolCards(out.messages);
+      // 27g: the Muse path never ran ensureData, so the map stayed on its
+      // placeholder after Muse found homes. Fill it now (no await — the
+      // workOpen effect re-renders when it lands).
+      if (!dataRef.current) {
+        for (const m of out.messages || []) {
+          if (!m || m.role !== "tool" || typeof m.content !== "string") continue;
+          let r = null;
+          try { r = JSON.parse(m.content); } catch { continue; }
+          if (r && r.ok === true && Array.isArray(r.candidates)) {
+            ensureData(null).then(() => setDataTick((t) => t + 1));
+            break;
+          }
+        }
+      }
       mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
       // 27b2: Muse opens panels and picks — same-turn candidates count,

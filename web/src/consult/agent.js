@@ -27,7 +27,7 @@ export const SYSTEM_PROMPT = [
   "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support. 동네를 물으면 neighborhood로 걸어서 몇 분인지 확인해 답하고 open_panel(panel=tour, candidate_id)로 3D 동네를 연다. 출근길(commute)과 결과(result) 장면은 살아 보기가 끝난 뒤에만 연다.",
   "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다. start_life_run을 부른 턴에는 \"시작했어요. 다 살면 일기로 알려 드릴게요.\" 한 문장만 답한다(결과 숫자는 아직 없다).",
   "다루지 않는 지역이면 '아직 준비 중이에요'라고 말하고 가장 가까운 다루는 지역을 제안한다. 엉뚱한 질문에도 한 줄로 답하고 집 고민으로 돌아온다.",
-  "답은 2~3문장, 줄바꿈 없이 짧게. 후보·숫자 목록은 카드와 지도에 이미 있으니 문장으로 늘어놓지 않고 1~2곳만 짚는다. 마지막 줄에는 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
+  "답은 2~3문장, 본문은 짧게. 후보·숫자 목록은 카드와 지도에 이미 있으니 문장으로 늘어놓지 않고 1~2곳만 짚는다. 본문 다음 새 줄에 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
   "왜 그런지 물을 때(무엇을·왜)는 get_day의 cause와 list_criteria/explain_criterion을 근거로 답하고, 쓴 기준 id(C-로 시작)를 함께 밝힌다.",
   "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위는 항상 쓰고, 출처(그래프/실거래/공공임대/가정값/추정)는 숫자마다 붙이지 말고 답 끝에 한 번만 괄호로 밝힌다.",
@@ -91,18 +91,23 @@ export const PANEL_KO = {
 };
 
 // Split the trailing "[[다음: a | b]]" (or "[[Next: ...]]") suggestion
-// line off a reply. The marker line is never shown as answer text.
+// marker off a reply. The marker line is never shown as answer text.
+// The marker must sit at the very end: on its own last line or after
+// text on the same line. A marker followed by more text is not split.
 export function splitSuggestions(reply) {
   const text = String(reply || "");
-  const lines = text.split("\n");
-  let idx = lines.length - 1;
-  while (idx >= 0 && lines[idx].trim() === "") idx--;
-  if (idx < 0) return { text, suggestions: [] };
-  const m = lines[idx].match(/^\s*\[\[\s*(?:다음|Next)\s*:\s*(.+?)\s*\]\]\s*$/);
+  const m = text.match(/\[\[\s*(?:다음|Next)\s*:\s*([^\]]+?)\s*\]\]\s*$/);
   if (!m) return { text, suggestions: [] };
+  const start = m.index;
+  const before = text.slice(0, start);
+  // Own-line case keeps the old behaviour (drop the whole last line);
+  // same-line case keeps the text before the marker.
+  const lines = before.split("\n");
+  const ownLine = lines.length > 0 && lines[lines.length - 1].trim() === "";
+  void ownLine;
   const suggestions = m[1].split("|").map((s) => s.trim())
     .filter((s) => s !== "").slice(0, 3).map((s) => s.slice(0, 20));
-  return { text: lines.slice(0, idx).join("\n").trim(), suggestions };
+  return { text: before.trim(), suggestions };
 }
 
 export function summarizeToolCall(name, args, result, ms) {

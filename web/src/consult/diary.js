@@ -4,8 +4,8 @@ import { findInventedNumbers } from "../judge/guards.js";
 
 export const DIARY_PROMPT = [
   "너는 이 집들에서 각각 30일을 살아 본 '나'다. 아래 기록(facts)만 보고 쓴다.",
-  "1) 집마다 일기 4~6줄. 한 줄은 fact 하나만 다루고 그 fact의 id를 단다. 일기체(~했다), 짧게, 그날의 느낌을 한마디 덧붙여도 되지만 숫자는 그 fact에 있는 숫자만 쓴다.",
-  "2) summary: 고객에게 존댓말로 두 집의 차이를 3문장 이내로. 숫자는 totals와 facts에 있는 것만. 어느 집이 낫다, 계약하라 같은 판단은 하지 않는다.",
+  "1) 집마다 일기 4~6줄. 한 줄은 fact 하나만 다루고 그 fact의 id를 단다. 일기체(~했다), 짧게, 그날의 느낌을 한마디 덧붙여도 되지만 숫자는 그 fact에 있는 숫자만 쓴다. 줄은 한 달에 걸쳐 고른다: 첫 주·중간·마지막 주에서 고루, 같은 종류는 집마다 2줄까지. 가장 오래 걸린 출근, 혼잡, 늦은 귀가처럼 눈에 띄는 날을 먼저 쓴다.",
+  "2) summary: 고객에게 존댓말로 두 집의 차이를 3문장 이내로. 숫자는 totals에 있는 것만 쓴다(출근은 totals.one_way_min = 30일 평균 편도). 하루치 숫자를 대표값처럼 쓰지 않는다. 어느 집이 낫다, 계약하라 같은 판단은 하지 않는다.",
   'JSON으로만 답한다: {"summary": "...", "lines": [{"home": "A", "id": "<fact id>", "text": "..."}]}',
 ].join("\n");
 
@@ -73,9 +73,6 @@ export function checkDiary(parsed, digests) {
   } else {
     const allowed = new Set();
     for (const d of digests || []) {
-      for (const f of (d && d.facts) || []) {
-        for (const num of (f && f.numbers) || []) allowed.add(num);
-      }
       const totals = (d && d.totals) || {};
       for (const v of Object.values(totals)) {
         if (Number.isFinite(v)) allowed.add(v);
