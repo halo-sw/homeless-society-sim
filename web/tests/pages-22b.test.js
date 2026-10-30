@@ -41,40 +41,40 @@ async function jsFiles(dir) {
 
 describe("22b appUrl", () => {
   it("prefixes the Pages base before the query", () => {
-    assert.equal(appUrlWith("/homeless-society-sim/", "chat=x"),
-      "/homeless-society-sim/?chat=x");
+    assert.equal(appUrlWith("/ithaca/", "chat=x"),
+      "/ithaca/?chat=x");
   });
   it("returns the bare base for an empty query", () => {
-    assert.equal(appUrlWith("/homeless-society-sim/", ""), "/homeless-society-sim/");
+    assert.equal(appUrlWith("/ithaca/", ""), "/ithaca/");
   });
   it("keeps the old strings with the default base", () => {
     assert.equal(appUrl("chat=x"), "/?chat=x");
     assert.equal(appUrl(), "/");
   });
   it("share links are the full public URL: origin + appUrl", () => {
-    assert.equal(publicUrlWith("https://user.github.io", "/homeless-society-sim/", "chat=x"),
-      "https://user.github.io/homeless-society-sim/?chat=x");
+    assert.equal(publicUrlWith("https://user.github.io", "/ithaca/", "chat=x"),
+      "https://user.github.io/ithaca/?chat=x");
   });
 });
 
 describe("22b builders keep the base", () => {
   it("chat urls carry the injected base", () => {
-    assert.equal(chatUrlWith("/homeless-society-sim/", "hi"),
-      "/homeless-society-sim/?chat=hi");
-    assert.equal(chatReopenUrlWith("/homeless-society-sim/"),
-      "/homeless-society-sim/?chat=");
-    assert.equal(landingUrlWith("/homeless-society-sim/"), "/homeless-society-sim/");
+    assert.equal(chatUrlWith("/ithaca/", "hi"),
+      "/ithaca/?chat=hi");
+    assert.equal(chatReopenUrlWith("/ithaca/"),
+      "/ithaca/?chat=");
+    assert.equal(landingUrlWith("/ithaca/"), "/ithaca/");
   });
   it("sim moment urls carry the injected base", () => {
-    const u = simMomentUrlWith("/homeless-society-sim/",
+    const u = simMomentUrlWith("/ithaca/",
       { scenario: "demo-two-homes", home: "A", day: 1, t: "08:21", follow: 1 });
     assert.equal(u,
-      "/homeless-society-sim/?mode=sim&home=A&day=1&t=08%3A21&follow=1&scenario=demo-two-homes");
+      "/ithaca/?mode=sim&home=A&day=1&t=08%3A21&follow=1&scenario=demo-two-homes");
   });
   it("tour urls carry the injected base", () => {
-    const step = tourStepUrlWith("/homeless-society-sim/", 0, "");
-    assert.ok(step.startsWith("/homeless-society-sim/?tour=demo&step=0"), step);
-    assert.equal(tourSkipUrlWith("/homeless-society-sim/", ""), "/homeless-society-sim/");
+    const step = tourStepUrlWith("/ithaca/", 0, "");
+    assert.ok(step.startsWith("/ithaca/?tour=demo&step=0"), step);
+    assert.equal(tourSkipUrlWith("/ithaca/", ""), "/ithaca/");
   });
   it("default-base output is unchanged (old tests keep passing)", () => {
     assert.equal(chatUrl("hi"), "/?chat=hi");

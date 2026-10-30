@@ -11,7 +11,7 @@
 | Meta 모델을 의미 있게 사용 | ✅ | 앱의 판단(상담 에이전트·선택 판단)은 Muse Spark 1.3(Meta Model API)과 Muse Spark Open(오픈웨이트, Baseten)으로 해요. 개발 코드는 모두 Muse Code가 써요. |
 | 오픈웨이트 모델 | ✅ ⚠️ | `meta-models/muse-spark-open-1026`(Baseten)로 154건 판단을 비교했어요. Baseten 모델 목록에는 `meta-models/muse-spark-open`도 있지만, 우리 키로 호출하면 키 오류가 나요(10-29 확인). 어느 ID를 쓰는 게 맞는지 오피스아워에서 물어볼 질문이에요. |
 | 3분 데모 영상 | 🟡 | 10-30 V1 시작: Remotion 영상도 Muse가 작성(브랜치 `video-demo`), 대본 초안 v1은 `video/data/script.json`, 수치는 `video/data/stats.json`. 화면 클립은 18 뒤 촬영. **사용자 확인 전에는 업로드하지 않아요.** |
-| 공개 레포 | ✅ | 10-30 공개(github.com/halo-sw/homeless-society-sim). 전체 기록 키 검사 통과, MIT 라이선스. 제품 이름은 **Ithaca** — The Pre-living Agent for Your Next Home, “We walk the odyssey. You just come home.” |
+| 공개 레포 | ✅ | 10-30 공개(github.com/halo-sw/ithaca). 전체 기록 키 검사 통과, MIT 라이선스. 제품 이름은 **Ithaca** — The Pre-living Agent for Your Next Home, “We walk the odyssey. You just come home.” |
 | 팀원 전원 이름 | ✅ | 1인 참가(사용자 혼자) — 10-30 확정. |
 | 링크가 열리는지 확인 | ⬜ | 공개 전환 뒤 로그아웃 상태 브라우저로 레포와 영상 링크를 확인해요. |
 | 이번 주에 만든 것만 | ✅ ⚠️ | 레포 첫 커밋은 2026-10-28이고, 커밋은 10-28 19개, 10-29 36개예요. 그 전에 만든 코드는 없어요(아이디어는 이전 대화에서 시작). 영상 첫 문장에 "전부 이번 주에 만들었다"고 밝혀요. 해커톤 시작일이 10-28 이후라면 다시 확인할게요. |

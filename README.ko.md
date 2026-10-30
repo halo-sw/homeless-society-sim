@@ -1,5 +1,7 @@
 <h1 align="center">Ithaca</h1>
 
+<p align="center"><sub>(이전 이름 homeless-society-sim)</sub></p>
+
 <p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
 
 <p align="center"><b>계약하기 전에, 그 집에서 먼저 살아 보세요.</b><br>AI 가족이 후보 집마다 30일을 먼저 살아 보고, 매물 사진과 지도, 30분짜리 집 구경으로는 안 보이는<br>"살아 봐야 아는 문제"를 찾아내요.</p>
@@ -10,12 +12,12 @@
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
   <img src="https://img.shields.io/badge/tests-1421_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 1421개, Python 테스트 244개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
-  <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
 </p>
 
 <p align="center">
-  <a href="https://halo-sw.github.io/homeless-society-sim/"><img src="https://img.shields.io/badge/바로_써_보기-live-2f5d50?style=for-the-badge" alt="바로 써 보기"></a>
+  <a href="https://halo-sw.github.io/ithaca/"><img src="https://img.shields.io/badge/바로_써_보기-live-2f5d50?style=for-the-badge" alt="바로 써 보기"></a>
   &nbsp;
   <a href="#빠른-시작"><img src="https://img.shields.io/badge/직접_실행-빠른_시작-2f5d50?style=for-the-badge" alt="직접 실행하기"></a>
   &nbsp;
@@ -24,7 +26,7 @@
   <a href="README.md"><img src="https://img.shields.io/badge/English-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="English README"></a>
 </p>
 
-<p align="center"><sub>공개 사이트: <a href="https://halo-sw.github.io/homeless-society-sim/">https://halo-sw.github.io/homeless-society-sim/</a> — 정적 빌드라 키 보호를 위해 Muse 대화와 VWorld 항공사진은 꺼져 있어요. 판단은 기록된 Muse 판단이나 규칙 판단으로 돌고, 그렇게 표시돼요.</sub></p>
+<p align="center"><sub>공개 사이트: <a href="https://halo-sw.github.io/ithaca/">https://halo-sw.github.io/ithaca/</a> — 정적 빌드라 키 보호를 위해 Muse 대화와 VWorld 항공사진은 꺼져 있어요. 판단은 기록된 Muse 판단이나 규칙 판단으로 돌고, 그렇게 표시돼요.</sub></p>
 
 <p align="center">
   <a href="#이렇게-작동해요">작동 방식</a> ·

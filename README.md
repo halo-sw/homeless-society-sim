@@ -1,5 +1,7 @@
 <h1 align="center">Ithaca</h1>
 
+<p align="center"><sub>(formerly homeless-society-sim)</sub></p>
+
 <p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
 
 <p align="center">An AI household lives 30 days in each candidate home and finds the problems you only learn by living there,<br>the ones a listing photo, a map and a 30-minute viewing never show.</p>
@@ -10,12 +12,12 @@
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
   <img src="https://img.shields.io/badge/tests-1421_JS_·_244_Python-2f5d50?style=flat-square" alt="1421 JavaScript and 244 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
-  <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <a href="https://halo-sw.github.io/homeless-society-sim/"><img src="https://img.shields.io/badge/Try_it-live-2f5d50?style=for-the-badge" alt="Try it live"></a>
+  <a href="https://halo-sw.github.io/ithaca/"><img src="https://img.shields.io/badge/Try_it-live-2f5d50?style=for-the-badge" alt="Try it live"></a>
   &nbsp;
   <a href="#quick-start"><img src="https://img.shields.io/badge/Run_it-locally-2f5d50?style=for-the-badge" alt="Run it locally"></a>
   &nbsp;
@@ -24,7 +26,7 @@
   <a href="README.ko.md"><img src="https://img.shields.io/badge/한국어-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Korean README"></a>
 </p>
 
-<p align="center"><sub>Live site: <a href="https://halo-sw.github.io/homeless-society-sim/">https://halo-sw.github.io/homeless-society-sim/</a> — static build: Muse chat and the VWorld aerial photo are off there to keep keys private; runs use recorded Muse decisions or the rule judge, labelled as such.</sub></p>
+<p align="center"><sub>Live site: <a href="https://halo-sw.github.io/ithaca/">https://halo-sw.github.io/ithaca/</a> — static build: Muse chat and the VWorld aerial photo are off there to keep keys private; runs use recorded Muse decisions or the rule judge, labelled as such.</sub></p>
 
 <p align="center">
   <a href="#how-it-works">How it works</a> ·

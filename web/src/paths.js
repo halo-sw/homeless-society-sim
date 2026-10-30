@@ -27,7 +27,7 @@ export function assetUrl(p) {
 }
 
 // Base-aware app URLs (22b): every in-app link keeps the Vite base, so
-// navigation works both at / and under /homeless-society-sim/ on Pages.
+// navigation works both at / and under /ithaca/ on Pages.
 // `query` is the part after "?", without the leading "?".
 
 function baseWithSlash(base) {

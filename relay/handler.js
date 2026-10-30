@@ -17,7 +17,7 @@ const DEFAULT_ORIGINS = [
   "http://127.0.0.1:48741",
   "http://localhost:5173",
 ];
-const DEFAULT_DATA_BASE = "https://halo-sw.github.io/homeless-society-sim/";
+const DEFAULT_DATA_BASE = "https://halo-sw.github.io/ithaca/";
 const DAY_MS = 86400000;
 
 function allowedOrigins(env) {

@@ -406,7 +406,7 @@ export function LandingPage() {
             <a href="#living">살아 보기</a>
             <a href="#data">데이터</a>
             <a href="#faq">질문</a>
-            <a href="https://github.com/halo-sw/homeless-society-sim">GitHub</a>
+            <a href="https://github.com/halo-sw/ithaca">GitHub</a>
           </nav>
           <div className="ds-lp-foot-meta">
             <PoweredByMuse size="sm" />
