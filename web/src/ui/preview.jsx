@@ -215,8 +215,9 @@ export function AerialThumb({ lon, lat, width = 96, height = 96, fallback = null
         width: 10, height: 10, borderRadius: "50%", transform: "translate(-50%, -50%)",
         background: "rgba(17,20,26,0.9)", border: "2px solid #fff",
         boxShadow: "0 1px 4px rgba(0,0,0,0.5), 0 0 0 1px #fff" }} />
-      <span style={{ position: "absolute", left: 4, bottom: 4, fontSize: "var(--ui-t12)",
-        color: "#fff", background: "rgba(0,0,0,0.45)", borderRadius: 4, padding: "0 4px" }}>
+      <span className="ui-aerial-label" style={{ position: "absolute", left: 4, bottom: 4, fontSize: "var(--ui-t12)",
+        color: "#fff", background: "rgba(0,0,0,0.45)", borderRadius: 4, padding: "0 4px",
+        whiteSpace: "nowrap" }}>
         항공사진
       </span>
     </div>

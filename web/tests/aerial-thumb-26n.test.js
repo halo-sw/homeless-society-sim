@@ -178,3 +178,19 @@ describe("26n row SSR", () => {
     assert.ok(html.includes(USGS_CREDIT), "US list credits USGS");
   });
 });
+
+describe("26n3 phone thumbnail label", () => {
+  it("480px rule hides the aerial label inside .ui-cand-thumb, label never wraps, no ellipsis", () => {
+    const css = readFileSync(join(HERE, "..", "src", "ui", "ui.css"), "utf8");
+    const media = css.slice(css.indexOf("@media (max-width: 480px)"));
+    assert.ok(media.includes(".ui-cand-thumb .ui-aerial-label"),
+      "phone rule targets the label inside .ui-cand-thumb");
+    assert.match(media, /\.ui-cand-thumb\s+\.ui-aerial-label\s*\{\s*display:\s*none/,
+      "phone rule hides the label inside .ui-cand-thumb");
+    const labelRule = css.match(/\.ui-aerial-label\s*\{[^}]*\}/);
+    assert.ok(labelRule, "label rule exists");
+    assert.match(labelRule[0], /white-space:\s*nowrap/, "label never wraps");
+    assert.ok(!labelRule[0].includes("text-overflow"), "no ellipsis on the label");
+    assert.ok(!labelRule[0].includes("ellipsis"), "no ellipsis on the label");
+  });
+});
