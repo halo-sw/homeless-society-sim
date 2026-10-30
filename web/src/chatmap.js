@@ -11,16 +11,23 @@
 import { findPath, normalizeStation } from "./engine/journey.js";
 
 export const MAP_COLORS = {
-  ground: "#cfc4ad",
-  water: "#3f6f8f",
-  park: "#8a9a5b",
+  ground: "#f3f1ec",
+  water: "#c9dcea",
+  park: "#dfe9d3",
   boundary: "#8f897f",
   regionLine: "#a89e8c",
-  stationDot: "#57534a",
-  workPin: "#b25a33",
-  pinFill: "#1d1b18",
+  stationDot: "#ffffff",
+  workPin: "#1d1b18",
+  pinFill: "#ffffff",
+  pinText: "#1d1b18",
+  pinPicked: "#2f6fed",
   pinHi: "#2f6fed",
   pickedRing: "#2f9e44",
+  road: "#ffffff",
+  roadCasing: "#e2ddd3",
+  regionLabel: "#a39d92",
+  stationRing: "#55514a",
+  muted: "#8f897f",
 };
 
 // Official Seoul metropolitan subway colours, by network line id. The
@@ -97,14 +104,23 @@ export function densifyPts(pts, maxKm = 2.5) {
 // Fit lon/lat points into a W×H stage with at least `margin` (fraction)
 // of each side clear. Returns {view:[x,y,w,h], toXY} where toXY maps
 // lon/lat to stage px. Single points and empty input fall back to a
-// default span around the centre so the panel still fills.
+// default span around the centre so the panel still fills. The optional
+// `inset` ({top,right,bottom,left} px) fits the data into the inner
+// rectangle so pills and trays never clip; empty inset keeps 1:1.
 export const MAP_FIT_MARGIN = 0.08;
 const MIN_SPAN_DEG = 0.02;
 
-export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN) {
+export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) {
   const w = Math.max(1, Number(W) || 1);
   const h = Math.max(1, Number(H) || 1);
   const m = Math.min(0.4, Math.max(0, Number(margin) || 0));
+  const pad = inset || {};
+  const padL = Math.max(0, Number(pad.left) || 0);
+  const padR = Math.max(0, Number(pad.right) || 0);
+  const padT = Math.max(0, Number(pad.top) || 0);
+  const padB = Math.max(0, Number(pad.bottom) || 0);
+  const iw = Math.max(1, w - padL - padR);
+  const ih = Math.max(1, h - padT - padB);
   const list = (points || []).filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat));
   let lon0, lat0, lon1, lat1;
   if (list.length === 0) {
@@ -128,13 +144,14 @@ export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN) {
   // edge.
   fw /= Math.max(1 - 2 * m, 0.2);
   fh /= Math.max(1 - 2 * m, 0.2);
-  const want = w / h;
+  const want = iw / ih;
   if (fw / fh < want) fw = fh * want;
   else fh = fw / want;
   const view = [cx - fw / 2, cy - fh / 2, fw, fh];
   const toXY = (lon, lat) => {
     const [fx] = flatXY(lon, lat, midLat);
-    return [((fx - view[0]) / view[2]) * w, ((view[1] + view[3] - lat) / view[3]) * h];
+    return [padL + (((fx - view[0]) / view[2]) * iw),
+      padT + (((view[1] + view[3] - lat) / view[3]) * ih)];
   };
   return { view, toXY, midLat };
 }
@@ -278,12 +295,15 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
   }
   const list = candidates || [];
   const picked = new Set(picks || []);
+  const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const letterOf = new Map((picks || []).map((id, i) => [id, LETTERS[i] || String(i + 1)]));
   const pins = list.map((c, i) => ({
     n: i + 1,
     id: c.id,
     lon: c.lon,
     lat: c.lat,
     picked: picked.has(c.id),
+    letter: letterOf.get(c.id) || null,
     commuteMin: commuteMinutesOf(c),
     candidate: c,
   })).filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat));
@@ -300,6 +320,7 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
   }
   const tileWater = [];
   const tileBounds = [];
+  const roads = [];
   for (const t of tiles || []) {
     for (const b of t.boundaries || []) {
       if (Array.isArray(b.pts) && b.pts.length > 1) {
@@ -309,6 +330,11 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
     for (const wseg of t.water || []) {
       if (Array.isArray(wseg.pts) && wseg.pts.length > 1) {
         tileWater.push({ closed: !!wseg.closed, name: wseg.name || "", pts: wseg.pts });
+      }
+    }
+    for (const r of t.roads || []) {
+      if (Array.isArray(r.pts) && r.pts.length > 1) {
+        roads.push({ cls: r.class, pts: r.pts });
       }
     }
   }
@@ -321,9 +347,43 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
     commutes,
     tileBounds,
     tileWater,
+    roads,
     green: { water: (green && green.water) || [], parks: (green && green.parks) || [] },
     tenure: tenure || null,
   };
+}
+
+// Short pill price (19b — pure). 전세 shows the deposit only
+// ("1억 7,700"); 월세 shows monthly over deposit ("월 60 / 1,000",
+// both in 만원).
+export function shortPinPrice(candidate, tenure) {
+  const c = candidate || {};
+  const t = (c.tenures || []).find((x) => x.tenure === tenure)
+    || (c.tenures || [])[0] || null;
+  if (!t || t.median_won === null || t.median_won === undefined) return "가격 미정";
+  if (t.tenure === "wolse") {
+    const dep = Number(t.deposit_median_won);
+    const mon = Number(t.median_won);
+    if (!Number.isFinite(dep) || !Number.isFinite(mon)) return "가격 미정";
+    return `월 ${Math.round(mon / 10000).toLocaleString("ko-KR")} / ${Math.round(dep / 10000).toLocaleString("ko-KR")}`;
+  }
+  const v = Number(t.median_won);
+  if (!Number.isFinite(v)) return "가격 미정";
+  if (v >= 100000000) {
+    const eok = Math.floor(v / 100000000);
+    const man = Math.floor((v % 100000000) / 10000);
+    return man > 0 ? `${eok}억 ${man.toLocaleString("ko-KR")}` : `${eok}억`;
+  }
+  if (v >= 10000) return `${Math.floor(v / 10000).toLocaleString("ko-KR")}만`;
+  return `${Math.round(v).toLocaleString("ko-KR")}원`;
+}
+
+// Pill width in stage px for a short price: side pads + the 16 px
+// number circle + a gap + ~7 px per ASCII char, ~12 px per CJK char.
+export function pinPillWidthPx(short) {
+  let tw = 0;
+  for (const ch of String(short || "")) tw += ch.codePointAt(0) > 0xff ? 12 : 7;
+  return 8 + 16 + 6 + tw + 8;
 }
 
 // Price-tag layout (18f — pure, stage px in, boxes out). Pins closer
@@ -400,8 +460,8 @@ export function layoutPinLabels(points, W, H) {
   const placed = [];
   return list.map((p, i) => {
     const d = dots[i];
-    const tw = tagWidthPx(p.tag);
-    const th = TAG_H_PX;
+    const tw = Number(p.w) > 0 ? p.w : tagWidthPx(p.tag);
+    const th = Number(p.h) > 0 ? p.h : TAG_H_PX;
     const cands = [
       { x: d.x + TAG_GAP, y: d.y - th / 2, w: tw, h: th },
       { x: d.x - TAG_GAP - tw, y: d.y - th / 2, w: tw, h: th },
