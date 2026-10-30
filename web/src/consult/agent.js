@@ -10,7 +10,15 @@ import { costUsd } from "../judge/run.js";
 import {
   TOOL_DEFS, MAX_TOOL_ROUNDS, createSession, callTool,
 } from "./tools.js";
-import { checkConsultReply, numbersOnlyAnswer, actionConfirmation } from "./guards.js";
+import { checkConsultReply, numbersOnlyAnswer, actionConfirmation, isMostlyKorean } from "./guards.js";
+
+// 26u: English-mode anchor. Sent once up front and re-sent as the last
+// message before the final completion so it sits after the tool results
+// (Korean tool output otherwise drags the model back to Korean).
+const ENGLISH_NOTE =
+  "The customer reads English. Answer in plain English. Write place and station names romanized with the Korean once in parentheses, e.g. Gangnam Stn (강남역). Write money as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M. Every rule above still applies.";
+const ENGLISH_RETRY_NOTE =
+  "Your last answer was in Korean. Rewrite it in plain English with the same facts and numbers.";
 
 function lastUserText(messages) {
   for (let i = (messages || []).length - 1; i >= 0; i--) {
@@ -287,9 +295,9 @@ export async function runTurn(opts) {
     history.push({ role: "system", content: contextLine });
   }
   if (context && context.lang === "en") {
-    history.push({ role: "system", content:
-      "The customer reads English. Answer in plain English. Write place and station names romanized with the Korean once in parentheses, e.g. Gangnam Stn (강남역). Write money as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M. Every rule above still applies." });
+    history.push({ role: "system", content: ENGLISH_NOTE });
   }
+  const isEnglish = !!(context && context.lang === "en");
   const appended = []; // new messages for the browser to keep
   const toolCalls = []; // compact rows for the UI
   const toolResults = []; // parsed results, in order (guard scope)
@@ -306,8 +314,13 @@ export async function runTurn(opts) {
 
   for (;;) {
     rounds++;
+    // 26u: after tool results pile up, re-send the English anchor last
+    // so the turn's answer is written in English.
+    const requestMessages = (isEnglish && history.some((m) => m && m.role === "tool"))
+      ? [...history, { role: "system", content: ENGLISH_NOTE }]
+      : history;
     const res = await complete({
-      provider, messages: history, tools: TOOL_DEFS,
+      provider, messages: requestMessages, tools: TOOL_DEFS,
       maxTokens: 2000,
     });
     usage.prompt_tokens += (res.usage && res.usage.prompt_tokens) || 0;
@@ -320,6 +333,40 @@ export async function runTurn(opts) {
       appended.push({ role: "assistant", content: split.text });
       const checked = checkConsultReply(split.text, toolResults);
       if (checked.ok) {
+        // 26u: a Korean final answer would carry data-no-i18n and show
+        // raw Korean to English readers — retry once in English.
+        if (isEnglish && isMostlyKorean(split.text)) {
+          const retry = await complete({
+            provider,
+            messages: [...history,
+              { role: "assistant", content: reply },
+              { role: "system", content: ENGLISH_RETRY_NOTE }],
+          });
+          usage.prompt_tokens += (retry.usage && retry.usage.prompt_tokens) || 0;
+          usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
+          usage.calls++;
+          const reply2 = (retry.message && retry.message.content) || "";
+          const split2 = splitSuggestions(reply2);
+          const checked2 = checkConsultReply(split2.text, toolResults);
+          if (checked2.ok && !isMostlyKorean(split2.text)) {
+            appended.push({ role: "assistant", content: split2.text });
+            return finish({ reply: split2.text, suggestions: split2.suggestions,
+              guardRetries: 1, fallback: false });
+          }
+          if (checked2.ok) {
+            // Still Korean: keep the text but leave it translatable —
+            // the fallback flag clears fromModel so the UI skips
+            // data-no-i18n and the phrase layer translates what it can.
+            appended.push({ role: "assistant", content: split2.text });
+            return finish({ reply: split2.text, suggestions: split2.suggestions,
+              guardRetries: 1, fallback: true, guardCause: "english_retry_korean" });
+          }
+          const retryFallback = actionConfirmation(toolResults)
+            ?? numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
+          appended.push({ role: "assistant", content: retryFallback });
+          return finish({ reply: retryFallback, guardRetries: 1, fallback: true,
+            guardCause: checked2.cause });
+        }
         return finish({ reply: split.text, suggestions: split.suggestions,
           guardRetries: 0, fallback: false });
       }

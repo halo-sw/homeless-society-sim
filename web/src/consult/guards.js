@@ -65,6 +65,23 @@ export function predictionClaim(text) {
   return null;
 }
 
+// 26u: true when the reply reads as mostly Korean. Parenthesised
+// segments (romanized names carry the Korean in parentheses),
+// [[…]] suggestion markers, URLs and digits are dropped first; then
+// true when Hangul letters are more than 20 % of the remaining letters.
+export function isMostlyKorean(text) {
+  let s = String(text || "");
+  s = s.replace(/\[\[[^\]]*\]\]/g, " ");
+  s = s.replace(/\([^)]*\)/g, " ");
+  s = s.replace(/https?:\/\/\S+/g, " ");
+  s = s.replace(/www\.\S+/g, " ");
+  s = s.replace(/[0-9]/g, " ");
+  const hangul = (s.match(/[\uAC00-\uD7A3\u3131-\u318E\u1100-\u11FF]/g) || []).length;
+  const letters = (s.match(/\p{L}/gu) || []).length;
+  if (letters === 0) return false;
+  return hangul / letters > 0.2;
+}
+
 const round1 = (n) => Math.round(n * 10) / 10;
 const round2 = (n) => Math.round(n * 100) / 100;
 
