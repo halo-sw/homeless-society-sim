@@ -14,6 +14,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { useState } from "react";
 import { store } from "./store.js";
 import { appUrl } from "../paths.js";
+import { isEmbed } from "../chat/urls.js";
 import { TopBar, MapTools } from "./topbar.jsx";
 import { SourceBadge, GroupBadges } from "./source-badge.jsx";
 import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup, tabsForCurrency } from "./compare-tabs.js";
@@ -1038,44 +1039,55 @@ export function App() {
       onIntro: null, onRestart: restartToLanding };
   const toggleLegend = () => setLegendOpen(!legendOpen);
   const closeLegend = () => setLegendOpen(false);
+  // 27c1: inside the chat work panel (embed=1) the frame owns the
+  // chrome already — no top bar, no intro/tour/share overlays.
+  const embed = typeof window !== "undefined" && isEmbed(window.location.search);
   if (!isSim) {
-    return (
+    const tourBody = (
       <>
-        <div className="ui-topbar">
-          <TopBar mode="tour" settings={settings} />
-        </div>
+        {!embed && (
+          <div className="ui-topbar">
+            <TopBar mode="tour" settings={settings} />
+          </div>
+        )}
         <MapTools state={state} legendOpen={legendOpen} onLegend={toggleLegend} />
         <CaptionCard state={state} />
         {legendOpen && <LegendCard state={state} onClose={closeLegend} />}
-        {agentAsked() && <AgentTourCard />}
+        {!embed && agentAsked() && <AgentTourCard />}
         {state.viewChip && (
           <div className="ui-viewchip overlay">{state.viewChip}</div>
         )}
         <AttrLine state={state} />
       </>
     );
+    if (embed) return <div data-embed="1">{tourBody}</div>;
+    return tourBody;
   }
   return (
-    <div className="ui-sim13">
-      <div className="ui-sim13-top">
-        <TopBar mode="sim" settings={settings} />
-      </div>
+    <div className="ui-sim13" data-embed={embed ? "1" : undefined}>
+      {!embed && (
+        <div className="ui-sim13-top">
+          <TopBar mode="sim" settings={settings} />
+        </div>
+      )}
       <div className="ui-sim13-stage">
         <MapTools state={state} legendOpen={legendOpen} onLegend={toggleLegend} />
         <SimCredit state={state} />
         <TimelineBar state={state} compact />
       </div>
-      <div className="ui-sim13-drawer overlay">
-        <SimDrawer state={state} />
-        {legendOpen && <LegendCard state={state} onClose={closeLegend} />}
-      </div>
-      <IntroCard state={state} />
-      {agentAsked() && <AgentTourCard />}
+      {!embed && (
+        <div className="ui-sim13-drawer overlay">
+          <SimDrawer state={state} />
+          {legendOpen && <LegendCard state={state} onClose={closeLegend} />}
+        </div>
+      )}
+      {!embed && <IntroCard state={state} />}
+      {!embed && agentAsked() && <AgentTourCard />}
       {state.viewChip && (
         <div className="ui-viewchip overlay">{state.viewChip}</div>
       )}
-      <ShareDialog />
-      <DemoTour />
+      {!embed && <ShareDialog />}
+      {!embed && <DemoTour />}
     </div>
   );
 }

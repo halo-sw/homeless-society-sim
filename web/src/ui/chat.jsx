@@ -87,7 +87,7 @@ import {
 } from "../chat/engine.js";
 import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
-import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
+import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { postConsultStream, loadScenario } from "./consult-client.js";
 import { LIVE_API, appUrl } from "../paths.js";
@@ -384,7 +384,7 @@ export function resultScoreOf(moneyDoc, compare, weights, explicit) {
 // (short value, full value in title), 출퇴근 편도 (one_way, or one
 // row per member on older payloads). 살아 보니 and the single
 // 어떻게 계산했나요 disclosure live in the SimulationCard done branch.
-export function ResultSummary({ data }) {
+export function ResultSummary({ data, onScene }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
   const names = data.names || {};
@@ -503,7 +503,7 @@ export function plainRunError(message) {
   return "30일 살아 보기를 끝내지 못했어요. 다시 시도해 주세요.";
 }
 
-export function SimulationCard({ data, example, onRetry }) {
+export function SimulationCard({ data, example, onRetry, onScene }) {
   if (!data) return null;
   if (data.status === "running") {
     const p = data.progress || { done: 0, total: 1, label: "" };
@@ -568,7 +568,7 @@ export function SimulationCard({ data, example, onRetry }) {
         <Text type="supporting">
           같은 식구가 두 집에서 30일씩 살아 봤어요. 고르는 건 고객님 몫이에요.
         </Text>
-        <ResultSummary data={data} />
+        <ResultSummary data={data} onScene={onScene} />
         {texts.length > 0 && (
           <VStack gap={1}>
             <Text>살아 보니</Text>
@@ -578,7 +578,8 @@ export function SimulationCard({ data, example, onRetry }) {
               // per-home first outing.
               const url = momentRowUrl(t, { custom: data.customId,
                 scenario: data.scenario || null,
-                fallback: moments.find((m) => m.label === t.home) || null });
+                fallback: moments.find((m) => m.label === t.home) || null,
+                embed: true });
               return (
                 <div key={i} className="ui-result-moment">
                   <span className="ui-result-when">{t.when_ko}</span>
@@ -587,7 +588,7 @@ export function SimulationCard({ data, example, onRetry }) {
                   {url && (
                     <Button size="sm" variant="ghost" label="3D로 보기 →"
                       onClick={() => {
-                        window.location.href = url;
+                        if (onScene) onScene({ url, title: `${t.when_ko} · ${t.home}` });
                       }} />
                   )}
                 </div>
@@ -769,7 +770,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         {msg.kind === "simulation" && (
           <div data-sim-card={msg.id}>
             <SimulationCard data={data} example={msg.example}
-              onRetry={handlers.onRun} />
+              onRetry={handlers.onRun} onScene={handlers.onScene} />
           </div>
         )}
         {msg.kind === "listing" && (
@@ -946,17 +947,17 @@ function followOfRun(runs, t) {
   return i >= 0 ? i + 1 : 1;
 }
 
-export function momentRowUrl(t, { custom = null, scenario = null, runs = null, fallback = null } = {}) {
+export function momentRowUrl(t, { custom = null, scenario = null, runs = null, fallback = null, embed = false } = {}) {
   if (!t) return null;
   if (Number.isFinite(t.day) && Number.isFinite(t.minute)) {
     return simMomentUrl({ custom, scenario, home: t.home,
-      day: t.day + 1, t: hhmm(t.minute), follow: followOfRun(runs, t) });
+      day: t.day + 1, t: hhmm(t.minute), follow: followOfRun(runs, t), embed });
   }
   const mo = fallback
     || (runs && runs[t.home] ? { label: t.home, ...firstMomentOfRun(runs[t.home]) } : null);
   if (!mo) return null;
   return simMomentUrl({ custom, scenario, home: mo.label || t.home,
-    day: mo.day, t: mo.t, follow: mo.follow });
+    day: mo.day, t: mo.t, follow: mo.follow, embed });
 }
 
 // 21b: the pure thread update behind pushMsg — append, or replace
@@ -1009,6 +1010,9 @@ export function ChatScreen() {
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
   const [workOpen, setWorkOpen] = useState(false);
+  // 27c1: the embedded 3D scene ({ url, title } | null) shown in the
+  // work panel instead of the map while set.
+  const [scene, setScene] = useState(null);
   const [serverKeys, setServerKeys] = useState({});
   const [modelErrors, setModelErrors] = useState({});
   const [intake, setIntake] = useState(() => intakeState0());
@@ -1284,8 +1288,10 @@ export function ChatScreen() {
 
   function handlePreview3D(candidate) {
     if (!candidate.scene) return;
-    saveTranscript({ ...stateRef.current, savedAt: Date.now() });
-    window.location.href = chatUrl("", { area: candidate.scene });
+    setScene({ url: tourUrl({ area: candidate.scene, embed: true }),
+      title: `${candidate.name} 동네` });
+    setWorkOpen(true);
+    setView("work");
   }
 
   function handleJeonse() {
@@ -1834,6 +1840,7 @@ export function ChatScreen() {
     intake, household, profile, exampleId,
     onChip: (field, starter) => setComposer(starter),
     onOpenWork: () => setWorkOpen(true),
+    onScene: (s) => { setScene(s); setWorkOpen(true); setView("work"); },
     onSort: handleSort,
     onTogglePick: handleTogglePick,
     onPreview3D: handlePreview3D,
@@ -1961,6 +1968,11 @@ export function ChatScreen() {
           </section>
           {workOpen && (
           <MsgBoundary>
+          {scene ? (
+          <SceneFrame scene={scene}
+            onBack={() => setScene(null)}
+            onClose={() => { setScene(null); setWorkOpen(false); setView("chat"); }} />
+          ) : (
           <StageArea
             onClose={() => { setWorkOpen(false); setView("chat"); }}
             map={buildChatMap({
@@ -1995,9 +2007,10 @@ export function ChatScreen() {
               setOrbFilter(regionId);
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
+          )}
           </MsgBoundary>
           )}
-          {workOpen && (<>
+          {workOpen && !scene && (
           <PicksTray picks={picks}
             candidates={(candidatesData && candidatesData.result.candidates) || []}
             gate={runGate(profile)}
@@ -2005,12 +2018,14 @@ export function ChatScreen() {
               ? stationNames(dataRef.current.network) : []}
             onWorkplaceText={handleTrayWorkplace} onNoCommute={handleTrayNoCommute}
             onRun={handleRun} onRemove={handleTogglePick} />
+          )}
+          {workOpen && (
           <SidePanel picks={picks} candidatesData={candidatesData}
             detail={detail} onCloseDetail={() => setDetail(null)}
             photoDeps={handlers.photoDeps} destName={destName}
             tenure={candidatesData?.tenure || "undecided"}
             onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
-          </>)}
+          )}
         </div>
         {viewChip && (
           <div className="ui-viewchip overlay">{viewChip}</div>
@@ -2097,6 +2112,33 @@ export function mergeGreenBoxes(cache) {
     // The map paints fine without the green layer.
   }
   return { water, parks };
+}
+
+// 27c1: a 3D scene inside the work panel — the sim/tour page in an
+// embed iframe, so the conversation never navigates away. 지도로
+// returns to the map, 새 창으로 opens the same scene in a new tab.
+export function SceneFrame({ scene, onBack, onClose }) {
+  if (!scene) return null;
+  return (
+    <section className="ui-chat-scene" aria-label="3D 장면">
+      <div className="ui-chat-scene-head">
+        <span className="ui-chat-scene-title">{scene.title}</span>
+        <span style={{ flex: "1 1 auto" }} />
+        <Button size="sm" variant="ghost" label="지도로"
+          onClick={() => onBack && onBack()} />
+        <Button size="sm" variant="ghost" label="새 창으로"
+          onClick={() => {
+            if (typeof window !== "undefined" && scene.url) {
+              window.open(withoutEmbed(scene.url), "_blank", "noopener");
+            }
+          }} />
+        <IconButton label="작업판 닫기" variant="ghost" size="sm"
+          icon={<Icon icon="close" />} onClick={() => onClose && onClose()} />
+      </div>
+      <iframe className="ui-chat-scene-frame" src={scene.url}
+        title={scene.title} allow="fullscreen" />
+    </section>
+  );
 }
 
 export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine, onClose }) {

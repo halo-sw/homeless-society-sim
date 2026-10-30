@@ -20,6 +20,13 @@ export function routeForSearch(search) {
   return "chat";
 }
 
+// Pure dispatcher kind: "sim" | "chat" | "tour".
+export function bootKindFor(route) {
+  if (route === "sim") return "sim";
+  if (route === "chat") return "chat";
+  return "tour";
+}
+
 export function parseChatSearch(search) {
   const q = search instanceof URLSearchParams ? search : new URLSearchParams(search || "");
   return {
@@ -72,12 +79,13 @@ export function landingUrl() {
 // 3D에서 보기: a moment in a committed scenario, or in a custom
 // client-run simulation (?custom=<id> loads runs from IndexedDB).
 // 18: carries an explicit style choice (both default to painted).
-function simMomentQuery({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null } = {}) {
+function simMomentQuery({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null, embed = false } = {}) {
   const q = new URLSearchParams({ mode: "sim", home, day: String(day), t });
   if (follow) q.set("follow", String(follow));
   if (custom) q.set("custom", custom);
   else if (scenario) q.set("scenario", scenario);
   if (style) q.set("style", style);
+  if (embed) q.set("embed", "1");
   return q.toString();
 }
 
@@ -85,8 +93,45 @@ export function simMomentUrlWith(base, opts = {}) {
   return appUrlWith(base, simMomentQuery(opts));
 }
 
-export function simMomentUrl({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null } = {}) {
-  return appUrl(simMomentQuery({ scenario, custom, home, day, t, follow, style }));
+export function simMomentUrl({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null, embed = false } = {}) {
+  return appUrl(simMomentQuery({ scenario, custom, home, day, t, follow, style, embed }));
+}
+
+// 27c1: a tour scene that opens inside the chat work panel
+// (embed=1 hides the top bar + tour card; the frame keeps the map,
+// caption and attribution).
+export function tourUrl({ area = "", embed = false } = {}) {
+  const q = new URLSearchParams();
+  if (area) q.set("area", area);
+  if (embed) q.set("embed", "1");
+  return appUrl(q.toString());
+}
+
+export function tourUrlWith(base, { area = "", embed = false } = {}) {
+  const q = new URLSearchParams();
+  if (area) q.set("area", area);
+  if (embed) q.set("embed", "1");
+  return appUrlWith(base, q.toString());
+}
+
+export function isEmbed(search) {
+  const q = search instanceof URLSearchParams ? search : new URLSearchParams(search || "");
+  return q.get("embed") === "1";
+}
+
+// The "새 창으로" link: the same scene without the embed flag.
+export function withoutEmbed(url) {
+  const s = String(url || "");
+  const qi = s.indexOf("?");
+  if (qi < 0) return s;
+  let hash = "";
+  let query = s.slice(qi + 1);
+  const hi = query.indexOf("#");
+  if (hi >= 0) { hash = query.slice(hi); query = query.slice(0, hi); }
+  const q = new URLSearchParams(query);
+  q.delete("embed");
+  const rest = q.toString();
+  return s.slice(0, qi) + (rest ? `?${rest}` : "") + hash;
 }
 
 export function parseSimSearch(search) {
