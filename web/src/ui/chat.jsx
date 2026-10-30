@@ -209,6 +209,17 @@ function readinessNote(candidate) {
 // same handler, so no copy can stall while another works.
 export const RUN_BUTTON_LABEL = "이 집들로 30일 살아 보기";
 
+// 26m: split a joined money cell ("월 $4,261 (ZIP 추정)",
+// "$4,261 (ZIP estimate)/mo") into its amount line and its small source
+// note, so phones render them on two lines instead of wrapping mid-word.
+// Strings without a trailing parenthetical pass through untouched.
+export function splitMoneyNote(text) {
+  const s = String(text || "");
+  const m = /^(.*?)\s*(\([^()]*\))\s*(\/mo)?\s*$/.exec(s);
+  if (!m || !m[1]) return { main: s, note: "" };
+  return { main: `${m[1]}${m[3] || ""}`, note: m[2] };
+}
+
 // 18d: the scroll target for a fresh simulation card. handleRun sets
 // it the moment the card is created (progress and result render inside
 // the same card far below the fold), so the chat moves there at once.
@@ -424,9 +435,11 @@ export function ResultSummary({ data }) {
           // Korean-only rows (실수령, 대출, 전세 점검).
           if (data.moneyDoc && data.moneyDoc.currency === "USD") {
             const text = `${fmtMoney(mh.monthly, "USD", { monthly: true })} (ZIP 추정)`;
+            const parts = splitMoneyNote(text);
             return (
               <span key={`money-${l}`} className="ui-result-value" title={text}>
-                {text}
+                <span className="ui-result-main">{parts.main}</span>
+                {parts.note && <span className="ui-result-note">{parts.note}</span>}
               </span>
             );
           }

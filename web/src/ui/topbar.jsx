@@ -4,7 +4,7 @@
 // 가정, sources, intro, restart). Sim/tour view options live in a
 // small floating MapTools group instead. SSR-safe (no window at
 // render; navigation only in handlers).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Drawer } from "@astryxdesign/core/Drawer";
@@ -24,6 +24,7 @@ import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
 import { newUsageLog } from "../models/catalog.js";
 import { LangToggle } from "./lang-toggle.jsx";
+import { LANG } from "../i18n/lang.js";
 
 const EMPTY_LOG = newUsageLog();
 
@@ -32,6 +33,35 @@ const MODES = [
   { value: "sim", label: "살아 보기" },
   { value: "tour", label: "동네 둘러보기" },
 ];
+
+// 26m: short mode labels for phones (390 px) — the full labels above
+// ("살아 보기", "동네 둘러보기") do not fit. Carries both languages
+// itself so it never depends on the DOM translator table.
+export const MODE_SHORT = {
+  chat: { ko: "대화", en: "Chat" },
+  sim: { ko: "보기", en: "View" },
+  tour: { ko: "둘러보기", en: "Explore" },
+};
+
+export function shortModeLabel(value, lang) {
+  const e = MODE_SHORT[value];
+  if (!e) return value;
+  return lang === "en" ? e.en : e.ko;
+}
+
+// 26m: SSR-safe phone query — false on the server, live in the browser.
+export function usePhoneMedia() {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const q = window.matchMedia("(max-width: 480px)");
+    setPhone(q.matches);
+    const fn = (e) => setPhone(e.matches);
+    if (q.addEventListener) q.addEventListener("change", fn);
+    return () => { if (q.removeEventListener) q.removeEventListener("change", fn); };
+  }, []);
+  return phone;
+}
 
 const DEFAULT_AREA = "songpa-jamsil";
 
@@ -127,6 +157,9 @@ export function SettingsContent({ settings, onClose }) {
 export function TopBar({ mode, summary, extra, settings }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+  // 26m: phones show the short labels (대화 / 보기 / 둘러보기);
+  // desktop renders exactly the full labels as before.
+  const phone = usePhoneMedia();
   return (
     <header className="ui-bar overlay">
       <div className="ui-bar-left">
@@ -134,7 +167,8 @@ export function TopBar({ mode, summary, extra, settings }) {
         <SegmentedControl label="화면 선택" value={mode}
           onChange={(v) => gotoMode(v, mode)} size="sm">
           {MODES.map((m) => (
-            <SegmentedControlItem key={m.value} value={m.value} label={m.label} />
+            <SegmentedControlItem key={m.value} value={m.value}
+              label={phone ? shortModeLabel(m.value, LANG) : m.label} />
           ))}
         </SegmentedControl>
       </div>
