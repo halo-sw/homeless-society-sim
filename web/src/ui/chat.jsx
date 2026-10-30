@@ -2200,6 +2200,7 @@ export function ChatScreen() {
       <AppShell
         variant="surface"
         contentPadding={0}
+        mobileNav={false}
         topNav={(
           <>
           <TopBar mode="chat" summary={summary}

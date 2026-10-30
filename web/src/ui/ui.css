@@ -3,20 +3,54 @@
 :root,
 [data-theme], .astryx-theme,
 #ui-root, #root, body {
+  --ds-page: #f6f4ef;
+  --ds-surface: #fffdf9;
+  --ds-sunken: #ece8df;
+  --ds-line: #ddd6c8;
+  --ds-ink-1: #1d1b18;
+  --ds-ink-2: #5c564c;
+  --ds-ink-3: #8a8275;
+  --ds-action: #1d1b18;
+  --ds-accent: #2f6fed;
+  --ds-home-a: #b3541e;
+  --ds-home-b: #2f6fed;
+  --ds-home-c: #5c564c;
+  --ds-ok: #1f7a3d;
+  --ds-warn: #b25e09;
+  --ds-subway-1: #0052a4;
+  --ds-subway-2: #00a84d;
+  --ds-subway-bundang: #f5a200;
+  --ds-subway-shin: #d4003b;
+  --ds-font-sans: 'Pretendard Variable', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --ds-font-display: "Noto Serif KR", serif;
+  --ds-t-12: 12px; --ds-t-14: 14px; --ds-t-16: 16px;
+  --ds-t-20: 20px; --ds-t-24: 24px; --ds-t-28: 28px;
+  --ds-t-40: 40px;
+  --ds-w-regular: 400; --ds-w-medium: 500; --ds-w-bold: 700;
+  --ds-lh-tight: 1.25; --ds-lh-body: 1.6; --ds-lh-display: 1.3;
+  --ds-s-4: 4px; --ds-s-8: 8px; --ds-s-12: 12px; --ds-s-16: 16px;
+  --ds-s-24: 24px; --ds-s-32: 32px; --ds-s-48: 48px;
+  --ds-r-chip: 8px; --ds-r-card: 12px; --ds-r-sheet: 16px;
+  --ds-r-pill: 999px; --ds-r-composer: 20px;
+  --ds-shadow-card: 0 1px 2px rgb(29 27 24 / 6%);
+  --ds-shadow-pop: 0 8px 24px rgb(29 27 24 / 12%);
+  --ds-chat-col: 760px;
+  --ds-side-w: 280px;
+  --ds-panel-w: 560px;
   --font-family-body: 'Pretendard Variable', -apple-system, 'Apple SD Gothic Neo', sans-serif;
   --font-family-heading: 'Pretendard Variable', -apple-system, 'Apple SD Gothic Neo', sans-serif;
   --ui-font: 'Pretendard Variable', -apple-system, 'Apple SD Gothic Neo', sans-serif;
-  --ui-t12: 12px; --ui-t14: 14px; --ui-t16: 16px; --ui-t20: 20px; --ui-t28: 28px;
+  --ui-t12: var(--ds-t-12); --ui-t14: var(--ds-t-14); --ui-t16: var(--ds-t-16); --ui-t20: var(--ds-t-20); --ui-t24: var(--ds-t-24); --ui-t28: var(--ds-t-28);
   --ui-w400: 400; --ui-w600: 600;
-  --ui-lh-body: 1.45; --ui-lh-head: 1.25;
-  --ui-s4: 4px; --ui-s8: 8px; --ui-s12: 12px; --ui-s16: 16px; --ui-s24: 24px; --ui-s32: 32px;
-  --ui-r-chip: 8px; --ui-r-card: 12px; --ui-r-sheet: 16px;
-  --ui-page: #f6f4ef; --ui-card: #ffffff; --ui-sunken: #efece5;
-  --ui-border: rgba(30,25,20,.08);
-  --ui-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
-  --ui-ink: #1d1b18; --ui-ink2: #5f5a52; --ui-ink3: #8f897f;
-  --ui-accent: #2f6fed;
-  --ui-ok: #4a9b6b; --ui-normal: #d9a83c; --ui-busy: #d96c3c; --ui-packed: #c0392b;
+  --ui-lh-body: var(--ds-lh-body); --ui-lh-head: var(--ds-lh-tight);
+  --ui-s4: var(--ds-s-4); --ui-s8: var(--ds-s-8); --ui-s12: var(--ds-s-12); --ui-s16: var(--ds-s-16); --ui-s24: var(--ds-s-24); --ui-s32: var(--ds-s-32); --ui-s48: var(--ds-s-48);
+  --ui-r-chip: var(--ds-r-chip); --ui-r-card: var(--ds-r-card); --ui-r-sheet: var(--ds-r-sheet);
+  --ui-page: var(--ds-page); --ui-card: var(--ds-surface); --ui-sunken: var(--ds-sunken);
+  --ui-border: var(--ds-line);
+  --ui-shadow: var(--ds-shadow-card);
+  --ui-ink: var(--ds-ink-1); --ui-ink2: var(--ds-ink-2); --ui-ink3: var(--ds-ink-3);
+  --ui-accent: var(--ds-accent);
+  --ui-ok: var(--ds-ok); --ui-normal: #d9a83c; --ui-busy: #d96c3c; --ui-packed: #c0392b;
 }
 #ui-root { color: var(--ui-ink); line-height: var(--ui-lh-body); }
 
@@ -138,7 +172,7 @@ dialog.astryx-dialog:not([open]) { display: none !important; pointer-events: non
   align-items: start;
 }
 .ui-share-row > span { display: flex; flex-direction: column; gap: var(--ui-s4); min-width: 0; }
-.ui-share-head { border-top: none; padding-bottom: 2px; }
+.ui-share-head { border-top: none; padding-bottom: var(--ds-s-4); }
 .ui-share-head > span { font-weight: 700; }
 .ui-share-canvas { position: absolute; left: -9999px; top: 0; }
 #share-print { display: none; }
@@ -212,7 +246,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-criterion-focus { outline: 2px solid var(--ui-accent); border-radius: var(--ui-r-chip); }
 
 /* Hoverable convenience categories (3D highlight). */
-.ui-qolcat { cursor: default; border-radius: var(--ui-r-chip); padding: 0 2px; }
+.ui-qolcat { cursor: default; border-radius: var(--ui-r-chip); padding: 0 var(--ds-s-4); }
 .ui-qolcat:hover { background: var(--ui-sunken); }
 
 /* 3D destination pin (in #tags, positioned by the scene). */
@@ -220,7 +254,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
   font-family: var(--ui-font);
   font-size: var(--ui-t12); line-height: var(--ui-lh-body);
-  padding: 2px var(--ui-s8); border-radius: var(--ui-r-chip);
+  padding: var(--ds-s-4) var(--ds-s-8); border-radius: var(--ui-r-chip);
   background: rgba(30, 26, 22, 0.82); color: var(--ui-page); pointer-events: none;
 }
 
@@ -230,7 +264,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
   font-family: var(--ui-font);
   font-size: var(--ui-t12); line-height: var(--ui-lh-body);
-  padding: 2px var(--ui-s8); border-radius: var(--ui-r-chip);
+  padding: var(--ds-s-4) var(--ds-s-8); border-radius: var(--ui-r-chip);
   background: rgba(30, 26, 22, 0.82); color: var(--ui-page); pointer-events: none;
 }
 
@@ -249,9 +283,9 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-landing-body { position: absolute; inset: 0; overflow: auto; }
 .ui-landing-brand { padding: 20px 24px; display: flex; align-items: baseline; gap: 8px; }
 .ui-landing-brandname { font-size: 18px; font-weight: 700; color: var(--ui-ink); }
-.ui-landing-brandtag { font-size: 13px; color: var(--ui-ink2);
+.ui-landing-brandtag { font-size: var(--ds-t-14); color: var(--ui-ink2);
   background: color-mix(in srgb, var(--ui-page) 85%, transparent);
-  border-radius: 999px; padding: 4px 12px; }
+  border-radius: var(--ds-r-pill); padding: 4px 12px; }
 .ui-landing-heading { font-size: 40px; font-weight: 700; line-height: 1.2;
   letter-spacing: -0.02em; color: var(--ui-ink); margin: 0; }
 .ui-landing-sub { font-size: 17px; color: var(--ui-ink2); margin: 8px 0 0; }
@@ -261,12 +295,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 }
 .ui-landing-steps { display: flex; gap: 8px; align-items: center;
   list-style: none; margin: 12px 0 0; padding: 0; }
-.ui-landing-step { display: flex; align-items: center; gap: 6px; font-size: 13px;
+.ui-landing-step { display: flex; align-items: center; gap: var(--ds-s-8); font-size: var(--ds-t-14);
   color: var(--ui-ink); background: var(--ui-card);
-  border: 1px solid var(--ui-border); border-radius: 999px;
-  padding: 6px 12px 6px 6px; }
+  border: 1px solid var(--ui-border); border-radius: var(--ds-r-pill);
+  padding: var(--ds-s-4) var(--ds-s-12) var(--ds-s-4) var(--ds-s-4); }
 .ui-landing-stepnum { display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; font-size: 11px; font-weight: 700;
+  width: 18px; height: 18px; font-size: var(--ds-t-12); font-weight: 700;
   border-radius: 50%; background: var(--ui-sunken); color: var(--ui-ink2); }
 .ui-landing-stepsep { color: var(--ui-ink3); }
 .ui-landing-cards { display: grid; gap: 12px;
@@ -276,13 +310,13 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-landing-card:hover { box-shadow: var(--ui-shadow); }
 .ui-landing-cardtop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ui-landing-cardtitle { font-size: 15px; font-weight: 600; color: var(--ui-ink); }
-.ui-landing-cardchip { font-size: 11px; color: var(--ui-ink2);
-  background: var(--ui-sunken); border-radius: 6px; padding: 2px 6px; }
-.ui-landing-cardprompt { font-size: 13px; color: var(--ui-ink2); margin: 6px 0 0; }
+.ui-landing-cardchip { font-size: var(--ds-t-12); color: var(--ui-ink2);
+  background: var(--ui-sunken); border-radius: var(--ds-r-chip); padding: var(--ds-s-4) var(--ds-s-8); }
+.ui-landing-cardprompt { font-size: var(--ds-t-14); color: var(--ui-ink2); margin: var(--ds-s-8) 0 0; }
 /* ---------- 13e3-2: landing footer readable on the map ---------- */
 .ui-landing-foot { text-align: center; font-size: 12px; color: var(--ui-ink2);
   background: color-mix(in srgb, var(--ui-page) 85%, transparent);
-  border-radius: 999px; padding: 4px 12px; }
+  border-radius: var(--ds-r-pill); padding: 4px 12px; }
 .ui-landing-foot p, .ui-landing-foot span, .ui-landing-foot button {
   color: var(--ui-ink2); font-size: 12px;
 }
@@ -505,18 +539,18 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   padding: var(--ui-s8) var(--ui-s12); border-top: 1px solid var(--ui-border); }
 .ui-cand-strip img { width: 72px; height: 54px; object-fit: cover; display: block;
   border-radius: var(--ui-r-chip); }
-.ui-cand-strip-meta { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.ui-cand-strip-meta { display: flex; flex-direction: column; gap: var(--ds-s-4); flex: 1 1 auto; min-width: 0; }
 .ui-cand-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ui-cand-count {
   position: absolute; right: 8px; bottom: 8px; font-size: var(--ui-t12);
   background: rgba(12, 14, 18, 0.68); color: #fff;
-  border-radius: var(--ui-r-chip); padding: 2px var(--ui-s8);
+  border-radius: var(--ui-r-chip); padding: var(--ds-s-4) var(--ds-s-8);
 }
 .ui-cand-label {
   position: absolute; left: 8px; top: 8px; font-size: var(--ui-t12);
   max-width: calc(100% - 16px);
   background: var(--ui-card); border-radius: var(--ui-r-chip);
-  padding: 2px var(--ui-s8);
+  padding: var(--ds-s-4) var(--ds-s-8);
   word-break: keep-all; overflow-wrap: anywhere;
 }
 .ui-cand-body { padding: var(--ui-s12); display: flex; flex-direction: column; gap: var(--ui-s8); }
@@ -543,13 +577,13 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-cand-row.is-hi { outline: 1px solid var(--ui-accent); outline-offset: -1px;
   background: #eef3fe; }
 .ui-cand-thumb { width: 96px; height: 96px; flex: none;
-  border-radius: 10px; overflow: hidden; background: var(--ui-sunken); }
+  border-radius: var(--ds-r-card); overflow: hidden; background: var(--ui-sunken); }
 .ui-cand-thumb > * { width: 100%; height: 100%; }
 .ui-cand-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* 26n3: the aerial corner label never wraps (English "Aerial photo" stays one line). */
 .ui-aerial-label { white-space: nowrap; }
 .ui-cand-row-main { flex: 1 1 auto; min-width: 0;
-  display: flex; flex-direction: column; gap: 2px; }
+  display: flex; flex-direction: column; gap: var(--ds-s-4); }
 .ui-cand-row-top { display: flex; align-items: center; gap: var(--ui-s8); }
 .ui-cand-disc { width: 20px; height: 20px; border-radius: 50%; flex: none;
   background: var(--ui-sunken); color: var(--ui-ink2);
@@ -567,8 +601,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-cand-row-price { font-size: 15px; font-weight: var(--ui-w600); }
 .ui-cand-row-facts { font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-cand-row-commute { font-size: var(--ui-t12); }
-.ui-cand-est { font-size: 11px; color: var(--ui-ink2); background: var(--ui-sunken);
-  border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+.ui-cand-est { font-size: var(--ds-t-12); color: var(--ui-ink2); background: var(--ui-sunken);
+  border-radius: var(--ds-r-chip); padding: 1px var(--ds-s-8); white-space: nowrap; }
 /* 19c: the full card in the side panel — wide photo, name then price. */
 .ui-cand-full .ui-cand-photo { aspect-ratio: 16 / 9; }
 .ui-cand-full .ui-cand-name { font-size: 18px; }
@@ -615,8 +649,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    button never shrinks, at every viewport width. */
 .ui-textstep > .ui-keyinput { flex: 1 1 auto; min-width: 0; }
 .ui-textstep button { flex: none; }
-.ui-src-row { padding: 10px 0; border-top: 1px solid var(--ui-border); }
-.ui-src-row > * + * { margin-top: 2px; }
+.ui-src-row { padding: var(--ds-s-12) 0; border-top: 1px solid var(--ui-border); }
+.ui-src-row > * + * { margin-top: var(--ds-s-4); }
 
 /* ---------- 13: orb + map sim ---------- */
 .ui-orb { position: absolute; inset: 0; overflow: hidden; background: var(--ui-page); }
@@ -638,7 +672,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-tl-row .ui-strip { flex: 1 1 auto; min-width: 0; }
 .ui-tl-steps {
   display: flex; gap: var(--ui-s4); align-items: center; overflow-x: auto;
-  white-space: nowrap; font-size: var(--ui-t12); padding-bottom: 2px;
+  white-space: nowrap; font-size: var(--ui-t12); padding-bottom: var(--ds-s-4);
 }
 
 /* ---------- 19a: chat 2-column shell (thread / stage + tray + on-demand panel) ---------- */
@@ -670,14 +704,14 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chatmap-zoom button { width: 32px; height: 32px; padding: 0;
   background: #ffffff; border: none; border-radius: 8px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  font-size: 16px; font-weight: 700; line-height: 1; color: #1d1b18;
+  font-size: 16px; font-weight: 700; line-height: 1; color: var(--ds-ink-1);
   cursor: pointer; }
 .ui-chatmap-zoom button.fit { width: auto; min-width: 32px; padding: 0 8px;
-  font-size: 11px; font-weight: 600; }
+  font-size: var(--ds-t-12); font-weight: 600; }
 /* 19a: the context line floats over the map instead of a header strip. */
 .ui-stage-pill { position: absolute; top: 12px; left: 12px; z-index: 5;
-  background: var(--ui-card); border-radius: 999px; box-shadow: var(--ui-shadow);
-  padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--ui-ink); }
+  background: var(--ui-card); border-radius: var(--ds-r-pill); box-shadow: var(--ui-shadow);
+  padding: var(--ds-s-4) var(--ds-s-12); font-size: var(--ds-t-14); font-weight: 600; color: var(--ui-ink); }
 /* 19a: the only run button lives in this tray over the stage bottom. */
 .ui-picks-tray { position: absolute; bottom: 16px; z-index: 5;
   left: calc(var(--ui-thread-w) + 16px); right: 16px;
@@ -688,14 +722,14 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-picks-tray-row { display: flex; align-items: center; gap: var(--ui-s12); }
 .ui-picks-tray-chips { display: flex; gap: var(--ui-s8); flex: 1 1 auto;
   min-width: 0; overflow-x: auto; }
-.ui-pick-chip { display: flex; align-items: center; gap: 6px; min-width: 0; flex: none; }
+.ui-pick-chip { display: flex; align-items: center; gap: var(--ds-s-8); min-width: 0; flex: none; }
 .ui-pick-disc { width: 22px; height: 22px; border-radius: 50%; flex: none;
   background: var(--ui-ink); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; }
 .ui-pick-name { max-width: 180px; overflow-wrap: anywhere;
   word-break: keep-all; font-size: var(--ui-t14); }
-.ui-pick-x { background: none; border: none; cursor: pointer; padding: 2px 4px;
+.ui-pick-x { background: none; border: none; cursor: pointer; padding: var(--ds-s-4) 4px;
   color: var(--ui-ink2); font-size: 14px; line-height: 1; }
 /* 19g: while the side panel is open, the tray clears its 380 px. */
 .ui-chat-main[data-panel="open"] .ui-picks-tray { right: calc(380px + 24px); }
@@ -760,12 +794,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    legend card.) */
 .ui-simcredit {
   align-self: flex-start; pointer-events: none;
-  font-size: 11px; line-height: 1.5; color: var(--ui-ink2);
-  background: rgba(255,255,255,.8); border-radius: 6px;
-  padding: 2px 8px; margin-bottom: 4px; max-width: 100%;
+  font-size: var(--ds-t-12); line-height: 1.5; color: var(--ui-ink2);
+  background: rgba(255,255,255,.8); border-radius: var(--ds-r-chip);
+  padding: var(--ds-s-4) 8px; margin-bottom: 4px; max-width: 100%;
 }
 /* 20e: one-line meaning under the timeline colour bar. */
-.ui-strip-legend { margin-top: 2px; font-size: 11px; color: var(--ui-ink2); }
+.ui-strip-legend { margin-top: var(--ds-s-4); font-size: var(--ds-t-12); color: var(--ui-ink2); }
 .ui-strip-legend .ui-swatch { width: 9px; height: 9px; }
 @media (max-width: 1099px) {
   .ui-sim13 {
@@ -824,7 +858,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   font-size: var(--ui-t12); font-weight: var(--ui-w600); color: var(--ui-ink);
   white-space: nowrap;
   background: var(--ui-card); border: 1px solid var(--ui-border);
-  border-radius: var(--ui-r-chip); padding: 2px var(--ui-s8);
+  border-radius: var(--ui-r-chip); padding: var(--ds-s-4) var(--ds-s-8);
 }
 
 /* ---------- 13f2: drawer hero + folded sections (one answer first) ---------- */
@@ -893,7 +927,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   font-family: var(--ui-font); font-size: var(--ui-t12); line-height: var(--ui-lh-body);
   color: var(--ui-ink2); background: var(--ui-sunken);
   border: none; border-radius: var(--ui-r-chip);
-  padding: 2px var(--ui-s8); cursor: pointer;
+  padding: var(--ds-s-4) var(--ds-s-8); cursor: pointer;
 }
 button.ui-tag:hover { color: var(--ui-ink); }
 /* Congestion dots + fills read the status tokens. */
@@ -947,13 +981,13 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ui-result-grid {
   display: grid;
   grid-template-columns: minmax(84px, auto) 1fr 1fr;
-  column-gap: 12px; row-gap: 10px; align-items: start;
+  column-gap: 12px; row-gap: var(--ds-s-12); align-items: start;
   font-variant-numeric: tabular-nums;
 }
-.ui-result-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ui-result-head .ui-pick-disc { width: 20px; height: 20px; font-size: 11px; }
+.ui-result-head { display: flex; align-items: center; gap: var(--ds-s-8); min-width: 0; }
+.ui-result-head .ui-pick-disc { width: 20px; height: 20px; font-size: var(--ds-t-12); }
 .ui-result-name {
-  font-size: 13px; font-weight: 600; min-width: 0;
+  font-size: var(--ds-t-14); font-weight: 600; min-width: 0;
   word-break: keep-all; overflow-wrap: anywhere;
 }
 .ui-result-label { font-size: var(--ui-t12); color: var(--ui-ink2); }
@@ -971,8 +1005,8 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ui-result-fill { display: block; height: 100%; background: var(--ui-ink); border-radius: 2px; }
 /* Header chips: the 예시 mark and the recorded-answer note. */
 .ui-result-example {
-  font-size: 11px; color: var(--ui-ink2); background: var(--ui-sunken);
-  border-radius: var(--ui-r-chip); padding: 2px var(--ui-s8); white-space: nowrap;
+  font-size: var(--ds-t-12); color: var(--ui-ink2); background: var(--ui-sunken);
+  border-radius: var(--ui-r-chip); padding: var(--ds-s-4) var(--ds-s-8); white-space: nowrap;
 }
 /* 살아 보니: one row per moment — when, letter disc, text, 3D link. */
 /* 26t: the 3D link keeps its full label at any width; the text takes the shrink. */
@@ -981,14 +1015,14 @@ button.ui-tag:hover { color: var(--ui-ink); }
   font-size: var(--ui-t12); color: var(--ui-ink2); flex: none;
   font-variant-numeric: tabular-nums;
 }
-.ui-result-moment .ui-pick-disc { width: 20px; height: 20px; font-size: 11px; }
+.ui-result-moment .ui-pick-disc { width: 20px; height: 20px; font-size: var(--ds-t-12); }
 .ui-result-moment button { flex: none; }
 .ui-result-text { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 /* 24a: language toggle — a small text button, never truncated. */
 .ui-lang-toggle {
   font-size: 12px; color: var(--ui-ink2); white-space: nowrap;
   background: transparent; border: none; cursor: pointer;
-  padding: 6px 10px; border-radius: 999px;
+  padding: var(--ds-s-4) var(--ds-s-12); border-radius: var(--ds-r-pill);
 }
 .ui-lang-toggle:hover { background: var(--ui-line, var(--ui-sunken)); }
 
