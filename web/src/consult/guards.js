@@ -556,7 +556,7 @@ function eulReul(word) {
   return "를";
 }
 
-export function actionConfirmation(toolResults) {
+export function actionConfirmation(toolResults, opts = {}) {
   const list = (toolResults || []).filter((r) => r && typeof r === "object");
   if (list.length === 0) return null;
   if (!list.some((r) => r.ui && ACTION_UI.has(r.ui.action))) return null;
@@ -567,6 +567,15 @@ export function actionConfirmation(toolResults) {
       if (c && typeof c.id === "string" && typeof c.name === "string") {
         namesById.set(c.id, c.name);
       }
+    }
+  }
+  // Earlier turns' candidates (remembered on the session) fill names
+  // this turn's results do not carry.
+  const fallback = (opts && opts.names) || {};
+  for (const [id, name] of Object.entries(fallback)) {
+    if (typeof id === "string" && typeof name === "string"
+      && !namesById.has(id)) {
+      namesById.set(id, name);
     }
   }
   const picks = [];

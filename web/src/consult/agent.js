@@ -361,7 +361,7 @@ export async function runTurn(opts) {
             return finish({ reply: split2.text, suggestions: split2.suggestions,
               guardRetries: 1, fallback: true, guardCause: "english_retry_korean" });
           }
-          const retryFallback = actionConfirmation(toolResults)
+          const retryFallback = actionConfirmation(toolResults, { names: session.lastCandidateNames })
             ?? numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
           appended.push({ role: "assistant", content: retryFallback });
           return finish({ reply: retryFallback, guardRetries: 1, fallback: true,
@@ -392,14 +392,14 @@ export async function runTurn(opts) {
       }
       // 26t: action-only turns confirm what was done instead of the
       // numbers-only text (which would read "수치가 없어요").
-      const fallback = actionConfirmation(toolResults)
+      const fallback = actionConfirmation(toolResults, { names: session.lastCandidateNames })
         ?? numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 1, fallback: true,
         guardCause: checked2.cause });
     }
     if (rounds > MAX_TOOL_ROUNDS) {
-      const actionFallback = actionConfirmation(toolResults);
+      const actionFallback = actionConfirmation(toolResults, { names: session.lastCandidateNames });
       const fallback = actionFallback
         ?? `도구 호출이 ${MAX_TOOL_ROUNDS}라운드를 넘었다.\n${numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) })}`;
       appended.push({ role: "assistant", content: fallback });

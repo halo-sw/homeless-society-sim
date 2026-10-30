@@ -47,6 +47,8 @@
   font-size: var(--ui-t16); font-weight: var(--ui-w600);
   line-height: var(--ui-lh-head); white-space: nowrap;
 }
+/* 26w3: the "Muse" word next to the logo never wraps or shrinks. */
+.ui-bar-muse { white-space: nowrap; flex: none; }
 .ui-bar-center {
   flex: 1 1 auto; display: flex; justify-content: center;
   min-width: 0; overflow: hidden;
@@ -272,13 +274,18 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-landing-cards { display: grid; gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .ui-landing-card { background: var(--ui-card); border: 1px solid var(--ui-border);
-  border-radius: 14px; padding: 16px; text-align: left; cursor: pointer; }
+  border-radius: 14px; padding: 16px; text-align: left; cursor: pointer;
+  min-width: 0; max-width: 100%; }
 .ui-landing-card:hover { box-shadow: var(--ui-shadow); }
-.ui-landing-cardtop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ui-landing-cardtitle { font-size: 15px; font-weight: 600; color: var(--ui-ink); }
+.ui-landing-cardtop { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-width: 0; }
+.ui-landing-cardtitle { font-size: 15px; font-weight: 600; color: var(--ui-ink);
+  flex: 1 1 0; min-width: 0; }
 .ui-landing-cardchip { font-size: 11px; color: var(--ui-ink2);
-  background: var(--ui-sunken); border-radius: 6px; padding: 2px 6px; }
-.ui-landing-cardprompt { font-size: 13px; color: var(--ui-ink2); margin: 6px 0 0; }
+  background: var(--ui-sunken); border-radius: 6px; padding: 2px 6px;
+  white-space: nowrap; flex: none; }
+.ui-landing-cardprompt { font-size: 13px; color: var(--ui-ink2); margin: 6px 0 0;
+  min-width: 0; overflow-wrap: anywhere; word-break: keep-all; }
 /* ---------- 13e3-2: landing footer readable on the map ---------- */
 .ui-landing-foot { text-align: center; font-size: 12px; color: var(--ui-ink2);
   background: color-mix(in srgb, var(--ui-page) 85%, transparent);
@@ -657,11 +664,49 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   overflow-wrap: anywhere; word-break: keep-all; }
 .ui-chat-scene-frame { flex: 1 1 auto; width: 100%; border: 0; }
 /* ---------- 27a: chat-first empty screen + work panel on request ---------- */
-.ui-chat-empty { display: flex; flex-direction: column; gap: 16px;
-  max-width: 720px; margin: 12vh auto 0; padding: 0 16px; }
+/* 26w: the first screen shows the product — the landing glide plays
+   behind the empty state (same canvas, quiet, no captions) under a soft
+   light scrim; the content sits vertically centred as one group. While
+   empty the thread stays transparent; the first message unmounts this
+   screen and the solid thread returns with it. */
+.ui-chat-thread-empty { background: transparent; border-right: none; }
+/* 26w2: while empty the chat column stays transparent so the city glide
+   shows full-bleed behind it; the first message unmounts the empty
+   screen and the solid thread returns with it. */
+.ui-chat:has(.ui-chat-thread-empty),
+.ui-chat:has(.ui-chat-thread-empty) > div,
+.ui-chat:has(.ui-chat-thread-empty) main,
+.ui-chat:has(.ui-chat-thread-empty) [class*="astryx-layout-content"],
+.ui-chat-main:has(.ui-chat-thread-empty),
+.ui-chat-empty { background: transparent; }
+.ui-chat-empty { position: relative; flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; display: flex; flex-direction: column; }
+.ui-chat-empty-scrim { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 60% 70% at 50% 45%,
+    color-mix(in srgb, var(--ui-page) 85%, transparent) 0%,
+    color-mix(in srgb, var(--ui-page) 60%, transparent) 55%,
+    color-mix(in srgb, var(--ui-page) 35%, transparent) 100%); }
+.ui-chat-empty-body { position: relative; margin: auto; width: 100%;
+  max-width: 720px; padding: 24px 16px;
+  display: flex; flex-direction: column; gap: 16px; }
+.ui-chat-empty-label { font-size: 14px; font-weight: 600;
+  color: var(--ui-ink); margin: 0; }
 .ui-chat-empty-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-chat-empty-row > * { flex: none; }
+.ui-chat-empty-cards { display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.ui-chat-empty-cards > * { flex: none; min-width: 0; }
 .ui-chat-main[data-work="closed"] .ui-chat-thread { width: 100%;
   max-width: 760px; margin: 0 auto; border-right: none; }
+/* 26w3: while empty the thread goes full-bleed so the scrim washes the
+   whole area with no visible edge; the content body stays centred. */
+.ui-chat-main[data-work="closed"] .ui-chat-thread.ui-chat-thread-empty {
+  max-width: none; margin: 0; width: 100%; }
+/* 26w3: the coverage lines share one soft backing so they read over
+   the buildings where the scrim is weakest. */
+.ui-chat-empty-coverage {
+  background: color-mix(in srgb, var(--ui-page) 88%, transparent);
+  border-radius: 10px; padding: 8px 12px; width: fit-content; }
 .ui-chatmap { position: absolute; inset: 0; }
 .ui-chatmap svg { display: block; touch-action: none; }
 /* 25a: zoom buttons over the map, above the credit and clear of the tray. */
@@ -1087,4 +1132,19 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ui-moment > :last-child, .ui-result-moment > :last-child { margin-left: auto; }
   .ui-moment-text, .ui-result-text { flex-basis: 100%; order: 3; }
   #ui-root .ui-moment-text, #ui-root .ui-result-text { white-space: normal; }
+
+  /* 10. 26w first screen: cards stack in one column, the scrim stays
+     light so the city shows around the text, buttons never shrink. */
+  /* 26w3: the card title and prompt wrap again — the ID selector wins
+     over the 26m "button *" nowrap; the 예시 chip stays on one line. */
+  #ui-root .ui-landing-cardprompt, #ui-root .ui-landing-cardtitle { white-space: normal; }
+  /* 26w3: the status badge is never clipped on phones — no ellipsis. */
+  #ui-root .ui-bar-status { max-width: none; overflow: visible; }
+  .ui-chat-empty-cards { grid-template-columns: 1fr; }
+  .ui-chat-empty-scrim {
+    background: radial-gradient(ellipse 60% 70% at 50% 45%,
+      color-mix(in srgb, var(--ui-page) 90%, transparent) 0%,
+      color-mix(in srgb, var(--ui-page) 75%, transparent) 55%,
+      color-mix(in srgb, var(--ui-page) 60%, transparent) 100%); }
+  .ui-chat-empty-row > *, .ui-chat-empty-cards > * { flex: none; }
 }

@@ -43,7 +43,7 @@ import { CandidateCard, CandidateSkeleton, areaForList } from "./candidate-card.
 import { aerialCreditFor } from "../aerial/drape.js";
 import { exampleLine } from "./copy.js";
 import { TopBar, usePhoneMedia } from "./topbar.jsx";
-import { EXAMPLE_PROMPTS, COVERAGE_AREAS } from "./landing.jsx";
+import { EXAMPLE_PROMPTS, COVERAGE_AREAS, COVERAGE_US_LINE, LANDING_HEADING, LANDING_SUB } from "./landing.jsx";
 // 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
@@ -2228,7 +2228,7 @@ export function ChatScreen() {
         <div className="ui-chat-main"
           data-panel={chatMainPanelAttr(detail, compareOpen)}
           data-work={chatWorkAttr(workOpen)}>
-          <section className="ui-chat-thread" aria-label="대화">
+          <section className={messages.length === 0 && !busy ? "ui-chat-thread ui-chat-thread-empty" : "ui-chat-thread"} aria-label="대화">
             {messages.length === 0 && !busy ? (
               <ChatEmpty onSend={(text) => send(text)}
                 onListing={() => chipAction("매물 글 붙여 넣기")}
@@ -2380,8 +2380,58 @@ export const EMPTY_STARTERS = [
 
 const EMPTY_FIND_TEXT = "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘";
 
+// 26w: an example card sends its prompt as the first message, the same
+// path as typing it (exported for the no-DOM test).
+export function sendExamplePrompt(onSend, prompt) {
+  if (onSend) onSend(prompt);
+}
+
+// 26w2: pure decision for the empty-state backdrop — the city glide
+// runs only while the chat is empty and a WebGL canvas can show it;
+// without WebGL the screen keeps today's plain background.
+export function shouldGlideBackdrop({ empty, webgl } = {}) {
+  return empty === true && webgl === true;
+}
+
+function webglAvailable() {
+  try {
+    if (typeof document === "undefined") return false;
+    const canvas = document.createElement("canvas");
+    return !!(canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
+  } catch {
+    return false;
+  }
+}
+
 export function ChatEmpty({ onSend, onListing, onExample }) {
   const [value, setValue] = useState("");
+  // 26w: while the chat is empty the landing glide plays behind this
+  // screen (quiet, no captions); the first message unmounts it and the
+  // glide pauses again so the customer orbits freely.
+  useEffect(() => {
+    let started = false;
+    try {
+      const reduced = typeof matchMedia === "function"
+        && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // 26w2: start the glide only when it can show (WebGL canvas).
+      if (!reduced && shouldGlideBackdrop({ empty: true, webgl: webglAvailable() })
+        && store.hasAction("toggleTourPlay") && !store.getState().tourPlaying) {
+        store.act("toggleTourPlay");
+        started = store.getState().tourPlaying === true;
+      }
+    } catch {
+      // Without the 3D view the screen stays white as before.
+    }
+    return () => {
+      try {
+        if (started && store.hasAction("toggleTourPlay") && store.getState().tourPlaying) {
+          store.act("toggleTourPlay");
+        }
+      } catch {
+        // Stay paused.
+      }
+    };
+  }, []);
   const starterAction = (id) => {
     if (id === "find") setValue(EMPTY_FIND_TEXT);
     else if (id === "listing") { if (onListing) onListing(); }
@@ -2389,18 +2439,40 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
   };
   return (
     <div className="ui-chat-empty">
-      <Heading level={2}>어떤 집을 고민 중이세요?</Heading>
-      <Text type="supporting">말로 하면 Muse가 실거래와 출근길을 확인하고, 원하면 그 집에서 30일 살아 봐요.</Text>
-      <ChatComposer onSubmit={(text) => onSend && onSend(text)}
-        value={value} onChange={setValue}
-        placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
-      <div className="ui-chat-empty-row">
-        {EMPTY_STARTERS.map((s) => (
-          <Button key={s.id} size="sm" variant="secondary" label={s.label}
-            onClick={() => starterAction(s.id)} />
-        ))}
+      <div className="ui-chat-empty-scrim" aria-hidden="true" />
+      <div className="ui-chat-empty-body">
+        <div>
+          <Heading level={2}>{LANDING_HEADING}</Heading>
+          <Text type="supporting">{LANDING_SUB}</Text>
+        </div>
+        <p className="ui-chat-empty-label">어떤 집을 고민 중이세요?</p>
+        <ChatComposer onSubmit={(text) => onSend && onSend(text)}
+          value={value} onChange={setValue}
+          placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
+        <div className="ui-chat-empty-row">
+          {EMPTY_STARTERS.map((s) => (
+            <Button key={s.id} size="sm" variant="secondary" label={s.label}
+              onClick={() => starterAction(s.id)} />
+          ))}
+        </div>
+        <div className="ui-chat-empty-cards">
+          {EXAMPLE_PROMPTS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="ui-landing-card"
+              aria-label={`${p.title} 예시로 시작하기`}
+              onClick={() => sendExamplePrompt(onSend, p.prompt)}>
+              <span className="ui-landing-cardtop">
+                <span className="ui-landing-cardtitle">{p.title}</span>
+                <span className="ui-landing-cardchip">예시</span>
+              </span>
+              <p className="ui-landing-cardprompt">{p.prompt}</p>
+            </button>
+          ))}
+        </div>
+        <Text type="supporting" className="ui-chat-empty-coverage">{`다루는 지역: ${COVERAGE_AREAS.join(" · ")}`}<br />{COVERAGE_US_LINE}</Text>
       </div>
-      <Text type="supporting">{`다루는 지역: ${COVERAGE_AREAS.join(" · ")}`}</Text>
     </div>
   );
 }

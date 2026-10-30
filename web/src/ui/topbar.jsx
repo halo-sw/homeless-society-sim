@@ -31,6 +31,12 @@ export function museStatusLabel(live) {
   return live ? "연결됨 · Muse Spark 1.3" : "규칙 모드";
 }
 
+// 26w3: short status for phones (390 px) — the full label above does not
+// fit next to the product name. The long label stays as the badge title.
+export function museStatusShort(live) {
+  return live ? "연결됨" : "규칙 모드";
+}
+
 // 26m: short mode labels for phones (390 px) — the full labels above
 // ("살아 보기", "동네 둘러보기") do not fit. Carries both languages
 // itself so it never depends on the DOM translator table.
@@ -154,6 +160,11 @@ export function SettingsContent({ settings, onClose }) {
 export function TopBar({ mode, summary, extra, settings }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+  // 26w3: on phones the status badge shows the short label; the long
+  // label stays reachable as the badge title.
+  const phone = usePhoneMedia();
+  const museLong = museStatusLabel(LIVE_API);
+  const museLabel = phone ? museStatusShort(LIVE_API) : museLong;
   return (
     <header className="ui-bar overlay">
       <div className="ui-bar-left">
@@ -161,7 +172,8 @@ export function TopBar({ mode, summary, extra, settings }) {
         {mode === "chat" ? (
           <>
             <span className="ui-bar-muse">Muse</span>
-            <Badge variant="info" label={museStatusLabel(LIVE_API)} />
+            <Badge variant="info" label={museLabel} title={museLong}
+              className="ui-bar-status" />
           </>
         ) : (
           <Button size="sm" variant="ghost" label="← 대화로"

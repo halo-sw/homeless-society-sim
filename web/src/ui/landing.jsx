@@ -49,6 +49,9 @@ export const COVERAGE_AREAS = ["서울 성동", "송파", "강남", "강동", "�
 
 export const COVERAGE_LINE = `다루는 지역 ${COVERAGE_AREAS.length}곳: ${COVERAGE_AREAS.join(" · ")}`;
 
+// 26w: the US coverage line, reused by the chat-first empty screen.
+export const COVERAGE_US_LINE = "미국 1곳: Menlo Park · Meta HQ (자전거·도보, Zillow 월세 추정)";
+
 const SOURCES = [
   "집값·전세: 국토교통부 실거래가 공개시스템 (최근 12개월, 참고용)",
   "집 위치·모양: OpenStreetMap + GIS건물통합정보 (국토교통부/VWorld)",
@@ -162,7 +165,7 @@ export function Landing() {
                     </button>
                   </div>
                   <div className="ui-landing-foot">
-                    <span>{COVERAGE_LINE}<br />미국 1곳: Menlo Park · Meta HQ (자전거·도보, Zillow 월세 추정)</span>
+                    <span>{COVERAGE_LINE}<br />{COVERAGE_US_LINE}</span>
                     <span aria-hidden="true"> · </span>
                     <SourcesPopover />
                   </div>

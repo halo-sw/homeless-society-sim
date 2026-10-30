@@ -354,11 +354,12 @@ function findWorkplace(text, stations) {
   }
   // English patterns (24b), only when no Korean pattern matched.
   const mentionPat = "[A-Za-z][A-Za-z .'-]{1,40}?";
-  const tail = "(?=[.,;!]|\\s+(?:and|but|every|daily|for|by)\\b|$)";
+  const tail = "(?=[.,;:!]|\\s+(?:and|but|every|daily|for|by|with|to)\\b|$)";
   const enPats = [
-    new RegExp(`commute to (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
-    new RegExp(`work (?:at|in|near|around) (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
+    new RegExp(`commut(?:e|es|ing) to (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
+    new RegExp(`work(?:s|ing)? (?:at|in|near|around) (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
     new RegExp(`(?:office|job|workplace|company) (?:is )?(?:at|in|near) (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
+    new RegExp(`(?:job|office) (?:is )?(?:at|in|near) (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
   ];
   for (const re of enPats) {
     const m = re.exec(text);
@@ -507,9 +508,17 @@ export function extract_profile(text, current = null, opts = {}) {
     || (/(신입|초봉).*?(4천|3천|5천)/.test(src) ? null : null);
   const cashHit = nearMoney(src, /모은\s*돈|모은돈|보유|현금|수중|마련|종잣돈/, krwMonies, 20)
     || nearMoney(src, /savings|saved|cash|in the bank/i, krwMonies, 24);
+  // English budget cues ("under 200M won") also mark the deposit —
+  // never an amount already read as the salary or the savings.
+  const claimedWon = new Set(
+    [salaryHit, cashHit].filter(Boolean).map((h) => h.won));
+  const depositCueHit = nearMoney(src,
+    /under|up to|at most|no more than|max(?:imum)?|budget(?: of| is)?/i,
+    krwMonies.filter((h) => !claimedWon.has(h.won)), 12);
   const depositHit = nearMoney(src, /전세/, krwMonies)
     || nearMoney(src, /보증금/, krwMonies)
-    || nearMoney(src, /jeonse|deposit/i, krwMonies, 24);
+    || nearMoney(src, /jeonse|deposit/i, krwMonies, 40)
+    || depositCueHit;
   const monthlyHit = nearMoney(src, /월\s*\d|월세/, krwMonies)
     || nearMoney(src, /per month|a month|\/month/i, krwMonies, 24)
     || nearMoney(src, /monthly(?: rent)?|wolse/i, krwMonies, 24)

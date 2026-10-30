@@ -169,9 +169,15 @@ describe("no demo numbers without 예시", () => {
 
   it("empty chat shows no figures", () => {
     // ChatScreen boots from effects (not run server-side): the fresh
-    // render is the shell + composer + chips only.
+    // render is the shell + empty screen. The 26w example cards are the
+    // labelled-예시 exception (same as the landing above): strip their
+    // prompts, then nothing numeric may remain but product facts.
     const html = render(React.createElement(chat.ChatScreen));
-    const text = textOf(html);
+    let text = textOf(html);
+    assert.ok(text.includes("예시"), "example cards labelled 예시");
+    for (const p of landing.EXAMPLE_PROMPTS) {
+      text = text.split(p.prompt).join("");
+    }
     const figs = [...text.matchAll(FIGURE)].map((m) => m[0]).filter((f) => f !== "30일"); // 30일은 제품명(30일 살아 보기)이라 데모 수치가 아님
     assert.deepEqual(figs, []);
     assert.ok(text.includes("Ithaca"));

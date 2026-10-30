@@ -200,6 +200,10 @@ async function find_homes(session, args) {
   const final = findHomesCore(profile, index, {
     sort, limit, regions, kind, network, schedule, boxes, photos: manifest,
   });
+  session.lastCandidateNames = Object.fromEntries(
+    (final.candidates || [])
+      .filter((c) => c && typeof c.id === "string" && typeof c.name === "string")
+      .map((c) => [c.id, c.name]));
   return {
     ok: true,
     profile_used: clone(profile),
@@ -230,6 +234,10 @@ async function find_public_rentals(session, args) {
   ]);
   const absent = Object.entries(coverage)
     .filter(([, c]) => !c.present).map(([id]) => id);
+  session.lastCandidateNames = Object.fromEntries(
+    ((r && r.candidates) || [])
+      .filter((c) => c && typeof c.id === "string" && typeof c.name === "string")
+      .map((c) => [c.id, c.name]));
   return {
     ok: true,
     ...r,
@@ -292,7 +300,7 @@ export const SEARCH_TOOL_DEFS = [
     description: "Read the customer's situation text into a profile (household, workplace, salary, cash, tenure, budget, size, commute ceiling). Fills only values present in the text; every number must appear in the customer's words. Returns the profile plus at most 2 plain-word questions for the missing essentials.",
     parameters: { type: "object", additionalProperties: false,
       properties: {
-        text: { type: "string", description: "The customer's words (Korean)." },
+        text: { type: "string", description: "The customer's words, verbatim (Korean or English). Do not translate or paraphrase." },
         profile: { type: "object", additionalProperties: true,
           description: "Current profile to extend (omit for a fresh one)." },
       }, required: ["text"] } } },
