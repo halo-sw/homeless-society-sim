@@ -1,19 +1,22 @@
-// Chat stage map (19b): a calm, light product basemap — land, parks,
-// water, road casings, subway lines with nearby stations, commute legs
-// for picked homes, region names (text only), a dark workplace pill and
-// one price pill per candidate (letters for picks). Top-down, static
-// (nothing moves except on interaction), filling its panel. Hovering a
-// card highlights its pin (cardHi) and hovering a pin highlights its
-// card back; clicking a pin scrolls to its card; clicking a region
-// still filters. SSR renders the container only.
+// Chat stage map (25a): a real map — a light VWorld raster basemap
+// under the vector layers when the tile proxy is available, subway
+// lines with nearby stations, commute legs for picked homes, region
+// names (text only), a dark workplace pill and one price pill per
+// candidate (letters for picks). It zooms (wheel, double-click,
+// buttons) and pans (drag); pill and label sizes stay constant in px.
+// Hovering a card highlights its pin (cardHi) and hovering a pin
+// highlights its card back; clicking a pin scrolls to its card;
+// clicking a region still filters. SSR renders the container only.
 import { useEffect, useRef, useState } from "react";
 import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
   stationNameWidthPx, haversineKm, shortPinPrice,
   pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN } from "../chatmap.js";
+import { basemapApiBase, basemapTileUrl, basemapTiles,
+  viewTransform, zoomAt } from "../basemap.js";
 
-function ptsAttr(pts, toXY) {
+function ptsAttr(pts, toXYz) {
   return pts.map(([lon, lat]) => {
-    const [x, y] = toXY(lon, lat);
+    const [x, y] = toXYz(lon, lat);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
 }
@@ -36,6 +39,14 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const mountRef = useRef(null);
   const [size, setSize] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  // 25a: screen-space zoom/pan (zoom around W/2, H/2).
+  const [vt, setVt] = useState({ zoom: 1, panX: 0, panY: 0 });
+  const [grabbing, setGrabbing] = useState(false);
+  const dragRef = useRef(null);
+  const dragged = useRef(false);
+  // 25a: basemap tiles that failed to load are never rendered again.
+  const failedRef = useRef(new Set());
+  const [failCount, setFailCount] = useState(0);
   useEffect(() => {
     const el = mountRef.current;
     if (!el || typeof window === "undefined" || !window.ResizeObserver) return undefined;
@@ -48,6 +59,23 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   }, []);
   const W = (size && size[0]) || 640;
   const H = (size && size[1]) || 420;
+  // 25a: wheel zoom around the cursor. A native non-passive listener
+  // so preventDefault stops the page scroll.
+  useEffect(() => {
+    const el = mountRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      if (!(r.width > 0) || !(r.height > 0)) return;
+      const px = (e.clientX - r.left) * (W / r.width);
+      const py = (e.clientY - r.top) * (H / r.height);
+      const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015));
+      setVt((v) => zoomAt(v, factor, px, py, W / 2, H / 2));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [W, H]);
   const m = map || {};
   const pins = m.pins || [];
   const regions = m.regions || [];
@@ -62,11 +90,28 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
       focus.push({ lon: r.bbox[0], lat: r.bbox[1] }, { lon: r.bbox[2], lat: r.bbox[3] });
     }
   }
-  // One projected space: fitMapView maps lon/lat into stage px via
-  // toXY, and the viewBox IS that stage (0 0 W H) — never the raw
-  // degree view. Every layer below draws through toXY, so pins, lines
-  // and labels always land inside the frame.
-  const { toXY } = fitMapView(focus, W, H, MAP_FIT_MARGIN, CHATMAP_INSET);
+  // A new focus set re-fits the map, so the zoom/pan resets.
+  const focusKey = focus.map((p) => `${p.lon},${p.lat}`).join(";");
+  useEffect(() => {
+    setVt({ zoom: 1, panX: 0, panY: 0 });
+  }, [focusKey]);
+  // One projected space: fitMapView maps lon/lat into stage px, and
+  // the viewBox IS that stage (0 0 W H) — never the raw degree view.
+  // 25a: T applies the zoom/pan in screen space; every layer below
+  // draws through toXYz, so pins, lines and labels always land inside
+  // the frame while their sizes stay constant in px.
+  const fit = fitMapView(focus, W, H, MAP_FIT_MARGIN, CHATMAP_INSET);
+  const { midLat } = fit;
+  const T = viewTransform({ ...vt, cx: W / 2, cy: H / 2 });
+  const toXYz = (lon, lat) => T.apply(fit.toXY(lon, lat));
+  const toLonLatZ = (x, y) => fit.toLonLat(...T.invert([x, y]));
+  // 25a: light VWorld raster under the vector layers when the tile
+  // proxy is available (apiBase null on a static build: no basemap).
+  const apiBase = basemapApiBase();
+  const tiles = apiBase === null ? []
+    : basemapTiles({ toLonLat: toLonLatZ, W, H,
+      lat: midLat, metersPerPx: fit.metersPerPx / vt.zoom });
+  const basemapOn = apiBase !== null && failCount * 2 < tiles.length;
   // Constant screen sizes: one viewBox unit is one stage px at 1:1, so
   // literal px values stay readable however the map is zoomed.
   const fs = (n) => n;
@@ -77,13 +122,13 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   // expands on click. Anchors never move, only pills do.
   const pillItems = [];
   if (m.workPin && Number.isFinite(m.workPin.lon) && Number.isFinite(m.workPin.lat)) {
-    const [x, y] = toXY(m.workPin.lon, m.workPin.lat);
+    const [x, y] = toXYz(m.workPin.lon, m.workPin.lat);
     const label = `회사 · ${m.workPin.name}`;
     pillItems.push({ id: "work", kind: "work", x, y,
       w: pillTextWidthPx(label, 12) + 24, h: 26, rank: 0 });
   }
   for (const p of pins) {
-    const [x, y] = toXY(p.lon, p.lat);
+    const [x, y] = toXYz(p.lon, p.lat);
     const short = shortPinPrice(p.candidate, m.tenure);
     pillItems.push({ id: p.id, kind: "pill", x, y,
       w: pinPillWidthPx(short), h: PILL_H, rank: p.picked ? 1 : 2 });
@@ -132,7 +177,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
     const key = noSpace(s.name);
     if (seenStation.has(key)) continue;
     seenStation.add(key);
-    const [x, y] = toXY(s.lon, s.lat);
+    const [x, y] = toXYz(s.lon, s.lat);
     stationPts.push({ name: s.name, x, y });
   }
   const stationLabels = layoutStationLabels(stationPts, W, H, pinBoxes);
@@ -144,17 +189,60 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
     pickDongLabels(pins.map((p) => ({ lon: p.lon, lat: p.lat,
       dong: p.candidate && p.candidate.dong })))
       .map((d) => {
-        const [x, y] = toXY(d.lon, d.lat);
+        const [x, y] = toXYz(d.lon, d.lat);
         return { name: d.text, x, y };
       }),
     W, H, [...pinBoxes, ...stationLabelBoxes]);
+  // 25a: drag pans; a drag past 4 px is not a pin click.
+  const stagePt = (clientX, clientY) => {
+    const el = mountRef.current;
+    if (!el) return [W / 2, H / 2];
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0) || !(r.height > 0)) return [W / 2, H / 2];
+    return [(clientX - r.left) * (W / r.width), (clientY - r.top) * (H / r.height)];
+  };
+  const onSvgPointerDown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragged.current = false;
+    dragRef.current = { x: e.clientX, y: e.clientY, vt };
+    setGrabbing(true);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no capture */ }
+  };
+  const onSvgPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const el = mountRef.current;
+    const r = el ? el.getBoundingClientRect() : null;
+    const sx = r && r.width > 0 ? W / r.width : 1;
+    const sy = r && r.height > 0 ? H / r.height : 1;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) dragged.current = true;
+    setVt({ zoom: d.vt.zoom,
+      panX: d.vt.panX + (e.clientX - d.x) * sx,
+      panY: d.vt.panY + (e.clientY - d.y) * sy });
+  };
+  const onSvgPointerUp = () => {
+    dragRef.current = null;
+    setGrabbing(false);
+  };
+  const onSvgDoubleClick = (e) => {
+    const [px, py] = stagePt(e.clientX, e.clientY);
+    setVt((v) => zoomAt(v, 2, px, py, W / 2, H / 2));
+  };
+  const handlePinClick = (id) => {
+    if (dragged.current) { dragged.current = false; return; }
+    if (onPinClick) onPinClick(id);
+  };
   // The hovered pin renders last so it sits on top.
   const ordered = [...pins].sort((a, b) =>
     ((cardHi === `home:${a.id}`) ? 1 : 0) - ((cardHi === `home:${b.id}`) ? 1 : 0));
   return (
     <div ref={mountRef} className="ui-chatmap" style={{ width: "100%", height: "100%", position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%"
-        role="img" aria-label="후보 지도: 출근지와 후보 집 위치" preserveAspectRatio="xMidYMid slice">
+        role="img" aria-label="후보 지도: 출근지와 후보 집 위치" preserveAspectRatio="xMidYMid slice"
+        style={{ cursor: grabbing ? "grabbing" : "grab" }}
+        onPointerDown={onSvgPointerDown} onPointerMove={onSvgPointerMove}
+        onPointerUp={onSvgPointerUp} onPointerCancel={onSvgPointerUp}
+        onDoubleClick={onSvgDoubleClick}>
         <defs>
           <filter id="chat-pill-shadow" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx={0} dy={1} stdDeviation={2}
@@ -162,60 +250,78 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           </filter>
         </defs>
         <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground} />
+        {tiles.filter((t) => !failedRef.current.has(t.key)).map((t) => {
+          const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
+          const [x1, y1] = toXYz(t.se[0], t.se[1]);
+          return (
+            <image key={t.key} href={basemapTileUrl(apiBase, t.z, t.y, t.x)}
+              x={Math.min(x0, x1)} y={Math.min(y0, y1)}
+              width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)}
+              preserveAspectRatio="none" opacity={0.92} pointerEvents="none"
+              onError={() => {
+                if (!failedRef.current.has(t.key)) {
+                  failedRef.current.add(t.key);
+                  setFailCount((c) => c + 1);
+                }
+              }} />
+          );
+        })}
+        {!basemapOn && (<>
         {(green.parks || []).map((ring, i) => (
-          <polygon key={`pk${i}`} points={ptsAttr(ring, toXY)} fill={MAP_COLORS.park} />
+          <polygon key={`pk${i}`} points={ptsAttr(ring, toXYz)} fill={MAP_COLORS.park} />
         ))}
         {(green.water || []).map((ring, i) => (
-          <polygon key={`gw${i}`} points={ptsAttr(ring, toXY)} fill={MAP_COLORS.water} />
+          <polygon key={`gw${i}`} points={ptsAttr(ring, toXYz)} fill={MAP_COLORS.water} />
         ))}
         {(m.tileWater || []).map((wseg, i) => (wseg.closed ? (
-          <polygon key={`tw${i}`} points={ptsAttr(wseg.pts, toXY)}
+          <polygon key={`tw${i}`} points={ptsAttr(wseg.pts, toXYz)}
             fill={MAP_COLORS.water}>
             {wseg.name ? <title>{wseg.name}</title> : null}
           </polygon>
         ) : (
-          <polyline key={`tw${i}`} points={ptsAttr(wseg.pts, toXY)} fill="none"
+          <polyline key={`tw${i}`} points={ptsAttr(wseg.pts, toXYz)} fill="none"
             stroke={MAP_COLORS.water} strokeWidth={fs(3)}
             strokeLinecap="round" strokeLinejoin="round">
             {wseg.name ? <title>{wseg.name}</title> : null}
           </polyline>
         )))}
         {(m.roads || []).filter((r) => r.cls === "trunk").map((r, i) => (
-          <polyline key={`rdct${i}`} points={ptsAttr(r.pts, toXY)} fill="none"
+          <polyline key={`rdct${i}`} points={ptsAttr(r.pts, toXYz)} fill="none"
             stroke={MAP_COLORS.roadCasing} strokeWidth={fs(7)}
             strokeLinejoin="round" strokeLinecap="round" />
         ))}
         {(m.roads || []).filter((r) => r.cls !== "trunk").map((r, i) => (
-          <polyline key={`rdcp${i}`} points={ptsAttr(r.pts, toXY)} fill="none"
+          <polyline key={`rdcp${i}`} points={ptsAttr(r.pts, toXYz)} fill="none"
             stroke={MAP_COLORS.roadCasing} strokeWidth={fs(5)}
             strokeLinejoin="round" strokeLinecap="round" />
         ))}
         {(m.roads || []).filter((r) => r.cls === "trunk").map((r, i) => (
-          <polyline key={`rdt${i}`} points={ptsAttr(r.pts, toXY)} fill="none"
+          <polyline key={`rdt${i}`} points={ptsAttr(r.pts, toXYz)} fill="none"
             stroke={MAP_COLORS.road} strokeWidth={fs(5)}
             strokeLinejoin="round" strokeLinecap="round" />
         ))}
         {(m.roads || []).filter((r) => r.cls !== "trunk").map((r, i) => (
-          <polyline key={`rdp${i}`} points={ptsAttr(r.pts, toXY)} fill="none"
+          <polyline key={`rdp${i}`} points={ptsAttr(r.pts, toXYz)} fill="none"
             stroke={MAP_COLORS.road} strokeWidth={fs(3.5)}
             strokeLinejoin="round" strokeLinecap="round" />
         ))}
+        </>)}
         {(m.lines || []).map((l, i) => (
-          <polyline key={`casing:${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXY)} fill="none"
+          <polyline key={`casing:${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXYz)} fill="none"
             stroke="#ffffff" strokeWidth={fs(5)}
             strokeLinejoin="round" strokeLinecap="round">
             <title>{l.name}</title>
           </polyline>
         ))}
         {(m.lines || []).map((l, i) => (
-          <polyline key={`${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXY)} fill="none"
+          <polyline key={`${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXYz)} fill="none"
             stroke={l.color} strokeWidth={fs(3)}
             strokeLinejoin="round" strokeLinecap="round" opacity={1}>
             <title>{l.name}</title>
           </polyline>
         ))}
         {nearStations.map((s, i) => {
-          const [x, y] = toXY(s.lon, s.lat);
+          const [x, y] = toXYz(s.lon, s.lat);
           return (
             <g key={`${s.line}:${s.name}:${i}`}>
               <circle cx={x} cy={y} r={fs(3.5)}
@@ -236,10 +342,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             fill={MAP_COLORS.regionLabel}>{l.name}</text>
         ))}
         {(m.commutes || []).flatMap((c) => c.legs.flatMap((leg, i) => [
-          <polyline key={`${c.pinId}c${i}`} points={ptsAttr(leg.pts, toXY)} fill="none"
+          <polyline key={`${c.pinId}c${i}`} points={ptsAttr(leg.pts, toXYz)} fill="none"
             stroke="#ffffff" strokeWidth={fs(7)}
             strokeLinejoin="round" strokeLinecap="round" />,
-          <polyline key={`${c.pinId}${i}`} points={ptsAttr(leg.pts, toXY)} fill="none"
+          <polyline key={`${c.pinId}${i}`} points={ptsAttr(leg.pts, toXYz)} fill="none"
             stroke={leg.color} strokeWidth={fs(4)}
             strokeLinejoin="round" strokeLinecap="round">
             <title>{`${c.label} 출근길`}</title>
@@ -249,7 +355,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           const leg = c.legs[0];
           if (!leg || c.minutes === null || c.minutes === undefined) return null;
           const mid = leg.pts[Math.floor(leg.pts.length / 2)];
-          const [x, y] = toXY(mid[0], mid[1]);
+          const [x, y] = toXYz(mid[0], mid[1]);
           const label = `${Math.round(c.minutes)}분`;
           const cw = label.length * 11 + 16;
           return (
@@ -263,7 +369,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         })}
         {regions.map((r) => {
           if (!Array.isArray(r.bbox)) return null;
-          const [cx, cy] = toXY((r.bbox[0] + r.bbox[2]) / 2, (r.bbox[1] + r.bbox[3]) / 2);
+          const [cx, cy] = toXYz((r.bbox[0] + r.bbox[2]) / 2, (r.bbox[1] + r.bbox[3]) / 2);
           // 19h: centred pills can cover the label spot — try offsets
           // before skipping; skip only if every spot collides.
           const spot = [[0, 0], [0, 28], [0, -28], [60, 0], [-60, 0]]
@@ -284,7 +390,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         {(() => {
           const l = layById.get("work");
           if (!m.workPin || !l) return null;
-          const [px, py] = toXY(m.workPin.lon, m.workPin.lat);
+          const [px, py] = toXYz(m.workPin.lon, m.workPin.lat);
           const { box } = l;
           const label = `회사 · ${m.workPin.name}`;
           const cx = box.x + box.w / 2;
@@ -310,7 +416,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         {ordered.map((p) => {
           if (clustered.has(p.id)) return null;
           const l = layById.get(p.id);
-          const [px, py] = toXY(p.lon, p.lat);
+          const [px, py] = toXYz(p.lon, p.lat);
           const short = shortPinPrice(p.candidate, m.tenure);
           const pw = pinPillWidthPx(short);
           const box = (l && l.box) || { x: px - pw / 2, y: py - fs(12) - PILL_H, w: pw, h: PILL_H };
@@ -334,7 +440,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             <g key={p.id}
               onMouseEnter={() => onPinHover && onPinHover(`home:${p.id}`)}
               onMouseLeave={() => onPinHover && onPinHover(null)}
-              onClick={() => onPinClick && onPinClick(p.id)}
+              onClick={() => handlePinClick(p.id)}
               style={{ cursor: onPinClick ? "pointer" : "default" }}>
               {needLeader && l.leader && (
                 <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
@@ -388,12 +494,12 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             const ang = (-Math.PI / 2) + ((i + 0.5) * 2 * Math.PI) / arr.length;
             const bx = cluster.box.x + cluster.box.w / 2 + R * Math.cos(ang) - pw / 2;
             const by = cluster.box.y + cluster.box.h / 2 + R * Math.sin(ang) - PILL_H / 2;
-            const [px, py] = toXY(pin.lon, pin.lat);
+            const [px, py] = toXYz(pin.lon, pin.lat);
             return (
               <g key={`open-${mb.id}`}
                 onMouseEnter={() => onPinHover && onPinHover(`home:${pin.id}`)}
                 onMouseLeave={() => onPinHover && onPinHover(null)}
-                onClick={() => onPinClick && onPinClick(pin.id)}
+                onClick={() => handlePinClick(pin.id)}
                 style={{ cursor: onPinClick ? "pointer" : "default" }}>
                 <line x1={bx + pw / 2} y1={by + PILL_H} x2={px} y2={py}
                   stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
@@ -415,9 +521,19 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a" }}>
         ● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)
       </div>
+      <div className="ui-chatmap-zoom">
+        <button type="button" aria-label="확대"
+          onClick={() => setVt((v) => zoomAt(v, 2, W / 2, H / 2, W / 2, H / 2))}>+</button>
+        <button type="button" aria-label="축소"
+          onClick={() => setVt((v) => zoomAt(v, 0.5, W / 2, H / 2, W / 2, H / 2))}>−</button>
+        <button type="button" className="fit" aria-label="후보 모두 보기"
+          onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}>맞추기</button>
+      </div>
       <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 10,
-        color: MAP_COLORS.muted }}>
-        © OpenStreetMap contributors
+        color: MAP_COLORS.muted, background: "rgba(255,255,255,0.8)", padding: "2px 6px" }}>
+        {basemapOn
+          ? "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors"
+          : "© OpenStreetMap contributors"}
       </div>
     </div>
   );
