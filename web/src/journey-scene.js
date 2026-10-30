@@ -278,13 +278,15 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
           transparent: true, opacity: 0.9 }), dotPositions.length);
       const dummy = new THREE.Object3D();
       dotWorld = dotPositions.map(([lon, lat]) => toWorld([lon, lat], 60));
+      // 19g: seed at scale 0 — updateMarkerScale sizes every visible
+      // dot to ≤ 14 px each frame, so a phase that skips the rescale
+      // can never leave an authored-size (36 m) disc on screen.
+      dummy.scale.setScalar(0);
+      dummy.updateMatrix();
       dotWorld.forEach((p, i) => {
         dummy.position.copy(p);
-        dummy.scale.setScalar(1);
         dummy.updateMatrix();
         dotMesh.setMatrixAt(i, dummy.matrix);
-        dummy.scale.setScalar(DOT_HULL);
-        dummy.updateMatrix();
         dotHull.setMatrixAt(i, dummy.matrix);
       });
       dotMesh.instanceMatrix.needsUpdate = true;

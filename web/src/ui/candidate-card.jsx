@@ -134,6 +134,13 @@ function commuteDetailLine(candidate) {
   return parts.join(" · ");
 }
 
+export function rowClickHandler(onDetail, candidate) {
+  return (e) => {
+    if (e && e.target && e.target.closest && e.target.closest("button")) return;
+    if (onDetail) onDetail(candidate);
+  };
+}
+
 export function CandidateCard({ candidate, tenure, destName, photos, index,
   onLive, onJeonse, onDetail, picked = false, variant = "row",
   pickLetter = null, highlighted = false, note = "" }) {
@@ -155,11 +162,13 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
       onLive={onLive} onJeonse={onJeonse} />
   );
   const disc = picked ? (pickLetter || String((index ?? 0) + 1)) : String((index ?? 0) + 1);
+  const rowClick = rowClickHandler(onDetail, candidate);
   return (
     <article className={`ui-cand-row${picked ? " is-picked" : ""}${highlighted ? " is-hi" : ""}`}
       role="button" tabIndex={0}
-      onClick={() => onDetail && onDetail(candidate)}
+      onClick={rowClick}
       onKeyDown={(e) => {
+        if (e.target && e.target.closest && e.target.closest("button")) return;
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" && onDetail) onDetail(candidate);
       }}>
@@ -170,11 +179,9 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         <div className="ui-cand-row-top">
           <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true">{disc}</span>
           <span className="ui-cand-row-name">{candidate.name}</span>
-          <span className="ui-cand-row-btn" onClick={(e) => e.stopPropagation()}>
-            <Button size="sm" variant={picked ? "secondary" : "primary"}
-              label={picked ? "담음 ✓" : "담기"}
-              onClick={() => onLive && onLive(candidate)} />
-          </span>
+          <Button size="sm" variant={picked ? "secondary" : "primary"}
+            label={picked ? "담음 ✓" : "담기"}
+            onClick={() => onLive && onLive(candidate)} />
         </div>
         <div className="ui-cand-row-price ui-num" title={rangeTitle}>{price.price}</div>
         <div className="ui-cand-row-facts ui-num">{facts.join(" · ")}</div>

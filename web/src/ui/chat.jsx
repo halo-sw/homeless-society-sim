@@ -1433,6 +1433,8 @@ export function ChatScreen() {
     intake, household, overrides, usageLog]);
 
   const [detail, setDetail] = useState(null);
+  const compareOpen = useSyncExternalStore(store.subscribe,
+    () => store.getState().compareOpen, () => store.getState().compareOpen);
   const destName = (profile && profile.workplaces && profile.workplaces.value
     && profile.workplaces.value[0] && profile.workplaces.value[0].resolved
     && profile.workplaces.value[0].resolved.station) || "";
@@ -1500,7 +1502,8 @@ export function ChatScreen() {
               onRestart: () => { clearTranscript(); window.location.href = "/"; },
             }} />
         )}>
-        <div className="ui-chat-main">
+        <div className="ui-chat-main"
+          data-panel={chatMainPanelAttr(detail, compareOpen)}>
           <section className="ui-chat-thread" aria-label="대화">
             <ChatLayout
               density="compact"
@@ -1533,17 +1536,17 @@ export function ChatScreen() {
                   </ChatMessage>
                 )}
               </ChatMessageList>
+              <div className="ui-chat-chips" role="group" aria-label="추천 질문">
+                {CHAT_CHIPS.map((chip) => (
+                  <Button key={chip} size="sm" variant="secondary" label={chip}
+                    onClick={() => chipAction(chip)} />
+                ))}
+              </div>
             </ChatLayout>
             {error && (
               <Banner status="error" title="요청 실패" description={error}
                 isDismissable onDismiss={() => setError("")} />
             )}
-            <div className="ui-chat-chips" role="group" aria-label="추천 질문">
-              {CHAT_CHIPS.map((chip) => (
-                <Button key={chip} size="sm" variant="secondary" label={chip}
-                  onClick={() => chipAction(chip)} />
-              ))}
-            </div>
           </section>
           <MsgBoundary>
           <StageArea
@@ -1596,6 +1599,13 @@ export function ChatScreen() {
       </AppShell>
     </div>
   );
+}
+
+// 19g: the picks tray shifts left while the side panel is open, so
+// the run button stays visible. Rendered as data-panel="open" on
+// .ui-chat-main with a CSS rule.
+export function chatMainPanelAttr(detail, compareOpen) {
+  return detail || compareOpen ? "open" : undefined;
 }
 
 // 18: the stage header is the customer's context ("판교 출근 · 후보
@@ -1680,7 +1690,7 @@ export function PicksTray({ picks, candidates, onRun, onRemove }) {
             </span>
           ))}
         </div>
-        <Button label={RUN_BUTTON_LABEL}
+        <Button label={RUN_BUTTON_LABEL} variant="primary"
           isDisabled={!canRun} onClick={() => onRun && onRun()} />
       </div>
       {!canRun && (

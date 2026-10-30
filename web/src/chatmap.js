@@ -456,16 +456,20 @@ export function layoutPinLabels(points, W, H) {
         pinLeader: [list[pi].x, list[pi].y] };
     });
   }
-  // Tag boxes, first-fit over right / left / above / below.
+  // Tag boxes, first-fit over centred-above / right / left /
+  // below. The first placement is centred above the anchor (the pill
+  // tail bridges `p.tail` px down to the anchor point); only colliding
+  // boxes move to the later slots.
   const placed = [];
   return list.map((p, i) => {
     const d = dots[i];
     const tw = Number(p.w) > 0 ? p.w : tagWidthPx(p.tag);
     const th = Number(p.h) > 0 ? p.h : TAG_H_PX;
+    const tail = Number(p.tail) > 0 ? p.tail : 0;
     const cands = [
+      { x: d.x - tw / 2, y: d.y - tail - th, w: tw, h: th },
       { x: d.x + TAG_GAP, y: d.y - th / 2, w: tw, h: th },
       { x: d.x - TAG_GAP - tw, y: d.y - th / 2, w: tw, h: th },
-      { x: d.x - tw / 2, y: d.y - TAG_GAP - th, w: tw, h: th },
       { x: d.x - tw / 2, y: d.y + TAG_GAP, w: tw, h: th },
     ].map((b) => clampBox(b, w, h));
     let box = cands.find((b) => !placed.some((q) => boxHit(b, q))) || null;

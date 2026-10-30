@@ -190,11 +190,14 @@ describe("17c-3 smaller sim marker", () => {
   });
 
   it("clamps instead of vanishing or enlarging", () => {
+    // 19e: the MARKER_MIN_SCALE floor is gone (it kept close markers
+    // huge) — the only floor left is the 1e-3 degenerate guard.
     assert.equal(markerScaleFor(1e9, 10, 860, 90, 28), 1);
-    assert.ok(markerScaleFor(5, 10, 860, 90, 28) >= MARKER_MIN_SCALE);
+    const close = markerScaleFor(50, 10, 860, 90, 28);
+    assert.ok(pxFor(90, close, 50) <= 28, `close cone px ${pxFor(90, close, 50)}`);
     for (const bad of [NaN, null, undefined, -3]) {
       const s = markerScaleFor(bad, 10, 860, 90, 28);
-      assert.ok(Number.isFinite(s) && s >= MARKER_MIN_SCALE && s <= 1);
+      assert.ok(Number.isFinite(s) && s > 0 && s <= 1, `bad input scale ${s}`);
     }
   });
 });

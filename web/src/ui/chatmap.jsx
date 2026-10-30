@@ -22,7 +22,6 @@ function ptsAttr(pts, toXY) {
 const CHATMAP_INSET = { top: 56, right: 24, bottom: 96, left: 24 };
 const PILL_H = 24;
 const PILL_TAIL = 5;
-const PILL_SHADOW = "drop-shadow(0 1px 2px rgba(0,0,0,.25))";
 
 const noSpace = (s) => String(s || "").replace(/\s+/g, "");
 
@@ -75,7 +74,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const laid = layoutPinLabels(pins.map((p) => {
     const [x, y] = toXY(p.lon, p.lat);
     const short = shortPinPrice(p.candidate, m.tenure);
-    return { id: p.id, x, y, tag: short, w: pinPillWidthPx(short), h: PILL_H };
+    return { id: p.id, x, y, tag: short, w: pinPillWidthPx(short),
+      h: PILL_H, tail: PILL_TAIL };
   }), W, H);
   const layById = new Map(laid.map((l) => [l.id, l]));
   const pinBoxes = laid.map((l) => l.box).filter(Boolean);
@@ -100,10 +100,11 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
     .sort((a, b) => a.d - b.d)
     .slice(0, 14)
     .map((e) => e.s);
-  // Label-worthy stations: the workplace stop, plus each picked
-  // home's boarding stop.
+  // Label-worthy stations: each picked home's boarding stop. The
+  // workplace stop keeps its dot but no name label — the 회사 pill
+  // already names it.
   const labelStops = new Set();
-  if (m.workPin && m.workPin.name) labelStops.add(noSpace(m.workPin.name));
+  const workName = m.workPin && m.workPin.name ? noSpace(m.workPin.name) : null;
   for (const p of pins) {
     if (!p.picked) continue;
     const w = p.candidate && p.candidate.commute && p.candidate.commute.walk;
@@ -116,6 +117,12 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
     <div ref={mountRef} className="ui-chatmap" style={{ width: "100%", height: "100%", position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%"
         role="img" aria-label="후보 지도: 출근지와 후보 집 위치" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <filter id="chat-pill-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx={0} dy={1} stdDeviation={2}
+              floodColor="#000000" floodOpacity={0.25} />
+          </filter>
+        </defs>
         <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground} />
         {(green.parks || []).map((ring, i) => (
           <polygon key={`pk${i}`} points={ptsAttr(ring, toXY)} fill={MAP_COLORS.park} />
@@ -173,7 +180,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           const [x, y] = toXY(s.lon, s.lat);
           const lx = x + fs(7);
           const ly = y + fs(4);
-          const showLabel = labelStops.has(noSpace(s.name)) && !hitsPinBox(lx + 24, ly);
+          const showLabel = labelStops.has(noSpace(s.name))
+            && noSpace(s.name) !== workName && !hitsPinBox(lx + 24, ly);
           return (
             <g key={`${s.line}:${s.name}:${i}`}>
               <circle cx={x} cy={y} r={fs(3.5)}
@@ -235,11 +243,13 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           const rx = x - ww / 2;
           const ry = y - fs(6) - wh;
           return (
-            <g key="work" style={{ filter: PILL_SHADOW }}>
-              <rect x={rx} y={ry} width={ww} height={wh} rx={wh / 2}
-                fill={MAP_COLORS.workPin} />
-              <text x={x} y={ry + fs(17)} fontSize={fs(12)} fontWeight={600}
-                textAnchor="middle" fill="#ffffff">{label}</text>
+            <g key="work">
+              <g filter="url(#chat-pill-shadow)">
+                <rect x={rx} y={ry} width={ww} height={wh} rx={wh / 2}
+                  fill={MAP_COLORS.workPin} />
+                <text x={x} y={ry + fs(17)} fontSize={fs(12)} fontWeight={600}
+                  textAnchor="middle" fill="#ffffff">{label}</text>
+              </g>
               <polygon points={`${x - fs(5)},${y - fs(6)} ${x + fs(5)},${y - fs(6)} ${x},${y}`}
                 fill={MAP_COLORS.workPin} />
             </g>
@@ -278,22 +288,24 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
                   stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
               )}
               <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />
-              <g transform={zoom} style={{ filter: PILL_SHADOW }}>
-                <rect x={box.x} y={box.y} width={box.w} height={fs(PILL_H)} rx={fs(999)}
-                  fill={fill} stroke={picked ? "none" : "#e2ddd3"} strokeWidth={fs(1)} />
+              <g transform={zoom}>
+                <g filter="url(#chat-pill-shadow)">
+                  <rect x={box.x} y={box.y} width={box.w} height={fs(PILL_H)} rx={fs(999)}
+                    fill={fill} stroke={picked ? "none" : "#e2ddd3"} strokeWidth={fs(1)} />
+                  <circle cx={dcx} cy={dcy} r={fs(8)} fill={dotFill} />
+                  <text x={dcx} y={dcy + fs(3.5)} fontSize={fs(10)} textAnchor="middle"
+                    fill={dotText}>{glyph}</text>
+                  <text x={txx} y={box.y + fs(16)} fontSize={fs(12)} fontWeight={600}
+                    fill={mainText}>{short}</text>
+                </g>
                 <polygon points={`${tailX - fs(4)},${box.y + PILL_H} ${tailX + fs(4)},${box.y + PILL_H} ${tailTipX},${tailTipY}`}
                   fill={fill} />
-                <circle cx={dcx} cy={dcy} r={fs(8)} fill={dotFill} />
-                <text x={dcx} y={dcy + fs(3.5)} fontSize={fs(10)} textAnchor="middle"
-                  fill={dotText}>{glyph}</text>
-                <text x={txx} y={box.y + fs(16)} fontSize={fs(12)} fontWeight={600}
-                  fill={mainText}>{short}</text>
               </g>
             </g>
           );
         })}
       </svg>
-      <div style={{ position: "absolute", left: 8, bottom: 8, background: "#ffffff",
+      <div style={{ position: "absolute", top: 12, right: 12, background: "#ffffff",
         borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a" }}>
         ● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)
       </div>

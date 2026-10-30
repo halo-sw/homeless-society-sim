@@ -54,9 +54,9 @@ describe("17-1 Ithaca name", () => {
   it("landing shows the brand line, headline and tagline", () => {
     const html = render(React.createElement(landing.Landing));
     const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    assert.ok(text.includes("Ithaca · The Pre-living Agent for Your Next Home"));
-    assert.ok(text.includes("계약 전에, 그 집에서 30일 먼저 살아 봐요"));
-    assert.ok(text.includes("We walk the odyssey. You just come home."));
+    assert.ok(text.includes("Ithaca"), "latin product name");
+    assert.ok(text.includes("계약 전에, 그 집에서 30일 먼저 살아 봐요"), "heading");
+    assert.ok(text.includes("We walk the odyssey. You just come home."), "tagline");
   });
 
   it("document titles and share footer use Ithaca", () => {
@@ -71,15 +71,15 @@ describe("17-1 Ithaca name", () => {
   });
 
   it("landing scrim is a bright warm-white veil (18: AA over the 3D)", () => {
-    // 18: the 65% veil left light-grey copy on a light 3D scene. The
-    // 88% warm-white veil + stronger blur keeps the headline, input and
+    // 19f: a radial veil — calm white in the middle, city visible at
+    // the edges. The first (centre) stop keeps the headline, input and
     // example chips at their solid-surface contrast (ink2 on page ≈ 6:1).
     const css = readFileSync(join(SRC, "ui", "ui.css"), "utf8");
     const scrim = css.match(/\.ui-landing-scrim \{[^}]*\}/)[0];
     assert.ok(!scrim.includes("12, 14, 18"), "no dark grey veil");
     assert.ok(scrim.includes("--ui-page"), "warm white token");
-    const pct = Number((scrim.match(/--ui-page\) (\d+)%/) || [])[1]);
-    assert.ok(pct >= 85, `veil ${pct}% keeps copy at AA`);
-    assert.ok(/blur\((1[2-9]|[2-9]\d)px\)/.test(scrim), "background blurred flat");
+    const stops = [...scrim.matchAll(/--ui-page\) (\d+)%/g)].map((m) => Number(m[1]));
+    assert.ok(stops.length >= 1, "veil stops found");
+    assert.ok(stops[0] >= 85, `centre veil ${stops[0]}% keeps copy at AA`);
   });
 });

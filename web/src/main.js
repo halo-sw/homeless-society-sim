@@ -3115,13 +3115,12 @@ async function bootSim() {
       journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed,
         camera, (household[follow - 1] || {}).label);
     }
-    // 17c/19e: distance-scaled journey dots (≤ 14 px); the train is an HTML pin.
-    if (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
-        || jfTrain.phase === "descending" || jfTrain.phase === "hold"
-        || jfTrain.phase === "boarding") {
-      journeyLayer.updateMarkerScale(camera,
-        (renderer.domElement && renderer.domElement.clientHeight) || 800);
-    }
+    // 17c/19e/19g: distance-scaled journey dots (≤ 14 px); the train
+    // is an HTML pin. Unconditional every frame — updateMarkerScale
+    // no-ops while the layer is hidden, so no visible phase can ever
+    // show unscaled (36 m) dots.
+    journeyLayer.updateMarkerScale(camera,
+      (renderer.domElement && renderer.domElement.clientHeight) || 800);
     // Station names ride along the line during the regional phases only.
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending")) {
