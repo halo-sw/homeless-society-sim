@@ -59,6 +59,7 @@ import { defaultOverrides, setOverride, resetOverride,
 import { CompareCard, CompareTabBody } from "./app.jsx";
 import { HowCalculated, tenureOf } from "./money.jsx";
 import { fmtMinutes, fmtWon, fmtWonShort } from "../money/format.js";
+import { fmtMoney, currencyOf } from "../money/currency.js";
 import { monthlyHousingOf } from "../money/monthly.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
@@ -80,7 +81,7 @@ import {
   homeForScenario, complexNameForCandidate, stationNames,
   runGate, profileHomeKinds,
 } from "../chat/engine.js";
-import { buildCustomMoneyDoc } from "../chat/custom-money.js";
+import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
@@ -415,6 +416,16 @@ export function ResultSummary({ data }) {
           if (mh.missing) {
             return <span key={`money-${l}`} className="ui-result-missing">계산 전</span>;
           }
+          // 26d: a USD doc shows the ZIP-estimate rent only — no
+          // Korean-only rows (실수령, 대출, 전세 점검).
+          if (data.moneyDoc && data.moneyDoc.currency === "USD") {
+            const text = `${fmtMoney(mh.monthly, "USD", { monthly: true })} (ZIP 추정)`;
+            return (
+              <span key={`money-${l}`} className="ui-result-value" title={text}>
+                {text}
+              </span>
+            );
+          }
           return (
             <span key={`money-${l}`} className="ui-result-value"
               title={fmtWon(mh.monthly, { monthly: true })}>
@@ -529,7 +540,9 @@ export function SimulationCard({ data, example, onRetry }) {
   const days = (data.compare && data.compare.days) || 30;
   // 19d: one 계산 disclosure for the card (the two HowCalculated
   // blocks, each headed by its letter disc).
-  const calcs = (data.moneyDoc ? labels : []).map((l) => ({
+  // 26d: a USD doc skips the Korean-only 어떻게 계산했나요 block
+  // (대출 rows) — the result row already shows the ZIP-estimate rent.
+  const calcs = (data.moneyDoc && data.moneyDoc.currency !== "USD" ? labels : []).map((l) => ({
     label: l, mh: monthlyHousingOf(data.moneyDoc, l, days),
   })).filter(({ mh }) => !mh.missing);
   const texts = data.momentTexts || [];
@@ -1292,16 +1305,27 @@ export function ChatScreen() {
       setProgress({ done: picked.length + 1, total: picked.length + 2, label: "돈 계산" });
       let moneyDoc = null;
       let moneyMissing = "";
+      // 26d: USD picks skip the Korean payroll table — the money doc
+      // is the ZIP-estimate rent per home.
+      const usPicks = picked.length > 0 && picked.every((p) => currencyOf(p) === "USD");
       try {
-        const payroll = await loadPayroll(fetchJson);
-        if (!payroll) throw new Error("급여 요율표를 불러오지 못했어요");
-        moneyDoc = buildCustomMoneyDoc({
-          scenario: scenValue, runs, profile: st.profile,
-          picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
-            complexName: homes[i].name, areaId: p.scene })),
-          payrollTable: payroll, areas,
-          network: data.network || null, fareSchedule: data.schedule || null,
-        });
+        if (usPicks) {
+          moneyDoc = buildUsRentMoneyDoc({
+            picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
+              complexName: homes[i].name, areaId: p.scene })),
+            labels,
+          });
+        } else {
+          const payroll = await loadPayroll(fetchJson);
+          if (!payroll) throw new Error("급여 요율표를 불러오지 못했어요");
+          moneyDoc = buildCustomMoneyDoc({
+            scenario: scenValue, runs, profile: st.profile,
+            picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
+              complexName: homes[i].name, areaId: p.scene })),
+            payrollTable: payroll, areas,
+            network: data.network || null, fareSchedule: data.schedule || null,
+          });
+        }
       } catch (err) {
         moneyMissing = String((err && err.message) || err);
       }

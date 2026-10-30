@@ -292,7 +292,12 @@ export function complexNameForCandidate(candidate, area) {
 // fallback); the returned anchor says which path the run will take.
 export function simReadyFor(candidate, area) {
   if (!candidate) return { ready: false, kind: "none", reason: "후보 정보가 없어요" };
-  if (!candidate.commute || !candidate.commute.walk || !candidate.commute.walk.known) {
+  // 26d: a US work estimate (assumed-speed minutes) runs the sim even
+  // when the station walk is unknown. Reason strings are unchanged.
+  const workMin = candidate.commute && candidate.commute.work
+    ? candidate.commute.work.minutes : null;
+  if (!Number.isFinite(workMin)
+      && (!candidate.commute || !candidate.commute.walk || !candidate.commute.walk.known)) {
     return { ready: false, kind: "none", reason: "도보 시간이 확인되지 않아요" };
   }
   if (!Number.isFinite(candidate.lon) || !Number.isFinite(candidate.lat)) {

@@ -806,12 +806,20 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
     return out;
   });
 
+  // 26d: members with a resolved place commute without a station —
+  // only station_ride members need the home station walk times.
+  const needsStation = members.some((m, i) => {
+    if ((m.role || "adult") === "child") return false;
+    const wp = workplaces[i] || workplaces[0] || null;
+    const place = wp && wp.resolved && wp.resolved.place;
+    return !(place && Number.isFinite(place.lon) && Number.isFinite(place.lat));
+  });
   const stationName = {};
   for (const h of scenarioHomes) {
     const home = list[scenarioHomes.indexOf(h)];
     if (home.station && home.station.station) {
       stationName[h.label] = home.station.station;
-    } else {
+    } else if (needsStation) {
       throw new Error(`scenarioFromProfile: home ${home.name} has no station walk time`
         + " — pick a candidate with a scene and a station");
     }
@@ -842,6 +850,18 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
     if ((m.role || "adult") === "child") {
       out.work = { type: "none" };
       out.schooldays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+      return out;
+    }
+    // 26d: a resolved place (e.g. Meta HQ) commutes by walk/bike from
+    // lon/lat — no station walk needed. Korean station workplaces below
+    // are unchanged.
+    const place = wp && wp.resolved && wp.resolved.place;
+    if (place && Number.isFinite(place.lon) && Number.isFinite(place.lat)) {
+      out.work = {
+        type: "place",
+        place: { name: place.name, lon: place.lon, lat: place.lat },
+        modes: ["walk", "bike"],
+      };
       return out;
     }
     if (Object.keys(stationName).length > 0) {

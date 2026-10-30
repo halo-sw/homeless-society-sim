@@ -1,6 +1,7 @@
 // Walk-graph routing for the life engine (pure, no three.js).
 //
-// Router builds the directed adjacency once from the walk edges, then
+// Router builds the directed adjacency once from one mode's edges
+// (walk by default, e.g. { mode: "bike" } for the bike graph), then
 // answers route(fromId, toId) with Dijkstra over length_m. Results are
 // cached per source node (one Dijkstra per source) and per node pair,
 // so a 30-day run pays at most one shortest-path computation per
@@ -58,10 +59,10 @@ class MinHeap {
 }
 
 export class Router {
-  constructor(graph) {
+  constructor(graph, { mode = "walk" } = {}) {
     this.nodes = graph.nodes || {};
     this.adj = new Map();
-    for (const e of (graph.edges || {}).walk || []) {
+    for (const e of (graph.edges || {})[mode] || []) {
       if (!this.adj.has(e.from)) this.adj.set(e.from, []);
       this.adj.get(e.from).push(e);
     }

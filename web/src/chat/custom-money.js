@@ -355,3 +355,44 @@ export function buildCustomMoneyDoc({ scenario, runs, picked, profile,
     public_listings: null,
   };
 }
+
+// US rent money doc (26d, pure, no payroll). picked: [{label, candidate,
+// complexName, areaId}] like buildCustomMoneyDoc; labels accepted for
+// call-site symmetry. Per home: {label, rent_usd_month, source, estimate}.
+// currency is "USD"; there is no net pay and no loan.
+export function buildUsRentMoneyDoc({ picked, labels } = {}) {
+  if (!Array.isArray(picked) || picked.length === 0) {
+    throw new Error("custom-money: picked homes are required");
+  }
+  const homes = {};
+  for (const p of picked) {
+    const label = p.label;
+    const cand = p.candidate || {};
+    const wolse = (cand.tenures || []).find((e) => e.tenure === "wolse") || null;
+    let rent = wolse ? wolse.median_won : null;
+    if (!Number.isFinite(rent)) {
+      const bucket = (cand.buckets || [])[0] || null;
+      const monthly = bucket && bucket.wolse ? bucket.wolse.monthly : null;
+      rent = monthly ? monthly.median_won : null;
+    }
+    const price = cand.price || {};
+    homes[label] = {
+      label,
+      complex_name: p.complexName || cand.name || "",
+      area: p.areaId || null,
+      rent_usd_month: Number.isFinite(rent) ? Math.round(rent) : null,
+      source: price.zip && price.month
+        ? `Zillow ZORI (ZIP ${price.zip}, ${price.month})`
+        : "Zillow ZORI (ZIP 추정)",
+      estimate: true,
+    };
+  }
+  return {
+    currency: "USD",
+    custom: true,
+    us_rent: true,
+    labels: Array.isArray(labels) ? [...labels] : Object.keys(homes),
+    default_tenure: Object.fromEntries(Object.keys(homes).map((l) => [l, "월세"])),
+    homes,
+  };
+}
