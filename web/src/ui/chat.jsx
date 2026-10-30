@@ -452,11 +452,15 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
             );
           })}
         </div>
-        {data && data.total_matching > candidates.length && (
-          <Button size="sm" variant="ghost"
-            label={`다른 후보 ${data.total_matching - candidates.length}곳 더 보기`}
-            onClick={() => onAsk && onAsk("다른 후보 더 보여 줘")} />
-        )}
+        {data && data.total_matching > candidates.length && (() => {
+          const rest = data.total_matching - candidates.length;
+          const n = Math.min(6, rest);
+          return (
+            <Button size="sm" variant="ghost"
+              label={`다른 후보 ${n}곳 더 보기 · 남은 ${rest}곳`}
+              onClick={() => onAsk && onAsk("다른 후보 더 보여 줘")} />
+          );
+        })()}
         {candidates.length > 0 && (
           <Text type="supporting">
             {picks.length < 2

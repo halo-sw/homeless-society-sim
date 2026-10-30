@@ -290,7 +290,7 @@ const seedPatterns = [
   { ko: "예산보다 {0} 적어요", en: "{0} under budget" },
   { ko: "예산보다 {0} 많아요", en: "{0} over budget" },
   { ko: "2곳 중 {0}곳 담음", en: "{0} of 2 picked" },
-  { ko: "다른 후보 {0}곳 더 보기", en: "Show {0} more" },
+  { ko: "다른 후보 {0}곳 더 보기 · 남은 {1}곳", en: "Show {0} more · {1} left" },
   { ko: "사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님)", en: "Photos are aerial and 3D previews (not actual listing photos)" },
   { ko: "다른 후보 더 보여 줘", en: "Show me more candidates" },
   { ko: "다루는 지역 {0}곳: {1}", en: "Areas covered ({0}): {1}" },

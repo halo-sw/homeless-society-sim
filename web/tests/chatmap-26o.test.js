@@ -67,7 +67,7 @@ describe("26o muted basemap group", () => {
     assert.ok(html.includes('id="basemap-mute"'), "filter def present");
     // Basemap is on in SSR (KR doc through the relay base): tiles render.
     assert.ok(html.includes("/api/tiles/white/"), "tile images rendered");
-    const open = '<g filter="url(#basemap-mute)">';
+    const open = '<g filter="url(#basemap-mute)"';
     const start = html.indexOf(open);
     assert.ok(start >= 0, "mute group present");
     const end = html.indexOf("</g>", start);
@@ -81,7 +81,7 @@ describe("26o muted basemap group", () => {
 
   it("keeps the subway polylines outside the mute group", async () => {
     const html = await html26o();
-    const open = '<g filter="url(#basemap-mute)">';
+    const open = '<g filter="url(#basemap-mute)"';
     const start = html.indexOf(open);
     const group = html.slice(start, html.indexOf("</g>", start));
     assert.ok(html.includes("#D4003B"), "our subway line colour renders");

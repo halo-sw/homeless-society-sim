@@ -106,8 +106,8 @@ describe("29a2 candidate list", () => {
         picks: [], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "강남" }));
-    assert.ok(html.includes("다른 후보 6곳 더 보기"), "more button with the remainder");
-    assert.equal(tr.translate("다른 후보 6곳 더 보기"), "Show 6 more");
+    assert.ok(html.includes("다른 후보 6곳 더 보기 · 남은 6곳"), "more button with the page and the remainder");
+    assert.equal(tr.translate("다른 후보 6곳 더 보기 · 남은 6곳"), "Show 6 more · 6 left");
   });
 
   it("en.js carries the 27j rules-path lines in English", () => {
