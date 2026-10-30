@@ -636,6 +636,20 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-page);
 }
 .ui-chat-stage-body { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
+/* 27c1: the embedded 3D scene frame in the work panel. */
+.ui-chat-scene { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+  height: 100%; background: var(--ui-page); }
+.ui-chat-scene-head { display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--ui-border); }
+.ui-chat-scene-title { font-weight: 600;
+  overflow-wrap: anywhere; word-break: keep-all; }
+.ui-chat-scene-frame { flex: 1 1 auto; width: 100%; border: 0; }
+/* ---------- 27a: chat-first empty screen + work panel on request ---------- */
+.ui-chat-empty { display: flex; flex-direction: column; gap: 16px;
+  max-width: 720px; margin: 12vh auto 0; padding: 0 16px; }
+.ui-chat-empty-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-chat-main[data-work="closed"] .ui-chat-thread { width: 100%;
+  max-width: 760px; margin: 0 auto; border-right: none; }
 .ui-chatmap { position: absolute; inset: 0; }
 .ui-chatmap svg { display: block; touch-action: none; }
 /* 25a: zoom buttons over the map, above the credit and clear of the tray. */
@@ -683,6 +697,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 @media (max-width: 1099px) {
   .ui-chat-stage { display: none; }
   .ui-chat-narrow-work .ui-chat-stage { display: flex; }
+  .ui-chat-scene { display: none; }
+  .ui-chat-narrow-work .ui-chat-scene { display: flex; }
   .ui-picks-tray { left: 0; right: 0; bottom: 0; max-width: none;
     border-radius: var(--ui-r-sheet) var(--ui-r-sheet) 0 0; }
   .ui-side-panel { left: 0; right: 0; top: auto; height: 70%; width: auto; overflow-y: auto; }

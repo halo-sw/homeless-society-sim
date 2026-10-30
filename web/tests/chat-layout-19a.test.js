@@ -64,7 +64,7 @@ describe("19a picks tray holds the only run button", () => {
     assert.equal(html, "");
   });
 
-  it("(d) candidates list: no run button, points at the tray", () => {
+  it("(d) candidates list: no run button, footer says what to say", () => {
     const cands = NAMES.map((n, i) => readyCandidate(`c${i + 1}`, n));
     const html = renderToString(React.createElement(CandidatesCard,
       { data: { candidates: cands, total_matching: 6, sort_note: "" },
@@ -72,10 +72,9 @@ describe("19a picks tray holds the only run button", () => {
         picks: ["c1", "c2"], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "판교" }));
-    // The label appears only as the quoted pointer, never as a button.
-    assert.equal(html.split(RUN_BUTTON_LABEL).length - 1, 1, "label only quoted, no button");
-    assert.ok(html.includes(`‘${RUN_BUTTON_LABEL}’`), "quoted pointer at the tray");
-    assert.ok(html.includes("지도 아래"), "points at the tray");
+    // The list itself has no run button; the footer says what to say.
+    assert.equal(html.split(RUN_BUTTON_LABEL).length - 1, 0, "no run button in the list");
+    assert.ok(html.includes("살아 봐 줘"), "footer says what to say");
   });
 
   it("(e) side panel with detail: title, close, and the home name", () => {

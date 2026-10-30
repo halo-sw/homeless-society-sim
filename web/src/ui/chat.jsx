@@ -21,6 +21,8 @@ import { Component, useEffect, useRef, useState, useSyncExternalStore } from "re
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { Card } from "@astryxdesign/core/Card";
 import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -40,6 +42,7 @@ import { IntakeCard, HouseholdCard } from "./intake.jsx";
 import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
 import { exampleLine } from "./copy.js";
 import { TopBar } from "./topbar.jsx";
+import { EXAMPLE_PROMPTS, COVERAGE_AREAS } from "./landing.jsx";
 // 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
@@ -73,6 +76,7 @@ import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../h
 import { chipSourceIds } from "../sources.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
+import { runDigest } from "../diary/digest.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
   loadHomesIndex, loadNetwork, loadSchedule, loadPhotosManifest,
@@ -84,13 +88,13 @@ import {
 } from "../chat/engine.js";
 import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
-import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
+import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
-import { postConsult, loadScenario } from "./consult-client.js";
+import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { LIVE_API, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
-import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
+import { agentContext, stripToolLabel, toolActionKo, viewSystemLine } from "./agent-float.js";
 import { LANG } from "../i18n/lang.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
@@ -252,6 +256,69 @@ export function scrollChatToSim(simId, root) {
   }
 }
 
+// 27f: follow the conversation — scroll the message list to the end.
+export function scrollChatToEnd(root) {
+  try {
+    const doc = root || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.querySelector !== "function") return false;
+    const list = doc.querySelector(".astryx-chat-message-list");
+    if (!list) return false;
+    list.scrollTop = list.scrollHeight;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 27g: client safety net — a stray [[다음: ...]] marker never reaches
+// the screen (same end-anchored split as splitSuggestions in agent.js).
+function stripNextMarker(reply) {
+  const text = String(reply || "");
+  const m = text.match(/\[\[\s*(?:다음|Next)\s*:\s*([^\]]+?)\s*\]\]\s*$/);
+  if (!m) return text;
+  return text.slice(0, m.index).trim();
+}
+
+// 27f: one bubble per turn — pure part of askAgent message merging.
+export function turnBubble(out) {
+  const msgs = (out && out.messages) || [];
+  let content = (out && typeof out.reply === "string" && out.reply.trim() !== "")
+    ? out.reply
+    : "";
+  if (!content) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m && m.role === "assistant" && typeof m.content === "string" && m.content.trim() !== "") {
+        content = m.content;
+        break;
+      }
+    }
+  }
+  const tool_calls = [];
+  for (const m of msgs) {
+    if (m && m.role === "assistant" && Array.isArray(m.tool_calls)) {
+      for (const c of m.tool_calls) tool_calls.push(c);
+    }
+  }
+  return { content: stripNextMarker(content), tool_calls };
+}
+
+// 27f: diary failure fallback line — pure, tested.
+export function diaryFallbackLine(oneWay, names) {
+  const fmt = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v))
+    ? "—" : `${Math.round(Number(v))}분`);
+  const a = fmt(oneWay && oneWay.A);
+  const b = fmt(oneWay && oneWay.B);
+  const nmA = (names && names.A) || "A";
+  const nmB = (names && names.B) || "B";
+  let line = `다 살아 봤어요. A ${nmA}는 출근 편도 평균 ${a}, B ${nmB}는 ${b}이었어요. 일기는 이번에 못 썼어요.`;
+  if (names && names.C !== undefined && names.C !== null && names.C !== "") {
+    const c = fmt(oneWay && oneWay.C);
+    line = `다 살아 봤어요. A ${nmA}는 출근 편도 평균 ${a}, B ${nmB}는 ${b}, C ${names.C}는 ${c}이었어요. 일기는 이번에 못 썼어요.`;
+  }
+  return line;
+}
+
 export function runReadiness(picks, candidates) {
   const list = Array.isArray(candidates) ? candidates : [];
   const picked = list.filter((c) => picks.includes(c.id));
@@ -265,7 +332,7 @@ export function runReadiness(picks, candidates) {
   return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
 }
 
-export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
+export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, onTogglePick,
     onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
   const candidates = (data && data.candidates) || [];
   // 13: one photo per card at most — dedup across the whole list.
@@ -284,6 +351,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
               label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
               onClick: () => onSort && onSort(s),
             }))} />
+          <Button size="sm" variant="ghost" label="지도에서 보기"
+            onClick={() => onOpenWork && onOpenWork()} />
         </HStack>
         {data && (
           <Text type="supporting">
@@ -317,8 +386,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         {candidates.length > 0 && (
           <Text type="supporting">
             {picks.length < 2
-              ? "마음에 드는 집을 2곳 담으면 지도 아래에서 30일 살아 보기를 시작할 수 있어요"
-              : "지도 아래 ‘이 집들로 30일 살아 보기’를 눌러 주세요"}
+              ? "마음에 드는 집을 2곳 담고 \"살아 봐 줘\"라고 말해 보세요"
+              : "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요"}
           </Text>
         )}
       </VStack>
@@ -379,7 +448,17 @@ export function resultScoreOf(moneyDoc, compare, weights, explicit) {
 // (short value, full value in title), 출퇴근 편도 (one_way, or one
 // row per member on older payloads). 살아 보니 and the single
 // 어떻게 계산했나요 disclosure live in the SimulationCard done branch.
-export function ResultSummary({ data }) {
+export function diaryCheckLine(check) {
+  const passed = (check && check.passed) || 0;
+  const retried = (check && check.retried) || 0;
+  const dropped = (check && check.dropped) || 0;
+  let line = `✓ 문장 ${passed}개 모두 기록과 대조`;
+  if (retried > 0) line += ` · ${retried}번 고쳐 씀`;
+  if (dropped > 0) line += ` · ${dropped}줄은 근거가 없어 뺐어요`;
+  return line;
+}
+
+export function ResultSummary({ data, onScene }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
   const names = data.names || {};
@@ -392,7 +471,32 @@ export function ResultSummary({ data }) {
   const oneWay = oneWayDelta(data.compare && data.compare.one_way);
   const commutes = oneWay ? [] : commuteOneWayOf(data.compare);
   const showMoney = !!(data.moneyDoc || data.moneyMissing);
+  const diary = data.diary || null;
   return (
+    <>
+      {diary && diary.status === "writing" && (
+        <div className="ui-result-diary"><Text type="supporting">Muse가 기록을 읽고 일기를 쓰는 중…</Text></div>
+      )}
+      {diary && diary.status === "done" && (
+        <div className="ui-result-diary">
+          <p><span className="ui-result-muse">Muse</span> {diary.summary}</p>
+          <div className="ui-result-diary-lines">
+            <Text>살아 본 일기</Text>
+            {(diary.lines || []).map((line, i) => (
+              <div key={i} className="ui-result-moment">
+                <span className="ui-pick-disc" aria-hidden="true">{line.home}</span>
+                <span className="ui-result-when">{`${line.day + 1}일째 ${hhmm(line.minute)}`}</span>
+                <span className="ui-result-text">{line.text}</span>
+                <Button size="sm" variant="ghost" label="장면 보기"
+                  onClick={() => {
+                    if (onScene) onScene({ url: simMomentUrl({ custom: data.customId, home: line.home, day: line.day + 1, t: hhmm(line.minute), follow: 1, embed: true }), title: `${line.day + 1}일째 ${hhmm(line.minute)} · ${line.home}` });
+                  }} />
+              </div>
+            ))}
+          </div>
+          <Text type="supporting">{diaryCheckLine(diary.check)}</Text>
+        </div>
+      )}
     <div className="ui-result-grid">
       <span aria-hidden="true" />
       {labels.map((l) => (
@@ -470,6 +574,7 @@ export function ResultSummary({ data }) {
         </span>,
       ]}
     </div>
+    </>
   );
 }
 
@@ -498,7 +603,7 @@ export function plainRunError(message) {
   return "30일 살아 보기를 끝내지 못했어요. 다시 시도해 주세요.";
 }
 
-export function SimulationCard({ data, example, onRetry }) {
+export function SimulationCard({ data, example, onRetry, onScene }) {
   if (!data) return null;
   if (data.status === "running") {
     const p = data.progress || { done: 0, total: 1, label: "" };
@@ -563,7 +668,7 @@ export function SimulationCard({ data, example, onRetry }) {
         <Text type="supporting">
           같은 식구가 두 집에서 30일씩 살아 봤어요. 고르는 건 고객님 몫이에요.
         </Text>
-        <ResultSummary data={data} />
+        <ResultSummary data={data} onScene={onScene} />
         {texts.length > 0 && (
           <VStack gap={1}>
             <Text>살아 보니</Text>
@@ -573,7 +678,8 @@ export function SimulationCard({ data, example, onRetry }) {
               // per-home first outing.
               const url = momentRowUrl(t, { custom: data.customId,
                 scenario: data.scenario || null,
-                fallback: moments.find((m) => m.label === t.home) || null });
+                fallback: moments.find((m) => m.label === t.home) || null,
+                embed: true });
               return (
                 <div key={i} className="ui-result-moment">
                   <span className="ui-result-when">{t.when_ko}</span>
@@ -582,7 +688,7 @@ export function SimulationCard({ data, example, onRetry }) {
                   {url && (
                     <Button size="sm" variant="ghost" label="3D로 보기 →"
                       onClick={() => {
-                        window.location.href = url;
+                        if (onScene) onScene({ url, title: `${t.when_ko} · ${t.home}` });
                       }} />
                   )}
                 </div>
@@ -749,6 +855,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         {msg.kind === "candidates" && (
           <CandidatesCard data={data.result} tenure={data.tenure} sort={data.sort}
             onSort={(s) => handlers.onSort(msg.id, s)}
+            onOpenWork={handlers.onOpenWork}
             picks={handlers.picks} onTogglePick={handlers.onTogglePick}
             onPreview3D={handlers.onPreview3D} onJeonse={handlers.onJeonse}
             onRun={handlers.onRun} onDetail={handlers.onDetail}
@@ -763,7 +870,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         {msg.kind === "simulation" && (
           <div data-sim-card={msg.id}>
             <SimulationCard data={data} example={msg.example}
-              onRetry={handlers.onRun} />
+              onRetry={handlers.onRun} onScene={handlers.onScene} />
           </div>
         )}
         {msg.kind === "listing" && (
@@ -787,6 +894,115 @@ const CHAT_CHIPS_US = ["Meta HQ까지 가까운 순", "월세 낮은 순"];
 
 export function chatChipsFor(currency) {
   return currency === "USD" ? CHAT_CHIPS_US : CHAT_CHIPS;
+}
+
+// 27b2: every message goes to Muse when live; the rule flow is the fallback.
+export function routeTurn({ live, museDown }) {
+  return live && !museDown ? "agent" : "local";
+}
+
+// 27b2: one live tool row as a busy-bubble line.
+export function liveRowLine(row) {
+  const label = toolActionKo(row.name);
+  if (row.pending) return `▸ ${label} 중…`;
+  const mark = row.ok === false ? "✕" : "✓";
+  const tail = stripToolLabel(row.name, row.summary);
+  return tail ? `${mark} ${label} · ${tail}` : `${mark} ${label}`;
+}
+
+const WORK_TABS_27B2 = new Set(["compare", "priorities", "money", "worthit", "jeonse", "support"]);
+const SCENE_PANELS_27B2 = new Set(["tour", "commute", "result"]);
+
+// 27b2: Muse's uiActions → concrete UI effects, in order.
+export function uiEffects(actions, { candidateIds = [], pickCount = 0 } = {}) {
+  const effs = [];
+  let n = pickCount || 0;
+  for (const a of actions || []) {
+    if (!a || typeof a.action !== "string") continue;
+    if (a.action === "panel") {
+      if (a.panel === "map") {
+        effs.push({ type: "work" });
+      } else if (WORK_TABS_27B2.has(a.panel)) {
+        effs.push({ type: "work" });
+        effs.push({ type: "tab", tab: a.panel });
+      } else if (SCENE_PANELS_27B2.has(a.panel)) {
+        effs.push({ type: "work" });
+        effs.push({ type: "scene", panel: a.panel,
+          home: a.home ?? null, candidate_id: a.candidate_id ?? null,
+          day: a.day ?? null, time: a.time ?? null });
+      }
+    } else if (a.action === "pick") {
+      const ids = (Array.isArray(a.ids) ? a.ids : [])
+        .filter((id) => candidateIds.includes(id)).slice(0, 3);
+      if (ids.length === 0) continue;
+      n = ids.length;
+      effs.push({ type: "pick", ids });
+    } else if (a.action === "run") {
+      effs.push(n >= 2 ? { type: "run" } : { type: "say", text: "먼저 두 곳을 찜해 주세요." });
+    }
+  }
+  return effs;
+}
+
+// 27c2: resolve a pending scene effect to a panel scene (or a spoken
+// fallback). candidates carry scene/name; picks is the id list in pick
+// order (A = picks[0]); latestRun is { customId, moments } from the
+// newest done simulation message.
+export function sceneForEffect(eff, { picks = [], candidates = [], latestRun = null } = {}) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const ids = Array.isArray(picks) ? picks : [];
+  if (!eff || eff.panel === "tour") {
+    let candidate = null;
+    if (eff && eff.candidate_id) {
+      candidate = list.find((c) => c && c.id === eff.candidate_id) || null;
+    }
+    if (!candidate && eff && eff.home) {
+      const at = "ABC".indexOf(eff.home);
+      const id = at >= 0 ? ids[at] : null;
+      if (id) candidate = list.find((c) => c && c.id === id) || null;
+    }
+    if (!candidate && ids.length > 0) {
+      candidate = list.find((c) => c && c.id === ids[0]) || null;
+    }
+    if (!candidate || !candidate.scene) {
+      return { say: "이 집은 아직 3D 동네 자료가 없어요." };
+    }
+    return { url: tourUrl({ area: candidate.scene, embed: true }),
+      title: `${candidate.name} 동네` };
+  }
+  if (!latestRun || !latestRun.customId) {
+    return { say: "먼저 두 집을 찜하고 살아 보기를 맡겨 주세요." };
+  }
+  const home = (eff && eff.home) || "A";
+  const m = ((latestRun && latestRun.moments) || []).find((x) => x && x.label === home) || null;
+  const day = (eff && eff.day) || (m && m.day) || 1;
+  const t = (eff && eff.time) || (m && m.t) || "08:30";
+  const title = eff.panel === "commute" ? `${home} 출근길` : `${home} · ${day}일째 ${t}`;
+  return { url: simMomentUrl({ custom: latestRun.customId,
+    home, day, t, follow: 1, embed: true }), title };
+}
+
+export function latestDoneRun(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m && m.kind === "simulation" && m.data && m.data.status === "done" && m.data.customId) {
+      return { customId: m.data.customId, moments: m.data.moments || [] };
+    }
+  }
+  return null;
+}
+
+// 27b2: next-step chips — Muse's suggestions on the latest assistant
+// message win; otherwise the rule chips.
+export function chipsForLatest(messages, fallback) {
+  for (let i = (messages || []).length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m && m.role === "assistant") {
+      return Array.isArray(m.suggestions) && m.suggestions.length > 0 ? [...m.suggestions] : fallback;
+    }
+  }
+  return fallback;
 }
 
 const US_NO_JEONSE_SUPPORT = "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.";
@@ -880,17 +1096,17 @@ function followOfRun(runs, t) {
   return i >= 0 ? i + 1 : 1;
 }
 
-export function momentRowUrl(t, { custom = null, scenario = null, runs = null, fallback = null } = {}) {
+export function momentRowUrl(t, { custom = null, scenario = null, runs = null, fallback = null, embed = false } = {}) {
   if (!t) return null;
   if (Number.isFinite(t.day) && Number.isFinite(t.minute)) {
     return simMomentUrl({ custom, scenario, home: t.home,
-      day: t.day + 1, t: hhmm(t.minute), follow: followOfRun(runs, t) });
+      day: t.day + 1, t: hhmm(t.minute), follow: followOfRun(runs, t), embed });
   }
   const mo = fallback
     || (runs && runs[t.home] ? { label: t.home, ...firstMomentOfRun(runs[t.home]) } : null);
   if (!mo) return null;
   return simMomentUrl({ custom, scenario, home: mo.label || t.home,
-    day: mo.day, t: mo.t, follow: mo.follow });
+    day: mo.day, t: mo.t, follow: mo.follow, embed });
 }
 
 // 21b: the pure thread update behind pushMsg — append, or replace
@@ -934,11 +1150,27 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
+  // 27b2: Muse down → rules answer; liveRows → the busy bubble rows.
+  const [museDown, setMuseDown] = useState(false);
+  const [liveRows, setLiveRows] = useState([]);
   const [error, setError] = useState("");
   // 13f: usage lives in the 설정 sheet's 모델 section (usage log).
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
+  const [workOpen, setWorkOpen] = useState(false);
+  const [dataTick, setDataTick] = useState(0);
+  void dataTick;
+  // 27g: the Muse path fills dataRef without re-rendering — refilling it
+  // must kick a re-render so the map shows right after the search.
+  useEffect(() => {
+    if (workOpen && !dataRef.current) {
+      ensureData(null).then(() => setDataTick((t) => t + 1)).catch(() => {});
+    }
+  }, [workOpen]);
+  // 27c1: the embedded 3D scene ({ url, title } | null) shown in the
+  // work panel instead of the map while set.
+  const [scene, setScene] = useState(null);
   const [serverKeys, setServerKeys] = useState({});
   const [modelErrors, setModelErrors] = useState({});
   const [intake, setIntake] = useState(() => intakeState0());
@@ -1080,7 +1312,8 @@ export function ChatScreen() {
     // 21b: one 상황 card — the intake card already shows the latest
     // profile, so no standalone profile card joins it.
     setIntake(prefillFromExtract(intake, { profile: prof }));
-    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {},
+    pushMsg({ role: "assistant", kind: "profile", replace: true,
+      data: { profile: prof }, example: stateRef.current.exampleId,
       tool_calls: [{ id: exId, name: "extract_profile" }] });
     await runSearch(prof, data, { sort: "commute" });
   }
@@ -1180,6 +1413,7 @@ export function ChatScreen() {
       ? Number(prof.monthlyMax.value) : null;
     const emptyHint = usEmptyHint((data.index && data.index.homes) || [], budget);
     setCandidatesData({ result, tenure, sort });
+    setWorkOpen(true);
     pushMsg({ role: "assistant", kind: "candidates", replace: true,
       data: { result, tenure, sort, emptyHint }, example: stateRef.current.exampleId,
       tool_calls: [{ id: rowId, name: "find_homes" }] });
@@ -1212,8 +1446,10 @@ export function ChatScreen() {
 
   function handlePreview3D(candidate) {
     if (!candidate.scene) return;
-    saveTranscript({ ...stateRef.current, savedAt: Date.now() });
-    window.location.href = chatUrl("", { area: candidate.scene });
+    setScene({ url: tourUrl({ area: candidate.scene, embed: true }),
+      title: `${candidate.name} 동네` });
+    setWorkOpen(true);
+    setView("work");
   }
 
   function handleJeonse() {
@@ -1264,10 +1500,12 @@ export function ChatScreen() {
     liveResearch(next);
   }
 
-  async function handleRun() {
+  async function handleRun(idsOverride = null) {
+    setWorkOpen(true);
     const st = stateRef.current;
+    const ids = Array.isArray(idsOverride) ? idsOverride : st.picks;
     const picked = ((st.candidatesData && st.candidatesData.result.candidates) || [])
-      .filter((c) => st.picks.includes(c.id));
+      .filter((c) => ids.includes(c.id));
     if (picked.length < 2 || !st.profile) return;
     // 21a: no run without a commute — unless the customer chose none.
     const gate = runGate(st.profile);
@@ -1417,6 +1655,33 @@ export function ChatScreen() {
       // 18d: the finished result replaces the progress in the same
       // card — keep it in view.
       soon(() => scrollChatToSim(simId));
+      // 27d: the diary follows without blocking the result card.
+      if (LIVE_API) {
+        try {
+          const digests = labels.map((l) => runDigest(runs[l], l, { name: (payload.names || {})[l] || "" }));
+          setMessages((prev) => prev.map((m) => (m.id === simId
+            ? { ...m, data: { ...m.data, diary: { status: "writing" } } } : m)));
+          postDiary({ provider, digests }).then((result) => {
+            setMessages((prev) => prev.map((m) => (m.id === simId
+              ? { ...m, data: { ...m.data, diary: { status: "done", ...result } } } : m)));
+            pushMsg({ role: "assistant", kind: "text",
+              content: `다 살아 봤어요. ${result.summary}`,
+              suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
+          }).catch(() => {
+            setMessages((prev) => prev.map((m) => (m.id === simId
+              ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
+            pushMsg({ role: "assistant", kind: "text",
+              content: diaryFallbackLine(compare.one_way, payload.names),
+              suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
+          });
+        } catch {
+          setMessages((prev) => prev.map((m) => (m.id === simId
+            ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
+          pushMsg({ role: "assistant", kind: "text",
+            content: diaryFallbackLine(compare.one_way, payload.names),
+            suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
+        }
+      }
     } catch (err) {
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: { status: "error", error: String((err && err.message) || err) } } : m)));
@@ -1447,13 +1712,44 @@ export function ChatScreen() {
         .map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })),
       { role: "user", content: text },
     ];
+    // 27b2: the context Muse needs — live candidates (real ids for
+    // pick_homes), current picks, and whether the work panel is open.
+    const liveCands = ((st.candidatesData && st.candidatesData.result
+      && st.candidatesData.result.candidates) || []).slice(0, 6).map((c) => ({
+      id: c.id, name: c.name, kind: c.kind ?? null, dong: c.dong ?? null,
+      commute_ko: c.commute_ko ?? null,
+      monthly_cost_won: c.monthly_cost_won ?? null,
+      scene: c.scene ?? null, lon: c.lon ?? null, lat: c.lat ?? null,
+      ...(c.price !== undefined && c.price !== null ? { price: c.price } : {}),
+    }));
+    const ctx = { ...agentContext(store.getState()), lang: LANG,
+      candidates: liveCands,
+      picks: st.picks.map((id, i) => ({ label: "ABC"[i], id })),
+      work_open: workOpen, profile: st.profile || null };
     try {
       let byoKey = "";
       try {
         byoKey = loadByoKey(typeof sessionStorage !== "undefined" ? sessionStorage : null, provider);
       } catch { /* no storage — server key path */ }
-      const out = await postConsult({ provider, messages: history, scenario: scen,
-        context: { ...agentContext(store.getState()), lang: LANG }, byoKey });
+      setLiveRows([]);
+      const out = await postConsultStream({ provider, messages: history, scenario: scen,
+        context: ctx, byoKey }, (ev) => {
+        if (ev.type === "tool_start") {
+          setLiveRows((prev) => [...prev, { name: ev.name, pending: true }]);
+        } else if (ev.type === "tool_end") {
+          setLiveRows((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].pending && next[i].name === ev.name) {
+                next[i] = { name: ev.name, ok: ev.ok, summary: ev.summary, pending: false };
+                break;
+              }
+            }
+            return next;
+          });
+        }
+      });
+      setLiveRows([]);
       const rows = { ...stateRef.current.toolRows };
       const callIds = [];
       for (const m of out.messages) {
@@ -1465,17 +1761,59 @@ export function ChatScreen() {
       setToolRows(rows);
       const appended = [...out.messages];
       if (out.view) appended.push({ role: "system", content: viewSystemLine(out.view) });
+      const suggestions = Array.isArray(out.suggestions) ? out.suggestions : [];
       for (const m of appended) {
         if (m.role === "system") {
           pushMsg({ role: "system", kind: "system", content: m.content });
-        } else if (m.role === "assistant") {
-          pushMsg({ role: "assistant", kind: "text", content: m.content || "",
-            tool_calls: m.tool_calls || [] });
         }
       }
+      const bubble = turnBubble(out);
+      pushMsg({ role: "assistant", kind: "text", content: bubble.content || "",
+        tool_calls: bubble.tool_calls, suggestions: [...suggestions] });
       appendToolCards(out.messages);
+      // 27g: the Muse path never ran ensureData, so the map stayed on its
+      // placeholder after Muse found homes. Fill it now (no await — the
+      // workOpen effect re-renders when it lands).
+      if (!dataRef.current) {
+        for (const m of out.messages || []) {
+          if (!m || m.role !== "tool" || typeof m.content !== "string") continue;
+          let r = null;
+          try { r = JSON.parse(m.content); } catch { continue; }
+          if (r && r.ok === true && Array.isArray(r.candidates)) {
+            ensureData(null).then(() => setDataTick((t) => t + 1));
+            break;
+          }
+        }
+      }
       mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
+      // 27b2: Muse opens panels and picks — same-turn candidates count,
+      // so a find + pick in one turn still lands.
+      let candidateIds = (((stateRef.current.candidatesData || {}).result || {}).candidates || [])
+        .map((c) => c.id);
+      for (const m of appended) {
+        if (m && m.role === "tool" && typeof m.content === "string") {
+          try {
+            const r = JSON.parse(m.content);
+            if (r && Array.isArray(r.candidates)) candidateIds = r.candidates.map((c) => c.id);
+          } catch { /* not JSON — ignore */ }
+        }
+      }
+      let lastPickIds = null;
+      for (const eff of uiEffects(out.uiActions || [],
+        { candidateIds, pickCount: stateRef.current.picks.length })) {
+        if (eff.type === "work") setWorkOpen(true);
+        else if (eff.type === "tab") store.set({ compareOpen: true, compareTab: eff.tab });
+        else if (eff.type === "pick") {
+          setPicks(eff.ids);
+          lastPickIds = eff.ids;
+          stateRef.current.picks = eff.ids;
+        }
+        else if (eff.type === "run") await handleRun(lastPickIds);
+        else if (eff.type === "say") {
+          pushMsg({ role: "assistant", kind: "text", content: eff.text });
+        } else if (eff.type === "scene") store.set({ pendingScene: eff });
+      }
       // 13: per-turn usage into the 모델 panel log.
       setUsageLog((log) => recordTurn(log, {
         provider, model: provider,
@@ -1486,14 +1824,14 @@ export function ChatScreen() {
       }));
       setModelErrors((e) => ({ ...e, [provider]: null }));
     } catch (err) {
+      setLiveRows([]);
       setModelErrors((e) => ({ ...e, [provider]: {
         httpStatus: err.httpStatus || null, message: String(err.message || err).slice(0, 200),
       } }));
-      if (/is not set/.test(err.message)) {
-        pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
-      } else {
-        pushMsg({ role: "assistant", kind: "text", content: `상담 요청 실패: ${err.message}` });
-      }
+      // 27b2: Muse is down — one system line, then the rules answer.
+      setMuseDown(true);
+      pushMsg({ role: "system", kind: "system", content: "Muse 연결이 안 돼서 규칙으로 답했어요" });
+      await structuredFlow(text);
     }
   }
 
@@ -1515,6 +1853,7 @@ export function ChatScreen() {
           data: { profile: r.profile }, example: stateRef.current.exampleId });
       } else if (Array.isArray(r.candidates)) {
         setCandidatesData({ result: r, tenure: r.tenure || "undecided", sort: r.sort || "commute" });
+        setWorkOpen(true);
         pushMsg({ role: "assistant", kind: "candidates", replace: true,
           data: { result: r, tenure: r.tenure || "undecided", sort: r.sort || "commute" },
           example: stateRef.current.exampleId });
@@ -1538,13 +1877,14 @@ export function ChatScreen() {
     pushMsg({ role: "user", kind: "text", content });
     setComposer("");
     try {
-      if (/check_listing으로 확인해줘|add_listing_c로 C에 추가해줘|C로 추가해줘/.test(content)) {
-        if (IS_DEV) await askAgent(content);
-        else {
-          pushMsg({ role: "assistant", kind: "text",
-            content: "매물 확인은 개발 서버 + 키에서 실거래와 대조해요. 글 읽기는 ’매물 글 붙여 넣기’에서 바로 돼요." });
-          pushMsg({ role: "assistant", kind: "listing", data: {} });
-        }
+      if (content === "매물 글 붙여 넣기") {
+        pushMsg({ role: "assistant", kind: "listing", data: {} });
+      } else if (routeTurn({ live: LIVE_API, museDown }) === "agent") {
+        await askAgent(content);
+      } else if (/check_listing으로 확인해줘|add_listing_c로 C에 추가해줘|C로 추가해줘/.test(content)) {
+        pushMsg({ role: "assistant", kind: "text",
+          content: "매물 확인은 개발 서버 + 키에서 실거래와 대조해요. 글 읽기는 ’매물 글 붙여 넣기’에서 바로 돼요." });
+        pushMsg({ role: "assistant", kind: "listing", data: {} });
       } else if (/공공임대/.test(content)) {
         // 26e: USD runs have no jeonse/public/support data — one line,
         // never the tabs.
@@ -1553,8 +1893,7 @@ export function ChatScreen() {
           && stateRef.current.profile.currency.value === "USD";
         if (usd) {
           pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
-        } else if (IS_DEV) await askAgent(content);
-        else pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
+        } else pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
       } else if (/전세 점검/.test(content)) {
         const usd = stateRef.current.profile
           && stateRef.current.profile.currency
@@ -1605,6 +1944,13 @@ export function ChatScreen() {
     }
   }
 
+  function handleExample() {
+    setExampleId("single-firstjob");
+    pushMsg({ role: "system", kind: "system",
+      content: exampleLine("single-firstjob") });
+    send(EXAMPLE_PROMPTS[0].prompt);
+  }
+
   // --- boot from URL / memory ---
   const booted = useRef(false);
   useEffect(() => {
@@ -1639,7 +1985,6 @@ export function ChatScreen() {
       }
     }
     if (initial.listing === "1") {
-      pushMsg({ id: "greeting", role: "assistant", kind: "text", content: GREETING });
       pushMsg({ role: "assistant", kind: "listing", data: {} });
       return;
     }
@@ -1661,7 +2006,10 @@ export function ChatScreen() {
         setProfile(mem.profile);
         store.set({ chatSummary: profileSummary(mem.profile) });
       }
-      if (mem.candidatesData) setCandidatesData(mem.candidatesData);
+      if (mem.candidatesData) {
+        setCandidatesData(mem.candidatesData);
+        setWorkOpen(true);
+      }
       if (Array.isArray(mem.picks)) setPicks(mem.picks);
       if (mem.exampleId) setExampleId(mem.exampleId);
       if (mem.scenario) setScenario(mem.scenario);
@@ -1672,8 +2020,6 @@ export function ChatScreen() {
       if (mem.compare) store.set({ compare: mem.compare });
       return;
     }
-    pushMsg({ id: "greeting", role: "assistant", kind: "text", content: GREETING });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist (runs stay in IndexedDB under the simulation card's customId).
@@ -1688,6 +2034,34 @@ export function ChatScreen() {
   const [detail, setDetail] = useState(null);
   const compareOpen = useSyncExternalStore(store.subscribe,
     () => store.getState().compareOpen, () => store.getState().compareOpen);
+  useEffect(() => { if (compareOpen) setWorkOpen(true); }, [compareOpen]);
+  // 27c2: Muse's open_panel for tour | commute | result lands here —
+  // resolve it against live picks/candidates and the newest done run.
+  const pendingScene = useSyncExternalStore(store.subscribe,
+    () => store.getState().pendingScene, () => store.getState().pendingScene);
+  useEffect(() => {
+    if (!pendingScene) return;
+    const st = stateRef.current;
+    const cands = ((st.candidatesData && st.candidatesData.result
+      && st.candidatesData.result.candidates) || []);
+    const res = sceneForEffect(pendingScene,
+      { picks: st.picks, candidates: cands, latestRun: latestDoneRun(st.messages) });
+    if (res.url) {
+      setScene({ url: res.url, title: res.title });
+      setWorkOpen(true);
+      setView("work");
+    } else {
+      pushMsg({ role: "assistant", kind: "text", content: res.say });
+    }
+    store.set({ pendingScene: null });
+  }, [pendingScene]);
+  // 27f: follow the conversation — newest message stays in view,
+  // except a done simulation card keeps its own scroll target.
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last && last.kind === "simulation" && last.data && last.data.status === "done") return;
+    soon(() => scrollChatToEnd());
+  }, [messages.length, liveRows.length]);
   // 26c: a resolved place (Meta HQ) names the destination and pins
   // the map's work pin at its lon/lat.
   const wpResolved = (profile && profile.workplaces && profile.workplaces.value
@@ -1702,6 +2076,8 @@ export function ChatScreen() {
     picks,
     intake, household, profile, exampleId,
     onChip: (field, starter) => setComposer(starter),
+    onOpenWork: () => setWorkOpen(true),
+    onScene: (s) => { setScene(s); setWorkOpen(true); setView("work"); },
     onSort: handleSort,
     onTogglePick: handleTogglePick,
     onPreview3D: handlePreview3D,
@@ -1732,7 +2108,7 @@ export function ChatScreen() {
         contentPadding={0}
         topNav={(
           <TopBar mode="chat" summary={summary}
-            extra={(
+            extra={workOpen ? (
               <div className="ui-chat-narrowtabs">
                 <SegmentedControl label="화면 선택" value={view}
                   onChange={setView} size="sm">
@@ -1740,7 +2116,7 @@ export function ChatScreen() {
                   <SegmentedControlItem value="work" label="화면" />
                 </SegmentedControl>
               </div>
-            )}
+            ) : null}
             settings={{
               mode: "chat",
               model: { usageLog, serverKeys, errors: modelErrors },
@@ -1762,14 +2138,20 @@ export function ChatScreen() {
             }} />
         )}>
         <div className="ui-chat-main"
-          data-panel={chatMainPanelAttr(detail, compareOpen)}>
+          data-panel={chatMainPanelAttr(detail, compareOpen)}
+          data-work={chatWorkAttr(workOpen)}>
           <section className="ui-chat-thread" aria-label="대화">
+            {messages.length === 0 && !busy ? (
+              <ChatEmpty onSend={(text) => send(text)}
+                onListing={() => chipAction("매물 글 붙여 넣기")}
+                onExample={handleExample} />
+            ) : (
             <ChatLayout
               density="compact"
               composer={(
                 <ChatComposer onSubmit={send} isDisabled={busy}
                   value={composer} onChange={setComposer}
-                  placeholder={busy ? "찾는 중…" : "이어서 말씀해 보세요…"} />
+                  placeholder={busy ? "Muse가 일하는 중…" : "이어서 말씀해 보세요…"} />
               )}>
               <ChatMessageList density="compact">
                 {messages.map((m) => (
@@ -1790,25 +2172,46 @@ export function ChatScreen() {
                 {busy && (
                   <ChatMessage sender="assistant">
                     <ChatMessageBubble variant="ghost">
-                      <Text type="supporting">찾는 중…</Text>
+                      {liveRows.length === 0 ? (
+                        <Text type="supporting">Muse가 생각하는 중…</Text>
+                      ) : (
+                        liveRows.map((row, i) => (
+                          <Text key={`${row.name}-${i}`} type="supporting">{liveRowLine(row)}</Text>
+                        ))
+                      )}
                     </ChatMessageBubble>
                   </ChatMessage>
                 )}
               </ChatMessageList>
+              {messages.length > 0 && (() => {
+                const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
+                const chips = chipsForLatest(messages, fallback);
+                const live = chips !== fallback;
+                return (
               <div className="ui-chat-chips" role="group" aria-label="추천 질문">
-                {chatChipsFor(profile && profile.currency && profile.currency.value).map((chip) => (
+                {chips.map((chip) => (
                   <Button key={chip} size="sm" variant="secondary" label={chip}
-                    onClick={() => chipAction(chip)} />
+                    onClick={() => (live ? send(chip) : chipAction(chip))} />
                 ))}
               </div>
+                );
+              })()}
             </ChatLayout>
+            )}
             {error && (
               <Banner status="error" title="요청 실패" description={error}
                 isDismissable onDismiss={() => setError("")} />
             )}
           </section>
+          {workOpen && (
           <MsgBoundary>
+          {scene ? (
+          <SceneFrame scene={scene}
+            onBack={() => setScene(null)}
+            onClose={() => { setScene(null); setWorkOpen(false); setView("chat"); }} />
+          ) : (
           <StageArea
+            onClose={() => { setWorkOpen(false); setView("chat"); }}
             map={buildChatMap({
               regions: regionsForCurrency(dataRef.current?.regionsDoc
                 || { regions: [] }, currencyOf(profile)),
@@ -1841,7 +2244,10 @@ export function ChatScreen() {
               setOrbFilter(regionId);
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
+          )}
           </MsgBoundary>
+          )}
+          {workOpen && !scene && (
           <PicksTray picks={picks}
             candidates={(candidatesData && candidatesData.result.candidates) || []}
             gate={runGate(profile)}
@@ -1849,11 +2255,14 @@ export function ChatScreen() {
               ? stationNames(dataRef.current.network) : []}
             onWorkplaceText={handleTrayWorkplace} onNoCommute={handleTrayNoCommute}
             onRun={handleRun} onRemove={handleTogglePick} />
+          )}
+          {workOpen && (
           <SidePanel picks={picks} candidatesData={candidatesData}
             detail={detail} onCloseDetail={() => setDetail(null)}
             photoDeps={handlers.photoDeps} destName={destName}
             tenure={candidatesData?.tenure || "undecided"}
             onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
+          )}
         </div>
         {viewChip && (
           <div className="ui-viewchip overlay">{viewChip}</div>
@@ -1871,6 +2280,46 @@ export function ChatScreen() {
 // .ui-chat-main with a CSS rule.
 export function chatMainPanelAttr(detail, compareOpen) {
   return detail || compareOpen ? "open" : undefined;
+}
+
+// 27a: chat-first empty state (no greeting, no form). The composer
+// is the same ChatComposer; the starters fill it or send once.
+export const EMPTY_STARTERS = [
+  { id: "find", label: "출근지로 집 찾기" },
+  { id: "listing", label: "본 매물 붙여 넣기" },
+  { id: "example", label: "예시로 써 보기" },
+];
+
+const EMPTY_FIND_TEXT = "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘";
+
+export function ChatEmpty({ onSend, onListing, onExample }) {
+  const [value, setValue] = useState("");
+  const starterAction = (id) => {
+    if (id === "find") setValue(EMPTY_FIND_TEXT);
+    else if (id === "listing") { if (onListing) onListing(); }
+    else if (id === "example") { if (onExample) onExample(); }
+  };
+  return (
+    <div className="ui-chat-empty">
+      <Heading level={2}>어떤 집을 고민 중이세요?</Heading>
+      <Text type="supporting">말로 하면 Muse가 실거래와 출근길을 확인하고, 원하면 그 집에서 30일 살아 봐요.</Text>
+      <ChatComposer onSubmit={(text) => onSend && onSend(text)}
+        value={value} onChange={setValue}
+        placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
+      <div className="ui-chat-empty-row">
+        {EMPTY_STARTERS.map((s) => (
+          <Button key={s.id} size="sm" variant="secondary" label={s.label}
+            onClick={() => starterAction(s.id)} />
+        ))}
+      </div>
+      <Text type="supporting">{`다루는 지역: ${COVERAGE_AREAS.join(" · ")}`}</Text>
+    </div>
+  );
+}
+
+// 27a: the work panel (map / tray / side panel) opens on request.
+export function chatWorkAttr(workOpen) {
+  return workOpen ? "open" : "closed";
 }
 
 // 18: the stage header is the customer's context ("판교 출근 · 후보
@@ -1902,7 +2351,34 @@ export function mergeGreenBoxes(cache) {
   return { water, parks };
 }
 
-export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine }) {
+// 27c1: a 3D scene inside the work panel — the sim/tour page in an
+// embed iframe, so the conversation never navigates away. 지도로
+// returns to the map, 새 창으로 opens the same scene in a new tab.
+export function SceneFrame({ scene, onBack, onClose }) {
+  if (!scene) return null;
+  return (
+    <section className="ui-chat-scene" aria-label="3D 장면">
+      <div className="ui-chat-scene-head">
+        <span className="ui-chat-scene-title">{scene.title}</span>
+        <span style={{ flex: "1 1 auto" }} />
+        <Button size="sm" variant="ghost" label="지도로"
+          onClick={() => onBack && onBack()} />
+        <Button size="sm" variant="ghost" label="새 창으로"
+          onClick={() => {
+            if (typeof window !== "undefined" && scene.url) {
+              window.open(withoutEmbed(scene.url), "_blank", "noopener");
+            }
+          }} />
+        <IconButton label="작업판 닫기" variant="ghost" size="sm"
+          icon={<Icon icon="close" />} onClick={() => onClose && onClose()} />
+      </div>
+      <iframe className="ui-chat-scene-frame" src={scene.url}
+        title={scene.title} allow="fullscreen" />
+    </section>
+  );
+}
+
+export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine, onClose }) {
   const regions = (map && map.regions) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">
@@ -1910,6 +2386,10 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, co
         <div className="ui-stage-pill" role="status">
           {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
         </div>
+        <span style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}>
+          <IconButton label="작업판 닫기" variant="ghost" size="sm"
+            icon={<Icon icon="close" />} onClick={() => onClose && onClose()} />
+        </span>
         {regions.length > 0 ? (
           <ChatMap map={map} cardHi={cardHi}
             onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />
