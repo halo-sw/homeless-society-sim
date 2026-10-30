@@ -204,8 +204,16 @@ export function guardProfileValues(fields, text) {
     if (Array.isArray(f.value) && f.value.length === 0) continue;
     if (typeof ev !== "string" || ev === "") {
       errors.push(`${key}: missing evidence`);
-    } else if (!text.includes(ev)) {
-      errors.push(`${key}: evidence ${JSON.stringify(ev)} not in the text`);
+    } else {
+      // 18: "·"-joined multi-evidence (members from two cues) — every
+      // part must be a verbatim slice.
+      const parts = ev.includes("·") ? ev.split("·") : [ev];
+      for (const part of parts) {
+        if (!part || !text.includes(part)) {
+          errors.push(`${key}: evidence ${JSON.stringify(ev)} not in the text`);
+          break;
+        }
+      }
     }
   }
   return errors;

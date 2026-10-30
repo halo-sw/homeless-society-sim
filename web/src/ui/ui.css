@@ -127,7 +127,7 @@ body.sim .ui-legend { bottom: 218px; }
 .ui-listing-paste { width: 100%; box-sizing: border-box; font: inherit; padding: var(--ui-s8);
   border: 1px solid var(--ui-border); border-radius: var(--ui-r-chip); background: var(--ui-card); }
 /* Share dialog + print page. */
-.ui-share-scroll { max-height: 50dvh; overflow: auto; }
+.ui-share-scroll { max-height: 50dvh; min-height: 120px; overflow: auto; }
 /* A·B comparison rows: label + sources | A | B. */
 .ui-share-rows { display: flex; flex-direction: column; }
 .ui-share-row {
@@ -263,6 +263,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   border-right: 1px solid var(--ui-border);
 }
 .ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: wrap; padding: var(--ui-s8) var(--ui-s12) 0; }
+/* 18: the run button sticks to the bottom of the chat column once 2+
+   homes are picked — the run is always one tap away. */
+.ui-chat-sticky-run { position: sticky; bottom: 0; z-index: 5;
+  display: flex; flex-direction: column; gap: var(--ui-s4);
+  padding: var(--ui-s8) var(--ui-s12) var(--ui-s12);
+  background: var(--ui-card); border-top: 1px solid var(--ui-border); }
 .ui-chat-thread > p { padding: var(--ui-s4) var(--ui-s12) var(--ui-s8); }
 .ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   overflow: auto; padding: var(--ui-s12); pointer-events: none; }

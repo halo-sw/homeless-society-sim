@@ -2,6 +2,8 @@
 // six inline answer cards inside the chat — chips, steppers, range
 // sliders and a place picker. Pure state machine; the JSX lives in
 // ui/intake.jsx. Tested in intake-13.test.js.
+import { fmtWon } from "./money/format.js";
+import { TENURE_KO } from "./profile.js";
 
 export const INTAKE_STEPS = [
   "income", // 연봉 (세후 월급 or 연봉)
@@ -115,6 +117,16 @@ export function prefillFromExtract(state, extract) {
     };
     next.said.budget = true;
   }
+  // 18: never ask what the customer already said — start past every
+  // pre-filled step (done when nothing is left).
+  let i = 0;
+  while (i < INTAKE_STEPS.length
+    && (next.values[INTAKE_STEPS[i]] !== undefined
+      || next.skipped.includes(INTAKE_STEPS[i]))) i++;
+  next.stepIndex = Math.min(i, INTAKE_STEPS.length - 1);
+  next.done = INTAKE_STEPS.every(
+    (s) => next.values[s] !== undefined || next.skipped.includes(s),
+  );
   return next;
 }
 
@@ -165,6 +177,56 @@ export function skippedChips(state) {
     step: s,
     label: `${INTAKE_KO[s]} 정하기`,
   }));
+}
+
+// --- 18: say what the sentence already gave --------------------------------------
+// intakeTookLine lists every extracted value (연봉, 모은 돈, 출근지,
+// 보증금 상한, 크기, 인원) so the customer sees nothing is asked twice.
+export function intakeTookLine(profile) {
+  const v = (k) => (profile && profile[k] ? profile[k].value : null);
+  const bits = [];
+  const members = v("members");
+  if (Array.isArray(members) && members.length > 0) bits.push(`${members.length}인`);
+  const wps = v("workplaces");
+  if (Array.isArray(wps) && wps.length > 0 && wps[0]) {
+    const where = (wps[0].resolved && wps[0].resolved.station) || wps[0].text;
+    if (where) bits.push(`${where} 출근`);
+  }
+  const salary = v("salaryAnnual");
+  if (Array.isArray(salary) && salary.length > 0 && Number.isFinite(Number(salary[0]))) {
+    bits.push(`연봉 ${fmtWon(salary[0])}`);
+  }
+  const takehome = v("takehomeMonthly");
+  if (takehome !== null && takehome !== undefined && !(Array.isArray(salary) && salary.length > 0)) {
+    const n = Array.isArray(takehome) ? takehome[0] : takehome;
+    if (Number.isFinite(Number(n))) bits.push(`월 실수령 ${fmtWon(n)}`);
+  }
+  const cash = v("cash");
+  if (Number.isFinite(Number(cash)) && Number(cash) > 0) bits.push(`모은 돈 ${fmtWon(cash)}`);
+  const tenure = v("tenure");
+  if (tenure && TENURE_KO[tenure]) {
+    const budget = tenure === "jeonse" ? v("depositMax")
+      : tenure === "wolse" ? v("monthlyMax")
+        : tenure === "trade" ? v("priceMax") : null;
+    bits.push(budget !== null && budget !== undefined
+      ? `${TENURE_KO[tenure]} ${fmtWon(budget)} 이하` : TENURE_KO[tenure]);
+  }
+  const size = v("sizeMin");
+  if (Number.isFinite(Number(size))) bits.push(`${size}㎡ 이상`);
+  const commute = v("commuteMax");
+  if (Number.isFinite(Number(commute))) bits.push(`출퇴근 ${commute}분 이내`);
+  return bits.length > 0 ? `문장에서 가져왔어요: ${bits.join(" · ")}` : "";
+}
+
+// householdHint nudges extra-member entry when the sentence named N>1
+// people but fewer are added yet (relations are never guessed).
+export function householdHint(profile, household) {
+  const members = profile && profile.members ? profile.members.value : null;
+  const extra = (household && household.members) || [];
+  if (!Array.isArray(members) || members.length <= 1) return "";
+  const missing = members.length - 1 - extra.length;
+  if (missing <= 0) return "";
+  return `${members.length}인이라고 하셨어요. 함께 사는 사람 ${missing}명을 아래에서 추가해 주세요.`;
 }
 
 // --- household ---------------------------------------------------------------

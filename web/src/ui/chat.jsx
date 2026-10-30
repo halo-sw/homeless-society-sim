@@ -46,7 +46,7 @@ import { toast, Toaster } from "./toast.jsx";
 import {
   INTAKE_STEPS, intakeState0, currentStep, prefillFromExtract,
   answerStep, skipStep, household0, addMember, removeMember,
-  intakeToProfilePatch,
+  intakeToProfilePatch, intakeTookLine, householdHint,
 } from "../intake.js";
 import { selectPhotosForList } from "../places/select-photos.js";
 import { newUsageLog, recordTurn } from "../models/catalog.js";
@@ -57,6 +57,7 @@ import { defaultOverrides, setOverride, resetOverride,
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
 // so module evaluation order is safe.
 import { CompareCard, CompareTabBody } from "./app.jsx";
+import { ShareDialog } from "./share.jsx";
 import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
@@ -187,12 +188,28 @@ function readinessNote(candidate) {
   return r.ready ? "" : r.reason;
 }
 
+// 18: one run-readiness verdict shared by the chat card, the drawer
+// card and the sticky run button — same label, same disabled state,
+// same handler, so no copy can stall while another works.
+export const RUN_BUTTON_LABEL = "이 집들로 30일 살아 보기";
+
+export function runReadiness(picks, candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const picked = list.filter((c) => picks.includes(c.id));
+  const unready = picked.filter((c) => readinessNote(c));
+  const canRun = picked.length >= 2 && unready.length === 0;
+  const hint = picked.length < 2
+    ? `비교할 집을 2–3곳 담아 주세요 (지금 ${picked.length}곳)`
+    : unready.length > 0
+      ? `살아 보기를 못 하는 집이 있어요 (${unready.map((c) => c.name).join("·")})`
+      : `${picked.length}곳을 30일씩 살아 보고 비교해 드려요`;
+  return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
+}
+
 export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
     onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example }) {
   const candidates = (data && data.candidates) || [];
-  const picked = candidates.filter((c) => picks.includes(c.id));
-  const unready = picked.filter((c) => readinessNote(c));
-  const canRun = picked.length >= 2 && unready.length === 0;
+  const { canRun, hint } = runReadiness(picks, candidates);
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
   return (
@@ -235,16 +252,10 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         ))}
         {candidates.length > 0 && (
           <VStack gap={1}>
-            <Button size="sm" label="이 집들로 살아 보기"
+            <Button size="sm" label={RUN_BUTTON_LABEL}
               isDisabled={!canRun}
               onClick={() => onRun && onRun()} />
-            <Text type="supporting">
-              {picked.length < 2
-                ? `비교에 넣기로 2–3곳을 골라주세요 (지금 ${picked.length}곳)`
-                : unready.length > 0
-                  ? `살아 보기를 못 하는 집이 있어요 (${unready.map((c) => c.name).join("·")})`
-                  : `${picked.length}곳을 30일씩 살아 보고 비교해 드려요`}
-            </Text>
+            <Text type="supporting">{hint}</Text>
           </VStack>
         )}
       </VStack>
@@ -264,7 +275,32 @@ function AnchorNotes({ anchors }) {
   );
 }
 
-export function SimulationCard({ data, example }) {
+// 18: run failures in plain Korean (the technical detail stays one
+// tap away, never the headline).
+export function plainRunError(message) {
+  const msg = String(message || "");
+  if (/timed out/i.test(msg)) {
+    return "30일 계산이 시간 안에 끝나지 않았어요. 다시 시도해 주세요.";
+  }
+  if (/3D 장면이 없어|has no scene|scene box yet/.test(msg)) {
+    return "고른 집 중에 3D 장면이 없는 곳이 있어요. 장면이 있는 집으로 다시 골라주세요.";
+  }
+  if (/station walk time|station.*walk/i.test(msg)) {
+    return "역까지 걸어서 몇 분인지 모르는 집이 있어요. 도보 시간이 확인된 집으로 다시 골라주세요.";
+  }
+  if (/Worker|worker/i.test(msg)) {
+    return "계산기를 열지 못했어요. 페이지를 새로고침하고 다시 시도해 주세요.";
+  }
+  if (/fetch|network|load|불러오지 못했|404|500/i.test(msg)) {
+    return "자료를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.";
+  }
+  if (/2곳 이상|at least|2곳/.test(msg)) {
+    return "비교하려면 집을 2곳 이상 골라주세요.";
+  }
+  return "30일 살아 보기를 끝내지 못했어요. 다시 시도해 주세요.";
+}
+
+export function SimulationCard({ data, example, onRetry }) {
   if (!data) return null;
   if (data.status === "running") {
     const p = data.progress || { done: 0, total: 1, label: "" };
@@ -289,7 +325,18 @@ export function SimulationCard({ data, example }) {
       <Card padding={3}>
         <VStack gap={2}>
           <Heading level={4}>30일 살아 보기</Heading>
-          <Banner status="warning" title="실행하지 못했어요" description={data.error || ""} />
+          <Banner status="warning" title="실행하지 못했어요"
+            description={plainRunError(data.error)} />
+          {data.error && (
+            <details className="ui-section">
+              <summary className="ui-section-head">자세한 이유</summary>
+              <div className="ui-section-body">
+                <Text type="supporting">{data.error}</Text>
+              </div>
+            </details>
+          )}
+          <Button size="sm" label="다시 시도"
+            onClick={() => onRetry && onRetry()} />
         </VStack>
       </Card>
     );
@@ -360,8 +407,11 @@ export function ListingCard({ onAsk }) {
 
 export function IntakeFlowCard({ intake, household, profile, handlers }) {
   const step = currentStep(intake);
+  const took = profile ? intakeTookLine(profile) : "";
+  const hhHint = householdHint(profile, household);
   return (
     <VStack gap={2}>
+      {took && <Text type="supporting">{took}</Text>}
       {step && !intake.done && (
         <IntakeCard step={step} index={INTAKE_STEPS.indexOf(step)}
           total={INTAKE_STEPS.length}
@@ -370,6 +420,7 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
       )}
       <HouseholdCard household={household}
         onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
+      {hhHint && <Text type="supporting">{hhHint}</Text>}
       {profile && (
         <ProfileCard profile={profile} example={handlers.exampleId}
           onChip={handlers.onChip} />
@@ -412,7 +463,8 @@ function CardMsg({ msg, handlers, toolRows }) {
             profile={handlers.profile} handlers={handlers} />
         )}
         {msg.kind === "simulation" && (
-          <SimulationCard data={data} example={msg.example} />
+          <SimulationCard data={data} example={msg.example}
+            onRetry={handlers.onRun} />
         )}
         {msg.kind === "listing" && (
           <ListingCard onAsk={handlers.onAsk} />
@@ -1196,6 +1248,20 @@ export function ChatScreen() {
                   onClick={() => chipAction(chip)} />
               ))}
             </div>
+            {(() => {
+              const sticky = runReadiness(picks,
+                (candidatesData && candidatesData.result.candidates) || []);
+              return sticky.picked.length >= 2 ? (
+                <div className="ui-chat-sticky-run">
+                  <Button label={RUN_BUTTON_LABEL}
+                    isDisabled={!sticky.canRun}
+                    onClick={() => handleRun()} />
+                  {!sticky.canRun && (
+                    <Text type="supporting">{sticky.hint}</Text>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </section>
           <StageArea
             orbData={buildOrbData({
@@ -1222,6 +1288,8 @@ export function ChatScreen() {
           <div className="ui-viewchip overlay">{viewChip}</div>
         )}
         <Toaster />
+        {/* 18: the drawer's 결과 공유 needs its dialog on this screen too. */}
+        <ShareDialog />
       </AppShell>
     </div>
   );
@@ -1272,11 +1340,12 @@ function StageArea({ orbData, cardHi, onOrbRegion, contextLine }) {
   );
 }
 
-function DrawerArea({ picks, candidatesData, onRun,
+export function DrawerArea({ picks, candidatesData, onRun,
   detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const candidates = (candidatesData && candidatesData.result.candidates) || [];
-  const picked = candidates.filter((c) => picks.includes(c.id));
+  // Same verdict + same handler as the chat card (runReadiness).
+  const { picked, canRun, hint } = runReadiness(picks, candidates);
   const open = Boolean(detail || state.compareOpen || picked.length > 0);
   const detailPhotos = detail
     ? selectPhotosForList([detail], photoDeps || {})[0].photos : null;
@@ -1305,8 +1374,9 @@ function DrawerArea({ picks, candidatesData, onRun,
               {picked.map((c) => (
                 <Text key={c.id}>{c.name}</Text>
               ))}
-              <Button size="sm" label="이 집들로 살아 보기"
-                isDisabled={picked.length < 2} onClick={onRun} />
+              <Button size="sm" label={RUN_BUTTON_LABEL}
+                isDisabled={!canRun} onClick={() => onRun && onRun()} />
+              <Text type="supporting">{hint}</Text>
             </VStack>
           </Card>
         )}

@@ -27,6 +27,7 @@ import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_T
 import { areasOrFallback, FALLBACK_AREAS } from "./areas-index.js";
 import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
+import { revealCompareSection } from "./ui/app.jsx";
 import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // 12b: landing/chat routing, timeline builders + activity colours,
 // custom-run store (?custom=<id>).
@@ -1233,7 +1234,10 @@ function registerChatActions() {
       store.set({ compareTab: tab });
     },
     toggleCompare: () => {
-      store.set({ compareOpen: !store.getState().compareOpen });
+      const open = !store.getState().compareOpen;
+      store.set({ compareOpen: open });
+      // 18: land somewhere visible (no-op where the section is absent).
+      if (open) revealCompareSection();
     },
     setMoneyTenure: (label, tenure) => {
       store.set({ moneyTenure: { ...store.getState().moneyTenure, [label]: tenure } });
@@ -2969,9 +2973,13 @@ async function bootSim() {
     toggleCompare: async () => {
       const open = !store.getState().compareOpen;
       store.set({ compareOpen: open });
+      // 18: expand + scroll to the section first (visible feedback
+      // within a frame), then fill it.
       if (open) {
+        revealCompareSection();
         await paintCompare();
         await paintMoney();
+        revealCompareSection();
       }
     },
     ensureShareData: () => ensureShareData(),

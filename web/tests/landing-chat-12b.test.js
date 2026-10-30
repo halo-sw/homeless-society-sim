@@ -133,7 +133,8 @@ describe("candidates card", () => {
       onJeonse: () => {}, onRun: () => {} };
     const none = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: [] })));
-    assert.ok(none.includes("2–3곳을 골라주세요 (지금 0곳)"));
+    // 18: the hint names the action (비교에 담기).
+    assert.ok(none.includes("비교할 집을 2–3곳 담아 주세요 (지금 0곳)"));
     const two = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: ["a", "b"] })));
     assert.ok(two.includes("2곳을 30일씩 살아 보고 비교해 드려요"));

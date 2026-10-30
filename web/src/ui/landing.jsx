@@ -75,6 +75,12 @@ function goChat(message, extra) {
   window.location.href = chatUrl(message, extra);
 }
 
+// 18: an example chip sends immediately (labelled 예시) — no second tap.
+export function exampleChatUrl(prompt) {
+  const matches = EXAMPLE_PROMPTS.find((p) => p.prompt === prompt);
+  return chatUrl(prompt, matches ? { example: matches.id } : {});
+}
+
 export function Landing() {
   const [value, setValue] = useState("");
   const [exampleId, setExampleId] = useState(null);
@@ -111,10 +117,10 @@ export function Landing() {
                     {EXAMPLE_PROMPTS.map((p) => (
                       <ClickableCard
                         key={p.id}
-                        label={`${p.title} 예시로 채우기`}
+                        label={`${p.title} 예시로 시작하기`}
                         variant="muted"
                         padding={3}
-                        onClick={() => { setValue(p.prompt); setExampleId(p.id); }}>
+                        onClick={() => { window.location.href = exampleChatUrl(p.prompt); }}>
                         <VStack gap={0.5}>
                           <Heading level={4}>{`${p.title} · 예시`}</Heading>
                           <Text type="body" color="secondary" size="xsm">{p.prompt}</Text>

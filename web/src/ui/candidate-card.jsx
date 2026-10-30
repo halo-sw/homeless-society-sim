@@ -132,7 +132,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         {photo && <div className="ui-cand-credit">{photo.credit}</div>}
         <div className="ui-cand-actions">
           <Button size="sm" variant={picked ? "secondary" : "primary"}
-            label={picked ? "담김 ✓ (빼기)" : "살아 보기"}
+            label={picked ? "담김 ✓ · 빼기" : "비교에 담기"}
             onClick={() => onLive && onLive(candidate)} />
           <Button size="sm" variant="ghost" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />
           <Button size="sm" variant="ghost" label="자세히" onClick={() => onDetail && onDetail(candidate)} />

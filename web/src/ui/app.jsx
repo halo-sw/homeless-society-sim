@@ -489,7 +489,10 @@ function MyScoreRow({ state }) {
   const scored = myScore(priorityValues(doc, state.compare, tenures),
     pw ? pw.weights : null, { explicit });
   if (!scored.ok) return null;
-  const openTab = () => store.set({ compareOpen: true, compareTab: "priorities" });
+  const openTab = () => {
+    store.set({ compareOpen: true, compareTab: "priorities" });
+    revealCompareSection();
+  };
   const num = (l) => (scored.scores[l] === null || scored.scores[l] === undefined ? "–" : scored.scores[l]);
   return (
     <div className="ui-myscore" data-testid="myscore-row" onClick={openTab}
@@ -665,6 +668,26 @@ export function CompareTabBody({ state }) {
       <Text type="supporting">그래프 = 걸어서 직접 잰 시간 · 가정값 = 미리 정해 둔 값</Text>
     </>
   );
+}
+
+// 18: "A·B 비교" must land somewhere visible: expand the drawer's
+// 비교·기록 section and scroll it into view (the card renders inside
+// it). Takes a document-like so tests pass a fake. Returns true when
+// a section was revealed.
+export function revealCompareSection(root) {
+  try {
+    const doc = root || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.querySelector !== "function") return false;
+    const el = doc.querySelector('[data-testid="section-compare"]');
+    if (!el) return false;
+    el.open = true;
+    if (typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function CompareCard({ state, bare }) {

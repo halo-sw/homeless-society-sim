@@ -153,8 +153,9 @@ export function ShareDialog() {
 
   return (
     <>
+      {/* 18: named + focused on open; Esc closes (purpose info). */}
       <Dialog isOpen={open} onOpenChange={(v) => store.set({ shareOpen: v })}
-        width={640} maxHeight="85dvh" purpose="info">
+        width={640} maxHeight="85dvh" purpose="info" aria-label="결과 공유">
         <DialogHeader title="결과 공유" onOpenChange={(v) => store.set({ shareOpen: v })} />
         <VStack gap={2}>
           <div className="ui-share-scroll">
@@ -166,7 +167,8 @@ export function ShareDialog() {
           </div>
           <canvas ref={canvasRef} className="ui-share-canvas" aria-hidden="true" />
           <HStack gap={2} vAlign="center" wrap="wrap">
-            <Button size="sm" label="PNG 저장" onClick={makePng} isDisabled={plan.loading} />
+            <Button size="sm" label="PNG 저장" onClick={makePng} isDisabled={plan.loading}
+              data-autofocus />
             {pngUrl && (
               <a href={pngUrl} download={`우리집-비교-${data.date}.png`}>PNG 내려받기</a>
             )}
