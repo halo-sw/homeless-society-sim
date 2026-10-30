@@ -1,0 +1,49 @@
+// Word glossary for the English UI (stage 24): single Korean tokens that
+// show up inside joined labels ("강남 출근 · 1인 · 전세 3억 원 이하").
+// Content only — translate.js uses it before romanizing a leftover word,
+// so common words read as English and only names get romanized.
+export const WORDS = {
+  // people and household
+  "1인": "1 person", "2인": "2 people", "3인": "3 people", "4인": "4 people",
+  "혼자": "alone", "부부": "couple", "신혼": "newlyweds", "맞벌이": "dual-income",
+  "자녀": "child", "아이": "child", "초등": "elementary", "초등학생": "elementary schooler",
+  "나": "me", "배우자": "spouse", "부모": "parents", "식구": "household", "식구들": "household",
+  "구성원": "member", "본인": "me",
+  // housing and money
+  "전세": "jeonse", "월세": "monthly rent", "반전세": "semi-jeonse", "매매": "purchase",
+  "공공임대": "public rental", "보증금": "deposit", "관리비": "maintenance fee",
+  "오피스텔": "officetel", "아파트": "apartment", "빌라": "villa", "원룸": "studio",
+  "연립·다세대": "multi-unit house", "다세대": "multi-unit house", "연립": "row house",
+  "집": "home", "후보": "candidate", "예산": "budget", "대출": "loan", "이자": "interest",
+  "연봉": "salary", "월급": "monthly pay", "세후": "after tax", "세전": "before tax",
+  "원": "won", "이하": "or less", "이상": "or more", "미만": "under",
+  "초과": "over", "약": "about", "최대": "max", "최소": "min", "평균": "average",
+  "합계": "total", "월": "monthly", "연": "yearly", "예산안": "within budget", "예산 안": "within budget",
+  "준공": "built", "년": "year", "층": "floor", "평": "pyeong", "면적": "area",
+  // commute and places
+  "출근": "commute", "퇴근": "return home", "출퇴근": "commute", "편도": "one-way",
+  "왕복": "round trip", "지하철": "subway", "버스": "bus", "걷기": "walk", "걸어서": "on foot",
+  "도보": "on foot", "환승": "transfer", "기다림": "wait", "혼잡": "crowding",
+  "역": "station", "역까지": "to the station", "회사": "work", "직장": "workplace",
+  "집까지": "to home", "동네": "neighborhood", "근처": "nearby", "가까운": "nearby",
+  "장보기": "groceries", "병원": "clinic", "산책": "walk", "공원": "park", "학교": "school",
+  "학원": "academy", "편의점": "convenience store", "마트": "supermarket",
+  "카페": "cafe", "약국": "pharmacy", "어린이집": "daycare", "유치원": "kindergarten",
+  // time
+  "오늘": "today", "어제": "yesterday", "내일": "tomorrow", "아침": "morning",
+  "저녁": "evening", "밤": "night", "낮": "daytime", "주말": "weekend", "평일": "weekday",
+  "하루": "a day", "매일": "every day", "일차": "day", "시간": "hours", "분": "min",
+  "지금": "now", "남음": "left", "도착": "arrive", "출발": "depart",
+  // sim and result words
+  "측정": "measured", "가정값": "assumed", "추정": "estimate", "실측": "measured",
+  "출처": "source", "근거": "evidence", "자료": "data", "기준": "criteria",
+  "점수": "score", "결과": "result", "비교": "compare", "살아": "living", "보기": "view",
+  "따라가기": "follow", "전체": "all", "담기": "pick", "담은": "picked", "고르기": "choose",
+  "다음": "next", "이전": "previous", "나중에": "later", "닫기": "close", "열기": "open",
+  "자세히": "details", "더보기": "more", "확인": "confirm", "취소": "cancel",
+  "같음": "same", "같아요": "same", "더": "more", "덜": "less", "모름": "unknown",
+  "없음": "none", "있음": "yes", "준비": "preparing", "중": "in progress",
+  "피곤한": "tired", "정도": "level", "안": "within", "밖": "outside",
+  "기록": "recorded", "판단": "decision", "규칙": "rule",
+  "예시": "example",
+};
