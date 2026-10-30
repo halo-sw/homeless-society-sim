@@ -28,6 +28,20 @@ describe("server loadHomes merges summary regions", () => {
     for (const h of us) assert.equal(h.region, "us-menlo");
   });
 
+  it("merges other_regions too (real summary shape)", async () => {
+    const read = fakeRead({
+      "data/homes-index.json": JSON.stringify({ homes: [{ ...KR }] }),
+      "data/homes/summary.json": JSON.stringify({ regions: { gangnam: {} }, other_regions: { "us-menlo": { homes: 2, country: "US" } } }),
+      "data/homes/us-menlo.json": JSON.stringify({ homes: [{ id: "us-1" }, { id: "us-2", region: "us-menlo" }] }),
+      "data/homes/gangnam.json": JSON.stringify({ homes: [{ id: "kr-extra", region: "gangnam" }] }),
+    });
+    const index = await createHomesLoader(read)();
+    assert.equal(index.homes.length, 3);
+    const us = index.homes.filter((h) => h.id.startsWith("us-"));
+    assert.equal(us.length, 2);
+    for (const h of us) assert.equal(h.region, "us-menlo");
+  });
+
   it("a missing summary narrows coverage, never throws", async () => {
     const read = fakeRead({
       "data/homes-index.json": JSON.stringify({ homes: [{ ...KR }] }),

@@ -124,7 +124,7 @@ export function httpReadText(baseUrl, fetchImpl) {
 }
 
 export async function mergeHomesIndex(index, summary, readRegion) {
-  const regionIds = summary && summary.regions ? Object.keys(summary.regions) : [];
+  const regionIds = [...new Set([...Object.keys((summary && summary.regions) || {}), ...Object.keys((summary && summary.other_regions) || {})])];
   const list = Array.isArray(index) ? index : (index.homes || []);
   const haveRegions = new Set();
   for (const h of list) { if (h && h.region) haveRegions.add(h.region); }
