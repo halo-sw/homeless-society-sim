@@ -171,6 +171,38 @@ describe("18-2 intake never re-asks the sentence", () => {
     assert.match(took[2], /전세 6억 원 이하/);
   });
 
+  it("leaves missing fields out of the took line (no null)", () => {
+    const field = (value) => ({ value });
+    const line = intakeTookLine({
+      members: field([{ relation: "본인" }]),
+      workplaces: field([{ text: "판교", resolved: { station: "판교" } }]),
+      salaryAnnual: field([40000000]),
+      takehomeMonthly: field(null),
+      cash: field(50000000),
+      tenure: field("jeonse"),
+      depositMax: field(200000000),
+      sizeMin: field(null),
+      commuteMax: field(null),
+    });
+    assert.match(line, /1인 · 판교 출근/);
+    assert.ok(!line.includes("null"), `no null in: ${line}`);
+    assert.ok(!line.includes("㎡"), "missing size stays out");
+    assert.ok(!line.includes("출퇴근") || line.includes("판교 출근"),
+      `missing commute cap stays out: ${line}`);
+    const full = intakeTookLine({
+      members: field([{ relation: "본인" }]),
+      salaryAnnual: field(null),
+      takehomeMonthly: field(3000000),
+      cash: field(null),
+      sizeMin: field(59),
+      commuteMax: field(30),
+    });
+    assert.match(full, /월 실수령/);
+    assert.match(full, /59㎡ 이상/);
+    assert.match(full, /출퇴근 30분 이내/);
+    assert.ok(!full.includes("null"), `no null in: ${full}`);
+  });
+
   it("first question follows the sentence (연봉 asked only when missing)", () => {
     const withSalary = prefillFromExtract(intakeState0(), {
       profile: extract_profile(EXAMPLE_PROMPTS[0].prompt, null,

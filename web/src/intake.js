@@ -184,6 +184,14 @@ export function skippedChips(state) {
 // 보증금 상한, 크기, 인원) so the customer sees nothing is asked twice.
 export function intakeTookLine(profile) {
   const v = (k) => (profile && profile[k] ? profile[k].value : null);
+  // Null/blank values never reach the sentence: Number(null) is 0, so
+  // an unguarded isFinite check prints "null㎡" / "null분".
+  const numVal = (x) => {
+    const n = Array.isArray(x) ? x[0] : x;
+    if (n === null || n === undefined || n === "") return null;
+    const asNum = Number(n);
+    return Number.isFinite(asNum) ? asNum : null;
+  };
   const bits = [];
   const members = v("members");
   if (Array.isArray(members) && members.length > 0) bits.push(`${members.length}인`);
@@ -192,17 +200,16 @@ export function intakeTookLine(profile) {
     const where = (wps[0].resolved && wps[0].resolved.station) || wps[0].text;
     if (where) bits.push(`${where} 출근`);
   }
-  const salary = v("salaryAnnual");
-  if (Array.isArray(salary) && salary.length > 0 && Number.isFinite(Number(salary[0]))) {
-    bits.push(`연봉 ${fmtWon(salary[0])}`);
+  const salary = numVal(v("salaryAnnual"));
+  if (salary !== null) {
+    bits.push(`연봉 ${fmtWon(salary)}`);
   }
-  const takehome = v("takehomeMonthly");
-  if (takehome !== null && takehome !== undefined && !(Array.isArray(salary) && salary.length > 0)) {
-    const n = Array.isArray(takehome) ? takehome[0] : takehome;
-    if (Number.isFinite(Number(n))) bits.push(`월 실수령 ${fmtWon(n)}`);
+  const takehome = numVal(v("takehomeMonthly"));
+  if (takehome !== null && salary === null) {
+    bits.push(`월 실수령 ${fmtWon(takehome)}`);
   }
-  const cash = v("cash");
-  if (Number.isFinite(Number(cash)) && Number(cash) > 0) bits.push(`모은 돈 ${fmtWon(cash)}`);
+  const cash = numVal(v("cash"));
+  if (cash !== null && cash > 0) bits.push(`모은 돈 ${fmtWon(cash)}`);
   const tenure = v("tenure");
   if (tenure && TENURE_KO[tenure]) {
     const budget = tenure === "jeonse" ? v("depositMax")
@@ -211,10 +218,10 @@ export function intakeTookLine(profile) {
     bits.push(budget !== null && budget !== undefined
       ? `${TENURE_KO[tenure]} ${fmtWon(budget)} 이하` : TENURE_KO[tenure]);
   }
-  const size = v("sizeMin");
-  if (Number.isFinite(Number(size))) bits.push(`${size}㎡ 이상`);
-  const commute = v("commuteMax");
-  if (Number.isFinite(Number(commute))) bits.push(`출퇴근 ${commute}분 이내`);
+  const size = numVal(v("sizeMin"));
+  if (size !== null) bits.push(`${size}㎡ 이상`);
+  const commute = numVal(v("commuteMax"));
+  if (commute !== null) bits.push(`출퇴근 ${commute}분 이내`);
   return bits.length > 0 ? `문장에서 가져왔어요: ${bits.join(" · ")}` : "";
 }
 
