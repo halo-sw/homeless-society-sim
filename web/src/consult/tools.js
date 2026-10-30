@@ -126,6 +126,12 @@ export const TOOL_DEFS = [
         home: str("Home label from the scenario (default: the scenario home in this area)."),
         limit: { type: "integer", description: "How many places (1..12, default 8)." },
       }, required: ["area", "category"] } } },
+  { type: "function", function: { name: "neighborhood",
+    description: "후보 집 주변 생활 장소까지 실제 걷는 길로 몇 분인지.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        candidate_id: str("Candidate id from the context candidates."),
+      }, required: ["candidate_id"] } } },
   { type: "function", function: { name: "list_stations",
     description: "Real station POIs in an area (names the commute can use verbatim).",
     parameters: { type: "object", additionalProperties: false,
@@ -300,6 +306,7 @@ export function createSession(opts) {
     provider: opts.provider || "meta",
     fetchImpl: opts.fetchImpl || null,
     museRunsPrior: opts.museRunsPrior || 0,
+    context: opts.context || null,
   };
 }
 
@@ -636,6 +643,57 @@ async function find_places(session, args) {
       distance_m: round1(h.route.lengthM), source: "graph",
     })),
   };
+}
+
+const NEIGHBORHOOD_CATEGORIES = [
+  ["station", "역"],
+  ["supermarket", "마트"],
+  ["convenience", "편의점"],
+  ["park", "공원"],
+  ["clinic", "병원·약국"],
+  ["school", "학교"],
+];
+
+async function neighborhood(session, args) {
+  const cands = (session.context && session.context.candidates) || [];
+  const cand = cands.find((c) => c && c.id === String((args || {}).candidate_id));
+  if (!cand) {
+    return fail(`unknown candidate ${JSON.stringify((args || {}).candidate_id)} — the context lists today's candidates`);
+  }
+  if (!cand.scene || !Number.isFinite(cand.lon) || !Number.isFinite(cand.lat)) {
+    return fail("이 집은 아직 3D 동네 자료가 없어요");
+  }
+  const area = await needArea(session, cand.scene).catch((err) => ({ __error: err }));
+  if (area.__error) return fail(area.__error.message);
+  let router;
+  try {
+    router = new Router(area.graph);
+  } catch (err) {
+    return fail(`graph failed: ${err.message}`);
+  }
+  const places = buildPlaces(area, router);
+  let resolved;
+  try {
+    resolved = resolveHome(area,
+      { label: "X", area: cand.scene, lon: cand.lon, lat: cand.lat }, router);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const nearest = [];
+  for (const [category, category_ko] of NEIGHBORHOOD_CATEGORIES) {
+    const hits = nearestReachable(router, resolved.nodeId,
+      placesOfCategory(places, category), 1);
+    if (!hits || hits.length === 0) continue;
+    const h = hits[0];
+    nearest.push({ category, category_ko,
+      name: h.place.name,
+      minutes: round1(h.route.lengthM / ADULT_MPS / 60),
+      distance_m: round1(h.route.lengthM) });
+  }
+  return { ok: true, candidate_id: cand.id, name: cand.name,
+    area: cand.scene, area_label: areaLabel(cand.scene), nearest,
+    speed_note: "minutes assume adult speed 1.3 m/s",
+    source: "OSM 장소 + 보행 그래프" };
 }
 
 async function list_stations(session, args) {
@@ -1248,6 +1306,7 @@ function start_life_run(session, args) {
 
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
+  neighborhood,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
   open_panel, pick_homes, start_life_run,
   list_criteria, explain_criterion, get_journey, get_fatigue,

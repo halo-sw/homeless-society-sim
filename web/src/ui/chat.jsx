@@ -828,7 +828,7 @@ export function uiEffects(actions, { candidateIds = [], pickCount = 0 } = {}) {
       } else if (SCENE_PANELS_27B2.has(a.panel)) {
         effs.push({ type: "work" });
         effs.push({ type: "scene", panel: a.panel,
-          home: a.home ?? a.candidate_id ?? null,
+          home: a.home ?? null, candidate_id: a.candidate_id ?? null,
           day: a.day ?? null, time: a.time ?? null });
       }
     } else if (a.action === "pick") {
@@ -842,6 +842,55 @@ export function uiEffects(actions, { candidateIds = [], pickCount = 0 } = {}) {
     }
   }
   return effs;
+}
+
+// 27c2: resolve a pending scene effect to a panel scene (or a spoken
+// fallback). candidates carry scene/name; picks is the id list in pick
+// order (A = picks[0]); latestRun is { customId, moments } from the
+// newest done simulation message.
+export function sceneForEffect(eff, { picks = [], candidates = [], latestRun = null } = {}) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const ids = Array.isArray(picks) ? picks : [];
+  if (!eff || eff.panel === "tour") {
+    let candidate = null;
+    if (eff && eff.candidate_id) {
+      candidate = list.find((c) => c && c.id === eff.candidate_id) || null;
+    }
+    if (!candidate && eff && eff.home) {
+      const at = "ABC".indexOf(eff.home);
+      const id = at >= 0 ? ids[at] : null;
+      if (id) candidate = list.find((c) => c && c.id === id) || null;
+    }
+    if (!candidate && ids.length > 0) {
+      candidate = list.find((c) => c && c.id === ids[0]) || null;
+    }
+    if (!candidate || !candidate.scene) {
+      return { say: "이 집은 아직 3D 동네 자료가 없어요." };
+    }
+    return { url: tourUrl({ area: candidate.scene, embed: true }),
+      title: `${candidate.name} 동네` };
+  }
+  if (!latestRun || !latestRun.customId) {
+    return { say: "먼저 두 집을 찜하고 살아 보기를 맡겨 주세요." };
+  }
+  const home = (eff && eff.home) || "A";
+  const m = ((latestRun && latestRun.moments) || []).find((x) => x && x.label === home) || null;
+  const day = (eff && eff.day) || (m && m.day) || 1;
+  const t = (eff && eff.time) || (m && m.t) || "08:30";
+  const title = eff.panel === "commute" ? `${home} 출근길` : `${home} · ${day}일째 ${t}`;
+  return { url: simMomentUrl({ custom: latestRun.customId,
+    home, day, t, follow: 1, embed: true }), title };
+}
+
+export function latestDoneRun(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m && m.kind === "simulation" && m.data && m.data.status === "done" && m.data.customId) {
+      return { customId: m.data.customId, moments: m.data.moments || [] };
+    }
+  }
+  return null;
 }
 
 // 27b2: next-step chips — Muse's suggestions on the latest assistant
@@ -1342,11 +1391,12 @@ export function ChatScreen() {
     liveResearch(next);
   }
 
-  async function handleRun() {
+  async function handleRun(idsOverride = null) {
     setWorkOpen(true);
     const st = stateRef.current;
+    const ids = Array.isArray(idsOverride) ? idsOverride : st.picks;
     const picked = ((st.candidatesData && st.candidatesData.result.candidates) || [])
-      .filter((c) => st.picks.includes(c.id));
+      .filter((c) => ids.includes(c.id));
     if (picked.length < 2 || !st.profile) return;
     // 21a: no run without a commute — unless the customer chose none.
     const gate = runGate(st.profile);
@@ -1530,11 +1580,16 @@ export function ChatScreen() {
     // pick_homes), current picks, and whether the work panel is open.
     const liveCands = ((st.candidatesData && st.candidatesData.result
       && st.candidatesData.result.candidates) || []).slice(0, 6).map((c) => ({
-      id: c.id, name: c.name, price: c.price ?? null,
-      commute_min: c.commute_min ?? c.commute_minutes ?? null,
+      id: c.id, name: c.name, kind: c.kind ?? null, dong: c.dong ?? null,
+      commute_ko: c.commute_ko ?? null,
+      monthly_cost_won: c.monthly_cost_won ?? null,
+      scene: c.scene ?? null, lon: c.lon ?? null, lat: c.lat ?? null,
+      ...(c.price !== undefined && c.price !== null ? { price: c.price } : {}),
     }));
     const ctx = { ...agentContext(store.getState()), lang: LANG,
-      candidates: liveCands, picks: [...st.picks], work_open: workOpen };
+      candidates: liveCands,
+      picks: st.picks.map((id, i) => ({ label: "ABC"[i], id })),
+      work_open: workOpen };
     try {
       let byoKey = "";
       try {
@@ -1594,12 +1649,17 @@ export function ChatScreen() {
           } catch { /* not JSON — ignore */ }
         }
       }
+      let lastPickIds = null;
       for (const eff of uiEffects(out.uiActions || [],
         { candidateIds, pickCount: stateRef.current.picks.length })) {
         if (eff.type === "work") setWorkOpen(true);
         else if (eff.type === "tab") store.set({ compareOpen: true, compareTab: eff.tab });
-        else if (eff.type === "pick") setPicks(eff.ids);
-        else if (eff.type === "run") await handleRun();
+        else if (eff.type === "pick") {
+          setPicks(eff.ids);
+          lastPickIds = eff.ids;
+          stateRef.current.picks = eff.ids;
+        }
+        else if (eff.type === "run") await handleRun(lastPickIds);
         else if (eff.type === "say") {
           pushMsg({ role: "assistant", kind: "text", content: eff.text });
         } else if (eff.type === "scene") store.set({ pendingScene: eff });
@@ -1825,6 +1885,26 @@ export function ChatScreen() {
   const compareOpen = useSyncExternalStore(store.subscribe,
     () => store.getState().compareOpen, () => store.getState().compareOpen);
   useEffect(() => { if (compareOpen) setWorkOpen(true); }, [compareOpen]);
+  // 27c2: Muse's open_panel for tour | commute | result lands here —
+  // resolve it against live picks/candidates and the newest done run.
+  const pendingScene = useSyncExternalStore(store.subscribe,
+    () => store.getState().pendingScene, () => store.getState().pendingScene);
+  useEffect(() => {
+    if (!pendingScene) return;
+    const st = stateRef.current;
+    const cands = ((st.candidatesData && st.candidatesData.result
+      && st.candidatesData.result.candidates) || []);
+    const res = sceneForEffect(pendingScene,
+      { picks: st.picks, candidates: cands, latestRun: latestDoneRun(st.messages) });
+    if (res.url) {
+      setScene({ url: res.url, title: res.title });
+      setWorkOpen(true);
+      setView("work");
+    } else {
+      pushMsg({ role: "assistant", kind: "text", content: res.say });
+    }
+    store.set({ pendingScene: null });
+  }, [pendingScene]);
   // 26c: a resolved place (Meta HQ) names the destination and pins
   // the map's work pin at its lon/lat.
   const wpResolved = (profile && profile.workplaces && profile.workplaces.value

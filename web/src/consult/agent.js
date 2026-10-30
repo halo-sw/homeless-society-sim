@@ -24,7 +24,7 @@ export const SYSTEM_PROMPT = [
   "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 한국어로 짧게 답한다. 반말은 절대 쓰지 않는다.",
   "너는 Ithaca의 Muse다. 고객의 집 고민을 대화로 돕는다. 앱의 기능은 모두 네 도구다: 찾기(find_homes), 매물 읽기(parse_listing·check_listing), 비교(compare), 30일 살아 보기(start_life_run), 생활비·전세·지원 제도·안전·교육·출근길 도구.",
   "질문은 한 번에 하나만 짧게 한다. 설문처럼 여러 개를 묻지 않는다. 모르는 값은 기본값으로 두고 '가정'이라고 밝힌다. 출근지나 예산 중 하나라도 있으면 extract_profile 다음 바로 find_homes로 후보를 보여 준다. 우선순위는 고객이 말할 때만 set_priorities로 기록한다.",
-  "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support.",
+  "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support. 동네를 물으면 neighborhood로 걸어서 몇 분인지 확인해 답하고 open_panel(panel=tour, candidate_id)로 3D 동네를 연다. 출근길(commute)과 결과(result) 장면은 살아 보기가 끝난 뒤에만 연다.",
   "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다.",
   "다루지 않는 지역이면 '아직 준비 중이에요'라고 말하고 가장 가까운 다루는 지역을 제안한다. 엉뚱한 질문에도 한 줄로 답하고 집 고민으로 돌아온다.",
   "답은 3문장 이내. 마지막 줄에는 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
@@ -117,6 +117,11 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `시나리오 갱신(${(r.scenario.household.members || []).length}명, 홈 ${(r.scenario.homes || []).length}곳)`, ok: true };
     case "find_places":
       return { summary: `${r.category} ${(r.places || []).length}곳(그래프 분)`, ok: true };
+    case "neighborhood": {
+      const bits = (r.nearest || []).slice(0, 3)
+        .map((n) => `${n.category_ko} ${n.minutes}분`);
+      return { summary: `동네: ${bits.join("·")}`, ok: true };
+    }
     case "list_complexes":
       return { summary: `단지 ${r.count}곳`, ok: true };
     case "list_stations":
@@ -233,12 +238,18 @@ export function formatAgentContext(ctx) {
       const extra = [];
       if (c.price !== null && c.price !== undefined && typeof c.price !== "object") extra.push(String(c.price));
       if (c.commute_min !== null && c.commute_min !== undefined) extra.push(`${c.commute_min}분`);
+      if (c.commute_ko) extra.push(String(c.commute_ko));
+      if (c.monthly_cost_won !== null && c.monthly_cost_won !== undefined) {
+        extra.push(`월 ${Number(c.monthly_cost_won).toLocaleString("ko-KR")}원`);
+      }
       return [`${c.id} ${c.name || ""}`.trim(), ...extra].join(" ").trim();
     });
     line += ` 후보: ${items.join("; ")}.`;
   }
   if (Array.isArray(ctx.picks) && ctx.picks.length > 0) {
-    line += ` 찜: ${ctx.picks.join(", ")}.`;
+    const labels = ctx.picks.map((p) =>
+      (p && typeof p === "object" ? `${p.label}=${p.id}` : String(p)));
+    line += ` 찜: ${labels.join(", ")}.`;
   }
   return line;
 }
@@ -263,6 +274,7 @@ export async function runTurn(opts) {
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
     loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
+    context,
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];
   const contextLine = formatAgentContext(context);

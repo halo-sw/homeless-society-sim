@@ -73,7 +73,7 @@ export const TOOL_ACTION_KO = {
   get_scenario: "조건 보기", update_scenario: "조건 바꾸기",
   list_criteria: "계산 기준 보기", explain_criterion: "기준 설명",
   list_areas: "지역 보기", list_complexes: "단지 찾기",
-  find_places: "주변 장소 찾기", list_stations: "역 찾기",
+  find_places: "주변 장소 찾기", neighborhood: "동네 걸어 보기", list_stations: "역 찾기",
   run_simulation: "시뮬레이션 실행", compare: "A·B 비교",
   get_day: "하루 보기", explain_decision: "고른 이유 보기",
   get_journey: "출퇴근길 보기", get_fatigue: "피곤한 정도 보기",
