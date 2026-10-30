@@ -10,6 +10,7 @@ import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
+import { oneWayByLabel } from "./verify/numbers.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
@@ -2774,8 +2775,11 @@ async function bootSim() {
     if (customRecord) {
       const labs = (customRecord.labels || []).slice(0, 2);
       if (labs.length === 2 && customRecord.runs[labs[0]] && customRecord.runs[labs[1]]) {
-        store.set({ compareLoading: false,
-          compare: compareRuns(customRecord.runs[labs[0]], customRecord.runs[labs[1]]) });
+        // 18g: the same one 출퇴근 편도 per home as the chat result —
+        // without one_way the share card falls back to the old per-day row.
+        const cmp = compareRuns(customRecord.runs[labs[0]], customRecord.runs[labs[1]]);
+        cmp.one_way = oneWayByLabel(Object.fromEntries(labs.map((l) => [l, customRecord.runs[l]])));
+        store.set({ compareLoading: false, compare: cmp });
         return;
       }
     }
@@ -2789,6 +2793,9 @@ async function bootSim() {
           if (!others[h.label]) throw new Error(`home ${h.label} run missing`);
         }
         cmp = compareRuns(others[homes[0].label], others[homes[1].label]);
+        // 18g: same one_way as the custom branch so the demo shows
+        // the 편도 row too.
+        cmp.one_way = oneWayByLabel(others);
       } catch {
         cmp = null;
       }

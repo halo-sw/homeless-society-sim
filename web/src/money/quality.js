@@ -78,10 +78,19 @@ export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WAL
   };
   const home = { label: run.meta.home, area: run.meta.area, complex: run.meta.complex };
   let resolved = null;
-  try {
-    resolved = resolveHome(area, { ...home, complex_name: run.meta.complex }, router);
-  } catch {
-    resolved = null;
+  // 18g: a coordinate-anchored home (officetels) records its graph node
+  // in run.meta.home_node — count from that node instead of resolving
+  // by complex name, which throws without lon/lat.
+  const homeNode = run.meta && run.meta.home_node;
+  if (homeNode !== undefined && homeNode !== null && router.nodes
+    && Object.prototype.hasOwnProperty.call(router.nodes, homeNode)) {
+    resolved = { nodeId: homeNode };
+  } else {
+    try {
+      resolved = resolveHome(area, { ...home, complex_name: run.meta.complex }, router);
+    } catch {
+      resolved = null;
+    }
   }
   return {
     home,
@@ -103,8 +112,9 @@ export function qualityCard(run, area, router, money = {}, walkMinutes = QOL_WAL
       tenure: money.tenure || null,
       source: money.source || "rtms",
     },
+    // 18g: an unresolvable home is unknown (null), never zeros.
     convenience: resolved ? convenienceCounts(area, router, resolved.nodeId, walkMinutes, opts)
-      : { grocery: 0, park: 0, clinic: 0, station: 0, eatery: 0, source: "graph" },
+      : null,
     fatigue,
     weights: money.weights || null, // "내 기준": the customer's own weighting, never ours
     no_score_note: "종합 점수는 매기지 않습니다. 세 축을 나란히 보고 고객이 직접 판단합니다.",

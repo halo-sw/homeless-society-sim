@@ -222,8 +222,11 @@ export function buildCompareRows({ money, compare = null, tenures = {}, days = 3
     sources: ["rtms"], assumed: false, note: "" });
 
   const convText = (home) => {
-    const c = home && home.qol_convenience;
-    if (!c) return { text: "–", raw: null, note: "" };
+    if (!home) return { text: "–", raw: null, note: "" };
+    const c = home.qol_convenience;
+    // 18g: null means the counts are unknown (home unresolvable) —
+    // say so instead of "0곳".
+    if (c === null || c === undefined) return { text: "아직 계산하지 못했어요", raw: null, note: "" };
     const g = num(c.grocery) || 0;
     const cl = num(c.clinic) || 0;
     const st = num(c.station) || 0;
