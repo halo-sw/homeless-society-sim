@@ -14,6 +14,7 @@ import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import "./ui.css";
 import { store } from "./store.js";
 import { App } from "./app.jsx";
+import { initI18n } from "../i18n/index.js";
 
 let mounted = false;
 
@@ -33,6 +34,7 @@ function FirstVisit() {
 export function mountUI() {
   if (mounted) return;
   mounted = true;
+  initI18n();
   const el = document.getElementById("ui-root");
   if (!el) return;
   createRoot(el).render(

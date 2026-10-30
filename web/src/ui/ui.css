@@ -944,3 +944,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
 }
 .ui-result-moment .ui-pick-disc { width: 20px; height: 20px; font-size: 11px; }
 .ui-result-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 24a: language toggle — a small text button, never truncated. */
+.ui-lang-toggle {
+  font-size: 12px; color: var(--ui-ink2); white-space: nowrap;
+  background: transparent; border: none; cursor: pointer;
+  padding: 6px 10px; border-radius: 999px;
+}
+.ui-lang-toggle:hover { background: var(--ui-line, var(--ui-sunken)); }
