@@ -1,23 +1,24 @@
 // Consult browser client: thin fetch wrappers (no React, no keys).
 //
-// The chat's free questions post to /api/consult (vite dev only); the
-// fixed flow (profile → candidates → simulation) runs keyless in the
-// browser, and ?ask=… replays recorded replies. Nothing here imports
-// server modules or provider code, so no key material can enter the
-// bundle.
+// The chat's free questions post to /api/consult (dev server or, on the
+// public site, the relay, which keeps the keys); the fixed flow
+// (profile → candidates → simulation) runs keyless in the browser, and
+// ?ask=… replays recorded replies. Nothing here imports server modules
+// or provider code, so no key material can enter the bundle.
 //
-// 22a: on the static site (GitHub Pages) there are no /api/* routes,
-// so the model calls stay off and the rule-based flow keeps working.
+// 23b: on the public site the calls go to the relay, which keeps the
+// keys. Without a live API (no dev server, no relay) the model calls
+// stay off and the rule-based flow keeps working.
 
-import { assetUrl, STATIC_SITE } from "../paths.js";
+import { assetUrl, LIVE_API, apiUrl } from "../paths.js";
 
 export async function postConsult({ provider, messages, scenario, context = null, byoKey = "" }) {
-  if (STATIC_SITE) return { off: true, messages: [] };
+  if (!LIVE_API) return { off: true, messages: [] };
   const headers = { "Content-Type": "application/json" };
-  // 13: BYOK travels in a header to our same-origin proxy only.
+  // 13: BYOK travels in a header to our proxy (dev server or relay) only.
   if (byoKey) headers["x-model-key"] = byoKey;
   const started = (typeof performance !== "undefined" ? performance.now() : 0);
-  const r = await fetch("/api/consult", {
+  const r = await fetch(apiUrl("/api/consult"), {
     method: "POST",
     headers,
     body: JSON.stringify({ provider, messages, scenario, context }),
@@ -30,6 +31,11 @@ export async function postConsult({ provider, messages, scenario, context = null
     throw new Error(`상담 서버 응답 오류 (HTTP ${r.status})`);
   }
   if (!r.ok || !payload || payload.ok !== true) {
+    if (r.status === 429) {
+      const err = new Error("잠시 쉬었다가 다시 물어봐 주세요 (요청이 많아요)");
+      err.httpStatus = 429;
+      throw err;
+    }
     const err = new Error((payload && payload.error) || `상담 서버 오류 (HTTP ${r.status})`);
     err.httpStatus = r.status;
     throw err;
@@ -39,8 +45,8 @@ export async function postConsult({ provider, messages, scenario, context = null
 }
 
 export async function fetchModelStatus() {
-  if (STATIC_SITE) return { off: true };
-  const r = await fetch("/api/model/status");
+  if (!LIVE_API) return { off: true };
+  const r = await fetch(apiUrl("/api/model/status"));
   if (!r.ok) throw new Error(`모델 상태 조회 실패 (HTTP ${r.status})`);
   return r.json();
 }

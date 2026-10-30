@@ -48,6 +48,9 @@ export function ModelPanel({ usageLog, serverKeys = {}, errors = {}, onClose }) 
           <span style={{ flex: 1 }} />
           {onClose && <Button size="sm" variant="ghost" label="닫기" onClick={onClose} />}
         </HStack>
+        {serverKeys.relay === true && (
+          <Text type="supporting">공개 사이트: 중계 서버가 키를 대신 들고 있어요 (브라우저엔 키가 없어요)</Text>
+        )}
         {MODEL_ROWS.map((row) => {
           const st = rowStatus(row.provider, {
             hasServerKey: Boolean(serverKeys[row.provider]),

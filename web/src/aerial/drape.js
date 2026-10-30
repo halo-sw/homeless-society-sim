@@ -1,7 +1,7 @@
 // Stage 20d: drape live VWorld aerial photos over the ground and roofs.
 //
-// Client-side. Fetches tiles through the dev-server proxy (/api/aerial,
-// which holds the key server-side) and never touches the key or the
+// Client-side. Fetches tiles through the dev-server proxy or the relay
+// (/api/aerial, which holds the key server-side) and never touches the key or the
 // upstream URL — those live only in web/src/aerial/proxy.js (server-only)
 // and web/vite.config.js. Tiles are drawn into one canvas, never to disk.
 //
@@ -9,7 +9,7 @@
 // CanvasTexture uses flipY = false, so uvForLonLat maps directly.
 import { TILE_PX, MAX_MOSAIC_PX, tilesForBBox, uvForLonLat, pickZoom } from "./tiles.js";
 import { haversineM, xyToLonLat } from "../frame.js";
-import { STATIC_SITE } from "../paths.js";
+import { LIVE_API, apiUrl } from "../paths.js";
 
 export const AERIAL_CREDIT = "항공사진 © 국토교통부 공간정보 오픈플랫폼(VWorld)";
 
@@ -59,12 +59,13 @@ function pushMosaicUVs(geo, origin, range, zoom, onlyUpward = false) {
 export async function drapeAerial({ THREE, renderer, scene, area, origin,
   terrainMesh = null, groundMesh = null, roadMeshes = [], roofMesh = null,
   look = {}, style = "photo" }) {
-  // 22a: on the static site there is no /api/aerial — the ground stays painted.
-  if (STATIC_SITE) return { ok: false, reason: "static" };
+  // 23b: without a live API (no dev server, no relay) there is no
+  // /api/aerial — the ground stays painted.
+  if (!LIVE_API) return { ok: false, reason: "static" };
   // 1. Key check: without a key the painted ground stays as it is.
   let status = null;
   try {
-    const r = await fetch("/api/aerial/status");
+    const r = await fetch(apiUrl("/api/aerial/status"));
     if (!r.ok) return { ok: false, reason: "status" };
     status = await r.json();
   } catch {
@@ -102,7 +103,7 @@ export async function drapeAerial({ THREE, renderer, scene, area, origin,
     while (jobs.length > 0) {
       const [tx, ty] = jobs.pop();
       try {
-        const r = await fetch(`/api/aerial/${zoom}/${ty}/${tx}.jpeg`);
+        const r = await fetch(apiUrl(`/api/aerial/${zoom}/${ty}/${tx}.jpeg`));
         if (!r.ok) continue;
         const img = await loadBitmap(await r.blob());
         ctx.drawImage(img, (tx - range.x0) * TILE_PX, (ty - range.y0) * TILE_PX);

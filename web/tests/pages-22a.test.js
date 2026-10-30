@@ -3,9 +3,10 @@
 // - assetUrl(p) prefixes the Vite base, so client fetches of /data/…
 //   and /scenarios/… work under /homeless-society-sim/ and at /.
 //   assetUrlWith(base, p) is the injectable pure form used by tests.
-// - STATIC_SITE is true for the VITE_STATIC=1 build: no /api/consult,
-//   /api/model/status, /api/judge or /api/aerial/* call is made; the
-//   judge shows recorded/rule labels and the ground stays painted.
+// - STATIC_SITE is true for the VITE_STATIC=1 build. 23b: /api/consult,
+//   /api/model/status, /api/aerial/* and /api/tiles/* go through the
+//   relay (LIVE_API) on the public site; /api/judge stays off there, so
+//   the judge shows recorded/rule labels.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -53,13 +54,14 @@ describe("22a base-aware urls", () => {
     }
     assert.deepEqual(bad, []);
   });
-  it("every /api/ fetch site is guarded by STATIC_SITE", async () => {
+  it("every /api/ fetch site is guarded by STATIC_SITE or LIVE_API", async () => {
     const bad = [];
     for (const f of await jsFiles(SRC)) {
       const text = await readFile(f, "utf8");
       const callsApi = /fetch\(\s*["'`]\/api\//.test(text)
-        || /fetch\(\s*`\/api\//.test(text);
-      if (callsApi && !text.includes("STATIC_SITE")) {
+        || /fetch\(\s*`\/api\//.test(text)
+        || /fetch\(\s*apiUrl\(/.test(text);
+      if (callsApi && !text.includes("STATIC_SITE") && !text.includes("LIVE_API")) {
         bad.push(relative(ROOT, f));
       }
     }

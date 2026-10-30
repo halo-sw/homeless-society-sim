@@ -3,6 +3,14 @@ export const STATIC_SITE = (typeof import.meta !== "undefined"
   && import.meta.env
   && import.meta.env.VITE_STATIC) === "1";
 
+// 23b: the relay origin for /api/* on the public site ("" = same origin).
+export const API_BASE = String((typeof import.meta !== "undefined" && import.meta.env
+  && import.meta.env.VITE_API_BASE) || "").replace(/\/+$/, "");
+// Live /api routes exist on the dev server, or through the relay.
+export const LIVE_API = !STATIC_SITE || API_BASE !== "";
+export function apiUrlWith(base, p) { return `${base || ""}/${String(p || "").replace(/^\/+/, "")}`; }
+export function apiUrl(p) { return apiUrlWith(API_BASE, p); }
+
 export function assetUrlWith(base, p) {
   const path = String(p || "");
   const noLead = path.replace(/^\/+/, "");
