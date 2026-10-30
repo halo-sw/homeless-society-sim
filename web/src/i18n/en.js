@@ -207,6 +207,7 @@ const seedPhrases = {
   "어떤 집을 고민 중이세요?": "Which home are you weighing?",
   "말로 하면 Muse가 실거래와 출근길을 확인하고, 원하면 그 집에서 30일 살아 봐요.": "Tell Muse in your own words. It checks real deal prices and the commute, and if you like, lives 30 days in that home for you.",
   "예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘": "e.g. I work in Pangyo. Find me a jeonse home to live alone",
+  "직장 근처 역 (예: 강남역)": "Station near work (e.g. Gangnam)",
   "출근지로 집 찾기": "Find homes near work",
   "본 매물 붙여 넣기": "Paste a listing you saw",
   "예시로 써 보기": "Try an example",

@@ -686,8 +686,18 @@ export function missingQuestions(profile) {
   if (v("sizeMin") === null && !isUsd) {
     out.push({ field: "sizeMin", ask: "집 크기는 몇 ㎡ 이상이면 좋겠어요? (모르면 넘어가도 돼요)" });
   }
-  if (v("commuteMax") === null) {
-    out.push({ field: "commuteMax", ask: "출퇴근은 편도 몇 분까지 괜찮으세요?" });
+  // 29a3: a household member's commute cap also settles the ceiling.
+  {
+    const memberCaps = [];
+    const members = v("members");
+    if (Array.isArray(members)) {
+      for (const m of members) {
+        if (m && m.commuteMax !== null && m.commuteMax !== undefined) memberCaps.push(m.commuteMax);
+      }
+    }
+    if (v("commuteMax") === null && memberCaps.length === 0) {
+      out.push({ field: "commuteMax", ask: "출퇴근은 편도 몇 분까지 괜찮으세요?" });
+    }
   }
   return out;
 }

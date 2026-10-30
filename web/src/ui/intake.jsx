@@ -20,9 +20,10 @@ function SaidBadge({ said }) {
   return <Text type="supporting">{SAID_VALUE_BADGE}</Text>;
 }
 
-function Stepper({ value, min, max, step, unit, placeholder, startValue, onChange }) {
+function Stepper({ value, min, max, step, unit, placeholder, startValue, onChange, decLabel, incLabel }) {
   // 13e2: value may be null (not said yet) — show the placeholder and
   // let the first press land on startValue instead of inventing a number.
+  // 29a3: Stepper is kept only for commute minutes; its −/+ carry names.
   const clamp = (n) => Math.min(max, Math.max(min, n));
   const bump = (dir) => {
     if (value === null || value === undefined) {
@@ -33,16 +34,47 @@ function Stepper({ value, min, max, step, unit, placeholder, startValue, onChang
   };
   return (
     <HStack gap={1} vAlign="center">
-      <Button size="sm" variant="secondary" label="−" onClick={() => bump(-1)} />
+      <Button size="sm" variant="secondary" label="−" aria-label={decLabel || "줄이기"} onClick={() => bump(-1)} />
       {value === null || value === undefined ? (
         <Text type="supporting">{placeholder || "아직 몰라요"}</Text>
       ) : (
         <Text hasTabularNumbers>{`${value}${unit || ""}`}</Text>
       )}
-      <Button size="sm" variant="secondary" label="+" onClick={() => bump(1)} />
+      <Button size="sm" variant="secondary" label="+" aria-label={incLabel || "늘리기"} onClick={() => bump(1)} />
     </HStack>
   );
 }
+
+// 29a3: number field with quick chips. value/onChange are 만 원
+// (number|null); empty means unknown, never 0. Typing commits on blur
+// so multi-digit entry never flips the card mid-word; chips commit at once.
+export function MoneyField({ value, onChange, chips, placeholder, ariaLabel }) {
+  const [text, setText] = useState(value === null || value === undefined ? "" : String(value));
+  const commit = (t) => {
+    const digits = String(t).replace(/[^0-9]/g, "");
+    onChange(digits === "" ? null : parseInt(digits, 10));
+  };
+  return (
+    <HStack gap={1} vAlign="center">
+      <input className="ui-keyinput" inputMode="numeric" value={text}
+        placeholder={placeholder} aria-label={ariaLabel || placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => commit(e.target.value)} style={{ flex: 1 }} />
+      {(chips || []).map((c) => (
+        <Button key={c.label} size="sm"
+          variant={value === c.man ? "primary" : "secondary"}
+          label={c.label} aria-label={c.label}
+          onClick={() => { setText(String(c.man)); onChange(c.man); }} />
+      ))}
+    </HStack>
+  );
+}
+
+const EOK_CHIPS = [
+  { label: "1억", man: 10000 }, { label: "2억", man: 20000 },
+  { label: "3억", man: 30000 }, { label: "4억", man: 40000 },
+  { label: "5억", man: 50000 },
+];
 
 function IncomeStep({ value, onChange }) {
   const [kind, setKind] = useState((value && value.kind) || "annual");
@@ -56,9 +88,11 @@ function IncomeStep({ value, onChange }) {
         <Button size="sm" variant={kind === "monthly" ? "primary" : "secondary"}
           label="세후 월급" onClick={() => { setKind("monthly"); if (amount !== null) commit("monthly", amount); }} />
       </HStack>
-      <Stepper value={amount === null ? null : Math.round(amount / 10000)} min={0} max={20000} step={100}
-        unit="만 원" placeholder="예: 4,000만 원" startValue={4000}
-        onChange={(man) => { setAmount(man * 10000); commit(kind, man * 10000); }} />
+      <MoneyField value={amount === null ? null : Math.round(amount / 10000)}
+        placeholder="예: 4,000만 원" ariaLabel={kind === "annual" ? "연봉 (만 원)" : "세후 월급 (만 원)"}
+        chips={[{ label: "3,000만", man: 3000 }, { label: "4,000만", man: 4000 },
+          { label: "5,000만", man: 5000 }, { label: "6,000만", man: 6000 }]}
+        onChange={(man) => { const won = man === null ? null : man * 10000; setAmount(won); commit(kind, won); }} />
       {amount !== null && (
         <Text type="supporting" hasTabularNumbers>{fmtWon(amount)}</Text>
       )}
@@ -112,9 +146,10 @@ function LivingStep({ value, onChange }) {
   const [amount, setAmount] = useState(value ?? null);
   return (
     <VStack gap={1}>
-      <Stepper value={amount === null ? null : Math.round(amount / 10000)} min={0} max={1000} step={10}
-        unit="만 원" placeholder="예: 150만 원" startValue={150}
-        onChange={(man) => { setAmount(man * 10000); onChange(man * 10000); }} />
+      <MoneyField value={amount === null ? null : Math.round(amount / 10000)}
+        placeholder="예: 150만 원" ariaLabel="한 달 생활비 (만 원)"
+        chips={[{ label: "100만", man: 100 }, { label: "150만", man: 150 }, { label: "200만", man: 200 }]}
+        onChange={(man) => { const won = man === null ? null : man * 10000; setAmount(won); onChange(won); }} />
       <Text type="supporting" hasTabularNumbers>{amount === null ? "한 달 생활비를 정해주세요" : `한 달 ${fmtWon(amount)}`}</Text>
     </VStack>
   );
@@ -130,6 +165,7 @@ function CommuteStep({ value, onChange }) {
         <Text type="supporting">최대</Text>
         <Stepper value={maxMin} min={10} max={120} step={5} unit="분"
           placeholder="예: 40분" startValue={40}
+          decLabel="출퇴근 상한 5분 줄이기" incLabel="출퇴근 상한 5분 늘리기"
           onChange={(n) => { setMaxMin(n); commit(n, mode); }} />
       </HStack>
       <div className="ui-intake-row">
@@ -167,33 +203,34 @@ function BudgetStep({ value, onChange }) {
       {!unknown && tenure !== "wolse" && tenure !== "trade" && (
         <HStack gap={1} vAlign="center">
           <Text type="supporting">보증금 상한</Text>
-          <Stepper value={deposit === null ? null : Math.round(deposit / 100000000 * 10) / 10} min={0} max={20} step={0.5}
-            unit="억" placeholder="예: 3억" startValue={3}
-            onChange={(eok) => { setDeposit(eok * 100000000); commit(tenure, eok * 100000000, monthly, price, false); }} />
+          <MoneyField value={deposit === null ? null : Math.round(deposit / 10000)}
+            placeholder="예: 3억" ariaLabel="보증금 상한 (만 원)" chips={EOK_CHIPS}
+            onChange={(man) => { const won = man === null ? null : man * 10000; setDeposit(won); commit(tenure, won, monthly, price, false); }} />
         </HStack>
       )}
       {!unknown && tenure === "wolse" && (
         <VStack gap={1}>
           <HStack gap={1} vAlign="center">
             <Text type="supporting">보증금</Text>
-            <Stepper value={deposit === null ? null : Math.round(deposit / 10000)} min={0} max={20000} step={500}
-              unit="만" placeholder="예: 5,000만" startValue={5000}
-              onChange={(man) => { setDeposit(man * 10000); commit(tenure, man * 10000, monthly, price, false); }} />
+            <MoneyField value={deposit === null ? null : Math.round(deposit / 10000)}
+              placeholder="예: 5,000만" ariaLabel="보증금 (만 원)" chips={EOK_CHIPS}
+              onChange={(man) => { const won = man === null ? null : man * 10000; setDeposit(won); commit(tenure, won, monthly, price, false); }} />
           </HStack>
           <HStack gap={1} vAlign="center">
             <Text type="supporting">월세</Text>
-            <Stepper value={monthly === null ? null : Math.round(monthly / 10000)} min={0} max={500} step={10}
-              unit="만" placeholder="예: 100만" startValue={100}
-              onChange={(man) => { setMonthly(man * 10000); commit(tenure, deposit, man * 10000, price, false); }} />
+            <MoneyField value={monthly === null ? null : Math.round(monthly / 10000)}
+              placeholder="예: 100만" ariaLabel="월세 (만 원)"
+              chips={[{ label: "50만", man: 50 }, { label: "70만", man: 70 }, { label: "100만", man: 100 }]}
+              onChange={(man) => { const won = man === null ? null : man * 10000; setMonthly(won); commit(tenure, deposit, won, price, false); }} />
           </HStack>
         </VStack>
       )}
       {!unknown && tenure === "trade" && (
         <HStack gap={1} vAlign="center">
           <Text type="supporting">매매가 상한</Text>
-          <Stepper value={price === null ? null : Math.round(price / 100000000 * 10) / 10} min={0} max={30} step={0.5}
-            unit="억" placeholder="예: 6억" startValue={6}
-            onChange={(eok) => { setPrice(eok * 100000000); commit(tenure, deposit, monthly, eok * 100000000, false); }} />
+          <MoneyField value={price === null ? null : Math.round(price / 10000)}
+            placeholder="예: 6억" ariaLabel="매매가 상한 (만 원)" chips={EOK_CHIPS}
+            onChange={(man) => { const won = man === null ? null : man * 10000; setPrice(won); commit(tenure, deposit, monthly, won, false); }} />
         </HStack>
       )}
     </VStack>
@@ -221,9 +258,9 @@ export function IntakeCard({ step, index, total, value, said, onAnswer, onSkip }
         </HStack>
         <Body value={value} onChange={(v) => onAnswer(step, v)} />
         <HStack gap={1}>
-          <Button size="sm" variant="secondary" label="다음"
+          <Button size="sm" variant="primary" label="다음"
             onClick={() => onAnswer(step, value ?? null, true)} />
-          <Button size="sm" variant="ghost" label="나중에"
+          <Button size="sm" variant="ghost" label="나중에" style={{ color: "var(--ds-ink-2)" }}
             onClick={() => onSkip(step)} />
         </HStack>
       </VStack>
@@ -231,55 +268,82 @@ export function IntakeCard({ step, index, total, value, said, onAnswer, onSkip }
   );
 }
 
-export function HouseholdCard({ household, onAdd, onRemove, defaultWorkplace }) {
+export function HouseholdCard({ household, onAdd, onRemove, defaultWorkplace, stations }) {
   const members = (household && household.members) || [];
   // 18: nothing preselected — a 1인 customer sees 0/4 with no
   // relation or age band chosen. Adding needs both taps.
   // 21a: the sentence-named workplace pre-fills the 직장 box.
+  // 29a3: a couple sentence pre-fills the spouse (age null = 나이 미정).
+  const said = members.some((m) => m && (m._said || m.ageBand === null || m.ageBand === undefined));
   const [draft, setDraft] = useState({ relation: "", ageBand: "",
     commuteMax: 45, workplaceText: defaultWorkplace || "", incomeMan: null });
   const [error, setError] = useState("");
+  const editMember = (m, i) => {
+    setDraft({ relation: (m && m.relation) || "",
+      ageBand: (m && m.ageBand) || "",
+      commuteMax: (m && m.commuteMax) ?? 45,
+      workplaceText: (m && m.workplace && m.workplace.station) || "",
+      incomeMan: m && m.incomeMonthly ? Math.round(m.incomeMonthly / 10000) : null });
+    onRemove(i);
+  };
   return (
     <Card padding={3}>
       <VStack gap={2}>
         <HStack gap={1} vAlign="center">
-          <Heading level={4}>{`함께 사는 사람 ${members.length}/4`}</Heading>
+          <Heading level={4}>{`함께 사는 사람 ${members.length}/4${said ? " · 말씀하신 대로 넣어 뒀어요" : ""}`}</Heading>
         </HStack>
         {members.map((m, i) => (
           <HStack key={i} gap={1} vAlign="center">
-            <Text>{`${m.relation} · ${m.ageBand}${m.commuteMax ? ` · 출퇴근 ${m.commuteMax}분` : ""}${m.workplace && m.workplace.known ? ` · ${m.workplace.station}` : " · 직장 모름"}${m.incomeMonthly ? ` · 월 ${fmtWon(m.incomeMonthly)}` : ""}`}</Text>
+            <Text>{`${m.relation} · ${m.ageBand || "나이 미정"}${m.commuteMax ? ` · 출퇴근 ${m.commuteMax}분` : ""}${m.workplace && m.workplace.known ? ` · ${m.workplace.station}` : " · 직장 모름"}${m.incomeMonthly ? ` · 월 ${fmtWon(m.incomeMonthly)}` : ""}`}</Text>
+            <Button size="sm" variant="ghost" label="고치기" onClick={() => editMember(m, i)} />
             <Button size="sm" variant="ghost" label="빼기" onClick={() => onRemove(i)} />
           </HStack>
         ))}
         {members.length < 4 && (
           <VStack gap={1}>
-            <div className="ui-intake-row">
-              {RELATIONS.map((r) => (
-                <Button key={r} size="sm" variant={draft.relation === r ? "primary" : "secondary"}
-                  label={r} onClick={() => setDraft({ ...draft, relation: r })} />
-              ))}
-            </div>
-            <div className="ui-intake-row">
-              {AGE_BANDS.map((a) => (
-                <Button key={a} size="sm" variant={draft.ageBand === a ? "primary" : "secondary"}
-                  label={a} onClick={() => setDraft({ ...draft, ageBand: a })} />
-              ))}
-            </div>
+            <HStack gap={1} vAlign="center">
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ds-ink-2)" }}>관계</span>
+              <div className="ui-intake-row">
+                {RELATIONS.map((r) => (
+                  <Button key={r} size="sm" variant={draft.relation === r ? "primary" : "secondary"}
+                    label={r} aria-label={`관계: ${r}`} aria-pressed={draft.relation === r ? "true" : "false"}
+                    onClick={() => setDraft({ ...draft, relation: r })} />
+                ))}
+              </div>
+            </HStack>
+            <HStack gap={1} vAlign="center">
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ds-ink-2)" }}>나이</span>
+              <div className="ui-intake-row">
+                {AGE_BANDS.map((a) => (
+                  <Button key={a} size="sm" variant={draft.ageBand === a ? "primary" : "secondary"}
+                    label={a} aria-label={`나이: ${a}`} aria-pressed={draft.ageBand === a ? "true" : "false"}
+                    onClick={() => setDraft({ ...draft, ageBand: a })} />
+                ))}
+              </div>
+            </HStack>
             <HStack gap={1} vAlign="center">
               <Text type="supporting">출퇴근</Text>
               <Stepper value={draft.commuteMax} min={10} max={120} step={5} unit="분"
+                decLabel="출퇴근 상한 5분 줄이기" incLabel="출퇴근 상한 5분 늘리기"
                 onChange={(n) => setDraft({ ...draft, commuteMax: n })} />
             </HStack>
             <HStack gap={1} vAlign="center">
-              <input className="ui-keyinput" value={draft.workplaceText}
-                placeholder="직장 역/장소 (예: 강남역, 비우면 모름)"
+              <input className="ui-keyinput" value={draft.workplaceText} list="ui-station-list"
+                placeholder="직장 근처 역 (예: 강남역)"
                 onChange={(e) => setDraft({ ...draft, workplaceText: e.target.value })}
                 aria-label="함께 사는 사람 직장" style={{ flex: 1 }} />
+              <datalist id="ui-station-list">
+                {(stations || []).map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
             </HStack>
             <HStack gap={1} vAlign="center">
               <Text type="supporting">월급 (선택)</Text>
-              <Stepper value={draft.incomeMan ?? 0} min={0} max={2000} step={50} unit="만"
-                onChange={(man) => setDraft({ ...draft, incomeMan: man === 0 ? null : man })} />
+              <MoneyField key={`hh-pay-${members.length}`} value={draft.incomeMan}
+                placeholder="비우면 모름" ariaLabel="함께 사는 사람 월급 (만 원)"
+                chips={[{ label: "200만", man: 200 }, { label: "300만", man: 300 }, { label: "400만", man: 400 }]}
+                onChange={(man) => setDraft({ ...draft, incomeMan: man })} />
               {draft.incomeMan ? (
                 <Text type="supporting" hasTabularNumbers>{fmtWon(draft.incomeMan * 10000)}</Text>
               ) : (
@@ -287,7 +351,7 @@ export function HouseholdCard({ household, onAdd, onRemove, defaultWorkplace }) 
               )}
             </HStack>
             <HStack gap={1} vAlign="center">
-              <Button size="sm" label="+ 함께 사는 사람" onClick={() => {
+              <Button size="sm" variant="secondary" label="+ 함께 사는 사람" onClick={() => {
                 if (!draft.relation || !draft.ageBand) {
                   setError("누구인지(관계·나이대)를 먼저 골라주세요");
                   return;

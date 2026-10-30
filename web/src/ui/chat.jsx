@@ -47,8 +47,8 @@ import { EXAMPLE_PROMPTS, COVERAGE_AREAS } from "./landing.jsx";
 // 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
-  INTAKE_STEPS, intakeState0, currentStep, prefillFromExtract,
-  answerStep, skipStep, household0, addMember, removeMember,
+  INTAKE_STEPS, INTAKE_KO, intakeState0, currentStep, prefillFromExtract,
+  answerStep, skipStep, household0, householdFromExtract, addMember, removeMember,
   intakeToProfilePatch, intakeTookLine, householdHint,
 } from "../intake.js";
 import { selectPhotosForList } from "../places/select-photos.js";
@@ -814,7 +814,29 @@ export function ListingCard({ onAsk }) {
 // (up to 4), then the profile summary + 후보 찾기. Free conversation
 // continues at any point (the composer stays live).
 
-export function IntakeFlowCard({ intake, household, profile, handlers }) {
+// 29a3: short value text for a folded (answered) intake step chip.
+function intakeChipText(step, value, skipped) {
+  if (skipped) return "건너뜀";
+  if (value === undefined || value === null) return "아직";
+  if (step === "income") {
+    if (!value.amount) return "아직";
+    return `${value.kind === "annual" ? "연봉" : "월 실수령"} ${fmtWon(value.amount)}`;
+  }
+  if (step === "current") return String(value);
+  if (step === "areas") return Array.isArray(value) ? `${value.length}곳` : "아직";
+  if (step === "living") return (value === null || value === undefined) ? "아직" : `한 달 ${fmtWon(value)}`;
+  if (step === "commute") return value.maxMin ? `출퇴근 ${value.maxMin}분` : "아직";
+  if (step === "budget") {
+    if (value.unknown) return "아직 모름";
+    const m = value.depositMax ?? value.monthlyMax ?? value.priceMax;
+    return (m === null || m === undefined) ? "정함" : fmtWon(m);
+  }
+  return "정함";
+}
+
+export function IntakeFlowCard({ intake, household, profile, handlers, stations, search }) {
+  const [reopened, setReopened] = useState(null);
+  const [showAll, setShowAll] = useState(false);
   const step = currentStep(intake);
   const took = profile ? intakeTookLine(profile) : "";
   const hhHint = householdHint(profile, household);
@@ -829,20 +851,58 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
     && Array.isArray(profile.workplaces.value)
     && profile.workplaces.value[0]
     ? profile.workplaces.value[0].text || "" : "";
+  // 29a3: answered steps fold into chips; tapping one re-opens it.
+  // Only one step card is ever open.
+  const skipped = intake.skipped || [];
+  const answered = INTAKE_STEPS.filter((s) =>
+    intake.values[s] !== undefined || skipped.includes(s));
+  const open = reopened ?? step;
+  const answer = (s, v, k) => { setReopened(null); handlers.onIntakeAnswer(s, v, k); };
+  const skip = (s) => { setReopened(null); handlers.onIntakeSkip(s); };
+  // 29a3: once results exist the cards step back — chips stay, the
+  // open step and the household form hide unless 자세히 opens them.
+  const hasResults = Boolean(search && search.hasResults) && !showAll;
   return (
     <VStack gap={2}>
       {took && <Text type="supporting">{took}</Text>}
-      {step && !intake.done && (
-        <IntakeCard step={step} index={INTAKE_STEPS.indexOf(step)}
-          total={INTAKE_STEPS.length}
-          value={intake.values[step]} said={Boolean(intake.said[step])}
-          onAnswer={handlers.onIntakeAnswer} onSkip={handlers.onIntakeSkip} />
+      {answered.length > 0 && (
+        <div className="ui-intake-row">
+          {answered.map((s) => (
+            <Button key={s} size="sm" variant="secondary"
+              label={`${INTAKE_STEPS.indexOf(s) + 1}/${INTAKE_STEPS.length} · ${INTAKE_KO[s]} · ${intakeChipText(s, intake.values[s], skipped.includes(s))} ✎`}
+              onClick={() => { setReopened(s); setShowAll(true); }} />
+          ))}
+        </div>
       )}
-      {showHousehold && (
+      {search && search.hasResults && search.changed && !showAll && (
+        <HStack gap={1} vAlign="center">
+          <Text>조건이 바뀌었어요</Text>
+          <Button size="sm" variant="primary" label="다시 찾기"
+            onClick={() => search.onResearch && search.onResearch()} />
+        </HStack>
+      )}
+      {!hasResults && step && !intake.done && open !== null && (
+        <IntakeCard step={open} index={INTAKE_STEPS.indexOf(open)}
+          total={INTAKE_STEPS.length}
+          value={intake.values[open]} said={Boolean(intake.said[open])}
+          onAnswer={answer} onSkip={skip} />
+      )}
+      {intake.done && open && (
+        <IntakeCard step={open} index={INTAKE_STEPS.indexOf(open)}
+          total={INTAKE_STEPS.length}
+          value={intake.values[open]} said={Boolean(intake.said[open])}
+          onAnswer={answer} onSkip={skip} />
+      )}
+      {!hasResults && showHousehold && (
         <HouseholdCard household={household} defaultWorkplace={saidWork}
+          stations={stations || []}
           onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
       )}
-      {showHousehold && hhHint && <Text type="supporting">{hhHint}</Text>}
+      {!hasResults && showHousehold && hhHint && <Text type="supporting">{hhHint}</Text>}
+      {search && search.hasResults && (
+        <Button size="sm" variant="ghost" label="자세히"
+          onClick={() => setShowAll((v) => !v)} />
+      )}
       {profile && (
         <ProfileCard profile={profile} example={handlers.exampleId}
           onChip={handlers.onChip} />
@@ -925,7 +985,8 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         )}
         {msg.kind === "intake" && (
           <IntakeFlowCard intake={handlers.intake} household={handlers.household}
-            profile={handlers.profile} handlers={handlers} />
+            profile={handlers.profile} handlers={handlers}
+            stations={handlers.stations} search={handlers.searchState} />
         )}
         {msg.kind === "simulation" && (
           <div data-sim-card={msg.id}>
@@ -1394,6 +1455,8 @@ export function ChatScreen() {
     // 21b: one 상황 card — the intake card already shows the latest
     // profile, so no standalone profile card joins it.
     setIntake(prefillFromExtract(intake, { profile: prof }));
+    // 29a3: a couple sentence starts with the spouse pre-filled.
+    setHousehold(householdFromExtract({ profile: prof }));
     pushMsg({ role: "assistant", kind: "profile", replace: true,
       data: { profile: prof }, example: stateRef.current.exampleId,
       tool_calls: [{ id: exId, name: "extract_profile" }] });
@@ -1456,7 +1519,8 @@ export function ChatScreen() {
     setHousehold(r.household);
     setProfile((prof) => {
       const patch = intakeToProfilePatch(intake, r.household);
-      const merged = applyIntakePatch(prof, { members: patch.members });
+      // 29a3: a member commute cap settles the profile ceiling too.
+      const merged = applyIntakePatch(prof, { members: patch.members, commuteMax: patch.commuteMax });
       store.set({ chatSummary: profileSummary(merged) });
       return merged;
     });
@@ -1470,7 +1534,11 @@ export function ChatScreen() {
     pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
   }
 
+  // 29a3: profile summary the last search ran with — a newer
+  // profile means "조건이 바뀌었어요" until 다시 찾기 runs again.
+  const lastSearchRef = useRef("");
   async function runSearch(prof, data, { sort }) {
+    lastSearchRef.current = profileSummary(prof);
     const tenure = (prof.tenure && prof.tenure.value) || "undecided";
     const t0 = Date.now();
     let result = searchStep(prof, data.index, data, { sort, limit: 6 }).value;
@@ -2206,6 +2274,22 @@ export function ChatScreen() {
     onHover: (key) => setCardHi(key),
     photoDeps: { named: namedPhotos, manifest: dataRef.current?.manifest || null },
     destName,
+    // 29a3: station suggestions for the household 직장 box.
+    stations: dataRef.current && dataRef.current.network
+      ? stationNames(dataRef.current.network) : [],
+    // 29a3: results-vs-profile state for the intake card fold.
+    searchState: {
+      hasResults: Boolean(candidatesData && candidatesData.result
+        && (candidatesData.result.candidates || []).length > 0),
+      changed: Boolean(candidatesData && candidatesData.result
+        && (candidatesData.result.candidates || []).length > 0)
+        && lastSearchRef.current !== (profile ? profileSummary(profile) : ""),
+      onResearch: () => {
+        if (profileRef.current && dataRef.current && !busyRef.current) {
+          runSearch(profileRef.current, dataRef.current, { sort: "commute" });
+        }
+      },
+    },
   };
 
   const summary = profile ? profileSummary(profile) : "";

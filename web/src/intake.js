@@ -128,6 +128,9 @@ export function prefillFromExtract(state, extract) {
   next.done = INTAKE_STEPS.every(
     (s) => next.values[s] !== undefined || next.skipped.includes(s),
   );
+  // 29a3: the sentence may already name the household (a couple → the
+  // spouse starts pre-filled, editable, age never guessed).
+  next.household = householdFromExtract(extract);
   return next;
 }
 
@@ -254,6 +257,21 @@ export function household0() {
   return { members: [] };
 }
 
+// 29a3: the first message named a couple (profile.js finds 부부/신혼/
+// 둘이/2인/맞벌이 and English couple words → 2 members). Start with the
+// spouse already there, editable: age stays null (rendered 나이 미정),
+// workplace unknown, no commute cap guessed.
+export function householdFromExtract(extract) {
+  const profile = (extract && extract.profile) || {};
+  const m = profile.members && profile.members.value;
+  if (Array.isArray(m) && m.length === 2) {
+    return { members: [{ relation: "배우자", ageBand: null,
+      workplace: { known: false }, incomeMonthly: null, commuteMax: null,
+      _said: true }] };
+  }
+  return household0();
+}
+
 export function addMember(hh, member) {
   const list = (hh && hh.members) || [];
   if (list.length >= HOUSEHOLD_MAX) {
@@ -261,7 +279,7 @@ export function addMember(hh, member) {
   }
   const clean = {
     relation: member.relation || "동거인",
-    ageBand: member.ageBand || "20대",
+    ageBand: member.ageBand ?? null,
     workplace: member.workplace || { known: false }, // {known:true, station} | {known:false}
     incomeMonthly: member.incomeMonthly ?? null,
     commuteMax: member.commuteMax ?? null,
@@ -278,14 +296,25 @@ export function removeMember(hh, index) {
 export function intakeToProfilePatch(intake, household) {
   const patch = {};
   const v = (intake && intake.values) || {};
-  if (v.income) {
+  if (v.income && v.income.amount !== null && v.income.amount !== undefined) {
     if (v.income.kind === "annual") patch.salaryAnnual = v.income.amount;
     else patch.takehomeMonthly = v.income.amount;
   }
   if (v.current) patch.currentHome = v.current;
   if (v.areas) patch.regions = v.areas;
   if (v.living !== undefined) patch.livingMonthly = v.living;
-  if (v.commute) patch.commuteMax = v.commute.maxMin ?? null;
+  // 29a3: one commute ceiling — a member cap or the intake commute
+  // step both count; the profile keeps the smallest.
+  {
+    const caps = [];
+    if (v.commute && v.commute.maxMin !== null && v.commute.maxMin !== undefined) {
+      caps.push(v.commute.maxMin);
+    }
+    for (const m of ((household && household.members) || [])) {
+      if (m && m.commuteMax !== null && m.commuteMax !== undefined) caps.push(m.commuteMax);
+    }
+    if (caps.length > 0) patch.commuteMax = Math.min(...caps);
+  }
   if (v.budget) {
     if (v.budget.tenure) patch.tenure = v.budget.tenure;
     if (v.budget.depositMax !== undefined && v.budget.depositMax !== null) {
