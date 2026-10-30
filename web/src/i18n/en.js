@@ -288,6 +288,8 @@ const seedPhrases = {
   "건너뛰기": "Skip",
   "직접 해 보기": "Try it yourself",
   "기록된 대화 보기": "Watch the recorded conversation",
+  "퍼블릭 도메인": "public domain",
+  "퍼블릭 도메인 (미국 정부 제작)": "public domain (US government work)",
   "기록을 불러오지 못했어요 · 직접 해 보기": "Couldn't load the recording · try it yourself",
   "오늘 Muse 사용 한도에 닿았어요. 기록된 대화로 보시거나 내일 다시 와 주세요.": "You have reached today's Muse usage limit. Watch the recorded conversation or come back tomorrow.",
 };

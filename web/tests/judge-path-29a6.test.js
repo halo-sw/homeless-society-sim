@@ -84,4 +84,42 @@ describe("29a6 judge path", () => {
       assert.ok(en.includes(s), s);
     }
   });
+
+  it("recordingUrl points at the static file, never a query URL", async () => {
+    const { recordingUrl } = await import("../src/chat/recording.js");
+    const url = recordingUrl("menlo-month");
+    assert.ok(url.endsWith("recorded/menlo-month.json"), url);
+    assert.ok(!url.includes("?"), url);
+  });
+
+  it("the two committed recordings pass validateRecording", () => {
+    for (const id of ["menlo-month", "seoul-couple"]) {
+      const doc = JSON.parse(read(`../public/recorded/${id}.json`));
+      assert.equal(validateRecording(doc).ok, true, id);
+    }
+  });
+
+  it("replay banner is one string per language with data-no-i18n", () => {
+    const src = read("../src/ui/chat.jsx");
+    assert.ok(src.includes("Recorded conversation · real "), "en banner");
+    assert.ok(src.includes("기록된 대화 · "), "ko banner");
+    assert.ok(src.includes("currentLang()"), "language branch");
+    assert.ok(src.includes("data-no-i18n"), "translator skips the banner");
+  });
+
+  it("a USD budget difference reads in dollars", async () => {
+    const { factsFor } = await import("../src/ui/candidate-card.jsx");
+    const candidate = { kind: "아파트", currency: "USD",
+      tenures: [{ tenure: "wolse", median_won: 4261 }] };
+    const facts = factsFor(candidate, null, 4500, "wolse");
+    assert.ok(facts.some((f) => f.includes("$239")), facts.join(" · "));
+  });
+
+  it("en.js translates 퍼블릭 도메인 to public domain", async () => {
+    const { createTranslator } = await import("../src/i18n/translate.js");
+    const { phrases, patterns } = await import("../src/i18n/en.js");
+    const { WORDS } = await import("../src/i18n/en-words.js");
+    const tr = createTranslator({ phrases, patterns, words: WORDS });
+    assert.equal(tr.translate("퍼블릭 도메인"), "public domain");
+  });
 });

@@ -157,8 +157,10 @@ function budgetFactFor(candidate, price, budgetWon, tenure) {
   const median = entry ? entry.median_won : null;
   if (Number.isFinite(budgetWon) && budgetWon > 0 && Number.isFinite(median)) {
     const diff = budgetWon - median;
-    if (diff > 0) return `예산보다 ${fmtWon(diff).replace(/ 원$/, "")} 적어요`;
-    if (diff < 0) return `예산보다 ${fmtWon(-diff).replace(/ 원$/, "")} 많아요`;
+    const usd = currencyOf(candidate) === "USD" || currencyOf(entry) === "USD";
+    const fmt = (v) => (usd ? fmtMoney(v, "USD") : fmtWon(v).replace(/ 원$/, ""));
+    if (diff > 0) return `예산보다 ${fmt(diff)} 적어요`;
+    if (diff < 0) return `예산보다 ${fmt(-diff)} 많아요`;
   }
   const fit = price ? price.fit : null;
   return fit === "all" ? "예산 안" : fit === "partial" ? "예산 일부" : fit === "none" ? "예산 밖" : null;

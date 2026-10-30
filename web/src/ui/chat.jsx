@@ -99,7 +99,7 @@ import { PoweredByMuse } from "./powered-by-muse.jsx";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, toolActionKo, viewSystemLine } from "./agent-float.js";
-import { LANG } from "../i18n/lang.js";
+import { LANG, currentLang } from "../i18n/lang.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const IS_DEV = ENV.DEV === true;
@@ -2504,7 +2504,7 @@ export function ChatScreen() {
           <section className="ui-chat-thread" aria-label="대화">
             {replayId && (
               <div className="ui-chat-replaybanner">
-                <Text type="supporting">기록된 대화 · {replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} {replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생</Text>
+                <Text type="supporting" data-no-i18n>{currentLang() === "en" ? `Recorded conversation · real ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} answers from ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} · plays without a key` : `기록된 대화 · ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생`}</Text>
                 <Button size="sm" variant="ghost" label="건너뛰기" onClick={skipReplay} />
                 <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
               </div>

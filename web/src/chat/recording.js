@@ -1,4 +1,4 @@
-import { appUrl } from "../paths.js";
+import { assetUrl } from "../paths.js";
 
 export const RECORDINGS = [
   { id: "menlo-month", title: "Meta 본사 출근 · 두 사람의 한 달", titleEn: "Commuting to Meta HQ · a month for two" },
@@ -6,7 +6,7 @@ export const RECORDINGS = [
 ];
 
 export function recordingUrl(id) {
-  return appUrl("recorded/" + String(id) + ".json");
+  return assetUrl("recorded/" + String(id) + ".json");
 }
 
 export function validateRecording(doc) {
