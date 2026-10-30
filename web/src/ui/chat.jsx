@@ -69,7 +69,8 @@ import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
-import { HOME_SORTS, HOME_SORT_KO, applyKindPreference } from "../homes.js";
+import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../homes.js";
+import { chipSourceIds } from "../sources.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
 import {
@@ -291,6 +292,9 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         )}
         {candidates.length === 0 && (
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
+        )}
+        {candidates.length === 0 && data.emptyHint && (
+          <Text type="supporting">{data.emptyHint}</Text>
         )}
         <div className="ui-cand-list">
           {withPhotos.map(({ candidate: c, photos }, i) => {
@@ -722,6 +726,14 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
   const { data } = msg;
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
+  // 26k: USD candidates or runs cite the US sources instead of the
+  // Korean tool citations (null = unchanged).
+  const cands = msg.kind === "candidates" && data && data.result
+    ? data.result.candidates : null;
+  const runCur = msg.kind === "simulation" && data && data.moneyDoc
+    ? data.moneyDoc.currency : null;
+  const chipIds = (msg.kind === "candidates" || msg.kind === "simulation")
+    ? chipSourceIds({ candidates: cands, currency: runCur }) : null;
   return (
     <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
       {msg.recorded && (
@@ -762,7 +774,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         )}
       </ChatMessageBubble>
       <ToolRows rows={rows} />
-      <CiteRows tools={tools} />
+      <CiteRows tools={tools} sourceIds={chipIds} />
     </ChatMessage>
   );
 }
@@ -1161,9 +1173,15 @@ export function ChatScreen() {
       summary: `${result.candidates.length}곳 · ${HOME_SORT_KO[sort]}`, ms });
     // A new search drops picks that are no longer listed.
     setPicks((prev) => prev.filter((id) => result.candidates.some((c) => c.id === id)));
+    // 26k: a USD search with no homes names the cheapest loaded ZIP
+    // rent (computed from the loaded homes, never hardcoded).
+    const profCur = prof.currency && prof.currency.value;
+    const budget = profCur === "USD" && prof.monthlyMax
+      ? Number(prof.monthlyMax.value) : null;
+    const emptyHint = usEmptyHint((data.index && data.index.homes) || [], budget);
     setCandidatesData({ result, tenure, sort });
     pushMsg({ role: "assistant", kind: "candidates", replace: true,
-      data: { result, tenure, sort }, example: stateRef.current.exampleId,
+      data: { result, tenure, sort, emptyHint }, example: stateRef.current.exampleId,
       tool_calls: [{ id: rowId, name: "find_homes" }] });
   }
 

@@ -990,7 +990,7 @@ function AttrLine({ state }) {
       <div className="overlay">
         <Text type="supporting">
           {isUsd
-            ? "월세: Zillow ZORI (ZIP 추정) · 지도 © OpenStreetMap © CARTO · 항공사진 USGS"
+            ? "© OpenStreetMap contributors (ODbL) · 지도·항공사진: USGS The National Map · 월세: Zillow ZORI (ZIP 추정, 참고용) · 나무·인물은 장식용 모의 표시"
             : (<>
               © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) · GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시
               {money && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 공공임대: LH·마이홈 (공공주택 데이터 API)"}

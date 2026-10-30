@@ -23,6 +23,7 @@ import { findPath } from "./engine/journey.js";
 import { rideMinutes } from "./transit/schedule.js";
 import { photosNear, PHOTOS_DISCLAIMER } from "./places/photos.js";
 import { nearestStationByWalk } from "./walkgraph.js";
+import { fmtMoney } from "./money/currency.js";
 
 export const HOME_SORTS = ["commute", "monthly", "deals", "priority"];
 export const DEFAULT_HOME_SORT = "commute";
@@ -42,6 +43,31 @@ export const SOURCE_BADGES = {
   photos: "주변 사진",
   public: "공공임대(LH·마이홈)",
 };
+
+// 26k: USD empty state. When no home matches but loaded US homes exist
+// above the budget, name the cheapest loaded ZIP rent (computed, never
+// hardcoded) so the customer sees how far the budget falls short.
+export function usMonthlyMedian(home) {
+  let min = null;
+  for (const b of (home && home.buckets) || []) {
+    const med = b && b.wolse && b.wolse.monthly && b.wolse.monthly.median_won;
+    if (Number.isFinite(med) && med > 0 && (min === null || med < min)) min = med;
+  }
+  return min;
+}
+
+export function usEmptyHint(homes, budget) {
+  const b = Number(budget);
+  if (!Number.isFinite(b) || b <= 0) return "";
+  let min = null;
+  for (const h of homes || []) {
+    if (!h || (h.currency !== "USD" && h.country !== "US")) continue;
+    const med = usMonthlyMedian(h);
+    if (med !== null && med > b && (min === null || med < min)) min = med;
+  }
+  if (min === null) return "";
+  return `이 지역 ZIP 대표 월세는 ${fmtMoney(min, "USD")}부터예요 (Zillow 추정).`;
+}
 
 const TENURE_BUCKET = { jeonse: "jeonse", wolse: "wolse", trade: "trade" };
 

@@ -19,8 +19,9 @@ export function basemapApiBase() {
   return API_BASE;
 }
 
-// 26e: contiguous-US bbox (lon/lat). Inside it the chat map uses
-// CARTO Positron directly (no relay, no key); elsewhere VWorld.
+// 26k: contiguous-US bbox (lon/lat). Inside it the chat map uses
+// USGS National Map topo tiles directly (no relay, no key); elsewhere
+// VWorld.
 export const US_BBOX = [-125, 24, -66, 50];
 
 export function isUsLonLat(lon, lat) {
@@ -31,13 +32,12 @@ export function isUsLonLat(lon, lat) {
 }
 
 export function basemapProvider(lon, lat) {
-  return isUsLonLat(lon, lat) ? "carto" : "vworld";
+  return isUsLonLat(lon, lat) ? "usgs" : "vworld";
 }
 
 export function basemapTileUrl(apiBase, z, y, x, { provider = "vworld" } = {}) {
-  if (provider === "carto") {
-    const sub = "abcd"[(Number(x) + Number(y)) % 4];
-    return `https://${sub}.basemaps.cartocdn.com/light_all/${z}/${x}/${y}.png`;
+  if (provider === "usgs") {
+    return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/${z}/${y}/${x}`;
   }
   return `${apiBase}/api/tiles/white/${z}/${y}/${x}.png`;
 }

@@ -14,8 +14,8 @@ import { extract_profile } from "../src/profile.js";
 const landing = await import("../src/ui/landing.jsx");
 
 describe("26e basemap provider", () => {
-  it("Menlo Park is carto, Seoul is vworld", () => {
-    assert.equal(basemapProvider(-122.15, 37.48), "carto");
+  it("Menlo Park is usgs, Seoul is vworld", () => {
+    assert.equal(basemapProvider(-122.15, 37.48), "usgs");
     assert.equal(basemapProvider(127.03, 37.5), "vworld");
   });
 
@@ -24,9 +24,10 @@ describe("26e basemap provider", () => {
     assert.equal(isUsLonLat(127.03, 37.5), false);
   });
 
-  it("carto URL shape with x/y subdomains", () => {
-    const url = basemapTileUrl(null, 14, 6340, 2630, { provider: "carto" });
-    assert.match(url, /^https:\/\/[abcd]\.basemaps\.cartocdn\.com\/light_all\/14\/2630\/6340\.png$/);
+  it("usgs URL is National Map topo in z/y/x order", () => {
+    const url = basemapTileUrl(null, 16, 25402, 10528, { provider: "usgs" });
+    assert.equal(url,
+      "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/16/25402/10528");
   });
 
   it("vworld URL is unchanged", () => {

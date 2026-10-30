@@ -161,6 +161,33 @@ export const SOURCES = [
     mustNot: "라이선스 범위를 벗어나 재배포하면 안 돼요.",
   },
   {
+    id: "zillow-zori",
+    name: "Zillow Observed Rent Index (ZORI)",
+    use: "ZIP 단위 월세 추정 (매물 가격이 아닌 대표 월세, 참고용). 미국 후보의 월세 비교에 씁니다.",
+    licence: "Zillow 인용 (출처 표시)",
+    version: "ZIP 단위 추정 2026-09 기준",
+    url: "https://www.zillow.com/research/data/",
+    mustNot: "매물 가격처럼 쓰면 안 돼요. ZIP 대표 추정치라 개별 집 월세와 다를 수 있어요.",
+  },
+  {
+    id: "osm-us",
+    name: "OpenStreetMap (미국 북캘리포니아 추출본, Geofabrik)",
+    use: "미국 후보 집 위치와 도보·자전거 경로 계산의 바탕 지도.",
+    licence: "ODbL (Open Database License)",
+    version: "미국 북캘리포니아 추출본",
+    url: "https://download.geofabrik.de",
+    mustNot: "출처 없이 쓰면 안 돼요. OSM에서 고친 지도는 같은 ODbL로 공개해야 해요.",
+  },
+  {
+    id: "usgs",
+    name: "USGS The National Map (지도·항공사진, 퍼블릭 도메인)",
+    use: "미국 지도의 바탕 지도와 항공사진.",
+    licence: "퍼블릭 도메인 (미국 정부 제작)",
+    version: "USGSTopo · USGSImageryOnly",
+    url: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer",
+    mustNot: "USGS 출처를 지우면 안 돼요. 측량도처럼 쓰면 안 돼요.",
+  },
+  {
     id: "terrain-tiles",
     name: "AWS Terrain Tiles (Terrarium, SRTM)",
     use: "3D 지형 높이(2.5m 격자로 재가공). 국내는 SRTM 30m 기반이라 큰 산 모양만 맞고 세부 굴곡은 약해요.",
@@ -173,6 +200,19 @@ export const SOURCES = [
 
 export function sourceById(id) {
   return SOURCES.find((s) => s.id === id) || null;
+}
+
+// 26k: chips under the candidate list and the result. USD candidates
+// or runs cite the US entries; anything else keeps the Korean tool
+// citations (null = no override).
+export function chipSourceIds({ candidates = null, currency = null } = {}) {
+  if (currency === "USD") return ["zillow-zori", "osm-us", "usgs"];
+  const list = Array.isArray(candidates) ? candidates : [];
+  if (list.length > 0 && list.every((c) =>
+    c && (c.currency === "USD" || c.country === "US"))) {
+    return ["zillow-zori", "osm-us", "usgs"];
+  }
+  return null;
 }
 
 // Mini credit shown next to the number it explains.

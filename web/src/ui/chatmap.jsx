@@ -106,8 +106,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const toXYz = (lon, lat) => T.apply(fit.toXY(lon, lat));
   const toLonLatZ = (x, y) => fit.toLonLat(...T.invert([x, y]));
   // 25a: light raster under the vector layers when the tile source
-  // is available. 26e: the provider follows the map centre — CARTO
-  // Positron in the US (direct, no relay, so apiBase may be null),
+  // is available. 26k: the provider follows the map centre — USGS
+  // topo in the US (direct, no relay, so apiBase may be null),
   // VWorld through the proxy elsewhere (apiBase null: no basemap).
   const apiBase = basemapApiBase();
   const [centerLon, centerLat] = toLonLatZ(W / 2, H / 2);
@@ -115,7 +115,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const tiles = (provider === "vworld" && apiBase === null) ? []
     : basemapTiles({ toLonLat: toLonLatZ, W, H,
       lat: midLat, metersPerPx: fit.metersPerPx / vt.zoom });
-  const basemapOn = (provider === "carto" || apiBase !== null)
+  const basemapOn = (provider === "usgs" || apiBase !== null)
     && failCount * 2 < tiles.length;
   // Constant screen sizes: one viewBox unit is one stage px at 1:1, so
   // literal px values stay readable however the map is zoomed.
@@ -524,7 +524,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
       </svg>
       <div style={{ position: "absolute", top: 12, right: 12, background: "#ffffff",
         borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a" }}>
-        ● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)
+        {provider === "usgs"
+          ? "● 후보 · ■ 회사 · 숫자는 출근 편도(추정)"
+          : "● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)"}
       </div>
       <div className="ui-chatmap-zoom">
         <button type="button" aria-label="확대"
@@ -537,8 +539,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
       <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 10,
         color: MAP_COLORS.muted, background: "rgba(255,255,255,0.8)", padding: "2px 6px" }}>
         {basemapOn
-          ? (provider === "carto"
-            ? "© OpenStreetMap contributors © CARTO"
+          ? (provider === "usgs"
+            ? "Map: USGS The National Map"
             : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
           : "© OpenStreetMap contributors"}
       </div>
