@@ -5,7 +5,7 @@
 // card back; clicking a pin scrolls to its card; clicking a region
 // still filters. SSR renders the container only.
 import { useEffect, useRef, useState } from "react";
-import { fitMapView, MAP_COLORS, MAP_FIT_MARGIN } from "../chatmap.js";
+import { fitMapView, layoutPinLabels, MAP_COLORS, MAP_FIT_MARGIN } from "../chatmap.js";
 import { tenurePriceLine } from "./candidate-card.jsx";
 
 function ptsAttr(pts, toXY) {
@@ -109,8 +109,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             {b.name ? <title>{b.name}</title> : null}
           </polyline>
         ))}
-        {(m.lines || []).map((l) => (
-          <polyline key={l.id} points={ptsAttr(l.pts, toXY)} fill="none"
+        {(m.lines || []).map((l, i) => (
+          <polyline key={`${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXY)} fill="none"
             stroke={l.color} strokeWidth={fs(2)} opacity={0.85}>
             <title>{l.name}</title>
           </polyline>
@@ -157,31 +157,53 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             </g>
           );
         })()}
-        {pins.map((p) => {
-          const [x, y] = toXY(p.lon, p.lat);
-          const hi = cardHi === `home:${p.id}`;
-          const tag = pinPrice(p.candidate, m.tenure);
-          const tagW = fs(tag.length * 7 + 14);
-          return (
-            <g key={p.id}
-              onMouseEnter={() => onPinHover && onPinHover(`home:${p.id}`)}
-              onMouseLeave={() => onPinHover && onPinHover(null)}
-              onClick={() => onPinClick && onPinClick(p.id)}
-              style={{ cursor: onPinClick ? "pointer" : "default" }}>
-              {hi && <circle cx={x} cy={y} r={fs(17)} fill="none"
-                stroke={MAP_COLORS.pinHi} strokeWidth={fs(2.5)} />}
-              {p.picked && <circle cx={x} cy={y} r={fs(14)} fill="none"
-                stroke={MAP_COLORS.pickedRing} strokeWidth={fs(2)} />}
-              <circle cx={x} cy={y} r={fs(11)} fill={MAP_COLORS.pinFill} />
-              <text x={x} y={y + fs(4.5)} fontSize={fs(11.5)} textAnchor="middle"
-                fill="#ffffff">{p.n}</text>
-              <rect x={x - tagW / 2} y={y + fs(11)} width={tagW} height={fs(15)} rx={fs(4)}
-                fill="#ffffff" opacity={0.94} />
-              <text x={x} y={y + fs(22.5)} fontSize={fs(11)} textAnchor="middle"
-                fill={MAP_COLORS.pinFill}>{tag}</text>
-            </g>
-          );
-        })}
+        {(() => {
+          const laid = layoutPinLabels(pins.map((p) => {
+            const [x, y] = toXY(p.lon, p.lat);
+            return { id: p.id, x, y, tag: pinPrice(p.candidate, m.tenure) };
+          }), W, H);
+          const byId = new Map(laid.map((l) => [l.id, l]));
+          return pins.map((p) => {
+            const l = byId.get(p.id);
+            const [tx0, ty0] = toXY(p.lon, p.lat);
+            const x = l ? l.x : tx0;
+            const y = l ? l.y : ty0;
+            const hi = cardHi === `home:${p.id}`;
+            const tag = pinPrice(p.candidate, m.tenure);
+            const box = l ? l.box : null;
+            return (
+              <g key={p.id}
+                onMouseEnter={() => onPinHover && onPinHover(`home:${p.id}`)}
+                onMouseLeave={() => onPinHover && onPinHover(null)}
+                onClick={() => onPinClick && onPinClick(p.id)}
+                style={{ cursor: onPinClick ? "pointer" : "default" }}>
+                {l && l.pinLeader && (
+                  <line x1={l.pinLeader[0]} y1={l.pinLeader[1]} x2={x} y2={y}
+                    stroke={MAP_COLORS.boundary} strokeWidth={fs(1)} opacity={0.8} />
+                )}
+                {hi && <circle cx={x} cy={y} r={fs(17)} fill="none"
+                  stroke={MAP_COLORS.pinHi} strokeWidth={fs(2.5)} />}
+                {p.picked && <circle cx={x} cy={y} r={fs(14)} fill="none"
+                  stroke={MAP_COLORS.pickedRing} strokeWidth={fs(2)} />}
+                <circle cx={x} cy={y} r={fs(11)} fill={MAP_COLORS.pinFill} />
+                <text x={x} y={y + fs(4.5)} fontSize={fs(11.5)} textAnchor="middle"
+                  fill="#ffffff">{p.n}</text>
+                {l && l.tagLeader && (
+                  <line x1={x} y1={y} x2={l.tagLeader[0]} y2={l.tagLeader[1]}
+                    stroke={MAP_COLORS.boundary} strokeWidth={fs(1)} opacity={0.8} />
+                )}
+                {box && (
+                  <rect x={box.x} y={box.y} width={box.w} height={fs(15)} rx={fs(4)}
+                    fill="#ffffff" opacity={0.94} />
+                )}
+                {box && (
+                  <text x={l.tx} y={l.ty} fontSize={fs(11)} textAnchor="middle"
+                    fill={MAP_COLORS.pinFill}>{tag}</text>
+                )}
+              </g>
+            );
+          });
+        })()}
       </svg>
     </div>
   );

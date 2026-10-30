@@ -142,7 +142,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
           </div>
         </div>
         <div className="ui-commute ui-num">
-          {commute.text} <SourceDot source={commute.source} />
+          {commute.text} {!/추정/.test(commute.text) && <SourceDot source={commute.source} />}
         </div>
         <div className="ui-cand-facts ui-num">{badges.join(" · ")}</div>
         {hero && <div className="ui-cand-credit">{hero.credit}</div>}

@@ -68,6 +68,32 @@ export function flatXY(lon, lat, lat0) {
   return [(lon || 0) * k, lat || 0];
 }
 
+export function haversineKm(aLon, aLat, bLon, bLat) {
+  const r = (d) => (d * Math.PI) / 180;
+  const s = Math.sin(r(bLat - aLat) / 2) ** 2
+    + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLon - aLon) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(s));
+}
+
+// Split long hops so no drawn segment exceeds maxKm (linear in
+// lon/lat — the drawn line stays on the same track segment, only
+// with intermediate vertices). Returns a new array.
+export function densifyPts(pts, maxKm = 2.5) {
+  const list = (pts || []).filter((p) => Array.isArray(p)
+    && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  if (list.length < 2) return list.map((p) => [p[0], p[1]]);
+  const out = [[list[0][0], list[0][1]]];
+  for (let i = 1; i < list.length; i++) {
+    const [ax, ay] = list[i - 1];
+    const [bx, by] = list[i];
+    const n = Math.max(1, Math.ceil(haversineKm(ax, ay, bx, by) / maxKm));
+    for (let k = 1; k <= n; k++) {
+      out.push([ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n]);
+    }
+  }
+  return out;
+}
+
 // Fit lon/lat points into a W×H stage with at least `margin` (fraction)
 // of each side clear. Returns {view:[x,y,w,h], toXY} where toXY maps
 // lon/lat to stage px. Single points and empty input fall back to a
@@ -197,11 +223,52 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
   const regionBoxes = (Array.isArray(regionList) ? regionList : []).map((r) => ({
     id: r.id, label: r.label || r.id, bbox: r.bbox || null,
   })).filter((r) => Array.isArray(r.bbox));
-  const lines = ((network && network.lines) || []).map((l) => ({
-    id: l.id, name: l.name, color: lineColorFor(l),
-    pts: (l.stops || []).filter((s) => Number.isFinite(s.lon) && Number.isFinite(s.lat))
-      .map((s) => [s.lon, s.lat, s.name]),
-  }));
+  const stopCoords = new Map();
+  for (const l of (network && network.lines) || []) {
+    for (const s of l.stops || []) {
+      if (Number.isFinite(s.lon) && Number.isFinite(s.lat)) stopCoords.set(s.id, s);
+    }
+  }
+  const patternPts = (l, p) => {
+    if (Array.isArray(p.geometry) && p.geometry.length > 1) {
+      return densifyPts(p.geometry.filter((g) => Array.isArray(g)
+        && Number.isFinite(g[0]) && Number.isFinite(g[1])));
+    }
+    const pstops = Array.isArray(p.stops) ? p.stops : [];
+    const pts = [];
+    for (const s of pstops) {
+      if (Array.isArray(s)) {
+        if (Number.isFinite(s[0]) && Number.isFinite(s[1])) pts.push(s);
+        continue;
+      }
+      if (s && Number.isFinite(s.lon) && Number.isFinite(s.lat)) { pts.push([s.lon, s.lat]); continue; }
+      const id = (s && s.id) || s;
+      const c = stopCoords.get(id);
+      if (c) pts.push([c.lon, c.lat]);
+    }
+    return densifyPts(pts);
+  };
+  const lines = [];
+  for (const l of (network && network.lines) || []) {
+    const patterns = Array.isArray(l.patterns) ? l.patterns : [];
+    if (patterns.length > 0) {
+      const seen = new Set();
+      for (const p of patterns) {
+        const dir = p.direction || "";
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        const pts = patternPts(l, p);
+        if (pts.length < 2) continue;
+        lines.push({ id: l.id, name: l.name, color: lineColorFor(l), direction: dir, pts });
+      }
+      continue;
+    }
+    lines.push({
+      id: l.id, name: l.name, color: lineColorFor(l),
+      pts: (l.stops || []).filter((s) => Number.isFinite(s.lon) && Number.isFinite(s.lat))
+        .map((s) => [s.lon, s.lat, s.name]),
+    });
+  }
   const stations = [];
   for (const l of (network && network.lines) || []) {
     for (const s of l.stops || []) {
@@ -257,4 +324,112 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
     green: { water: (green && green.water) || [], parks: (green && green.parks) || [] },
     tenure: tenure || null,
   };
+}
+
+// Price-tag layout (18f — pure, stage px in, boxes out). Pins closer
+// than PIN_FAN_PX fan out around their true point (thin leader back
+// to it); each tag tries right, left, above, below, and otherwise
+// offsets diagonally with a short leader line to its pin.
+export const PIN_FAN_PX = 18;
+export const TAG_H_PX = 15;
+const TAG_GAP = 12;
+const TAG_PAD = 2;
+
+export function tagWidthPx(tag) {
+  return String(tag || "").length * 7 + 14;
+}
+
+const boxHit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w
+  && a.y < b.y + b.h && b.y < a.y + a.h;
+
+const clampBox = (box, W, H) => ({
+  ...box,
+  x: Math.min(Math.max(box.x, TAG_PAD), Math.max(TAG_PAD, W - box.w - TAG_PAD)),
+  y: Math.min(Math.max(box.y, TAG_PAD), Math.max(TAG_PAD, H - box.h - TAG_PAD)),
+});
+
+// Nearest point on a box to (x, y) — the leader-line landing.
+function nearestOnBox(box, x, y) {
+  return [
+    Math.min(Math.max(x, box.x), box.x + box.w),
+    Math.min(Math.max(y, box.y), box.y + box.h),
+  ];
+}
+
+// points: [{ id, x, y, tag }]. Returns [{ id, x, y, box, tx, ty,
+// pinLeader ([trueX, trueY] when fanned) , tagLeader ([lx, ly] when
+// the tag sits off its pin) }] in input order.
+export function layoutPinLabels(points, W, H) {
+  const list = (points || []).map((p) => ({ ...p }));
+  const w = Math.max(1, Number(W) || 1);
+  const h = Math.max(1, Number(H) || 1);
+  // Fan-out: connected components under PIN_FAN_PX spread on a
+  // circle around their centroid, each keeping a leader to truth.
+  const comp = list.map((_, i) => i);
+  const find = (i) => (comp[i] === i ? i : (comp[i] = find(comp[i])));
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const dx = list[i].x - list[j].x;
+      const dy = list[i].y - list[j].y;
+      if (Math.hypot(dx, dy) < PIN_FAN_PX) {
+        const a = find(i);
+        const b = find(j);
+        if (a !== b) comp[b] = a;
+      }
+    }
+  }
+  const groups = new Map();
+  list.forEach((p, i) => {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(i);
+  });
+  const dots = list.map((p) => ({ x: p.x, y: p.y, pinLeader: null }));
+  for (const idxs of groups.values()) {
+    if (idxs.length < 2) continue;
+    const cx = idxs.reduce((s, i) => s + list[i].x, 0) / idxs.length;
+    const cy = idxs.reduce((s, i) => s + list[i].y, 0) / idxs.length;
+    const R = Math.max(12, (12 * idxs.length) / Math.PI);
+    idxs.forEach((pi, k) => {
+      const ang = (-Math.PI / 2) + (k * 2 * Math.PI) / idxs.length;
+      dots[pi] = { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang),
+        pinLeader: [list[pi].x, list[pi].y] };
+    });
+  }
+  // Tag boxes, first-fit over right / left / above / below.
+  const placed = [];
+  return list.map((p, i) => {
+    const d = dots[i];
+    const tw = tagWidthPx(p.tag);
+    const th = TAG_H_PX;
+    const cands = [
+      { x: d.x + TAG_GAP, y: d.y - th / 2, w: tw, h: th },
+      { x: d.x - TAG_GAP - tw, y: d.y - th / 2, w: tw, h: th },
+      { x: d.x - tw / 2, y: d.y - TAG_GAP - th, w: tw, h: th },
+      { x: d.x - tw / 2, y: d.y + TAG_GAP, w: tw, h: th },
+    ].map((b) => clampBox(b, w, h));
+    let box = cands.find((b) => !placed.some((q) => boxHit(b, q))) || null;
+    let tagLeader = null;
+    if (!box) {
+      // Spiral staircase away from the pin until a free box lands.
+      const angs = [Math.PI / 4, -Math.PI / 4, (3 * Math.PI) / 4,
+        (-3 * Math.PI) / 4, 0, Math.PI / 2, -Math.PI / 2, Math.PI];
+      outer: for (let r = 26; r <= 120; r += 14) {
+        for (const a of angs) {
+          const b = clampBox({ x: d.x + r * Math.cos(a) - tw / 2,
+            y: d.y + r * Math.sin(a) - th / 2, w: tw, h: th }, w, h);
+          if (!placed.some((q) => boxHit(b, q))) { box = b; break outer; }
+        }
+      }
+      if (!box) {
+        const bottom = placed.reduce((m, q) => Math.max(m, q.y + q.h), d.y + TAG_GAP);
+        box = { x: d.x - tw / 2, y: bottom + 4, w: tw, h: th };
+      }
+      tagLeader = nearestOnBox(box, d.x, d.y);
+    }
+    placed.push(box);
+    return { id: p.id, x: d.x, y: d.y, box,
+      tx: box.x + box.w / 2, ty: box.y + 11.5,
+      pinLeader: d.pinLeader, tagLeader };
+  });
 }

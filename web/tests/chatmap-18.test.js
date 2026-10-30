@@ -240,3 +240,170 @@ describe("18d walkthrough map: one projected space, readable pins", () => {
     for (const r of pins) assert.ok(r * 2 >= 20, `pin ${r * 2}px across`);
   });
 });
+
+describe("18f real tracks, spread tags, one 추정", () => {
+  const havKm = (aLon, aLat, bLon, bLat) => {
+    const r = (d) => (d * Math.PI) / 180;
+    const s = Math.sin(r(bLat - aLat) / 2) ** 2
+      + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLon - aLon) / 2) ** 2;
+    return 2 * 6371 * Math.asin(Math.sqrt(s));
+  };
+  const polyKm = (pts) => {
+    let s = 0;
+    for (let i = 1; i < pts.length; i++) s += havKm(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+    return s;
+  };
+
+  it("draws each line from pattern geometry, one pattern per direction", async () => {
+    const { buildChatMap: build, layoutPinLabels: layout } =
+      await import("../src/chatmap.js");
+    assert.ok(typeof layout === "function", "tag layout helper exists");
+    // Synthetic: line.stops alphabetical, pattern stops in route order.
+    const m = build({ regions: { regions: [] },
+      network: { lines: [{
+        id: "demo", name: "데모선",
+        stops: [
+          { id: "d:가", key: "가", name: "가", lon: 127.0, lat: 37.5 },
+          { id: "d:나", key: "나", name: "나", lon: 127.3, lat: 37.5 },
+          { id: "d:다", key: "다", name: "다", lon: 127.1, lat: 37.5 },
+        ],
+        patterns: [
+          { id: "p-up", direction: "up", stops: ["d:다", "d:가", "d:나"] },
+          { id: "p-up2", direction: "up", stops: ["d:다", "d:가", "d:나"] },
+          { id: "p-dn", direction: "down", stops: ["d:나", "d:가", "d:다"] },
+        ],
+      }] },
+      candidates: [], picks: [], workplaceStation: null });
+    assert.equal(m.lines.length, 2, "one pattern per direction");
+    const up = m.lines.find((l) => l.direction === "up");
+    const lons = up.pts.map((p) => p[0]);
+    assert.equal(lons[0], 127.1, "starts at the pattern's first stop (다)");
+    assert.equal(lons[lons.length - 1], 127.3, "ends at the pattern's last stop (나)");
+    assert.ok(lons.some((x, i) => i > 0 && x < 127.05),
+      "passes through 가 (127.0) — route order, never alphabetical line.stops order");
+    assert.ok(!lons.some((x, i) => i > 0 && lons[i - 1] === 127.0 && x === 127.1),
+      "no alphabetical 가→다 adjacency");
+    assert.ok(m.stations.length === 3, "station dots still come from stops");
+  });
+
+  it("follows the real track: short hops, true length", async () => {
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const netPath = join(root, "data/build/region/network.json");
+    if (!existsSync(netPath)) return; // generated data absent: skip
+    const network = JSON.parse(readFileSync(netPath, "utf8"));
+    const { buildChatMap: build } = await import("../src/chatmap.js");
+    const m = build({ regions: { regions: [] }, network,
+      candidates: [], picks: [], workplaceStation: null });
+    assert.ok(m.lines.length > 0, "lines drawn");
+    for (const l of m.lines) {
+      assert.ok(l.pts.length >= 2, `${l.id}/${l.direction} has geometry`);
+      for (let i = 1; i < l.pts.length; i++) {
+        const hop = havKm(l.pts[i - 1][0], l.pts[i - 1][1], l.pts[i][0], l.pts[i][1]);
+        assert.ok(hop <= 3, `${l.id}/${l.direction} hop ${i} is ${hop.toFixed(2)} km`);
+      }
+    }
+    for (const line of network.lines) {
+      const dirs = [...new Set((line.patterns || []).map((p) => p.direction || ""))];
+      const drawn = m.lines.filter((l) => l.id === line.id);
+      assert.equal(drawn.length, dirs.length,
+        `${line.id}: one drawn line per direction (${dirs.join(",")})`);
+      for (const dir of dirs) {
+        const pat = line.patterns.find((p) => (p.direction || "") === dir);
+        const one = drawn.find((l) => (l.direction || "") === dir);
+        if (!pat || !one || !Number.isFinite(pat.distance_km)) continue;
+        const len = polyKm(one.pts);
+        const rel = Math.abs(len - pat.distance_km) / pat.distance_km;
+        assert.ok(rel <= 0.15,
+          `${line.id}/${dir}: drawn ${len.toFixed(1)} km vs pattern ${pat.distance_km} km`);
+      }
+    }
+  });
+
+  it("fans close pins and never overlaps tag boxes (synthetic pair)", async () => {
+    const { layoutPinLabels: layout } = await import("../src/chatmap.js");
+    const laid = layout([
+      { id: "a", x: 200, y: 200, tag: "전세 1억 9,500만 원" },
+      { id: "b", x: 204, y: 202, tag: "전세 1억 9,800만 원" },
+    ], 640, 420);
+    assert.ok(laid[0].pinLeader && laid[1].pinLeader, "close pins fan out with leaders");
+    assert.ok(Math.hypot(laid[0].x - laid[1].x, laid[0].y - laid[1].y) >= 18,
+      "fanned dots stand apart");
+    const [A, B] = [laid[0].box, laid[1].box];
+    const hit = A.x < B.x + B.w && B.x < A.x + A.w && A.y < B.y + B.h && B.y < A.y + A.h;
+    assert.ok(!hit, "tag boxes do not intersect");
+  });
+
+  for (const [W, H] of [[1440, 900], [390, 844]]) {
+    it(`no two single-firstjob tag boxes intersect at ${W}×${H}`, async () => {
+      const { existsSync, readFileSync } = await import("node:fs");
+      const { dirname, join } = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+      const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+      const homesPath = join(root, "data/build/homes-index.json");
+      const netPath = join(root, "data/build/region/network.json");
+      if (!existsSync(homesPath) || !existsSync(netPath)) return; // skip
+      const { find_homes } = await import("../src/homes.js");
+      const { field, emptyProfile } = await import("../src/profile.js");
+      const { buildChatMap: build, fitMapView: fit, layoutPinLabels: layout,
+        MAP_FIT_MARGIN: margin } = await import("../src/chatmap.js");
+      const index = JSON.parse(readFileSync(homesPath, "utf8"));
+      const network = JSON.parse(readFileSync(netPath, "utf8"));
+      const profile = emptyProfile();
+      profile.tenure = field("jeonse", "customer", "");
+      profile.depositMax = field(200000000, "customer", "");
+      profile.workplaces = field(
+        [{ member: 0, text: "판교", resolved: { station: "판교" } }], "customer", "");
+      const { candidates } = find_homes(profile, index, { network, limit: 6 });
+      assert.ok(candidates.length >= 2, `real candidates, got ${candidates.length}`);
+      const m = build({ regions: { regions: [] }, network, tiles: [],
+        green: { water: [], parks: [] }, candidates,
+        picks: [], workplaceStation: "판교", tenure: "jeonse" });
+      const focus = [];
+      if (m.workPin) focus.push(m.workPin);
+      for (const p of m.pins) focus.push(p);
+      const { toXY } = fit(focus, W, H, margin);
+      const { tenurePriceLine } = await import("../src/ui/candidate-card.jsx");
+      const laid = layout(m.pins.map((p) => {
+        const [x, y] = toXY(p.lon, p.lat);
+        let tag = "가격 미정";
+        try {
+          tag = tenurePriceLine(p.candidate, m.tenure).price;
+        } catch { /* keep fallback */ }
+        return { id: p.id, x, y, tag };
+      }), W, H);
+      assert.equal(laid.length, m.pins.length, "every pin laid out");
+      for (let i = 0; i < laid.length; i++) {
+        for (let j = i + 1; j < laid.length; j++) {
+          const A = laid[i].box;
+          const B = laid[j].box;
+          const hit = A.x < B.x + B.w && B.x < A.x + A.w
+            && A.y < B.y + B.h && B.y < A.y + A.h;
+          assert.ok(!hit, `tags ${laid[i].id} × ${laid[j].id} overlap at ${W}×${H}`);
+        }
+      }
+    });
+  }
+
+  it("shows 추정 once on the pre-run commute line", async () => {
+    const { commuteShortLine } = await import("../src/ui/candidate-card.jsx");
+    const cand = { commute: {
+      walk: { known: true, station: "정자", minutes: 3.8 },
+      ride: { known: true, minutes: 8.5, derived: { methodsUsed: ["estimate"] } } } };
+    const line = commuteShortLine(cand, "판교");
+    assert.match(line.text, /추정 \(살아 보기 전\)/);
+    assert.equal(line.text.match(/추정/g).length, 1, "single 추정 in the text");
+    const React = (await import("react")).default;
+    const { renderToString } = await import("react-dom/server");
+    const { CandidateCard } = await import("../src/ui/candidate-card.jsx");
+    const full = { id: "h-a", name: "테스트집", kind: "오피스텔",
+      lon: 127.11, lat: 37.39, ...cand,
+      tenures: [{ tenure: "jeonse", median_won: 195000000, deals: 5 }] };
+    const html = renderToString(React.createElement(CandidateCard,
+      { candidate: full, tenure: "jeonse", destName: "판교" }));
+    assert.match(html, /추정 \(살아 보기 전\)/);
+    assert.equal(html.match(/추정/g).length, 1, "card shows 추정 exactly once");
+  });
+});

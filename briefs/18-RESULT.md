@@ -214,3 +214,46 @@ Orchestrator walkthrough 2026-10-30 14:30, 1440×900, on branch
   hits the same known sandbox EPERM (`node_modules/.vite-temp`);
   stand-in green: full esbuild bundle of `src/main.js` (4.9 MB JS +
   291 KB CSS, fonts externalized) in `/tmp/18d-bundle.js`.
+
+## 18f — chat map: real subway tracks, non-overlapping tags, one 추정
+
+Three 18e walkthrough leftovers, all in the chat map + card:
+
+- Item 1 (tracks): `buildChatMap` (`web/src/chatmap.js`) joined
+  `line.stops` in array order — alphabetical in
+  `data/build/region/network.json`, hence the tangle. Each line is now
+  drawn from its `patterns[].geometry` (real OSM track polyline,
+  `meta.edge_methods.geometry` = 678 edges), one pattern per direction;
+  a pattern without geometry falls back to `patterns[].stops` order,
+  never `line.stops`. Sparse rural vertices (up to 3.8 km apart on the
+  경강선) are densified in-lon/lat (`densifyPts`, ≤ 2.5 km hops) so the
+  drawn line keeps the same segments with intermediate vertices.
+  Station dots still come from `stops`. Renderer keys lines
+  `id:direction:index` (one line id now yields several polylines).
+  Tests on the real network: every consecutive hop ≤ 3 km, each drawn
+  line within 15 % of its pattern's `distance_km`.
+- Item 2 (tags): new pure `layoutPinLabels` (`web/src/chatmap.js`) used
+  by `web/src/ui/chatmap.jsx`. Each tag tries right, left, above, below
+  (clamped into the frame); when all collide it steps diagonally outward
+  with a short leader line (stack-below last resort). Pins closer than
+  18 px fan out on a small circle around their centroid with a thin
+  leader back to the true point. Tests: the synthetic 5/6-style pair
+  ("전세 1억 9,500만 원" vs "전세 1억 9,800만 원") fans out with
+  disjoint boxes, and the real single-firstjob `find_homes` run
+  (판교 통근, 전세 ≤ 2억, 6 candidates) lays out with no two tag boxes
+  intersecting at both 1440×900 and 390×844.
+- Item 3 (card): the commute line already ends in "· 추정 (살아 보기
+  전)" while `SourceDot` added a second "● 추정". `CandidateCard`
+  (`web/src/ui/candidate-card.jsx`) now skips the dot whenever the line
+  already says 추정 — the card reads "… · 추정 (살아 보기 전)" once.
+  Test renders the card and counts exactly one 추정.
+
+## End (18f)
+
+- `cd web && npm test 2>&1 | tail -6`: **1257 pass, 0 fail, 1 skipped**
+  (skip pre-existing; +6 since 18d, all new 18f tests).
+  `npx vite build 2>&1 | tail -2` hits the same known sandbox EPERM
+  (`node_modules/.vite-temp`, unwritable in-sandbox — fails loading
+  `vite.config.js` before any source); stand-in green: full esbuild
+  bundle of `src/main.js` (4.9 MB JS + 291 KB CSS, fonts externalized)
+  in `/tmp/18f-bundle.js`.
