@@ -1,21 +1,15 @@
-// Entry screen (12b, A): a question over the map. Ported from the
-// ai-chat-landing template (Layout + greeting + ChatComposer +
-// ClickableCard grid) with the template's sample content removed — no
-// categories, modes, mentions or attachments. The 3D canvas behind
-// (tour scene, slowly drifting) shows through a warm white veil
-// (~35% map visible) so the dark text reads bright, not murky.
+// Entry screen (12b, A; 19f: visible city, heading first, steps,
+// white example cards). A question over the map: the 3D canvas behind
+// (tour scene, slowly drifting) shows through a radial veil — calm
+// white in the middle, city visible at the edges.
 //
 // Suggestion cards fill example prompts (labelled 예시) or open the
 // listing paste check; sending moves to the chat (?chat=…).
 import { useState } from "react";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { VStack } from "@astryxdesign/core/VStack";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
-import { Heading } from "@astryxdesign/core/Heading";
 import { Button } from "@astryxdesign/core/Button";
-import { ClickableCard } from "@astryxdesign/core/ClickableCard";
-import { Grid } from "@astryxdesign/core/Grid";
 import { Popover } from "@astryxdesign/core/Popover";
 import { ChatComposer } from "@astryxdesign/core/Chat";
 import { chatUrl } from "../chat/urls.js";
@@ -37,6 +31,12 @@ export const EXAMPLE_PROMPTS = [
   { id: "dual-income-child",
     title: "맞벌이 + 초등학생 자녀",
     prompt: "맞벌이에 초등학생 아이 1명, 잠실 출근, 전세 6억 이하, 초등학교 도보 10분" },
+];
+
+export const LANDING_STEPS = [
+  "말로 조건 말하기",
+  "지도에서 후보 2곳 담기",
+  "30일 살아 보고 비교",
 ];
 
 // The user's 11 area names (12a brief): coverage line under the cards.
@@ -94,6 +94,10 @@ export function Landing() {
     <div className="ui-landing overlay">
       <div className="ui-landing-scrim" aria-hidden="true" />
       <div className="ui-landing-body">
+        <div className="ui-landing-brand">
+          <span className="ui-landing-brandname">Ithaca</span>
+          <span className="ui-landing-brandtag">{LANDING_TAGLINE}</span>
+        </div>
         <Layout
           height="fill"
           contentWidth={720}
@@ -101,51 +105,60 @@ export function Landing() {
           content={(
             <LayoutContent>
               <VStack gap={8} vAlign="center" style={{ minHeight: "100%" }}>
-                <VStack gap={1}>
-                  <Text type="supporting">{LANDING_BRAND}</Text>
-                  <Text type="large" as="h2">{LANDING_SUB}</Text>
-                  <Text type="display-2" as="h1">{LANDING_HEADING}</Text>
-                </VStack>
+                <div>
+                  <h1 className="ui-landing-heading">{LANDING_HEADING}</h1>
+                  <p className="ui-landing-sub">{LANDING_SUB}</p>
+                </div>
                 <ChatComposer
                   onSubmit={submit}
                   value={value}
                   onChange={(v) => { setValue(v); setExampleId(null); }}
                   placeholder={LANDING_PLACEHOLDER}
                 />
+                <ol className="ui-landing-steps">
+                  {LANDING_STEPS.map((step, i) => (
+                    <li key={step} style={{ display: "contents" }}>
+                      {i > 0 ? <span className="ui-landing-stepsep" aria-hidden="true">›</span> : null}
+                      <span className="ui-landing-step">
+                        <span className="ui-landing-stepnum" aria-hidden="true">{i + 1}</span>
+                        {step}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
                 <VStack gap={3}>
-                  <Grid columns={{ minWidth: 280 }} gap={3}>
+                  <div className="ui-landing-cards">
                     {EXAMPLE_PROMPTS.map((p) => (
-                      <ClickableCard
+                      <button
                         key={p.id}
-                        label={`${p.title} 예시로 시작하기`}
-                        variant="muted"
-                        padding={3}
+                        type="button"
+                        className="ui-landing-card"
+                        aria-label={`${p.title} 예시로 시작하기`}
                         onClick={() => { window.location.href = exampleChatUrl(p.prompt); }}>
-                        <VStack gap={0.5}>
-                          <Heading level={4}>{`${p.title} · 예시`}</Heading>
-                          <Text type="body" color="secondary" size="xsm">{p.prompt}</Text>
-                        </VStack>
-                      </ClickableCard>
+                        <span className="ui-landing-cardtop">
+                          <span className="ui-landing-cardtitle">{p.title}</span>
+                          <span className="ui-landing-cardchip">예시</span>
+                        </span>
+                        <p className="ui-landing-cardprompt">{p.prompt}</p>
+                      </button>
                     ))}
-                    <ClickableCard
-                      label="매물 글 붙여 넣기로 시작하기"
-                      variant="muted"
-                      padding={3}
+                    <button
+                      type="button"
+                      className="ui-landing-card"
+                      aria-label="매물 글 붙여 넣기로 시작하기"
                       onClick={() => { window.location.href = chatUrl("", { listing: "1" }); }}>
-                      <VStack gap={0.5}>
-                        <Heading level={4}>매물 글 붙여 넣기</Heading>
-                        <Text type="body" color="secondary" size="xsm">
-                          본 매물 글을 붙여 넣으면 실거래와 비교해 드려요
-                        </Text>
-                      </VStack>
-                    </ClickableCard>
-                  </Grid>
-                  <Text type="supporting">{LANDING_TAGLINE}</Text>
+                      <span className="ui-landing-cardtop">
+                        <span className="ui-landing-cardtitle">매물 글 붙여 넣기</span>
+                      </span>
+                      <p className="ui-landing-cardprompt">
+                        본 매물 글을 붙여 넣으면 실거래와 비교해 드려요
+                      </p>
+                    </button>
+                  </div>
                   <div className="ui-landing-foot">
-                    <HStack gap={2} vAlign="center" wrap="wrap">
-                      <Text type="supporting">{COVERAGE_LINE}</Text>
-                      <SourcesPopover />
-                    </HStack>
+                    <span>{COVERAGE_LINE}</span>
+                    <span aria-hidden="true"> · </span>
+                    <SourcesPopover />
                   </div>
                 </VStack>
               </VStack>
