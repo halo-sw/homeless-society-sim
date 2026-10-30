@@ -90,9 +90,13 @@ describe("26p SSR labels", () => {
     const src = readFileSync(join(HERE, "..", "src", "ui", "chat.jsx"), "utf8");
     assert.ok(src.includes('label="대화"'), "chat label");
     assert.ok(src.includes('label="지도·후보"'), "map-and-candidates label");
-    assert.ok(src.includes("extra={workOpen && !phone ? narrowTabs : null}"),
+    assert.ok(src.includes("if (!workOpen) return null"),
+      "toggle mounts only when workOpen");
+    assert.ok(src.includes('return phone ? "shell" : "top"'),
+      "tabsMount top only when workOpen and not phone, shell only when workOpen and phone");
+    assert.ok(src.includes('tabsMount === "top" ? narrowTabs'),
       "desktop toggle needs workOpen");
-    assert.ok(src.includes("{workOpen && phone ? narrowTabs : null}"),
+    assert.ok(src.includes('tabsMount === "shell" ? narrowTabs'),
       "phone row needs workOpen");
   });
 

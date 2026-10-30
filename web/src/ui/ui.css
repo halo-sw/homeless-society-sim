@@ -9,7 +9,7 @@
   --ds-line: #ddd6c8;
   --ds-ink-1: #1d1b18;
   --ds-ink-2: #5c564c;
-  --ds-ink-3: #8a8275;
+  --ds-ink-3: #736b5f;
   --ds-action: #1d1b18;
   --ds-accent: #2f6fed;
   --ds-home-a: #b3541e;
@@ -339,6 +339,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: nowrap;
   overflow-x: auto; padding: var(--ui-s8) var(--ui-s12); }
 .ui-chat-chips > * { flex: none; }
+/* 29a4: source chips say what was checked and never truncate. */
+.ui-cite-label { font-size: var(--ds-t-12); color: var(--ds-ink-2); flex: none; }
+.ui-cite { max-width: 100%; min-width: 0; }
+.ui-cites a, .ui-cites span { max-width: 100%; }
+.ui-cites a > span, .ui-cites span > span {
+  white-space: normal; overflow: visible; }
 .ui-chat-thread > p { padding: var(--ui-s4) var(--ui-s12) var(--ui-s8); }
 .ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   overflow: auto; padding: var(--ui-s12); pointer-events: none; }

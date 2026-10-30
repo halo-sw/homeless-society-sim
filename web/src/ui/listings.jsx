@@ -119,7 +119,7 @@ export function PasteCheck({ onAsk } = {}) {
         onChange={(e) => setText(e.target.value)} aria-label="매물 글 붙여넣기" />
       <HStack gap={2} vAlign="center" wrap="wrap">
         <Button size="sm" label="읽어 보기" onClick={read} />
-        <Button size="sm" variant="secondary" label="예시로 채우기 (예시)"
+        <Button size="sm" variant="secondary" label="예시로 채우기"
           onClick={() => { setText(EXAMPLE_LISTING_TEXT); setParsed(null); setFilled({}); }} />
         <Button size="sm" variant="ghost" label="지우기"
           onClick={() => { setText(""); setParsed(null); setFilled({}); }} />

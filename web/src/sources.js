@@ -10,6 +10,7 @@ export const SOURCES = [
   {
     id: "osm",
     name: "OpenStreetMap",
+    short: "OSM",
     use: "지도·도보 그래프·지하철 노선도의 바탕 지도. 후보 집 위치와 출퇴근 경로 계산에 씁니다.",
     licence: "ODbL (Open Database License)",
     version: "전국 추출 2026-10-27T21:23:59Z",
@@ -28,6 +29,7 @@ export const SOURCES = [
   {
     id: "gis-buildings",
     name: "GIS건물통합정보 (국토교통부/VWorld)",
+    short: "건물정보",
     use: "3D 집 모양과 층수·용도. 동 이름 확인과 단지 위치 매칭에도 씁니다.",
     licence: "CC BY / 공공누리 제1유형 (출처표시)",
     version: "기준일 2026-10-09",
@@ -46,6 +48,7 @@ export const SOURCES = [
   {
     id: "rtms",
     name: "국토교통부 실거래가 공개시스템 (RTMS)",
+    short: "실거래가(국토부)",
     use: "후보 카드의 전세·월세·매매 중간값과 거래 건수. 9개 구·시, 2025-10-28…2026-10-27.",
     licence: "공공데이터 (참고용, 법적 효력 없음)",
     version: "계약일 기준 2025-10-28…2026-10-27",

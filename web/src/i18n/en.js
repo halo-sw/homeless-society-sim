@@ -64,6 +64,10 @@ const seedPhrases = {
   "처음 화면으로 돌아가요.": "Return to the first screen.",
   "화면 선택": "Choose a view",
   "상황을 알려주세요": "Tell us your situation",
+  // 29a4: summary edit affordance, source row, short source names.
+  "확인한 출처": "Sources checked",
+  "실거래가(국토부)": "Actual transactions (MOLIT)",
+  "건물정보": "Building info",
   "홈 선택": "Choose a home",
   "집만 밝게 보기": "Highlight homes only",
   "지역": "Area",
@@ -277,6 +281,8 @@ const seedPhrases = {
 
 const seedPatterns = [
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
+  // 29a4: top-bar summary edit button (aria-label carries the summary).
+  { ko: "조건 고치기: {0}", en: "Edit conditions: {0}" },
   // 29a2: candidate-list commute row (total first), budget difference,
   // pick counter, more button, single photo notice.
   { ko: "총 {0}분 · {1}역 걸어서 {2}분 + 지하철 {3}분", en: "Total {0} min · {1} Stn walk {2} min + subway {3} min" },

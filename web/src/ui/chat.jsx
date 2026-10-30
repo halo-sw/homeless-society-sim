@@ -176,7 +176,7 @@ export function ProfileCard({ profile, example, onChip }) {
             </HStack>
           </VStack>
         )}
-        <details className="ui-section">
+        <details className="ui-section" data-profile-details="">
           <summary className="ui-section-head">자세히</summary>
           <div className="ui-section-body">
             <MetadataList>
@@ -267,6 +267,32 @@ export function scrollChatToSim(simId, root) {
   } catch {
     return false;
   }
+}
+
+// 29a4: suggestion chips fold while the customer reads — the chip row
+// shows only while the thread scroller is within 160 px of the bottom.
+export function chipsVisible(scrollTop, scrollHeight, clientHeight) {
+  return scrollHeight - scrollTop - clientHeight <= 160;
+}
+
+// 29a4: the single Chat/View pane toggle — one mount point per layout
+// (top bar on desktop, its own row on phones), never both at once.
+export function ChatPaneTabs({ view, onChange }) {
+  return (
+    <div className="ui-chat-narrowtabs">
+      <SegmentedControl label="화면 선택" value={view}
+        onChange={onChange} size="sm" layout="fill">
+        <SegmentedControlItem value="chat" label="대화" />
+        <SegmentedControlItem value="work" label="지도·후보" />
+      </SegmentedControl>
+    </div>
+  );
+}
+
+// 29a4: where the single pane toggle mounts — null keeps it unmounted.
+export function paneTabsMount({ workOpen, phone }) {
+  if (!workOpen) return null;
+  return phone ? "shell" : "top";
 }
 
 // 27f: follow the conversation — scroll the message list to the end.
@@ -1287,6 +1313,8 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
+  // 29a4: suggestion chips fold while the customer reads up-thread.
+  const [chipsNearBottom, setChipsNearBottom] = useState(true);
   // 27j: straight Muse failures (3 → rules answer); liveRows → the busy bubble rows.
   const [museFails, setMuseFails] = useState(0);
   const [liveRows, setLiveRows] = useState([]);
@@ -2042,6 +2070,7 @@ export function ChatScreen() {
     busyRef.current = true;
     setBusy(true);
     setError("");
+    setChipsNearBottom(true);
     pushMsg({ role: "user", kind: "text", content });
     setComposer("");
     // 27j: the rules path always answers — count replies added after this point.
@@ -2239,6 +2268,36 @@ export function ChatScreen() {
     if (last && last.kind === "simulation" && last.data && last.data.status === "done") return;
     soon(() => scrollChatToEnd());
   }, [messages.length, liveRows.length]);
+  // 29a4: fold the chip row while the customer reads up-thread; the
+  // composer stays. Sending a message brings the chips back.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const list = document.querySelector(".ui-chat-thread .astryx-chat-message-list");
+    if (!list) return undefined;
+    const onScroll = () => {
+      try {
+        setChipsNearBottom(chipsVisible(list.scrollTop, list.scrollHeight, list.clientHeight));
+      } catch { /* keep the chips as they are */ }
+    };
+    onScroll();
+    list.addEventListener("scroll", onScroll, { passive: true });
+    return () => list.removeEventListener("scroll", onScroll);
+  }, [messages.length]);
+  // 29a4: the top-bar summary button scrolls to the latest 고객님 상황
+  // card and opens its 자세히 section.
+  const profileDetailsRequest = useSyncExternalStore(store.subscribe,
+    () => store.getState().profileDetailsRequest || 0, () => 0);
+  useEffect(() => {
+    if (!profileDetailsRequest) return;
+    try {
+      if (typeof document === "undefined") return;
+      const cards = [...document.querySelectorAll(".ui-chat-thread [data-profile-details]")];
+      const last = cards[cards.length - 1];
+      if (!last) return;
+      if (last.tagName === "DETAILS" && !last.open) last.open = true;
+      if (typeof last.scrollIntoView === "function") last.scrollIntoView({ block: "start" });
+    } catch { /* keep the thread as it is */ }
+  }, [profileDetailsRequest]);
   // 26c: a resolved place (Meta HQ) names the destination and pins
   // the map's work pin at its lon/lat.
   const wpResolved = (profile && profile.workplaces && profile.workplaces.value
@@ -2294,15 +2353,9 @@ export function ChatScreen() {
 
   const summary = profile ? profileSummary(profile) : "";
   // 26p: one toggle instance — its mount point moves with the viewport.
-  const narrowTabs = (
-    <div className="ui-chat-narrowtabs">
-      <SegmentedControl label="화면 선택" value={view}
-        onChange={setView} size="sm" layout="fill">
-        <SegmentedControlItem value="chat" label="대화" />
-        <SegmentedControlItem value="work" label="지도·후보" />
-      </SegmentedControl>
-    </div>
-  );
+  // 29a4: paneTabsMount keeps exactly one mount point per layout.
+  const tabsMount = paneTabsMount({ workOpen, phone });
+  const narrowTabs = (<ChatPaneTabs view={view} onChange={setView} />);
 
   return (
     <div className={`ui-chat overlay${view === "work" ? " ui-chat-narrow-work" : ""}`}>
@@ -2313,7 +2366,7 @@ export function ChatScreen() {
         topNav={(
           <>
           <TopBar mode="chat" summary={summary}
-            extra={workOpen && !phone ? narrowTabs : null}
+            extra={tabsMount === "top" ? narrowTabs : null}
             settings={{
               mode: "chat",
               model: { usageLog, serverKeys, errors: modelErrors },
@@ -2333,7 +2386,7 @@ export function ChatScreen() {
               onIntro: null,
               onRestart: () => { clearTranscript(); window.location.href = appUrl(); },
             }} />
-          {workOpen && phone ? narrowTabs : null}
+          {tabsMount === "shell" ? narrowTabs : null}
           </>
         )}>
         <div className="ui-chat-main"
@@ -2382,7 +2435,7 @@ export function ChatScreen() {
                   </ChatMessage>
                 )}
               </ChatMessageList>
-              {messages.length > 0 && (() => {
+              {messages.length > 0 && chipsNearBottom && (() => {
                 const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
                 const chips = chipsForLatest(messages, fallback);
                 const live = chips !== fallback;
