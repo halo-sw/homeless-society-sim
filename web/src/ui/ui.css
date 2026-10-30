@@ -1283,6 +1283,7 @@ button.ui-tag:hover { color: var(--ui-ink); }
 @media (max-width: 480px) {
   .ds-lp-links { display: none; }
   .ds-lp-nav-inner { gap: var(--ds-s-12); }
+  .ds-lp-nav-right { margin-left: auto; }
   .ds-lp-nav .ds-pbm-text { display: none; }
   .ds-lp-nav .ui-lang-toggle { display: none; }
   .ds-lp-h { font-size: 24px; }
@@ -1313,9 +1314,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
   letter-spacing: 0.04em; color: var(--ds-ink-3);
   margin: 0 0 var(--ds-s-12); }
 .ds-lp-h { font-size: 36px; line-height: 1.25; text-wrap: balance; }
-.ds-lp-hero { position: relative; overflow: clip;
-  background: radial-gradient(ellipse 720px 420px at 50% 30%,
-    var(--ds-surface) 0%, var(--ds-page) 72%); }
+.ds-lp-heroband { background: radial-gradient(ellipse at 50% 30%,
+    var(--ds-surface) 0%, var(--ds-page) 70%);
+  padding-bottom: calc(var(--ds-s-48) * 2); }
+.ds-lp-hero { position: relative; overflow: clip; }
 .ds-lp-heroeyebrow { display: inline-flex; align-items: center;
   gap: var(--ds-s-8); background: var(--ds-surface);
   border: 1px solid var(--ds-line); border-radius: var(--ds-r-pill);
@@ -1367,6 +1369,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ds-lp-tablewrap th[scope="col"].ds-lp-col-ithaca { display: table-cell; }
 .ds-lp-tablewrap th[scope="col"] img { vertical-align: -3px;
   margin-right: var(--ds-s-4); }
+.ds-lp-ithacahead { display: inline-flex; align-items: center;
+  gap: var(--ds-s-8); white-space: nowrap; }
+.ds-lp-ithacahead img { width: 16px; height: 16px; vertical-align: middle;
+  margin-right: 0; }
 .ds-lp-tablewrap tbody th[scope="row"] { font-weight: 600; }
 .ds-lp-tablewrap tbody td:not(.ds-lp-col-ithaca) { color: var(--ds-ink-2); }
 .ds-lp-numcard .ds-lp-num { font-family: var(--ds-font-display);
@@ -1456,7 +1462,9 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ds-lp-h { font-size: 26px; }
   .ds-lp-title { font-size: 32px; }
   .ds-lp-ctatitle { font-size: 32px; }
-  .ds-lp-proof { max-width: 300px; margin-left: auto; margin-right: auto; }
+  .ds-lp-proof { max-width: 300px; margin-left: auto; margin-right: auto;
+    gap: var(--ds-s-8) var(--ds-s-16); justify-content: center; text-align: center; }
+  .ds-lp-prooffact + .ds-lp-prooffact { border-left: 0; }
   .ds-lp-steps::before { top: var(--ds-s-24); bottom: var(--ds-s-24);
     left: 18px; right: auto; width: 1px; height: auto; }
   .ds-lp-step { text-align: left; display: flex; gap: var(--ds-s-16);

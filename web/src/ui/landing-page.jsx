@@ -155,6 +155,7 @@ export function LandingPage() {
       </nav>
       <div className="ds-lp-notice">{NOTICE}</div>
 
+      <div className="ds-lp-heroband">
       <header className="ds-lp-hero">
         <p className="ds-lp-heroeyebrow">
           <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={16} height={16} />
@@ -197,6 +198,7 @@ export function LandingPage() {
         <PoweredByMuse size="md" />
         <p className="ds-lp-cover">{COVERAGE_LINE}</p>
       </header>
+      </div>
 
       <section className="ds-lp-band ds-lp-band--sunken" id="features">
         <div className="ds-lp-section">
@@ -234,8 +236,10 @@ export function LandingPage() {
                   <th scope="col">직접 정리</th>
                   <th scope="col">일반 챗봇</th>
                   <th scope="col" className="ds-lp-col-ithaca">
-                    <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={16} height={16} />
-                    Ithaca
+                    <span className="ds-lp-ithacahead">
+                      <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={16} height={16} />
+                      Ithaca
+                    </span>
                   </th>
                 </tr>
               </thead>

@@ -58,4 +58,16 @@ describe("28f landing visual (SSR, no DOM)", () => {
     const cta = landingCss.match(/\.ds-lp-cta\s*\{[^}]*background: var\(--ds-action\)[^}]*\}/);
     assert.ok(cta, "dark CTA band");
   });
+
+  it("28g: hero wash on the full-width band, phone nav pinned right", () => {
+    const heroBand = landingCss.match(/\.ds-lp-heroband\s*\{[^}]*\}/);
+    assert.ok(heroBand && heroBand[0].includes("radial-gradient"), ".ds-lp-heroband has the radial-gradient wash");
+    assert.ok(!/\.ds-lp-hero\s*\{[^}]*radial-gradient/.test(landingCss), "wash is not painted on the 760px hero column");
+    const from480 = landingCss.slice(landingCss.indexOf("@media (max-width: 480px)"));
+    assert.ok(
+      /\.ds-lp-nav-right\s*\{[^}]*margin-left:\s*auto/.test(from480)
+        || /\.ds-lp-nav-inner\s*\{[^}]*justify-content:\s*space-between/.test(from480),
+      "480px block pins the nav right group to the right edge",
+    );
+  });
 });
