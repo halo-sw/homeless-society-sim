@@ -124,7 +124,7 @@ export function markerScaleFor(camDistM, fovDeg, viewHpx, worldHM, maxPx) {
   const wh = Math.max(0.01, Number(worldHM) || 0.01);
   const px = Math.max(1, Number(maxPx) || 1);
   const worldForMax = (px * (2 * d * Math.tan((fov * Math.PI) / 180 / 2))) / vh;
-  return Math.min(1, Math.max(MARKER_MIN_SCALE, worldForMax / wh));
+  return Math.min(1, Math.max(1e-3, worldForMax / wh));
 }
 
 export function patternById(network, id) {

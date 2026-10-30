@@ -22,6 +22,7 @@ import { pickMoments } from "./engine/moments.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
 import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
+import { memberLabelFor } from "./profile.js";
 import { DWELL_S, legGlideDuration, pathWaypoints, seekState, selectTourStops, tourSchedule } from "./tour.js";
 import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_TRUNK_R_TOP, placeTrees } from "./trees.js";
 
@@ -1399,6 +1400,8 @@ async function bootSim() {
   const edgeLen = new Map(area.graph.edges.walk.map((e) => [`${e.from}>${e.to}`, e.length_m]));
   const homeLonLat = new Map(run.agents.map((a) => [a.key, nodeLonLat.get(a.home_node) || [origin.lon, origin.lat]]));
   const household = run.agents.filter((a) => a.household);
+  // 19e: display names — 나 / 배우자 / 아이 …, never "구성원 N".
+  household.forEach((a, i) => { a.label = memberLabelFor(a, i); });
   const background = run.agents.filter((a) => !a.household);
 
   // --- agent meshes: household large + highlighted, neighbours small ---
@@ -3109,9 +3112,10 @@ async function bootSim() {
     const jfTrain = journeyFrame();
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
-      journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed);
+      journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed,
+        camera, (household[follow - 1] || {}).label);
     }
-    // 17c: distance-scaled journey markers (cone ≤ 28 px, dots ≤ 14 px).
+    // 17c/19e: distance-scaled journey dots (≤ 14 px); the train is an HTML pin.
     if (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending" || jfTrain.phase === "hold"
         || jfTrain.phase === "boarding") {

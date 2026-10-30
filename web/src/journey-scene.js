@@ -12,7 +12,7 @@
 
 import * as THREE from "three";
 import { lonLatToXY } from "./frame.js";
-import { BAND_COLORS, STATION_DOT_PX, TRAIN_MARKER_PX, corridorLoadPlan, markerScaleFor, patternById, trainPosition } from "./journey.js";
+import { BAND_COLORS, STATION_DOT_PX, corridorLoadPlan, markerScaleFor, patternById, trainPosition } from "./journey.js";
 import { baseMapBounds, hexToRgb, sliceGeometry, tileBuildings, tileLines,
   tileRoadRibbons, tileWater, tileWaterRibbons } from "./corridor.js";
 import { congestionBand } from "./engine/journey.js";
@@ -71,12 +71,11 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
     roughness: 1, metalness: 0 });
   const rgbRoad = hexToRgb(numOr(l.regionalRoad, DEFAULT_LOOK.regionalRoad));
   const rgbWater = hexToRgb(numOr(l.regionalWater, DEFAULT_LOOK.regionalWater));
-  const trainMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95 });
   const dotGeo = new THREE.SphereGeometry(18, 10, 8);
-  // 17c: marker outline + sizing. The cone carries a 1 px dark edge child;
-  // dots get a dark hull (same instances ×1.25, drawn first) so white
-  // reads on beige. World sizes feed markerScaleFor (journey.js).
-  const TRAIN_CONE_H = 90;
+  // 17c: marker outline + sizing. Dots get a dark hull (same instances
+  // ×1.25, drawn first) so white reads on beige. World sizes feed
+  // markerScaleFor (journey.js). 19e: the train cone is gone — the train
+  // is an HTML .trainpin in the tags layer, constant size by construction.
   const DOT_DIAM = 36;
   const DOT_HULL = 1.25;
   const OUTLINE_DARK = 0x222222;
@@ -85,7 +84,7 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
   let dotMesh = null;
   let dotHull = null;
   let dotWorld = []; // world Vector3 per station dot (for rescaling)
-  let trainMesh = null;
+  let trainPin = null; // {root, dot, labelEl} HTML train marker (19e)
   let groundMesh = null;
   let roadMesh = null;
   let waterOpenMesh = null;
@@ -115,19 +114,19 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
   }
 
   function clearPath() {
-    for (const mesh of [lineMesh, dotMesh, dotHull, trainMesh]) {
+    for (const mesh of [lineMesh, dotMesh, dotHull]) {
       if (mesh) {
         group.remove(mesh);
-        // The train outline rides as a child: its edge geometry goes too.
-        mesh.traverse((o) => {
-          if (o !== mesh && o.geometry) o.geometry.dispose();
-          if (o !== mesh && o.material) o.material.dispose();
-        });
         if (mesh.geometry && mesh.geometry !== dotGeo) mesh.geometry.dispose();
-        if (mesh.material && mesh.material !== trainMat) mesh.material.dispose();
+        if (mesh.material) mesh.material.dispose();
       }
     }
-    lineMesh = dotMesh = dotHull = trainMesh = null;
+    lineMesh = dotMesh = dotHull = null;
+    hideTrainPin();
+    if (trainPin && trainPin.root.parentNode) {
+      trainPin.root.parentNode.removeChild(trainPin.root);
+    }
+    trainPin = null;
     dotWorld = [];
     clearLabels();
     rideKey = "";
@@ -290,25 +289,14 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
       });
       dotMesh.instanceMatrix.needsUpdate = true;
       dotHull.instanceMatrix.needsUpdate = true;
-      // Draw ladder: line 990, hull 991, dots 992, cone 993, edges 994.
+      // Draw ladder: line 990, hull 991, dots 992.
       dotHull.renderOrder = 991;
       dotHull.frustumCulled = false;
       dotMesh.renderOrder = 992;
       dotMesh.frustumCulled = false;
       group.add(dotHull, dotMesh);
     }
-    trainMesh = new THREE.Mesh(new THREE.ConeGeometry(30, 90, 10), trainMat);
-    // 1 px dark cone edges (17c): a LineSegments child, so it inherits
-    // the marker scale and hides with the cone.
-    const edge = new THREE.LineSegments(
-      new THREE.EdgesGeometry(trainMesh.geometry, 20),
-      new THREE.LineBasicMaterial({ color: OUTLINE_DARK, depthTest: false,
-        transparent: true, opacity: 0.9 }));
-    edge.renderOrder = 994;
-    trainMesh.add(edge);
-    trainMesh.renderOrder = 993;
-    trainMesh.visible = false;
-    group.add(trainMesh);
+    // 19e: no 3D train mesh — setTrain draws the HTML .trainpin instead.
     buildStationLabels(ride, coords);
     rideKey = `${ride.legs.map((l) => `${l.line}:${l.from}>${l.to}`).join("+")}`;
     group.visible = true;
@@ -360,35 +348,83 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
 
   function hideStationLabels() {
     for (const s of stationLabels) s.el.style.display = "none";
+    hideTrainPin();
   }
 
-  function setTrain(ride, elapsed) {
-    if (!trainMesh || !ride || !network) return null;
-    const pos = trainPosition(network, ride, elapsed);
-    if (!pos) {
-      trainMesh.visible = false;
+  // 19e: HTML train pin (constant 20 px by construction, so it can
+  // never balloon near the camera). The dot fills with the current leg's
+  // congestion colour; the pill reads `${lineName} · ${memberLabel}`.
+  const trainV = new THREE.Vector3();
+  function ensureTrainPin() {
+    if (trainPin || !tags || typeof document === "undefined") return trainPin;
+    const root = document.createElement("div");
+    root.className = "trainpin";
+    const dot = document.createElement("span");
+    dot.className = "trainpin-dot";
+    const labelEl = document.createElement("span");
+    labelEl.className = "trainpin-label";
+    root.appendChild(dot);
+    root.appendChild(labelEl);
+    root.style.display = "none";
+    tags.appendChild(root);
+    trainPin = { root, dot, labelEl };
+    return trainPin;
+  }
+  function hideTrainPin() {
+    if (trainPin) trainPin.root.style.display = "none";
+  }
+  function setTrain(ride, elapsed, camera, memberLabel) {
+    if (!ride || !network) {
+      hideTrainPin();
       return null;
     }
-    const p = toWorld([pos.lon, pos.lat], 90);
-    trainMesh.position.copy(p);
-    trainMesh.visible = true;
+    const pos = trainPosition(network, ride, elapsed);
+    if (!pos) {
+      hideTrainPin();
+      return null;
+    }
+    const pin = ensureTrainPin();
+    if (!pin || !camera) {
+      hideTrainPin();
+      return pos;
+    }
+    const w = (tags && tags.clientWidth) || (typeof innerWidth === "number" ? innerWidth : 0);
+    const h = (tags && tags.clientHeight) || (typeof innerHeight === "number" ? innerHeight : 0);
+    if (!(w > 0 && h > 0)) {
+      hideTrainPin();
+      return pos;
+    }
+    trainV.copy(toWorld([pos.lon, pos.lat], 90)).project(camera);
+    if (trainV.z > 1 || trainV.z < -1) {
+      hideTrainPin();
+      return pos;
+    }
+    const x = (trainV.x * 0.5 + 0.5) * w;
+    const y = (-trainV.y * 0.5 + 0.5) * h;
+    if (x < 0 || x > w || y < 0 || y > h) {
+      hideTrainPin();
+      return pos;
+    }
+    const leg = ride.legs[pos.legIndex] || ride.legs[0] || {};
+    const pct = leg.congestion ? leg.congestion.valuePct : fallbackPct;
+    pin.dot.style.background =
+      `#${BAND_COLORS[congestionBand(pct).key].toString(16).padStart(6, "0")}`;
+    pin.labelEl.textContent = memberLabel ? `${leg.lineName} · ${memberLabel}` : (leg.lineName || "");
+    pin.root.style.display = "flex";
+    pin.root.style.left = `${x}px`;
+    pin.root.style.top = `${y}px`;
     return pos;
   }
 
-  // 17c: distance-scaled markers (call every frame while the journey is
-  // visible): the cone clamps to 28 px, dots to 14 px, so the marker
-  // stays legible from street level to the cruise without hiding the
-  // road. Runs even when the cone hides (dots still show the stations).
+  // 17c/19e: distance-scaled station dots (call every frame while the
+  // journey is visible): dots clamp to 14 px, legible from street level
+  // to the cruise without hiding the road. The train is an HTML pin now
+  // (constant size), so only the dots rescale here.
   const markerDummy = new THREE.Object3D();
   function updateMarkerScale(camera, viewHpx) {
     if (!camera || !group.visible) return;
     const fov = Number(camera.fov) || 10;
     const vh = Number(viewHpx) || 800;
-    if (trainMesh && trainMesh.visible) {
-      trainMesh.scale.setScalar(markerScaleFor(
-        camera.position.distanceTo(trainMesh.position), fov, vh,
-        TRAIN_CONE_H, TRAIN_MARKER_PX));
-    }
     if (dotMesh && dotHull && dotWorld.length > 0) {
       dotWorld.forEach((p, i) => {
         const s = markerScaleFor(camera.position.distanceTo(p), fov, vh,
