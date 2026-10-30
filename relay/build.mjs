@@ -31,7 +31,7 @@ await writeFile(
     rewrites: [{ source: "/api/:path*", destination: "/api/relay?path=:path*" }],
     // VWorld refuses requests from outside Korea, so the function runs in Seoul.
     regions: ["icn1"],
-    functions: { "api/relay.js": { maxDuration: 60 } },
+    functions: { "api/relay.js": { maxDuration: 300 } },
   }, null, 2) + "\n",
 );
 
