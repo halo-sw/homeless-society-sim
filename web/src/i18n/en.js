@@ -146,6 +146,15 @@ const seedPhrases = {
   "먼저 두 곳을 찜해 주세요.": "Save two homes first.",
   "먼저 두 집을 찜하고 살아 보기를 맡겨 주세요.": "Save two homes first, then hand off the live-in.",
   "시작했어요. 다 살면 일기로 알려 드릴게요.": "Started. When the 30 days are done, I'll report back with a diary.",
+  // Guard fallbacks (deterministic text, translated by the DOM layer).
+  "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요.": "Say \"Live in both homes\" and Muse lives 30 days in each.",
+  "한 곳을 더 찜하면 두 집에서 30일씩 살아 봐요.": "Save one more and Muse lives 30 days in each.",
+  "30일 살아 보기를 시작했어요. 다 살면 일기로 알려 드릴게요.": "Started the 30-day live-in. When it's done, I'll report back with a diary.",
+  "화면을 열었어요.": "Opened the view.",
+  "도구 결과의 수치만 정리합니다 (가정값 포함):": "Only the numbers from the tools (assumptions included):",
+  "- 이번 대화의 도구 결과에 수치가 없어요. 조건을 정하면 상담이 다시 실행해 드려요.": "- No tool numbers in this conversation yet. Tell me your conditions and I'll run it again.",
+  "- 값이 싼지 비싼지는 말하지 않아요. 계약 판단도 하지 않아요.": "- I don't say whether a price is cheap or expensive, and I don't make the contract call.",
+  "  · 공고 원문에서 조건을 확인해 주세요.": "  · Please check the conditions in the original notice.",
 };
 
 const seedPatterns = [
@@ -155,6 +164,13 @@ const seedPatterns = [
   { ko: "확인한 것 {0}가지", en: "Things checked: {0}" },
   { ko: "모르는 값 {0}개 — 채우면 더 정확해요", en: "Unknown values: {0} — fill them in for better accuracy" },
   // chat-27 templates.
+  { ko: "월 ₩{0}", en: "₩{0}/mo" },
+  // 26t action confirmations (guards.js actionConfirmation, joined by spaces).
+  { ko: "{0}을 찜했어요. {1}", en: "Saved {0}. {1}" },
+  { ko: "{0}를 찜했어요. {1}", en: "Saved {0}. {1}" },
+  { ko: "{0}을 찜했어요.", en: "Saved {0}." },
+  { ko: "{0}를 찜했어요.", en: "Saved {0}." },
+  { ko: "30일 살아 보기를 시작했어요. 다 살면 일기로 알려 드릴게요. {0}", en: "Started the 30-day live-in. When it's done, I'll report back with a diary. {0}" },
   { ko: "다루는 지역: {0}", en: "Areas covered: {0}" },
   { ko: "{0}일째 출근 {1}분 (집 {2} 출발)", en: "Day {0}: commute {1} min (left home {2})" },
   { ko: "{0}일째 귀가 {1} (늦은 귀가)", en: "Day {0}: home at {1} (late)" },
