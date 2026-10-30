@@ -9,6 +9,18 @@ export function detectLang({ search = "", stored = null, navLang = "" } = {}) {
   return nav.startsWith("ko") ? "ko" : "en";
 }
 
+// Remember ?lang= so in-app links keep the language the user started in.
+// detectLang stays pure; this is the only storing path besides setLang.
+export function persistLangParam(search, storage) {
+  const m = String(search || "").match(/[?&]lang=(en|ko)\b/);
+  if (!m) return;
+  try {
+    storage.setItem("ithaca.lang", m[1]);
+  } catch {
+    /* storage unavailable: the query param still carries the choice */
+  }
+}
+
 export function currentLang() {
   if (typeof window === "undefined") return "ko";
   let search = "";
@@ -18,6 +30,11 @@ export function currentLang() {
     search = (window.location && window.location.search) || "";
   } catch {
     search = "";
+  }
+  try {
+    persistLangParam(search, window.localStorage);
+  } catch {
+    /* storage itself is unreachable */
   }
   try {
     stored = window.localStorage.getItem("ithaca.lang");
