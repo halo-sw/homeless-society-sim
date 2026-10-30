@@ -1,7 +1,6 @@
 // 출처·라이선스 drawer (13, Part 10): generated from
 // ../sources.js. The long credit line leaves the canvas; one small
 // link opens this. SSR-safe.
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -22,10 +21,8 @@ export function SourcesDrawer({ onClose }) {
         <VStack gap={0}>
           {SOURCES.map((s) => (
             <div key={s.id} className="ui-src-row">
-              <HStack gap={1} vAlign="center">
-                <Text><strong>{s.name}</strong></Text>
-                <Badge variant="neutral" label={s.licence} />
-              </HStack>
+              <Text><strong>{s.name}</strong></Text>
+              <Text type="supporting">{s.licence}</Text>
               <Text type="supporting">{s.use}</Text>
               <Text type="supporting">{s.version}</Text>
               <Text type="supporting">

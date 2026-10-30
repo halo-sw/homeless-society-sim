@@ -10,6 +10,8 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
@@ -95,7 +97,7 @@ function Ticks({ ticks }) {
   );
 }
 
-export function DayStrip({ segments, ticks, minute, label, onJump }) {
+export function DayStrip({ segments, ticks, minute, label, onJump, bare }) {
   const ref = useRef(null);
   const dragging = useRef(false);
 
@@ -123,32 +125,39 @@ export function DayStrip({ segments, ticks, minute, label, onJump }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Every segment keeps its hover tooltip ("08:21–08:35 걷기 · …"):
+  // the leg for that time is one hover away.
+  const strip = (
+    <div className="ui-strip" role="group" aria-label={label || "하루 막대"}
+      ref={ref}
+      onPointerDown={(e) => {
+        if (e.target.closest("button")) return;
+        dragging.current = true;
+        jumpFromClientX(e.clientX);
+      }}>
+      {(segments || []).map((s, i) => (
+        <button key={i}
+          className="ui-strip-seg"
+          style={{
+            left: `${(stripFrac(s.start) * 100).toFixed(2)}%`,
+            width: `${Math.max(0.4, (stripFrac(s.end) - stripFrac(s.start)) * 100).toFixed(2)}%`,
+            background: (ACTIVITIES[s.activity] || ACTIVITIES.other).color,
+          }}
+          title={segmentTitle(s)}
+          aria-label={`${segmentTitle(s)}로 이동`}
+          onClick={() => onJump(s.start)} />
+      ))}
+      <Ticks ticks={ticks} />
+      <div className="ui-strip-head" aria-hidden="true"
+        style={{ left: `${(stripFrac(minute) * 100).toFixed(2)}%` }} />
+    </div>
+  );
+  // 13f2: the one-row bar embeds the strip with no captions.
+  if (bare) return strip;
   return (
     <VStack gap={0}>
       {label && <Text type="supporting">{label}</Text>}
-      <div className="ui-strip" role="group" aria-label={label || "하루 막대"}
-        ref={ref}
-        onPointerDown={(e) => {
-          if (e.target.closest("button")) return;
-          dragging.current = true;
-          jumpFromClientX(e.clientX);
-        }}>
-        {(segments || []).map((s, i) => (
-          <button key={i}
-            className="ui-strip-seg"
-            style={{
-              left: `${(stripFrac(s.start) * 100).toFixed(2)}%`,
-              width: `${Math.max(0.4, (stripFrac(s.end) - stripFrac(s.start)) * 100).toFixed(2)}%`,
-              background: (ACTIVITIES[s.activity] || ACTIVITIES.other).color,
-            }}
-            title={segmentTitle(s)}
-            aria-label={`${segmentTitle(s)}로 이동`}
-            onClick={() => onJump(s.start)} />
-        ))}
-        <Ticks ticks={ticks} />
-        <div className="ui-strip-head" aria-hidden="true"
-          style={{ left: `${(stripFrac(minute) * 100).toFixed(2)}%` }} />
-      </div>
+      {strip}
       <HStack gap={2} vAlign="center" wrap="wrap">
         <Text type="supporting" hasTabularNumbers>05:00</Text>
         <span className="ui-panel-spacer" />
@@ -234,11 +243,32 @@ export function timelineKeyHandler({ routeOutings, minute, togglePlay, setMinute
   };
 }
 
-export function TimelineBar({ state, compact = true }) {
+// 13f2: one row, ≤64px — play, clock, the strip (flex 1, needle),
+// speed, and a ⋯ menu. Route steps moved to the drawer's 오늘 list
+// (hovering the strip still shows each leg); the legend moved to the
+// map tool group's 범례; the month strip opens from the menu.
+function PlayGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true" fill="currentColor">
+      <path d="M3 1.5 L10 6 L3 10.5 Z" />
+    </svg>
+  );
+}
+
+function PauseGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true" fill="currentColor">
+      <path d="M2.6 2 H5 V10 H2.6 Z M7 2 H9.4 V10 H7 Z" />
+    </svg>
+  );
+}
+
+export function TimelineBar({ state, compact = true, defaultMenuOpen = false }) {
   const { clock } = state;
   const minute = Math.floor(clock.minute);
   const day = clock.day;
-  const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(defaultMenuOpen);
+  const [showMonth, setShowMonth] = useState(!compact);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -256,49 +286,49 @@ export function TimelineBar({ state, compact = true }) {
   }, []);
 
   const jump = (m) => act("setMinute", Math.max(0, Math.min(1439, Math.round(m))));
-  const showFull = !compact || expanded;
   return (
     <div className="ui-simbar overlay">
-      <Card>
-        <VStack gap={2}>
-          <HStack gap={2} vAlign="center" wrap="wrap">
-            <Text hasTabularNumbers>{clock.label}</Text>
-            <Button size="sm" label={state.playing ? "일시정지" : "재생"}
+      <Card padding={2}>
+        <div className="ui-bar13f2">
+          <div className="ui-bar13f2-row">
+            <IconButton label={state.playing ? "일시정지" : "재생"} size="sm" variant="ghost"
+              icon={state.playing ? <PauseGlyph /> : <PlayGlyph />}
               onClick={() => act("toggleSimPlay")} />
+            <Text hasTabularNumbers>{clock.label}</Text>
+            <div className="ui-bar13f2-strip">
+              <DayStrip bare segments={state.dayStrip && state.dayStrip.segments}
+                ticks={state.simTicks} minute={minute} onJump={jump} />
+            </div>
             <SegControl label="재생 속도" value={String(state.speed)}
               onChange={(v) => act("setSpeed", Number(v))}
               items={[{ value: "1", label: "1×" }, { value: "10", label: "10×" }, { value: "60", label: "60×" }]} />
-            <Button size="sm" label="A·B 비교" variant="secondary"
-              onClick={() => act("toggleCompare")} />
-            <ToggleButton size="sm" label="A·B 하루 같이 보기" isPressed={!!state.stripCompare}
-              onPressedChange={() => act("toggleStripCompare")} />
-            {compact && (
-              <Button size="sm" variant="ghost" label={expanded ? "30일 닫기" : "30일 보기"}
-                onClick={() => setExpanded(!expanded)} />
-            )}
-          </HStack>
-          <div className="ui-tl-compact">
-            <RouteSteps route={state.routeSteps} minute={minute}
-              onStep={jump} onPrev={jump} onNext={jump} />
-            <DayStrip segments={state.dayStrip && state.dayStrip.segments}
-              ticks={state.simTicks} minute={minute}
-              label={state.stripCompare && state.dayStripB ? `${state.home} · 따라가는 구성원` : ""}
-              onJump={jump} />
-            {state.stripCompare && state.dayStripB && (
-              <DayStrip segments={state.dayStripB.segments} ticks={[]}
-                minute={minute} label={`${state.dayStripB.home} · 같은 시각`}
-                onJump={jump} />
-            )}
+            <IconButton label="더 보기" size="sm" variant={menuOpen ? "secondary" : "ghost"}
+              icon={<Icon icon="moreHorizontal" />}
+              onClick={() => setMenuOpen(!menuOpen)} />
           </div>
-          <div hidden={!showFull}>
-            <ActivityLegend />
+          {menuOpen && (
+            <div className="ui-bar13f2-menu">
+              <Button size="sm" label="A·B 비교" variant="secondary"
+                onClick={() => act("toggleCompare")} />
+              <ToggleButton size="sm" label="A·B 하루 같이 보기" isPressed={!!state.stripCompare}
+                onPressedChange={() => act("toggleStripCompare")} />
+              <ToggleButton size="sm" label="30일 보기" isPressed={showMonth}
+                onPressedChange={() => setShowMonth(!showMonth)} />
+              <SegControl label="따라가기" value={String(state.follow)}
+                onChange={(v) => act("setFollow", Number(v))}
+                items={state.followOptions} />
+            </div>
+          )}
+          {state.stripCompare && state.dayStripB && (
+            <DayStrip segments={state.dayStripB.segments} ticks={[]}
+              minute={minute} label={`${state.dayStripB.home} · 같은 시각`}
+              onJump={jump} />
+          )}
+          <div hidden={!showMonth}>
             <MonthStrip days={state.monthStrip} selected={day}
               onDay={(d) => act("setDay", d)} />
-            <SegControl label="따라가기" value={String(state.follow)}
-              onChange={(v) => act("setFollow", Number(v))}
-              items={state.followOptions} />
           </div>
-        </VStack>
+        </div>
       </Card>
     </div>
   );

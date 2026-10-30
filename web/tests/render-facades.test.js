@@ -2,8 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   BAY_W_M, FACADE_TILES, FLOOR_H_M, TEX_SIZE,
-  emissiveLitShare, facadeBays, facadeRows, facadeTileFor, facadeUV,
-  hashPixels, litFractionFor, synthFacade,
+  aviationBlink, emissiveLitShare, facadeBays, facadeRows, facadeTileFor,
+  facadeUV, floorBand, floorWindowThreshold, hashPixels, litFractionFor,
+  needsAviationLight, synthFacade,
 } from "../src/render/facades.js";
 import { buildBuildings } from "../src/buildings.js";
 
@@ -175,6 +176,74 @@ describe("building detail buckets", () => {
       [{ id: "tower", residential: "none", levels: 12, height_m: 40,
         geometry: rectPoly(127.0, 37.5, 0.0003, 0.0002) }], [], ORIGIN);
     assert.equal(tall.stats.plant, 1);
+  });
+
+  it("switches whole seeded floors off as the lit fraction falls (14e)", () => {
+    // Distinct bands 0..rows-1 per class, deterministic in the floor.
+    for (const cls of ["apartment", "house", "mixed", "none"]) {
+      const rows = FACADE_TILES[cls].rows;
+      const bands = [];
+      for (let r = 0; r < rows; r++) {
+        assert.equal(floorBand(cls, r, rows), floorBand(cls, r, rows));
+        bands.push(floorBand(cls, r, rows));
+      }
+      assert.deepEqual([...bands].sort((a, b) => a - b),
+        bands.map((_, i) => i));
+    }
+    // Guard gaps keep floors strictly ordered: the highest threshold of
+    // the lowest band stays below the lowest of the highest band.
+    const rows = FACADE_TILES.apartment.rows;
+    const bandOf = (r) => floorBand("apartment", r, rows);
+    const lo = [0, 1, 2, 3].find((r) => bandOf(r) === 0);
+    const hi = [0, 1, 2, 3].find((r) => bandOf(r) === rows - 1);
+    assert.ok(floorWindowThreshold("apartment", lo, rows, 1)
+      < floorWindowThreshold("apartment", hi, rows, 0));
+    for (const t of [floorWindowThreshold("apartment", 0, rows, 0),
+        floorWindowThreshold("apartment", 0, rows, 1)]) {
+      assert.ok(Number.isInteger(t) && t >= 0 && t <= 255);
+    }
+    // Tile level: per-row mean window thresholds differ floor to floor.
+    const means = [];
+    for (const seed of [1, 1]) {
+      const { emissive } = synthFacade("apartment", seed);
+      const rowH = TEX_SIZE / rows;
+      const m = [];
+      for (let r = 0; r < rows; r++) {
+        let sum = 0;
+        let n = 0;
+        for (let y = r * rowH; y < (r + 1) * rowH; y++) {
+          for (let x = 0; x < TEX_SIZE; x++) {
+            const i = (y * TEX_SIZE + x) * 4;
+            if (emissive[i] > 0) {
+              sum += emissive[i + 1];
+              n++;
+            }
+          }
+        }
+        assert.ok(n > 100, `row ${r} has windows`);
+        m.push(sum / n);
+      }
+      means.push(m);
+    }
+    assert.deepEqual(means[0], means[1]); // deterministic
+    assert.ok(Math.max(...means[0]) - Math.min(...means[0]) > 30);
+  });
+
+  it("blinks red aviation beacons on towers ≥ 60 m (14e)", () => {
+    assert.equal(needsAviationLight(59.9), false);
+    assert.equal(needsAviationLight(60), true);
+    assert.equal(needsAviationLight(149), true);
+    assert.equal(needsAviationLight(null), false);
+    assert.equal(needsAviationLight(undefined), false);
+    // One hard flash per 1.5 s, procedural in t.
+    assert.equal(aviationBlink(0), 1);
+    assert.equal(aviationBlink(0.11), 1);
+    assert.equal(aviationBlink(0.13), 0);
+    assert.equal(aviationBlink(1.4), 0);
+    assert.equal(aviationBlink(1.5), 1);
+    assert.equal(aviationBlink(3.0), 1);
+    assert.equal(aviationBlink(1.2), aviationBlink(1.2 + 1.5));
+    assert.equal(aviationBlink(NaN), 0);
   });
 
   it("keeps per-building ranges aligned with vertex counts", () => {

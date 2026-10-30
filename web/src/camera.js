@@ -21,6 +21,57 @@ export const GLIDE_FRAME_M = 500;
 // Camera azimuth: offset direction (x east, z south-positive in the
 // x-right/z-towards-viewer sense main.js uses), unnormalized.
 export const TOUR_AZIMUTH = [0.45, 0.75];
+// Stage 14e: painted (near-isometric) vs photo camera style.
+export const PAINTED_FOV_DEG = 10;
+export const PAINTED_PITCH_DEG = 32; // above the horizon (≈0.56 rad)
+export const PAINTED_MIN_FRAME_M = 150;
+export function cameraStyle(style) {
+  if (style === "photo") {
+    return {
+      fovDeg: TOUR_FOV_DEG,
+      pitchDeg: TOUR_PITCH_DEG,
+      cruisePitchDeg: JOURNEY_CRUISE_PITCH_DEG,
+      azimuth: TOUR_AZIMUTH,
+      rotate: true,
+    };
+  }
+  return {
+    fovDeg: PAINTED_FOV_DEG,
+    pitchDeg: PAINTED_PITCH_DEG,
+    cruisePitchDeg: PAINTED_PITCH_DEG,
+    azimuth: TOUR_AZIMUTH,
+    rotate: false,
+  };
+}
+
+// Tour frame widths per style (14f): painted frames a neighbourhood, not
+// one tower — stops (POI close-ups too) span ≥ 450 m, the default glide
+// view 700 m, like the HypeSeoul reference. Photo keeps 300/500.
+export const PAINTED_STOP_FRAME_M = 450;
+export const PAINTED_GLIDE_FRAME_M = 700;
+export function tourFrameWidths(style) {
+  if (style === "photo") return { stop: STOP_FRAME_M, glide: GLIDE_FRAME_M };
+  return { stop: PAINTED_STOP_FRAME_M, glide: PAINTED_GLIDE_FRAME_M };
+}
+
+// ?style=painted (default) vs ?style=photo (today's look, unchanged).
+export function resolveStyle(search) {
+  const params = search instanceof URLSearchParams
+    ? search
+    : new URLSearchParams(typeof search === "string" ? search : "");
+  return params.get("style") === "photo" ? "photo" : "painted";
+}
+
+// OrbitControls zoom clamp for the painted style: the framed width stays
+// between 150 m and the box span, so the user can never zoom past the
+// ground disc into the void. Returns {min, max} camera distances.
+export function zoomClampDistances(spanM, fovDeg, aspect) {
+  const span = Math.max(PAINTED_MIN_FRAME_M, Number(spanM) || PAINTED_MIN_FRAME_M);
+  return {
+    min: distanceForWidth(PAINTED_MIN_FRAME_M, fovDeg, aspect),
+    max: distanceForWidth(span, fovDeg, aspect),
+  };
+}
 // Per-stop candidates: the default first (stable tie-break prefers the
 // 2b framing), then compass directions plus half-winds.
 export const STOP_AZIMUTHS = [

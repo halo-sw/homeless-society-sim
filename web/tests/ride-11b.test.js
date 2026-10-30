@@ -110,13 +110,14 @@ describe("base map (stage 11b)", () => {
     assert.ok(rect.d > 11000 && rect.d < 15000, `d ${rect.d}`);
   });
 
-  it("converts look hex ints to vertex triples", () => {
+  it("converts look hex ints to linear vertex triples", () => {
     assert.deepEqual(hexToRgb(0xffffff), [1, 1, 1]);
     assert.deepEqual(hexToRgb(0x000000), [0, 0, 0]);
+    // 17b: sRGB hexes linearize (mid grey lands at ~0.2, not ~0.5).
     const [r, g, b] = hexToRgb(0x5b8fc4);
-    assert.ok(Math.abs(r - 0x5b / 255) < 1e-9);
-    assert.ok(Math.abs(g - 0x8f / 255) < 1e-9);
-    assert.ok(Math.abs(b - 0xc4 / 255) < 1e-9);
+    assert.ok(Math.abs(r - 0.104616) < 1e-4, `r ${r}`);
+    assert.ok(Math.abs(g - 0.274677) < 1e-4, `g ${g}`);
+    assert.ok(Math.abs(b - 0.552011) < 1e-4, `b ${b}`);
     assert.deepEqual(hexToRgb(NaN), [0, 0, 0]);
   });
 

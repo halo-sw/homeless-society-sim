@@ -2,8 +2,8 @@
 // ai-chat-landing template (Layout + greeting + ChatComposer +
 // ClickableCard grid) with the template's sample content removed — no
 // categories, modes, mentions or attachments. The 3D canvas behind
-// (tour scene, slowly drifting) is dimmed by the scrim div so the
-// white text keeps ≥ 4.5:1 contrast.
+// (tour scene, slowly drifting) shows through a warm white veil
+// (~35% map visible) so the dark text reads bright, not murky.
 //
 // Suggestion cards fill example prompts (labelled 예시) or open the
 // listing paste check; sending moves to the chat (?chat=…).
@@ -13,7 +13,6 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { Heading } from "@astryxdesign/core/Heading";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { ClickableCard } from "@astryxdesign/core/ClickableCard";
 import { Grid } from "@astryxdesign/core/Grid";
@@ -21,6 +20,8 @@ import { Popover } from "@astryxdesign/core/Popover";
 import { ChatComposer } from "@astryxdesign/core/Chat";
 import { chatUrl } from "../chat/urls.js";
 
+export const LANDING_BRAND = "Ithaca · The Pre-living Agent for Your Next Home";
+export const LANDING_TAGLINE = "We walk the odyssey. You just come home.";
 export const LANDING_HEADING = "계약 전에, 그 집에서 30일 먼저 살아 봐요";
 export const LANDING_SUB = "출근·돈·생활을 진짜 자료로 미리 살아 보고, 직접 고르세요";
 export const LANDING_PLACEHOLDER = "어디로 출근하고, 누구와 살고, 예산은 얼마인가요?";
@@ -74,6 +75,12 @@ function goChat(message, extra) {
   window.location.href = chatUrl(message, extra);
 }
 
+// 18: an example chip sends immediately (labelled 예시) — no second tap.
+export function exampleChatUrl(prompt) {
+  const matches = EXAMPLE_PROMPTS.find((p) => p.prompt === prompt);
+  return chatUrl(prompt, matches ? { example: matches.id } : {});
+}
+
 export function Landing() {
   const [value, setValue] = useState("");
   const [exampleId, setExampleId] = useState(null);
@@ -95,6 +102,7 @@ export function Landing() {
             <LayoutContent>
               <VStack gap={8} vAlign="center" style={{ minHeight: "100%" }}>
                 <VStack gap={1}>
+                  <Text type="supporting">{LANDING_BRAND}</Text>
                   <Text type="large" as="h2">{LANDING_SUB}</Text>
                   <Text type="display-2" as="h1">{LANDING_HEADING}</Text>
                 </VStack>
@@ -109,15 +117,12 @@ export function Landing() {
                     {EXAMPLE_PROMPTS.map((p) => (
                       <ClickableCard
                         key={p.id}
-                        label={`${p.title} 예시로 채우기`}
+                        label={`${p.title} 예시로 시작하기`}
                         variant="muted"
                         padding={3}
-                        onClick={() => { setValue(p.prompt); setExampleId(p.id); }}>
+                        onClick={() => { window.location.href = exampleChatUrl(p.prompt); }}>
                         <VStack gap={0.5}>
-                          <HStack gap={1} vAlign="center">
-                            <Heading level={4}>{p.title}</Heading>
-                            <Badge variant="yellow" label="예시" />
-                          </HStack>
+                          <Heading level={4}>{`${p.title} · 예시`}</Heading>
                           <Text type="body" color="secondary" size="xsm">{p.prompt}</Text>
                         </VStack>
                       </ClickableCard>
@@ -135,6 +140,7 @@ export function Landing() {
                       </VStack>
                     </ClickableCard>
                   </Grid>
+                  <Text type="supporting">{LANDING_TAGLINE}</Text>
                   <div className="ui-landing-foot">
                     <HStack gap={2} vAlign="center" wrap="wrap">
                       <Text type="supporting">{COVERAGE_LINE}</Text>

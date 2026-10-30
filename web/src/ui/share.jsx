@@ -1,13 +1,12 @@
 // Shareable result card (React, Astryx Dialog): one PNG (canvas, local
 // download) and a printable page. Header (persona or household, homes A
-// / B with area, 만든 날 vs 시뮬레이션 기간), twelve A-vs-B rows in plain
-// words — each number with source badges and 가정값 marks, the lower
-// side marked neutrally (낮음, never 좋음/나쁨) — the customer's own
-// priorities as small bars, and the disclaimer. No verdict; the file
-// stays in the browser (no upload).
+// / B with area, 만든 날 vs 시뮬레이션 기간), the 내 기준 점수 first,
+// thirteen A-vs-B rows in plain words — the lower side marked
+// neutrally (낮음, never 좋음/나쁨) — one small 계산 방법 footnote in
+// plain words, the customer's own priorities as small bars, and the
+// disclaimer. No verdict; the file stays in the browser (no upload).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -18,7 +17,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { store, selectShareData, selectShareOpen } from "./store.js";
 import { PRIORITY_GROUPS } from "../priorities.js";
 import { resultCardData, renderShareCard, requestShareLoads,
-  shareLoadPlan, shareSourceKo } from "./share.js";
+  shareLoadPlan } from "./share.js";
 
 function todayISO() {
   try {
@@ -40,6 +39,15 @@ function CardPreview({ data }) {
         <Text type="supporting">{`만든 날 ${data.createdDay}`}</Text>
         <Text type="supporting">{data.simPeriod.label}</Text>
       </HStack>
+      {data.score && (
+        <VStack gap={1}>
+          <Text hasTabularNumbers>
+            {`내 기준 점수 ${Object.entries(data.score.scores)
+              .map(([l, v]) => `${l} ${v === null || v === undefined ? "–" : v}`).join(" · ")}`}
+          </Text>
+          <Text type="supporting">{data.score.caption}</Text>
+        </VStack>
+      )}
       <div className="ui-share-rows" role="table" aria-label="A·B 비교">
         <div className="ui-share-row ui-share-head" role="row">
           <span role="columnheader">항목</span>
@@ -50,25 +58,23 @@ function CardPreview({ data }) {
           <div className="ui-share-row" role="row" key={r.id}>
             <span role="cell">
               <Text>{r.label}</Text>
-              <HStack gap={1} vAlign="center" wrap="wrap">
-                {r.sources.map((s) => (
-                  <Badge key={s} variant="neutral" label={shareSourceKo(s)} />
-                ))}
-                {r.assumed && <Badge variant="yellow" label="가정값" />}
-              </HStack>
               {r.note && <Text type="supporting">{r.note}</Text>}
             </span>
             <span role="cell">
-              <Text hasTabularNumbers>{r.a}</Text>
-              {r.lowerSide === "A" && <Badge variant="neutral" label="낮음" />}
+              <Text hasTabularNumbers>{r.lowerSide === "A" ? `${r.a} (낮음)` : r.a}</Text>
             </span>
             <span role="cell">
-              <Text hasTabularNumbers>{r.b}</Text>
-              {r.lowerSide === "B" && <Badge variant="neutral" label="낮음" />}
+              <Text hasTabularNumbers>{r.lowerSide === "B" ? `${r.b} (낮음)` : r.b}</Text>
             </span>
           </div>
         ))}
       </div>
+      <VStack gap={1}>
+        <Heading level={4}>계산 방법</Heading>
+        {(data.method || []).map((l, i) => (
+          <Text key={i} type="supporting">{l}</Text>
+        ))}
+      </VStack>
       <VStack gap={1}>
         <Heading level={4}>내가 정한 비중</Heading>
         {data.priorities.bars.length > 0 ? (
@@ -84,7 +90,6 @@ function CardPreview({ data }) {
         <Text type="supporting">{data.priorities.note}</Text>
       </VStack>
       <Text type="supporting">{data.disclaimer}</Text>
-      <Text type="supporting">{data.sources_note}</Text>
     </VStack>
   );
 }
@@ -150,8 +155,9 @@ export function ShareDialog() {
 
   return (
     <>
+      {/* 18: named + focused on open; Esc closes (purpose info). */}
       <Dialog isOpen={open} onOpenChange={(v) => store.set({ shareOpen: v })}
-        width={640} maxHeight="85dvh" purpose="info">
+        width={640} maxHeight="85dvh" purpose="info" aria-label="결과 공유">
         <DialogHeader title="결과 공유" onOpenChange={(v) => store.set({ shareOpen: v })} />
         <VStack gap={2}>
           <div className="ui-share-scroll">
@@ -163,7 +169,8 @@ export function ShareDialog() {
           </div>
           <canvas ref={canvasRef} className="ui-share-canvas" aria-hidden="true" />
           <HStack gap={2} vAlign="center" wrap="wrap">
-            <Button size="sm" label="PNG 저장" onClick={makePng} isDisabled={plan.loading} />
+            <Button size="sm" label="PNG 저장" onClick={makePng} isDisabled={plan.loading}
+              data-autofocus />
             {pngUrl && (
               <a href={pngUrl} download={`우리집-비교-${data.date}.png`}>PNG 내려받기</a>
             )}

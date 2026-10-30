@@ -40,6 +40,9 @@ export function activityOfAway(kind) {
   return AWAY_ACTIVITY[kind] || "other";
 }
 
+// 18d: the ONE minute→HH:MM formatter for every customer surface
+// (selection log, ticker, moments, clocks). Floors float minutes —
+// String(1060.2 % 60) leaks "40.200000000000045" into the UI.
 export const hhmm = (m) => {
   const v = Math.max(0, Math.min(1439, Math.floor(m)));
   return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;

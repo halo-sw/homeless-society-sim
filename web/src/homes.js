@@ -45,6 +45,54 @@ export const SOURCE_BADGES = {
 
 const TENURE_BUCKET = { jeonse: "jeonse", wolse: "wolse", trade: "trade" };
 
+// --- 18: candidate honesty ------------------------------------------------------
+// Public-rental complexes (register names carrying 임대/공공임대) never
+// appear in 전세·월세·매매 results — they belong to the 공공임대 path
+// (find_public_rentals over the LH snapshot, or tenure=public here).
+export function isPublicRentalHome(home) {
+  const name = String((home && (home.name || home.osm_name)) || "");
+  if (!name) return false;
+  if (name.includes("공공임대")) return true;
+  if (name.includes("영구임대")) return true;
+  // Register names mark rentals with an 임대 suffix in parentheses,
+  // e.g. "백현마을3단지(주공)임대". A bare 임대 elsewhere in the name
+  // (street/area words) must not match.
+  return /임대\)?\s*$/.test(name) || /\(.*임대.*\)\s*$/.test(name);
+}
+
+// A reference price resting on a single trade far below the local
+// market is not marked "예산 안 ✓": it shows a check note and sorts
+// after the others. "Far below" = under 50 % of the median reference
+// for the same kind + size band in the same region (시군구-level id).
+// Pure over one shown tenure entry + the full index home list.
+export const THIN_DEAL_NOTE = "실거래 1건 · 시세보다 크게 낮아 확인이 필요해요";
+
+export function groupMedianFor({ kind, region, centerM2, tenureKey }, homes) {
+  const meds = [];
+  for (const h of homes || []) {
+    if (!h || h.kind !== kind || h.region !== region) continue;
+    if (isPublicRentalHome(h)) continue;
+    for (const b of h.buckets || []) {
+      if (!b || b.center_m2 !== centerM2) continue;
+      const stat = tenureKey === "wolse" ? b.wolse && b.wolse.monthly : b[tenureKey];
+      const med = stat ? stat.median_won : null;
+      if (Number.isFinite(med) && med > 0) meds.push(med);
+    }
+  }
+  if (meds.length === 0) return null;
+  meds.sort((a, b) => a - b);
+  const mid = Math.floor(meds.length / 2);
+  return meds.length % 2 === 1 ? meds[mid] : Math.round((meds[mid - 1] + meds[mid]) / 2);
+}
+
+export function thinDealNote({ medianWon, deals, kind, region, centerM2, tenureKey }, homes) {
+  if (deals !== 1) return null;
+  if (!Number.isFinite(medianWon) || medianWon <= 0) return null;
+  const group = groupMedianFor({ kind, region, centerM2, tenureKey }, homes);
+  if (group === null || !(group > 0)) return null;
+  return medianWon < group * 0.5 ? THIN_DEAL_NOTE : null;
+}
+
 // Most deals first when no size floor is set; else the smallest bucket
 // whose top (center+5) reaches the floor.
 export function pickBucket(buckets, tenureKey, sizeMin) {
@@ -360,6 +408,11 @@ function sortResults(rows, sort, profile, boxes) {
     return w * 1e12 + rk * 1e11 + total * 1e6 + t * 1e4 + km;
   };
   const rowsOut = [...rows].sort((a, b) => {
+    // 18: thin-deal rows (lone trade far below market) sort after the
+    // others whatever the customer's sort is.
+    const ta = a.thin_deal ? 1 : 0;
+    const tb = b.thin_deal ? 1 : 0;
+    if (ta !== tb) return ta - tb;
     const ka = key(a);
     const kb = key(b);
     if (ka !== kb) return ka - kb;
@@ -404,14 +457,19 @@ export function find_homes(profile, index, opts = {}) {
     wolse: profileValue(profile, "monthlyMax"),
     trade: profileValue(profile, "priceMax"),
   };
+  // 18: tenure=public lists only public-rental complexes (all their
+  // buckets); every other tenure skips them — they are not normal
+  // 전세·월세·매매 homes.
+  const publicOnly = tenure === "public";
   const tenureKeys = tenure === "undecided" || !tenure
     ? ["jeonse", "wolse", "trade"]
-    : tenure === "public" ? [] : [tenure];
+    : publicOnly ? ["jeonse", "wolse", "trade"] : [tenure];
   const homes = (index && index.homes) || [];
   const rows = [];
   for (const home of homes) {
     if (regions && !regions.includes(home.region)) continue;
     if (kind && home.kind !== kind) continue;
+    if (isPublicRentalHome(home) !== publicOnly) continue;
     const commute = commuteSummary(home, workplace, network, schedule, walkgraphs, walkMps);
     if (commuteMax !== null && commute.walk.known
         && commute.walk.minutes > commuteMax) continue;
@@ -423,6 +481,12 @@ export function find_homes(profile, index, opts = {}) {
       const median = bucketMedian(bucket, key);
       const budget = budgets[key];
       if (budget !== null && median !== null && median > budget) continue;
+      const deals = bucketCount(bucket, key);
+      // 18: a lone trade far below the local market is never "예산 안 ✓".
+      const thin = thinDealNote({ medianWon: median, deals,
+        kind: home.kind, region: home.region, centerM2: bucket.center_m2,
+        tenureKey: key }, homes);
+      const fit = budgetFit(bucket, key, budget);
       shown.push({
         tenure: key, bucket_center_m2: bucket.center_m2,
         range_m2: bucket.range_m2,
@@ -433,8 +497,9 @@ export function find_homes(profile, index, opts = {}) {
         max_won: key === "wolse"
           ? bucket.wolse.monthly && bucket.wolse.monthly.max_won
           : bucket[key].max_won,
-        deals: bucketCount(bucket, key),
-        budget_fit: budgetFit(bucket, key, budget),
+        deals,
+        budget_fit: thin && fit === "all" ? "unknown" : fit,
+        thin_deal: thin,
         deposit_median_won: key === "wolse" && bucket.wolse.deposit
           ? bucket.wolse.deposit.median_won : null,
       });
@@ -451,6 +516,7 @@ export function find_homes(profile, index, opts = {}) {
       if (mins !== null && mins > mh.minutes) mustFail = true;
     }
     if (mustFail) continue;
+    const thinRow = shown.map((s) => s.thin_deal).find(Boolean) || null;
     const dealCount = shown.reduce((a, s) => a + (s.deals || 0), 0);
     const monthly = shown
       .filter((s) => s.tenure === "wolse" && s.median_won !== null)
@@ -469,6 +535,7 @@ export function find_homes(profile, index, opts = {}) {
       pnu: home.pnu || null,
       osm_name: home.osm_name || (home.osm && home.osm.name) || null,
       tenures: shown,
+      thin_deal: thinRow,
       deals_in_bucket: dealCount,
       monthly_cost_won: monthly.length > 0 ? Math.min(...monthly) : null,
       commute,

@@ -2,6 +2,8 @@
 // six inline answer cards inside the chat — chips, steppers, range
 // sliders and a place picker. Pure state machine; the JSX lives in
 // ui/intake.jsx. Tested in intake-13.test.js.
+import { fmtWon } from "./money/format.js";
+import { TENURE_KO } from "./profile.js";
 
 export const INTAKE_STEPS = [
   "income", // 연봉 (세후 월급 or 연봉)
@@ -115,6 +117,16 @@ export function prefillFromExtract(state, extract) {
     };
     next.said.budget = true;
   }
+  // 18: never ask what the customer already said — start past every
+  // pre-filled step (done when nothing is left).
+  let i = 0;
+  while (i < INTAKE_STEPS.length
+    && (next.values[INTAKE_STEPS[i]] !== undefined
+      || next.skipped.includes(INTAKE_STEPS[i]))) i++;
+  next.stepIndex = Math.min(i, INTAKE_STEPS.length - 1);
+  next.done = INTAKE_STEPS.every(
+    (s) => next.values[s] !== undefined || next.skipped.includes(s),
+  );
   return next;
 }
 
@@ -165,6 +177,63 @@ export function skippedChips(state) {
     step: s,
     label: `${INTAKE_KO[s]} 정하기`,
   }));
+}
+
+// --- 18: say what the sentence already gave --------------------------------------
+// intakeTookLine lists every extracted value (연봉, 모은 돈, 출근지,
+// 보증금 상한, 크기, 인원) so the customer sees nothing is asked twice.
+export function intakeTookLine(profile) {
+  const v = (k) => (profile && profile[k] ? profile[k].value : null);
+  // Null/blank values never reach the sentence: Number(null) is 0, so
+  // an unguarded isFinite check prints "null㎡" / "null분".
+  const numVal = (x) => {
+    const n = Array.isArray(x) ? x[0] : x;
+    if (n === null || n === undefined || n === "") return null;
+    const asNum = Number(n);
+    return Number.isFinite(asNum) ? asNum : null;
+  };
+  const bits = [];
+  const members = v("members");
+  if (Array.isArray(members) && members.length > 0) bits.push(`${members.length}인`);
+  const wps = v("workplaces");
+  if (Array.isArray(wps) && wps.length > 0 && wps[0]) {
+    const where = (wps[0].resolved && wps[0].resolved.station) || wps[0].text;
+    if (where) bits.push(`${where} 출근`);
+  }
+  const salary = numVal(v("salaryAnnual"));
+  if (salary !== null) {
+    bits.push(`연봉 ${fmtWon(salary)}`);
+  }
+  const takehome = numVal(v("takehomeMonthly"));
+  if (takehome !== null && salary === null) {
+    bits.push(`월 실수령 ${fmtWon(takehome)}`);
+  }
+  const cash = numVal(v("cash"));
+  if (cash !== null && cash > 0) bits.push(`모은 돈 ${fmtWon(cash)}`);
+  const tenure = v("tenure");
+  if (tenure && TENURE_KO[tenure]) {
+    const budget = tenure === "jeonse" ? v("depositMax")
+      : tenure === "wolse" ? v("monthlyMax")
+        : tenure === "trade" ? v("priceMax") : null;
+    bits.push(budget !== null && budget !== undefined
+      ? `${TENURE_KO[tenure]} ${fmtWon(budget)} 이하` : TENURE_KO[tenure]);
+  }
+  const size = numVal(v("sizeMin"));
+  if (size !== null) bits.push(`${size}㎡ 이상`);
+  const commute = numVal(v("commuteMax"));
+  if (commute !== null) bits.push(`출퇴근 ${commute}분 이내`);
+  return bits.length > 0 ? `문장에서 가져왔어요: ${bits.join(" · ")}` : "";
+}
+
+// householdHint nudges extra-member entry when the sentence named N>1
+// people but fewer are added yet (relations are never guessed).
+export function householdHint(profile, household) {
+  const members = profile && profile.members ? profile.members.value : null;
+  const extra = (household && household.members) || [];
+  if (!Array.isArray(members) || members.length <= 1) return "";
+  const missing = members.length - 1 - extra.length;
+  if (missing <= 0) return "";
+  return `${members.length}인이라고 하셨어요. 함께 사는 사람 ${missing}명을 아래에서 추가해 주세요.`;
 }
 
 // --- household ---------------------------------------------------------------
@@ -227,8 +296,11 @@ export function intakeToProfilePatch(intake, household) {
   }
   const members = (household && household.members) || [];
   if (members.length > 0) {
+    // 18: school-age bands ride the school path (role child), so the
+    // engine plans schooldays and the money doc draws school routes.
+    const CHILD_BANDS = new Set(["미취학", "초등", "중·고등"]);
     patch.members = [{ role: "self" }, ...members.map((m) => ({
-      role: "member",
+      role: CHILD_BANDS.has(m.ageBand) ? "child" : "member",
       relation: m.relation,
       ageBand: m.ageBand,
       workplace: m.workplace,

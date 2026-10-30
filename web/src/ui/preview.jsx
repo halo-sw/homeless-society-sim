@@ -10,7 +10,6 @@
 // never committed). No listing-portal or social scraping anywhere —
 // their terms forbid it.
 import { useEffect, useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Carousel } from "@astryxdesign/core/Carousel";
@@ -24,6 +23,7 @@ import { SOURCE_BADGES } from "../homes.js";
 import { JEONSE_MIN_TRADES, JEONSE_REF_NOTE, JEONSE_SPARSE_NOTE,
   JEONSE_CAUTION_ID, JEONSE_WARNING_ID } from "../money/jeonse.js";
 import { fmtWon, fmtMinutes } from "../money/format.js";
+import { SourceBadge } from "./source-badge.jsx";
 import { monthlyHousingLabel } from "./copy.js";
 import { TENURE_KO } from "../profile.js";
 
@@ -84,7 +84,7 @@ export function PhotoStrip({ photos }) {
         ))}
       </Carousel>
       <div className="ui-photos-flag">
-        <Badge variant="yellow" label={PHOTOS_DISCLAIMER} />
+        <span className="ui-cand-label">{PHOTOS_DISCLAIMER}</span>
       </div>
     </div>
   );
@@ -108,14 +108,19 @@ function defaultThumbDeps(boxId) {
   };
 }
 
-export function SceneThumb({ boxId, deps = null }) {
+export function SceneThumb({ boxId, deps = null, home = null, fallback = null }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
+  // 18d: the thumbnail frames the home's own building (home lon/lat);
+  // when the scene has no building for it, the caller-provided
+  // fallback (usually the MiniMap) shows instead of an empty frame.
+  const homeKey = home && Number.isFinite(home.lon) && Number.isFinite(home.lat)
+    ? `${home.lon},${home.lat}` : "";
   useEffect(() => {
     let cancelled = false;
     setUrl(null);
     setFailed(false);
-    sceneThumbnail(boxId, deps || defaultThumbDeps(boxId))
+    sceneThumbnail(boxId, deps || defaultThumbDeps(boxId), home)
       .then((u) => {
         if (cancelled) return;
         if (u) setUrl(u);
@@ -123,8 +128,8 @@ export function SceneThumb({ boxId, deps = null }) {
       })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
-  }, [boxId]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (failed) return null;
+  }, [boxId, homeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (failed) return fallback;
   if (!url) {
     return (
       <div className="ui-thumb-loading" role="img" aria-label="3D 미리보기 불러오는 중">
@@ -230,9 +235,9 @@ function CommuteLine({ candidate }) {
         <Text type="supporting" hasTabularNumbers>
           {ride.known ? `타는 시간 약 ${fmtShortMin(ride.minutes)}` : "타는 시간 미확인"}
         </Text>
-        {rideSourceBadges(ride).map((b) => (
-          <Badge key={b} variant="neutral" label={b} />
-        ))}
+        {rideSourceBadges(ride).length > 0 && (
+          <Text type="supporting">{rideSourceBadges(ride).join(" · ")}</Text>
+        )}
       </HStack>
       {ride.note && (
         <Text type="supporting">{ride.note}</Text>
@@ -252,14 +257,15 @@ export function PreviewCard({ candidate, tenure, onPreview3D, onJeonse, onCompar
     <Card padding={3}>
       <VStack gap={2}>
         <PhotoStrip photos={c.photos} />
-        {c.scene ? <SceneThumb boxId={c.scene} /> : <MiniMap lon={c.lon} lat={c.lat} name={c.name} />}
+        {c.scene ? (
+          <SceneThumb boxId={c.scene} home={{ lon: c.lon, lat: c.lat }}
+            fallback={<MiniMap lon={c.lon} lat={c.lat} name={c.name} />} />
+        ) : <MiniMap lon={c.lon} lat={c.lat} name={c.name} />}
         <RoadviewSlot />
         <AerialSlot />
         <VStack gap={0}>
-          <HStack gap={1} vAlign="center" wrap="wrap">
-            <Heading level={4}>{c.name}</Heading>
-            <Badge variant="neutral" label={c.kind} />
-          </HStack>
+          <Heading level={4}>{c.name}</Heading>
+          {c.kind && <Text type="supporting">{c.kind}</Text>}
           <Text type="supporting">
             {`${c.build_year ? `${c.build_year}년 지음 · ` : ""}`
               + `${entry ? `${entry.bucket_center_m2}㎡ (±5㎡)` : ""}`}
@@ -268,7 +274,7 @@ export function PreviewCard({ candidate, tenure, onPreview3D, onJeonse, onCompar
         {entry && (
           <VStack gap={1}>
             <HStack gap={1} vAlign="center" wrap="wrap">
-              <Badge variant="teal" label="실거래" />
+              <SourceBadge source="rtms" />
               <Text hasTabularNumbers>
                 {`${TENURE_KO[entry.tenure] || entry.tenure} 중간 ${fmtWon(entry.median_won)}`
                   + ` (${fmtWon(entry.min_won)}–${fmtWon(entry.max_won)}, ${entry.deals}건)`}
@@ -287,16 +293,11 @@ export function PreviewCard({ candidate, tenure, onPreview3D, onJeonse, onCompar
         )}
         <CommuteLine candidate={c} />
         {signal && (
-          <HStack gap={1} vAlign="center" wrap="wrap">
-            <Text type="supporting" hasTabularNumbers>
-              {signal.computable
-                ? `보증금이 집값의 ${signal.ratio_pct}% (${signal.band.text})`
-                : "보증금이 집값의 몇 %인지 알 수 없어요"}
-            </Text>
-            {signal.computable && signal.band.id && (
-              <Badge variant="neutral" label={signal.band.id} />
-            )}
-          </HStack>
+          <Text type="supporting" hasTabularNumbers>
+            {signal.computable
+              ? `보증금이 집값의 ${signal.ratio_pct}% (${signal.band.text})`
+              : "보증금이 집값의 몇 %인지 알 수 없어요"}
+          </Text>
         )}
         {signal && !signal.computable && (
           <Text type="supporting">{signal.note}</Text>

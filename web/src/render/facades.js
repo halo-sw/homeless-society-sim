@@ -21,7 +21,7 @@
 // at-home residents / agents in the building — the same stage-3 data the
 // old glow quads used). Daytime emissive is off (uNight = 0).
 
-import { hashString } from "../palette.js";
+import { APARTMENT_FAMILIES, HOUSE_WALL, MIXED_WALL, NON_RESIDENTIAL, hashString, hashUnit } from "../palette.js";
 
 export const TEX_SIZE = 512;
 export const FLOOR_H_M = 3.0;
@@ -38,6 +38,74 @@ export const FACADE_TILES = {
   roof: { w: 8.0, h: 8.0, cols: 4, rows: 4 }, // membrane seams every 2 m
 };
 export const PODIUM_H_M = 4.2;
+
+// Painted wall/roof targets (stage 14e, sRGB): warm light concrete
+// walls with roofs one step lighter, so the two separate at a glance.
+// Applied as a material tint (photo keeps white = today's pixels). The
+// shader multiplies map × vertex colour × material colour in linear
+// space, so the tint compensates both the baked tile base (mirroring
+// the paintWall calls in synth*) and the typical vertex colour from
+// palette.js (vertex colours are used raw, without sRGB decoding).
+export const FACADE_WALL_BASE = {
+  apartment: [238, 230, 214],
+  house: [240, 234, 220],
+  mixed: [226, 220, 208],
+  none: [214, 208, 196],
+  podium: [206, 200, 190],
+  roof: [226, 224, 220],
+};
+export const PAINTED_WALL = [201, 196, 187]; // #c9c4bb
+export const PAINTED_ROOF = [221, 216, 206]; // #ddd8ce
+export const PAINTED_WALL_HEX = 0xc9c4bb;
+export const PAINTED_ROOF_HEX = 0xddd8ce;
+
+function hexToRgb255(hex) {
+  return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+}
+
+function meanHex(hexes) {
+  const out = [0, 0, 0];
+  for (const h of hexes) {
+    const c = hexToRgb255(h);
+    out[0] += c[0];
+    out[1] += c[1];
+    out[2] += c[2];
+  }
+  return out.map((v) => v / hexes.length);
+}
+
+// Typical vertex colour per facade class (sRGB 0..255 ints): apartment
+// families average out (per-complex variation stays); the single roof
+// mesh targets the apartment-slab majority, so red tile roofs keep their
+// hue, lifted; podium bands share their building's wall colour.
+export const FACADE_VERTEX_REF = {
+  apartment: meanHex(APARTMENT_FAMILIES.map((f) => f.wall)),
+  house: hexToRgb255(HOUSE_WALL),
+  mixed: hexToRgb255(MIXED_WALL),
+  none: hexToRgb255(NON_RESIDENTIAL),
+  podium: meanHex([MIXED_WALL, NON_RESIDENTIAL]),
+  roof: meanHex(APARTMENT_FAMILIES.map((f) => f.roof)),
+};
+
+export function srgbToLinear(u8) {
+  const c = Math.min(1, Math.max(0, u8 / 255));
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+// [r, g, b] linear-space material tint multiplier for one facade class +
+// style: tint × lin(tile base) × vertex/255 lands on lin(target) for the
+// typical building of that class (per-building vertex variation stays).
+export function facadeTintFor(facadeClass, style) {
+  if (style !== "painted") return [1, 1, 1];
+  const base = FACADE_WALL_BASE[facadeClass];
+  const vref = FACADE_VERTEX_REF[facadeClass];
+  if (!base || !vref) return [1, 1, 1];
+  const target = facadeClass === "roof" ? PAINTED_ROOF : PAINTED_WALL;
+  return [0, 1, 2].map((i) => {
+    const denom = srgbToLinear(base[i]) * (vref[i] / 255);
+    return denom > 0 ? srgbToLinear(target[i]) / denom : 1;
+  });
+}
 
 // Facade class for a building's walls (residential classes map 1:1).
 export function facadeTileFor(residential) {
@@ -74,13 +142,24 @@ export function litFractionFor(occ) {
 // buildings with real households but no simulated agents use the
 // run-wide at-home share modulated ±20% by a deterministic per-building
 // hash (a lighting estimate, not data — the legend says whose); empty
-// non-residential buildings stay dark.
-export function litFractionWithFallback(occ, { households = 0, globalHomeFrac = 0, hash01 = 0.5 } = {}) {
+// buildings fall back to emptyFrac (0 unless the caller passes a tour
+// office estimate).
+export function litFractionWithFallback(occ, { households = 0, globalHomeFrac = 0, hash01 = 0.5, emptyFrac = 0 } = {}) {
   if (occ && occ.total > 0) return Math.min(1, Math.max(0, occ.home / occ.total));
-  if (!(households > 0)) return 0;
+  if (!(households > 0)) return Math.min(1, Math.max(0, Number(emptyFrac) || 0));
   if (!(globalHomeFrac > 0)) return 0;
   const jitter = 0.8 + 0.4 * Math.min(1, Math.max(0, hash01));
   return Math.min(1, globalHomeFrac * jitter);
+}
+
+// Tour-mode office estimate (no run, no residents): a small deterministic
+// share of the evening curve, so offices read lit but fewer than the
+// residential floors around them. Decorative only, like the tour curve.
+export function tourOfficeFraction(globalFrac, hash01 = 0.5) {
+  const g = Math.min(1, Math.max(0, Number(globalFrac) || 0));
+  if (!(g > 0)) return 0;
+  const jitter = 0.8 + 0.4 * Math.min(1, Math.max(0, Number(hash01) || 0));
+  return Math.min(1, g * 0.25 * jitter);
 }
 
 // Run-wide at-home share from an occupancy map (for the fallback above).
@@ -105,6 +184,47 @@ export function eveningHomeFraction(minute) {
   if (m < 20 * 60) return 0.8; // evening peak
   if (m < 23 * 60) return 0.9; // night
   return 0.7; // toward midnight
+}
+
+// Stage 14e floors switch off in seeded whole-floor bands as the lit
+// fraction falls through the night (deterministic in floor + minute, so
+// scrubbing the timeline never flickers): each tile row owns a distinct
+// threshold band, permuted by floor seed, with small guard gaps between
+// bands so floors step off crisply. Overall the tile stays ~uniform, so
+// a lit fraction f still lights ~f of the windows.
+export function floorBand(facadeClass, row, rows) {
+  const n = Math.max(1, Math.round(rows) || 1);
+  const r = Math.min(n - 1, Math.max(0, Math.round(row) || 0));
+  const keys = [];
+  for (let k = 0; k < n; k++) {
+    keys.push([hashUnit(hashString(`floor:${facadeClass}:${k}`), 5), k]);
+  }
+  keys.sort((a, b) => a[0] - b[0]);
+  return keys.findIndex(([, k]) => k === r);
+}
+
+export function floorWindowThreshold(facadeClass, row, rows, rand01) {
+  const n = Math.max(1, Math.round(rows) || 1);
+  const band = floorBand(facadeClass, row, n);
+  const j = Math.min(1, Math.max(0, Number(rand01) || 0));
+  return Math.floor(Math.min(1, (band + 0.05 + j * 0.9) / n) * 255);
+}
+
+// Red aviation beacons on roof tips ≥ 60 m: one hard blink per 1.5 s,
+// procedural in t (seconds) — the same t always gives the same state.
+export const AVIATION_MIN_M = 60;
+export const AVIATION_PERIOD_S = 1.5;
+export const AVIATION_FLASH_S = 0.12;
+
+export function needsAviationLight(heightM) {
+  return (Number(heightM) || 0) >= AVIATION_MIN_M;
+}
+
+export function aviationBlink(tSec) {
+  const t = Number(tSec);
+  if (!Number.isFinite(t)) return 0;
+  const phase = ((t % AVIATION_PERIOD_S) + AVIATION_PERIOD_S) % AVIATION_PERIOD_S;
+  return phase < AVIATION_FLASH_S ? 1 : 0;
 }
 
 // --- tiny deterministic PRNG (local mulberry32; no shared state) ---
@@ -233,7 +353,8 @@ function synthApartment(seed) {
       paintWindow(buf.map, rng, wx, wy, ww, wh, tint);
       fillRect(buf.map, wx - 2, wy + wh + 2, wx + ww + 2, wy + wh + 4, [200, 192, 178, 255]);
       paintRoughWindow(buf.rough, wx, wy, ww, wh);
-      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+        floorWindowThreshold("apartment", r, tile.rows, rng()));
     }
   }
   return buf;
@@ -273,7 +394,8 @@ function synthHouse(seed) {
       paintWindow(buf.map, rng, wx, wy, ww, wh,
         [(rng() - 0.5) * 20, (rng() - 0.5) * 18, (rng() - 0.5) * 14]);
       paintRoughWindow(buf.rough, wx, wy, ww, wh);
-      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+        floorWindowThreshold("house", r, tile.rows, rng()));
     }
   }
   return buf;
@@ -307,7 +429,8 @@ function synthMixed(seed) {
       paintWindow(buf.map, rng, wx, wy, ww, wh,
         [(rng() - 0.5) * 30, (rng() - 0.5) * 26, (rng() - 0.5) * 20]);
       paintRoughWindow(buf.rough, wx, wy, ww, wh);
-      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+      paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+        floorWindowThreshold("mixed", r, tile.rows, rng()));
     }
   }
   return buf;
@@ -348,7 +471,8 @@ function synthNone(seed) {
           }
         }
         paintEmissiveWindow(buf.emissive, x + 1, y0,
-          Math.min(mullX - 2, TEX_SIZE - x - 1), y1 - y0, Math.floor(rng() * 256));
+          Math.min(mullX - 2, TEX_SIZE - x - 1), y1 - y0,
+          floorWindowThreshold("none", r, tile.rows, rng()));
       }
     }
     // Glass is smooth everywhere on a curtain wall.
@@ -371,7 +495,8 @@ function synthNone(seed) {
         paintWindow(buf.map, rng, wx, wy, ww, wh,
           [(rng() - 0.5) * 24, (rng() - 0.5) * 22, (rng() - 0.5) * 18]);
         paintRoughWindow(buf.rough, wx, wy, ww, wh);
-        paintEmissiveWindow(buf.emissive, wx, wy, ww, wh, Math.floor(rng() * 256));
+        paintEmissiveWindow(buf.emissive, wx, wy, ww, wh,
+          floorWindowThreshold("none", r, tile.rows, rng()));
       }
     }
   }
@@ -398,7 +523,7 @@ function synthPodium(seed) {
       [(rng() - 0.5) * 20, (rng() - 0.5) * 18, (rng() - 0.5) * 14]);
     paintRoughWindow(buf.rough, x0, glassTop, x1 - x0, glassBot - glassTop);
     paintEmissiveWindow(buf.emissive, x0, glassTop, x1 - x0, glassBot - glassTop,
-      Math.floor(rng() * 256));
+      floorWindowThreshold("podium", 0, 1, rng()));
     // Stall riser + mullions + fascia strip.
     fillRect(buf.map, x0, glassBot, x1, TEX_SIZE, [150, 144, 134, 255]);
     fillRect(buf.map, c * bayW - 1, glassTop, c * bayW + 1, glassBot, [80, 78, 76, 255]);

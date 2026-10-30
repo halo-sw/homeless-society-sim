@@ -3,7 +3,6 @@
 // time. State machine in ../intake.js; this file only renders.
 // SSR-safe (no window at module scope).
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -18,7 +17,7 @@ import { fmtWon } from "../money/format.js";
 
 function SaidBadge({ said }) {
   if (!said) return null;
-  return <Badge variant="blue" label={SAID_VALUE_BADGE} />;
+  return <Text type="supporting">{SAID_VALUE_BADGE}</Text>;
 }
 
 function Stepper({ value, min, max, step, unit, placeholder, startValue, onChange }) {
@@ -234,7 +233,9 @@ export function IntakeCard({ step, index, total, value, said, onAnswer, onSkip }
 
 export function HouseholdCard({ household, onAdd, onRemove }) {
   const members = (household && household.members) || [];
-  const [draft, setDraft] = useState({ relation: "배우자", ageBand: "30대",
+  // 18: nothing preselected — a 1인 customer sees 0/4 with no
+  // relation or age band chosen. Adding needs both taps.
+  const [draft, setDraft] = useState({ relation: "", ageBand: "",
     commuteMax: 45, workplaceText: "", incomeMan: null });
   const [error, setError] = useState("");
   return (
@@ -286,6 +287,10 @@ export function HouseholdCard({ household, onAdd, onRemove }) {
             </HStack>
             <HStack gap={1} vAlign="center">
               <Button size="sm" label="+ 함께 사는 사람" onClick={() => {
+                if (!draft.relation || !draft.ageBand) {
+                  setError("누구인지(관계·나이대)를 먼저 골라주세요");
+                  return;
+                }
                 const wt = String(draft.workplaceText || "").trim();
                 const r = onAdd({ relation: draft.relation, ageBand: draft.ageBand,
                   commuteMax: draft.commuteMax,
@@ -293,7 +298,7 @@ export function HouseholdCard({ household, onAdd, onRemove }) {
                   incomeMonthly: draft.incomeMan ? draft.incomeMan * 10000 : null });
                 setError(r && r.error ? r.error : "");
                 if (r && r.ok) {
-                  setDraft({ relation: "배우자", ageBand: "30대",
+                  setDraft({ relation: "", ageBand: "",
                     commuteMax: 45, workplaceText: "", incomeMan: null });
                 }
               }} />

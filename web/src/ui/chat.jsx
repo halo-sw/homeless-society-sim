@@ -1,9 +1,10 @@
 // Conversation view (12b, B): the chat replaces the floating agent.
-// Shell from shell-top-nav (AppShell + TopNav: product name, profile
-// chip, 새로 시작), transcript from ai-chat (ChatLayout + message list
-// + composer, chat column ≈440px, work area right). Template sample
-// content (JWT doc, shop items, artifact panel) is removed; the work
-// area is our 3D scene + candidate/result cards.
+// Shell from shell-top-nav (AppShell + the shared TopBar: product
+// name, mode switch, profile chip, 설정 sheet), transcript from
+// ai-chat (ChatLayout + message list + composer, chat column ≈440px,
+// work area right). Template sample content (JWT doc, shop items,
+// artifact panel) is removed; the work area is our 3D scene +
+// candidate/result cards.
 //
 // Every step renders as a message with a data card: ProfileCard (each
 // field with its source), CandidatesCard (preview cards + customer
@@ -16,11 +17,8 @@
 // live agent (dev key) answers free questions; its recognised tool
 // results render as the same cards. No-key recorded replies
 // (?ask=…) carry over with the 기록된 답변 badge.
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Component, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
-import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
-import { Avatar } from "@astryxdesign/core/Avatar";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -41,25 +39,32 @@ import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
 import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
-import { ModelPanel } from "./model-panel.jsx";
-import { SourcesDrawer } from "./sources.jsx";
-import { AssumptionsPanel } from "./assumptions.jsx";
-import { OrbView } from "./orb.jsx";
+import { exampleLine } from "./copy.js";
+import { TopBar } from "./topbar.jsx";
+// 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
   INTAKE_STEPS, intakeState0, currentStep, prefillFromExtract,
   answerStep, skipStep, household0, addMember, removeMember,
-  intakeToProfilePatch,
+  intakeToProfilePatch, intakeTookLine, householdHint,
 } from "../intake.js";
 import { selectPhotosForList } from "../places/select-photos.js";
 import { newUsageLog, recordTurn } from "../models/catalog.js";
 import { loadByoKey } from "../consult/byok.js";
-import { buildOrbData } from "../orb.js";
+import { buildChatMap, extractGreenRings } from "../chatmap.js";
+import { ChatMap } from "./chatmap.jsx";
 import { defaultOverrides, setOverride, resetOverride,
   encodeOverrides, decodeOverrides } from "../assumptions.js";
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
 // so module evaluation order is safe.
 import { CompareCard, CompareTabBody } from "./app.jsx";
+import { HowCalculated, tenureOf } from "./money.jsx";
+import { fmtMinutes, fmtWon } from "../money/format.js";
+import { monthlyHousingOf } from "../money/monthly.js";
+import { myScore, priorityValues } from "../priorities.js";
+import { pickMoments } from "../engine/moments.js";
+import { oneWayByLabel, oneWayDelta } from "../verify/numbers.js";
+import { ShareDialog } from "./share.jsx";
 import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
@@ -70,15 +75,16 @@ import { outingsFor, hhmm } from "../timeline.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
   loadHomesIndex, loadNetwork, loadSchedule, loadPhotosManifest,
-  loadNamedPhotos, loadRegions,
+  loadNamedPhotos, loadRegions, loadPayroll, loadCorridorTiles,
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
 } from "../chat/engine.js";
+import { buildCustomMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
-import { postConsult, loadScenario, formatUsage } from "./consult-client.js";
+import { postConsult, loadScenario } from "./consult-client.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
@@ -101,37 +107,51 @@ const CHIP_STARTER = {
 
 // --- ProfileCard ------------------------------------------------------------------
 
+// Said values as one summary line ("2인 · 강남 출근 · 전세 4억 이하 ·
+// 59㎡ 이상"): household, workplace, tenure+budget, size, commute cap.
+function customerChips(profile) {
+  const rows = fieldRows(profile);
+  const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+  const set = (r) => r && r.text !== "아직" && r.text !== "아직 몰라요";
+  const out = [];
+  if (set(by.members)) out.push(by.members.text);
+  if (set(by.workplaces)) {
+    const v = by.workplaces.value;
+    const known = Array.isArray(v) && v[0] && v[0].resolved;
+    out.push(known ? `${by.workplaces.text} 출근` : by.workplaces.text);
+  }
+  if (set(by.tenure)) {
+    const t = by.tenure.value;
+    const budget = t === "jeonse" ? by.depositMax
+      : t === "wolse" ? by.monthlyMax : t === "trade" ? by.priceMax : null;
+    out.push(set(budget) ? `${by.tenure.text} ${budget.text} 이하` : by.tenure.text);
+  }
+  if (set(by.sizeMin)) out.push(`${by.sizeMin.text} 이상`);
+  if (set(by.commuteMax)) out.push(`출퇴근 ${by.commuteMax.text} 이내`);
+  return out;
+}
+
 export function ProfileCard({ profile, example, onChip }) {
   const rows = fieldRows(profile);
   const chips = missingChips(profile);
+  const said = customerChips(profile);
   return (
     <Card padding={3}>
       <VStack gap={2}>
         <HStack gap={1} vAlign="center">
           <Heading level={4}>고객님 상황</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
         </HStack>
-        <MetadataList>
-          {rows.map((r) => (
-            <MetadataListItem key={r.key} label={r.label}>
-              <VStack gap={0}>
-                <HStack gap={1} vAlign="center" wrap="wrap">
-                  <Text hasTabularNumbers>{r.text}</Text>
-                  {sourceKo(r.source) !== "" && (
-                    <Badge variant={r.source === "asked" ? "neutral" : "blue"}
-                      label={sourceKo(r.source)} />
-                  )}
-                </HStack>
-                {r.note && r.note !== r.label && r.note !== r.text && (
-                  <Text type="supporting">{r.note}</Text>
-                )}
-              </VStack>
-            </MetadataListItem>
-          ))}
-        </MetadataList>
+        {said.length > 0 && (
+          <div className="ui-tags">
+            {said.map((s, i) => (
+              <span key={i} className="ui-tag">{s}</span>
+            ))}
+          </div>
+        )}
         {chips.length > 0 && (
           <VStack gap={1}>
-            <Text type="supporting">빠진 것을 채우면 후보가 더 정확해져요</Text>
+            <Text type="supporting">{`모르는 값 ${chips.length}개 — 채우면 더 정확해요`}</Text>
             <HStack gap={1} vAlign="center" wrap="wrap">
               {chips.map((c) => (
                 <Button key={c.field} size="sm" variant="secondary"
@@ -141,6 +161,28 @@ export function ProfileCard({ profile, example, onChip }) {
             </HStack>
           </VStack>
         )}
+        <details className="ui-section">
+          <summary className="ui-section-head">자세히</summary>
+          <div className="ui-section-body">
+            <MetadataList>
+              {rows.map((r) => (
+                <MetadataListItem key={r.key} label={r.label}>
+                  <VStack gap={0}>
+                    <HStack gap={1} vAlign="center" wrap="wrap">
+                      <Text hasTabularNumbers>{r.text}</Text>
+                      {sourceKo(r.source) !== "" && (
+                        <Text type="supporting">{sourceKo(r.source)}</Text>
+                      )}
+                    </HStack>
+                    {r.note && r.note !== r.label && r.note !== r.text && (
+                      <Text type="supporting">{r.note}</Text>
+                    )}
+                  </VStack>
+                </MetadataListItem>
+              ))}
+            </MetadataList>
+          </div>
+        </details>
       </VStack>
     </Card>
   );
@@ -153,12 +195,71 @@ function readinessNote(candidate) {
   return r.ready ? "" : r.reason;
 }
 
-export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
-    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example }) {
-  const candidates = (data && data.candidates) || [];
-  const picked = candidates.filter((c) => picks.includes(c.id));
+// 18: one run-readiness verdict shared by the chat card, the drawer
+// card and the sticky run button — same label, same disabled state,
+// same handler, so no copy can stall while another works.
+export const RUN_BUTTON_LABEL = "이 집들로 30일 살아 보기";
+
+// 18d: the scroll target for a fresh simulation card. handleRun sets
+// it the moment the card is created (progress and result render inside
+// the same card far below the fold), so the chat moves there at once.
+export const SIM_CARD_ATTR = "data-sim-card";
+
+// After the next paints, so the pushed card exists in the DOM.
+function soon(fn) {
+  try {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => requestAnimationFrame(fn));
+      return;
+    }
+  } catch {
+    // Fall through to the timer.
+  }
+  setTimeout(fn, 0);
+}
+
+// Scroll the chat thread to the simulation card. Takes a
+// document-like so tests pass a fake. Returns true when a target was
+// scrolled into view.
+export function scrollChatToSim(simId, root) {
+  try {
+    const doc = root || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.querySelector !== "function") return false;
+    const el = (simId && doc.querySelector(`[${SIM_CARD_ATTR}="${simId}"]`))
+      || doc.querySelector(`[${SIM_CARD_ATTR}]`);
+    if (!el || typeof el.scrollIntoView !== "function") return false;
+    let reduced = false;
+    try {
+      const mq = doc.defaultView && doc.defaultView.matchMedia
+        && doc.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
+      reduced = !!(mq && mq.matches);
+    } catch {
+      // Motion default stands.
+    }
+    el.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function runReadiness(picks, candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const picked = list.filter((c) => picks.includes(c.id));
   const unready = picked.filter((c) => readinessNote(c));
   const canRun = picked.length >= 2 && unready.length === 0;
+  const hint = picked.length < 2
+    ? `비교할 집을 2–3곳 담아 주세요 (지금 ${picked.length}곳)`
+    : unready.length > 0
+      ? `살아 보기를 못 하는 집이 있어요 (${unready.map((c) => c.name).join("·")})`
+      : `${picked.length}곳을 30일씩 살아 보고 비교해 드려요`;
+  return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
+}
+
+export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
+    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
+  const candidates = (data && data.candidates) || [];
+  const { canRun, hint } = runReadiness(picks, candidates);
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
   return (
@@ -166,10 +267,10 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>{`집 후보 ${candidates.length}곳`}</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           <span className="ui-panel-spacer" />
           <DropdownMenu
-            button={{ label: HOME_SORT_KO[sort] || sort, variant: "ghost", size: "sm" }}
+            button={{ label: HOME_SORT_KO[sort] || HOME_SORT_KO.commute, variant: "ghost", size: "sm" }}
             menuWidth={220}
             items={HOME_SORTS.map((s) => ({
               label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
@@ -185,9 +286,11 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
         )}
         {withPhotos.map(({ candidate: c, photos }, i) => (
-          <div key={c.id}
+          <div key={c.id} id={`cand-${c.id}`}
             onMouseEnter={() => onHover && onHover(`home:${c.id}`)}
-            onMouseLeave={() => onHover && onHover(null)}>
+            onMouseLeave={() => onHover && onHover(null)}
+            style={highlightId === `home:${c.id}`
+              ? { outline: "2px solid #2f6fed", borderRadius: 12 } : undefined}>
             <VStack gap={1}>
               <CandidateCard candidate={c} tenure={tenure} destName={destName}
                 photos={photos} index={i} picked={picks.includes(c.id)}
@@ -201,16 +304,10 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         ))}
         {candidates.length > 0 && (
           <VStack gap={1}>
-            <Button size="sm" label="이 집들로 살아 보기"
+            <Button size="sm" label={RUN_BUTTON_LABEL}
               isDisabled={!canRun}
               onClick={() => onRun && onRun()} />
-            <Text type="supporting">
-              {picked.length < 2
-                ? `비교에 넣기로 2–3곳을 골라주세요 (지금 ${picked.length}곳)`
-                : unready.length > 0
-                  ? `살아 보기를 못 하는 집이 있어요 (${unready.map((c) => c.name).join("·")})`
-                  : `${picked.length}곳을 30일씩 살아 보고 비교해 드려요`}
-            </Text>
+            <Text type="supporting">{hint}</Text>
           </VStack>
         )}
       </VStack>
@@ -220,17 +317,158 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
 
 // --- SimulationCard ---------------------------------------------------------------------
 
-function AnchorNotes({ anchors }) {
-  const coord = (anchors || []).filter((a) => a && a.method === "coordinate");
-  if (coord.length === 0) return null;
+// 18: readable result summary, top to bottom: (a) 내 기준 점수 with
+// its caption, (b) 월 주거비 with a 어떻게 계산했나요 link, (c) 하루
+// 출퇴근 편도 평균 per commuting member, (d) the pickMoments texts.
+// Pure parts are exported for tests. Never sorted, never crowned.
+// 18d: monthlyHousingOf lives in money/monthly.js (shared with the
+// share card); re-exported here so existing imports keep working.
+export { monthlyHousingOf };
+
+export function commuteOneWayOf(compare) {
+  const days = (compare && Number(compare.days) > 0) ? Number(compare.days) : 30;
+  const out = [];
+  for (const m of (compare && compare.members) || []) {
+    const w = m.commute_walk_minutes || {};
+    const r = m.commute_ride_minutes || {};
+    const total = (Number(w.a) || 0) + (Number(w.b) || 0)
+      + (Number(r.a) || 0) + (Number(r.b) || 0);
+    if (!(total > 0)) continue;
+    const one = (x) => Math.round((((Number(x) || 0) / days / 2)) * 10) / 10;
+    const a = one((Number(w.a) || 0) + (Number(r.a) || 0));
+    const b = one((Number(w.b) || 0) + (Number(r.b) || 0));
+    const d = Math.round((b - a) * 10) / 10;
+    out.push({ member: m.member, label: m.label, a, b, delta_b_minus_a: d,
+      plain: d === 0 ? `${m.label}는 A와 B가 같아요`
+        : `${m.label} — ${d > 0 ? "B" : "A"}가 하루 편도 평균 ${Math.round(Math.abs(d) * 10) / 10}분 더 걸려요` });
+  }
+  return out;
+}
+
+export function resultScoreOf(moneyDoc, compare, weights, explicit) {
+  if (!moneyDoc || !moneyDoc.homes || !compare) return { ok: false };
+  const tenures = {};
+  for (const l of Object.keys(moneyDoc.homes)) {
+    tenures[l] = tenureOf({ moneyTenure: {} }, l, moneyDoc);
+  }
+  try {
+    return myScore(priorityValues(moneyDoc, compare, tenures),
+      weights || null, { explicit: !!explicit });
+  } catch {
+    return { ok: false };
+  }
+}
+
+export function ResultSummary({ data }) {
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const labels = data.labels || [];
+  const names = data.names || {};
+  const pw = state.priorityWeights;
+  const scored = resultScoreOf(data.moneyDoc, data.compare,
+    pw && pw.weights, pw && pw.explicit);
+  const days = (data.compare && data.compare.days) || 30;
+  // 18d: one 출퇴근 편도 per home off the runs (compare.one_way);
+  // older payloads without it fall back to the member aggregates.
+  const oneWay = oneWayDelta(data.compare && data.compare.one_way);
+  const commutes = oneWay ? [] : commuteOneWayOf(data.compare);
+  const texts = data.momentTexts || [];
+  const showMoney = !!(data.moneyDoc || data.moneyMissing);
   return (
-    <Text type="supporting">
-      {`${coord.map((a) => a.label).join("·")} — 장면에 단지 이름이 없어 집 위치에서 시작했어요`}
-    </Text>
+    <VStack gap={2}>
+      {scored.ok && (
+        <VStack gap={1}>
+          <Text>내 기준 점수</Text>
+          {labels.map((l) => (
+            <Text key={l} hasTabularNumbers>
+              {`${l} ${(names[l] || "").trim()} ${scored.scores[l] === null || scored.scores[l] === undefined ? "–" : `${scored.scores[l]}점`}`.trim()}
+            </Text>
+          ))}
+          <Text type="supporting">{scored.caption}</Text>
+        </VStack>
+      )}
+      {showMoney && (
+        <VStack gap={1}>
+          <Text>월 주거비 (보증금 기회비용·관리비·교통비)</Text>
+          {labels.map((l) => {
+            const mh = monthlyHousingOf(data.moneyDoc, l, days);
+            if (mh.missing) {
+              return (
+                <Text key={l} type="supporting">
+                  {`${l} 월 주거비: 아직 계산하지 못했어요${data.moneyMissing ? ` · ${data.moneyMissing}` : ""}`}
+                </Text>
+              );
+            }
+            return (
+              <VStack gap={1} key={l}>
+                <Text hasTabularNumbers>{`${l} 월 주거비 ${fmtWon(mh.monthly, { monthly: true })} (${mh.tenure})`}</Text>
+                <HowCalculated tenure={mh.tenure} housing={mh.housingDoc}
+                  maintenanceWon={mh.maintenanceWon} transitWon={mh.transitWon} />
+              </VStack>
+            );
+          })}
+        </VStack>
+      )}
+      {oneWay ? (
+        <VStack gap={1}>
+          <Text>출퇴근 편도 (문 앞→회사, 30일 살아 보기)</Text>
+          <Text hasTabularNumbers>
+            {labels.map((l) => `${l} ${fmtMinutes((data.compare.one_way || {})[l])}`).join(" · ")}
+          </Text>
+          <Text type="supporting">
+            {oneWay.d === 0
+              ? `A와 B가 같아요 (편도 평균 ${fmtMinutes(oneWay.a)})`
+              : `${oneWay.d > 0 ? "B" : "A"}가 편도 평균 ${fmtMinutes(Math.abs(oneWay.d))} 더 걸려요`}
+          </Text>
+        </VStack>
+      ) : commutes.length > 0 && (
+        <VStack gap={1}>
+          <Text>하루 출퇴근 (문 앞→회사 편도 평균)</Text>
+          {commutes.map((c) => (
+            <VStack gap={1} key={c.member}>
+              <Text hasTabularNumbers>{`${c.label} A ${fmtMinutes(c.a)} · B ${fmtMinutes(c.b)}`}</Text>
+              <Text type="supporting">{c.plain}</Text>
+            </VStack>
+          ))}
+        </VStack>
+      )}
+      {texts.length > 0 && (
+        <VStack gap={1}>
+          <Text>살아 보니</Text>
+          {texts.map((t, i) => (
+            <Text key={i} type="supporting">{`${t.when_ko} ${t.home} — ${t.text_ko}`}</Text>
+          ))}
+        </VStack>
+      )}
+    </VStack>
   );
 }
 
-export function SimulationCard({ data, example }) {
+// 18: run failures in plain Korean (the technical detail stays one
+// tap away, never the headline).
+export function plainRunError(message) {
+  const msg = String(message || "");
+  if (/timed out/i.test(msg)) {
+    return "30일 계산이 시간 안에 끝나지 않았어요. 다시 시도해 주세요.";
+  }
+  if (/3D 장면이 없어|has no scene|scene box yet/.test(msg)) {
+    return "고른 집 중에 3D 장면이 없는 곳이 있어요. 장면이 있는 집으로 다시 골라주세요.";
+  }
+  if (/station walk time|station.*walk/i.test(msg)) {
+    return "역까지 걸어서 몇 분인지 모르는 집이 있어요. 도보 시간이 확인된 집으로 다시 골라주세요.";
+  }
+  if (/Worker|worker/i.test(msg)) {
+    return "계산기를 열지 못했어요. 페이지를 새로고침하고 다시 시도해 주세요.";
+  }
+  if (/fetch|network|load|불러오지 못했|404|500/i.test(msg)) {
+    return "자료를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.";
+  }
+  if (/2곳 이상|at least|2곳/.test(msg)) {
+    return "비교하려면 집을 2곳 이상 골라주세요.";
+  }
+  return "30일 살아 보기를 끝내지 못했어요. 다시 시도해 주세요.";
+}
+
+export function SimulationCard({ data, example, onRetry }) {
   if (!data) return null;
   if (data.status === "running") {
     const p = data.progress || { done: 0, total: 1, label: "" };
@@ -239,7 +477,7 @@ export function SimulationCard({ data, example }) {
         <VStack gap={2}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>30일 살아 보는 중</Heading>
-            {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
+            {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           </HStack>
           <ProgressBar label={`살아 보기 진행 중 (${p.done}/${p.total})`}
             value={p.total > 0 ? Math.round((p.done / p.total) * 100) : 0} max={100} />
@@ -255,7 +493,18 @@ export function SimulationCard({ data, example }) {
       <Card padding={3}>
         <VStack gap={2}>
           <Heading level={4}>30일 살아 보기</Heading>
-          <Banner status="warning" title="실행하지 못했어요" description={data.error || ""} />
+          <Banner status="warning" title="실행하지 못했어요"
+            description={plainRunError(data.error)} />
+          {data.error && (
+            <details className="ui-section">
+              <summary className="ui-section-head">자세한 이유</summary>
+              <div className="ui-section-body">
+                <Text type="supporting">{data.error}</Text>
+              </div>
+            </details>
+          )}
+          <Button size="sm" label="다시 시도"
+            onClick={() => onRetry && onRetry()} />
         </VStack>
       </Card>
     );
@@ -266,15 +515,20 @@ export function SimulationCard({ data, example }) {
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>30일 살아 보기 결과</Heading>
-          {example && <Badge variant="yellow" label={EXAMPLE_PROFILE_LABEL} />}
-          {data.recorded && <Badge variant="yellow" label="기록된 답변" />}
+          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
+          {data.recorded && <Text type="supporting">기록된 답변</Text>}
         </HStack>
         <Text type="supporting">
           {`${labels.map((l) => `${l} ${(data.names || {})[l] || ""}`.trim()).join(" · ")}`
             + " — 같은 식구가 30일 산 결과예요. 어느 쪽이 나은지는 고객님이 정하세요."}
         </Text>
-        <CompareTabBody state={{ compare: data.compare, compareLoading: false }} />
-        <AnchorNotes anchors={data.anchors} />
+        <ResultSummary data={data} />
+        <details className="ui-section">
+          <summary className="ui-section-head">자세히 보기</summary>
+          <div className="ui-section-body">
+            <CompareTabBody state={{ compare: data.compare, compareLoading: false }} />
+          </div>
+        </details>
         {data.extraLine && <Text type="supporting">{data.extraLine}</Text>}
         <HStack gap={2} vAlign="center" wrap="wrap">
           {(data.moments || []).map((mo) => (
@@ -302,7 +556,7 @@ export function TabCard({ tab }) {
   return (
     <Card padding={3}>
       <VStack gap={2}>
-        <Heading level={4}>{TAB_TITLES[tab] || tab}</Heading>
+        <Heading level={4}>{TAB_TITLES[tab] || "자세히"}</Heading>
         {tab === "jeonse" && <JeonseTab state={state} />}
         {tab === "worthit" && <WorthItTab state={state} />}
         {tab === "support" && <SupportTab state={state} />}
@@ -326,8 +580,11 @@ export function ListingCard({ onAsk }) {
 
 export function IntakeFlowCard({ intake, household, profile, handlers }) {
   const step = currentStep(intake);
+  const took = profile ? intakeTookLine(profile) : "";
+  const hhHint = householdHint(profile, household);
   return (
     <VStack gap={2}>
+      {took && <Text type="supporting">{took}</Text>}
       {step && !intake.done && (
         <IntakeCard step={step} index={INTAKE_STEPS.indexOf(step)}
           total={INTAKE_STEPS.length}
@@ -336,6 +593,7 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
       )}
       <HouseholdCard household={household}
         onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
+      {hhHint && <Text type="supporting">{hhHint}</Text>}
       {profile && (
         <ProfileCard profile={profile} example={handlers.exampleId}
           onChip={handlers.onChip} />
@@ -348,15 +606,44 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
 
 // --- message rendering -------------------------------------------------------------------
 
-function CardMsg({ msg, handlers, toolRows }) {
+// 18c: a failing card never takes down the chat — the message list
+// and the stage map each render inside this boundary. The fallback
+// names the card and carries the technical message in small text.
+export class MsgBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    const { error } = this.state;
+    if (error) {
+      return (
+        <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
+          <ChatMessageBubble variant="ghost" width="100%">
+            <VStack gap={1}>
+              <Text>이 카드를 그리지 못했어요 · 다시 시도</Text>
+              <Text type="supporting">{String((error && error.message) || error).slice(0, 300)}</Text>
+            </VStack>
+          </ChatMessageBubble>
+        </ChatMessage>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function CardMsg({ msg, handlers, toolRows, cardHi }) {
   const { data } = msg;
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
   return (
-    <ChatMessage sender="assistant" avatar={<Avatar name="상담" size="md" />}>
+    <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
-          <Badge variant="yellow" label="기록된 답변" />
+          <Text type="supporting">기록된 답변</Text>
         </ChatMessageBubble>
       )}
       <ChatMessageBubble variant="ghost" width="100%">
@@ -371,14 +658,18 @@ function CardMsg({ msg, handlers, toolRows }) {
             onPreview3D={handlers.onPreview3D} onJeonse={handlers.onJeonse}
             onRun={handlers.onRun} onDetail={handlers.onDetail}
             onHover={handlers.onHover} photoDeps={handlers.photoDeps}
-            destName={handlers.destName} example={msg.example} />
+            destName={handlers.destName} example={msg.example}
+            highlightId={cardHi} />
         )}
         {msg.kind === "intake" && (
           <IntakeFlowCard intake={handlers.intake} household={handlers.household}
             profile={handlers.profile} handlers={handlers} />
         )}
         {msg.kind === "simulation" && (
-          <SimulationCard data={data} example={msg.example} />
+          <div data-sim-card={msg.id}>
+            <SimulationCard data={data} example={msg.example}
+              onRetry={handlers.onRun} />
+          </div>
         )}
         {msg.kind === "listing" && (
           <ListingCard onAsk={handlers.onAsk} />
@@ -420,7 +711,7 @@ export function AgentTourCard() {
         <VStack gap={2}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>상담</Heading>
-            {rec && <Badge variant="yellow" label="기록된 답변" />}
+            {rec && <Text type="supporting">기록된 답변</Text>}
           </HStack>
           {rec ? (
             <VStack gap={1}>
@@ -476,12 +767,10 @@ export function ChatScreen() {
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
   const [error, setError] = useState("");
-  const [usage, setUsage] = useState({ prompt_tokens: 0, completion_tokens: 0, est_usd: 0 });
-  // 13: the loose token line moves into the 모델 panel as a usage log.
+  // 13f: usage lives in the 설정 sheet's 모델 section (usage log).
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
-  const [panel, setPanel] = useState(null); // null | model | sources | assume
   const [serverKeys, setServerKeys] = useState({});
   const [modelErrors, setModelErrors] = useState({});
   const [intake, setIntake] = useState(() => intakeState0());
@@ -490,6 +779,25 @@ export function ChatScreen() {
   const [namedPhotos, setNamedPhotos] = useState(null);
   const [cardHi, setCardHi] = useState(null);
   const [orbFilter, setOrbFilter] = useState(null);
+  // 18: corridor ground tiles (real 시군구 boundaries + open water)
+  // intersecting the current pins; the map paints fine without them.
+  const [mapTiles, setMapTiles] = useState([]);
+  useEffect(() => {
+    const cands = (candidatesData && candidatesData.result
+      && candidatesData.result.candidates) || [];
+    const pts = cands.filter((c) => Number.isFinite(c.lon) && Number.isFinite(c.lat));
+    if (pts.length === 0) { setMapTiles([]); return undefined; }
+    const lons = pts.map((c) => c.lon);
+    const lats = pts.map((c) => c.lat);
+    const pad = 0.03;
+    const bbox = [Math.min(...lons) - pad, Math.min(...lats) - pad,
+      Math.max(...lons) + pad, Math.max(...lats) + pad];
+    let stale = false;
+    loadCorridorTiles(fetchJson, bbox).then((tiles) => {
+      if (!stale) setMapTiles(tiles || []);
+    });
+    return () => { stale = true; };
+  }, [candidatesData]);
   const idRef = useRef(0);
   const busyRef = useRef(false);
   const profileRef = useRef(null);
@@ -741,6 +1049,10 @@ export function ChatScreen() {
     const simId = pushMsg({ role: "assistant", kind: "simulation", replace: true,
       data: { status: "running", progress: { done: 0, total: picked.length, label: "" } },
       example: st.exampleId });
+    // 18d: the new card renders far below — move the chat there at
+    // once so the progress stays visible (all three run buttons funnel
+    // through here: sticky, drawer, in-chat).
+    soon(() => scrollChatToSim(simId));
     const setProgress = (progress) => {
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: { ...m.data, status: "running", progress } } : m)));
@@ -751,6 +1063,22 @@ export function ChatScreen() {
       const areas = new Map();
       for (const p of picked) {
         if (!areas.has(p.scene)) areas.set(p.scene, await loadBoxArea(fetchJson, p.scene));
+      }
+      // 18: water + park rings out of the picked boxes' landuse (the run
+      // needs these area docs anyway) for the stage map's green layer.
+      try {
+        const cache = (dataRef.current && dataRef.current.greenBoxes)
+          || new Map();
+        for (const p of picked) {
+          if (!p.scene || cache.has(p.scene)) continue;
+          const area = areas.get(p.scene);
+          if (area && Array.isArray(area.landuse)) {
+            cache.set(p.scene, extractGreenRings(area.landuse));
+          }
+        }
+        if (dataRef.current) dataRef.current.greenBoxes = cache;
+      } catch {
+        // The map paints fine without the green layer.
       }
       const homes = picked.map((p) => homeForScenario(p,
         complexNameForCandidate(p, areas.get(p.scene)) || p.name));
@@ -769,29 +1097,75 @@ export function ChatScreen() {
         summary: `30일 · ${labels.join("·")}`, ms });
       const cmpId = addToolRow({ name: "compare", ok: true,
         summary: `${compare.metrics.length}개 지표`, ms: 0 });
+      // 18: the run's own money doc, built in the browser from the
+      // picked candidates' 실거래 — never another scenario's file.
+      // A build failure keeps the 30-day runs and reports the money
+      // as missing (with its reason), never demo numbers.
+      setProgress({ done: picked.length + 1, total: picked.length + 2, label: "돈 계산" });
+      let moneyDoc = null;
+      let moneyMissing = "";
+      try {
+        const payroll = await loadPayroll(fetchJson);
+        if (!payroll) throw new Error("급여 요율표를 불러오지 못했어요");
+        moneyDoc = buildCustomMoneyDoc({
+          scenario: scenValue, runs, profile: st.profile,
+          picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
+            complexName: homes[i].name, areaId: p.scene })),
+          payrollTable: payroll, areas,
+          network: data.network || null, fareSchedule: data.schedule || null,
+        });
+      } catch (err) {
+        moneyMissing = String((err && err.message) || err);
+      }
       const customId = newCustomId();
       await saveCustomRun({ id: customId, scenario: scenValue, runs, labels,
+        moneyDoc, moneyMissing,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])) });
       const moments = labels.map((l) => ({ label: l, ...firstMomentOfRun(runs[l]) }));
       const anchors = labels.map((l) => ({ label: l,
         method: (runs[l].meta.home_anchor || {}).method || "complex" }));
+      // 18: the 2–3 pickMoments texts read in the summary; the anchor
+      // facts moved into the full table's 어떻게 계산했나요.
+      let momentTexts = [];
+      try {
+        if (labels.length >= 2 && runs[labels[0]] && runs[labels[1]]) {
+          momentTexts = pickMoments(runs[labels[0]], runs[labels[1]], { max: 3 })
+            .map((m) => ({ home: m.home, when_ko: m.when_ko, text_ko: m.text_ko }));
+        }
+      } catch {
+        momentTexts = [];
+      }
+      compare.anchors = anchors;
+      // 18d: the one customer-facing 출퇴근 편도 per home, straight off
+      // the runs (door-to-door minutes per one-way commute = C01). The
+      // result card, share card and compare table all read this.
+      compare.one_way = oneWayByLabel(
+        Object.fromEntries(labels.map((l) => [l, runs[l]])));
       let extraLine = "";
       if (labels.length > 2) {
         const third = runs[labels[2]];
         const hh = third.household || {};
         extraLine = `${labels[2]} ${(third.meta || {}).complex || ""}: `
           + `30일 동안 ${Math.round(hh.walk_minutes || 0)}분 걷고, `
-          + `평균 피곤한 정도 ${Math.round((hh.fatigue_avg_30d || 0) * 10) / 10} — 3D에서 보기로 하루를 보세요.`;
+          + `하루 평균 피곤한 정도 ${Math.round((hh.fatigue_avg_30d || 0) * 10) / 10} — 3D에서 보기로 하루를 보세요.`;
       }
       const payload = { status: "done", compare, moments, labels, customId,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])),
-        anchors, extraLine };
+        moneyDoc, moneyMissing, anchors, momentTexts, extraLine };
+      // The chat drawer tabs read the same custom docs as the sim.
       store.set({ compare });
+      if (moneyDoc) {
+        store.set({ money: moneyDoc,
+          moneyTenure: { ...(moneyDoc.default_tenure || {}) } });
+      }
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: payload,
           tool_calls: [{ id: buildId, name: "build_scenario" },
             { id: runId, name: "run_simulation" }, { id: cmpId, name: "compare" }] }
         : m)));
+      // 18d: the finished result replaces the progress in the same
+      // card — keep it in view.
+      soon(() => scrollChatToSim(simId));
     } catch (err) {
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: { status: "error", error: String((err && err.message) || err) } } : m)));
@@ -847,11 +1221,6 @@ export function ChatScreen() {
       appendToolCards(out.messages);
       mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
-      setUsage((u) => ({
-        prompt_tokens: u.prompt_tokens + ((out.usage && out.usage.prompt_tokens) || 0),
-        completion_tokens: u.completion_tokens + ((out.usage && out.usage.completion_tokens) || 0),
-        est_usd: u.est_usd + ((out.usage && out.usage.est_usd) || 0),
-      }));
       // 13: per-turn usage into the 모델 panel log.
       setUsageLog((log) => recordTurn(log, {
         provider, model: provider,
@@ -983,7 +1352,7 @@ export function ChatScreen() {
           recorded: true, tool_calls: calls });
         if (initial.example) {
           pushMsg({ role: "system", kind: "system",
-            content: `예시로 시작했어요 (${initial.example})` });
+            content: exampleLine(initial.example) });
         }
         return;
       }
@@ -997,7 +1366,7 @@ export function ChatScreen() {
       clearTranscript();
       if (initial.example) {
         pushMsg({ role: "system", kind: "system",
-          content: `예시로 시작했어요 (${initial.example})` });
+          content: exampleLine(initial.example) });
       }
       send(initial.message);
       return;
@@ -1073,49 +1442,35 @@ export function ChatScreen() {
         variant="surface"
         contentPadding={0}
         topNav={(
-          <TopNav
-            label="주거 시뮬레이터 대화"
-            heading={(
-              <TopNavHeading heading="주거 시뮬레이터" headingHref="/" />
+          <TopBar mode="chat" summary={summary}
+            extra={(
+              <div className="ui-chat-narrowtabs">
+                <SegmentedControl label="화면 선택" value={view}
+                  onChange={setView} size="sm">
+                  <SegmentedControlItem value="chat" label="대화" />
+                  <SegmentedControlItem value="work" label="화면" />
+                </SegmentedControl>
+              </div>
             )}
-            centerContent={(
-              summary ? <Badge variant="info" label={summary} /> : (
-                <Text type="supporting">상황을 알려주세요</Text>
-              )
-            )}
-            endContent={(
-              <>
-                <div className="ui-chat-narrowtabs">
-                  <SegmentedControl label="화면 선택" value={view}
-                    onChange={setView} size="sm">
-                    <SegmentedControlItem value="chat" label="대화" />
-                    <SegmentedControlItem value="work" label="화면" />
-                  </SegmentedControl>
-                </div>
-                <span className="ui-token ui-num" title="이번 대화 토큰 사용량 (추정)">
-                  {formatUsage(usage)}
-                </span>
-                {IS_DEV && (
-                  <DropdownMenu
-                    button={{ label: provider === "meta" ? "Spark 1.3" : "Spark Open",
-                      variant: "ghost", size: "sm" }}
-                    menuWidth={240}
-                    items={[
-                      { label: "Spark 1.3 (Muse Spark 1.3)", onClick: () => setProvider("meta") },
-                      { label: "Spark Open (Muse Spark Open)", onClick: () => setProvider("baseten") },
-                    ]} />
-                )}
-                <Button size="sm" variant="ghost" label="모델"
-                  onClick={() => setPanel(panel === "model" ? null : "model")} />
-                <Button size="sm" variant="ghost" label="가정 바꾸기"
-                  onClick={() => setPanel(panel === "assume" ? null : "assume")} />
-                <Button size="sm" variant="ghost" label="출처·라이선스"
-                  onClick={() => setPanel(panel === "sources" ? null : "sources")} />
-                <Button size="sm" variant="ghost" label="새로 시작"
-                  onClick={() => { clearTranscript(); window.location.href = "/"; }} />
-              </>
-            )}
-          />
+            settings={{
+              mode: "chat",
+              model: { usageLog, serverKeys, errors: modelErrors },
+              modelExtra: IS_DEV ? (
+                <DropdownMenu
+                  button={{ label: provider === "meta" ? "Spark 1.3" : "Spark Open",
+                    variant: "ghost", size: "sm" }}
+                  menuWidth={240}
+                  items={[
+                    { label: "Spark 1.3 (Muse Spark 1.3)", onClick: () => setProvider("meta") },
+                    { label: "Spark Open (Muse Spark Open)", onClick: () => setProvider("baseten") },
+                  ]} />
+              ) : null,
+              assumptions: { overrides,
+                onSet: (id, v) => setOverrides((o) => setOverride(o, id, v)),
+                onReset: (id) => setOverrides((o) => resetOverride(o, id)) },
+              onIntro: null,
+              onRestart: () => { clearTranscript(); window.location.href = "/"; },
+            }} />
         )}>
         <div className="ui-chat-main">
           <section className="ui-chat-thread" aria-label="대화">
@@ -1127,17 +1482,21 @@ export function ChatScreen() {
                   placeholder={busy ? "찾는 중…" : "이어서 말씀해 보세요…"} />
               )}>
               <ChatMessageList density="compact">
-                {messages.map((m) => (m.role === "user" ? (
-                  <ChatMessage key={m.id} sender="user">
-                    <ChatMessageBubble>{m.content}</ChatMessageBubble>
-                  </ChatMessage>
-                ) : m.role === "system" ? (
-                  <ChatSystemMessage key={m.id}>{m.content}</ChatSystemMessage>
-                ) : m.kind === "text" ? (
-                  <AssistantMsg key={m.id} msg={m} toolRows={toolRows} />
-                ) : (
-                  <CardMsg key={m.id} msg={m} handlers={handlers} toolRows={toolRows} />
-                )))}
+                {messages.map((m) => (
+                  <MsgBoundary key={m.id}>
+                    {m.role === "user" ? (
+                      <ChatMessage sender="user">
+                        <ChatMessageBubble>{m.content}</ChatMessageBubble>
+                      </ChatMessage>
+                    ) : m.role === "system" ? (
+                      <ChatSystemMessage>{m.content}</ChatSystemMessage>
+                    ) : m.kind === "text" ? (
+                      <AssistantMsg msg={m} toolRows={toolRows} />
+                    ) : (
+                      <CardMsg msg={m} handlers={handlers} toolRows={toolRows} cardHi={cardHi} />
+                    )}
+                  </MsgBoundary>
+                ))}
                 {busy && (
                   <ChatMessage sender="assistant">
                     <ChatMessageBubble variant="ghost">
@@ -1157,59 +1516,116 @@ export function ChatScreen() {
                   onClick={() => chipAction(chip)} />
               ))}
             </div>
+            {(() => {
+              const sticky = runReadiness(picks,
+                (candidatesData && candidatesData.result.candidates) || []);
+              return sticky.picked.length >= 2 ? (
+                <div className="ui-chat-sticky-run">
+                  <Button label={RUN_BUTTON_LABEL}
+                    isDisabled={!sticky.canRun}
+                    onClick={() => handleRun()} />
+                  {!sticky.canRun && (
+                    <Text type="supporting">{sticky.hint}</Text>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </section>
+          <MsgBoundary>
           <StageArea
-            orbData={buildOrbData({
+            map={buildChatMap({
               regions: dataRef.current?.regionsDoc || { regions: [] },
-              stations: [],
-              homes: dataRef.current?.index?.homes || [],
+              network: dataRef.current?.network || null,
+              tiles: mapTiles,
+              green: mergeGreenBoxes(dataRef.current?.greenBoxes),
               candidates: candidatesData?.result?.candidates || [],
-              manifest: dataRef.current?.manifest || null,
-              rentalCoverage: {},
+              picks,
+              workplaceStation: destName || null,
+              tenure: candidatesData?.tenure || null,
             })}
+            contextLine={stageContextLine(profile, candidatesData)}
             cardHi={cardHi}
+            onPinHover={(key) => setCardHi(key)}
+            onPinClick={(id) => {
+              try {
+                const el = typeof document !== "undefined"
+                  ? document.getElementById(`cand-${id}`) : null;
+                if (el && typeof el.scrollIntoView === "function") {
+                  const reduced = typeof window !== "undefined" && window.matchMedia
+                    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                  el.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+                }
+              } catch {
+                // Hover still highlights the card; scroll is best-effort.
+              }
+            }}
             onOrbRegion={(regionId) => {
               setOrbFilter(regionId);
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
+          </MsgBoundary>
           <DrawerArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
-            panel={panel} onClosePanel={() => setPanel(null)}
-            usageLog={usageLog} serverKeys={serverKeys} modelErrors={modelErrors}
-            overrides={overrides}
-            onSetOverride={(id, v) => setOverrides((o) => setOverride(o, id, v))}
-            onResetOverride={(id) => setOverrides((o) => resetOverride(o, id))}
             detail={detail} onCloseDetail={() => setDetail(null)}
             photoDeps={handlers.photoDeps} destName={destName}
             tenure={candidatesData?.tenure || "undecided"}
             onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
         </div>
         {viewChip && (
-          <div className="ui-viewchip overlay">
-            <Badge variant="info" label={viewChip} />
-          </div>
+          <div className="ui-viewchip overlay">{viewChip}</div>
         )}
         <Toaster />
+        {/* 18: the drawer's 결과 공유 needs its dialog on this screen too. */}
+        <ShareDialog />
       </AppShell>
     </div>
   );
 }
 
-function StageArea({ orbData, cardHi, onOrbRegion }) {
-  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
-  const shapes = (orbData && orbData.shapes) || [];
+// 18: the stage header is the customer's context ("판교 출근 · 후보
+// 6곳"), never a fixed scene name.
+export function stageContextLine(profile, candidatesData) {
+  const bits = [];
+  const wps = profile && profile.workplaces && profile.workplaces.value;
+  const where = Array.isArray(wps) && wps[0]
+    && ((wps[0].resolved && wps[0].resolved.station) || wps[0].text);
+  if (where) bits.push(`${where} 출근`);
+  const n = candidatesData && candidatesData.result
+    && candidatesData.result.candidates ? candidatesData.result.candidates.length : 0;
+  if (n > 0) bits.push(`후보 ${n}곳`);
+  return bits.length > 0 ? bits.join(" · ") : "";
+}
+
+// 18: merge cached per-box green rings (water + parks) into one layer.
+export function mergeGreenBoxes(cache) {
+  const water = [];
+  const parks = [];
+  try {
+    for (const g of (cache && cache.values()) || []) {
+      if (g && Array.isArray(g.water)) water.push(...g.water);
+      if (g && Array.isArray(g.parks)) parks.push(...g.parks);
+    }
+  } catch {
+    // The map paints fine without the green layer.
+  }
+  return { water, parks };
+}
+
+export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine }) {
+  const regions = (map && map.regions) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">
       <div style={{ padding: "8px 12px", background: "rgba(255,253,248,0.98)",
         borderBottom: "1px solid var(--border, #d8d2c4)" }}>
         <Text type="supporting">
-          {`지금 보는 장면 · ${state.area.label || state.area.id || "서울·경기 동남부"}`}
+          {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
           {" · "}
-          {shapes.length > 0 ? `지역 ${shapes.length}곳` : "지역을 불러오는 중…"}
+          {regions.length > 0 ? `지역 ${regions.length}곳` : "지역을 불러오는 중…"}
         </Text>
       </div>
       <div className="ui-chat-stage-body">
-        {shapes.length > 0 ? (
-          <OrbView data={orbData} onRegion={onOrbRegion} highlightKey={cardHi} />
+        {regions.length > 0 ? (
+          <ChatMap map={map} cardHi={cardHi}
+            onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />
         ) : (
           <div style={{ padding: 16 }}>
             <Card padding={3}>
@@ -1226,13 +1642,13 @@ function StageArea({ orbData, cardHi, onOrbRegion }) {
   );
 }
 
-function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
-  usageLog, serverKeys, modelErrors, overrides, onSetOverride, onResetOverride,
+export function DrawerArea({ picks, candidatesData, onRun,
   detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const candidates = (candidatesData && candidatesData.result.candidates) || [];
-  const picked = candidates.filter((c) => picks.includes(c.id));
-  const open = Boolean(detail || panel || state.compareOpen || picked.length > 0);
+  // Same verdict + same handler as the chat card (runReadiness).
+  const { picked, canRun, hint } = runReadiness(picks, candidates);
+  const open = Boolean(detail || state.compareOpen || picked.length > 0);
   const detailPhotos = detail
     ? selectPhotosForList([detail], photoDeps || {})[0].photos : null;
   return (
@@ -1253,15 +1669,6 @@ function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
             </VStack>
           </Card>
         )}
-        {panel === "model" && (
-          <ModelPanel usageLog={usageLog} serverKeys={serverKeys}
-            errors={modelErrors} onClose={onClosePanel} />
-        )}
-        {panel === "sources" && <SourcesDrawer onClose={onClosePanel} />}
-        {panel === "assume" && (
-          <AssumptionsPanel overrides={overrides}
-            onSet={onSetOverride} onReset={onResetOverride} onClose={onClosePanel} />
-        )}
         {picked.length > 0 && (
           <Card padding={3}>
             <VStack gap={1}>
@@ -1269,13 +1676,14 @@ function DrawerArea({ picks, candidatesData, onRun, panel, onClosePanel,
               {picked.map((c) => (
                 <Text key={c.id}>{c.name}</Text>
               ))}
-              <Button size="sm" label="이 집들로 살아 보기"
-                isDisabled={picked.length < 2} onClick={onRun} />
+              <Button size="sm" label={RUN_BUTTON_LABEL}
+                isDisabled={!canRun} onClick={() => onRun && onRun()} />
+              <Text type="supporting">{hint}</Text>
             </VStack>
           </Card>
         )}
         <CompareCard state={state} />
-        {!detail && !panel && picked.length === 0 && !state.compareOpen && (
+        {!detail && picked.length === 0 && !state.compareOpen && (
           <EmptyState isCompact title="대화에서 집을 고르면"
             description="여기에 고른 집과 비교·돈·안심·매물 탭이 열려요." />
         )}

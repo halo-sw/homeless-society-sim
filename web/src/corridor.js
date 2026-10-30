@@ -10,16 +10,20 @@
 
 import * as THREE from "three";
 import { bboxToXY, lonLatToXY } from "./frame.js";
+import { hexToLinearRgb } from "./palette.js";
 
-export const CORRIDOR_BUILDING = [0.79, 0.76, 0.7]; // flat Bone
-// Stage 11: roof caps read lighter than the walls (× corridorRoofLift,
-// 1.12) so blocks separate from each other and the ground on the
-// regional view; the journey material darkens the whole tile on top.
-export const CORRIDOR_ROOF = [0.88, 0.85, 0.78];
-export const CORRIDOR_ROAD = [0.42, 0.44, 0.46];
-export const CORRIDOR_BOUNDARY = [0.55, 0.4, 0.3];
-export const CORRIDOR_WATER_LINE = [0.45, 0.65, 0.78];
-export const CORRIDOR_WATER = [0.62, 0.77, 0.85];
+// Corridor flat colours as LINEAR vertex triples (17b: these were
+// authored as sRGB/255 but consumed raw, so sunlit blocks rendered
+// tan-brown ≈ the beige ground — the one-brown regional view). Walls
+// match the painted facade target, roofs one step lighter, so blocks
+// separate from each other and the ground; the journey material still
+// darkens the whole tile on top in photo style (corridorDarken).
+export const CORRIDOR_BUILDING = hexToLinearRgb(0xc9c4bb);
+export const CORRIDOR_ROOF = hexToLinearRgb(0xddd8ce);
+export const CORRIDOR_ROAD = hexToLinearRgb(0x6b7075);
+export const CORRIDOR_BOUNDARY = hexToLinearRgb(0x8c664d);
+export const CORRIDOR_WATER_LINE = hexToLinearRgb(0x73a6c7);
+export const CORRIDOR_WATER = hexToLinearRgb(0x9ec4d9);
 
 const LIFT = 0.6; // corridor prisms sit just above the regional base
 
@@ -115,12 +119,12 @@ export function tileWater(tile, origin, color = CORRIDOR_WATER) {
   return out;
 }
 
-// sRGB hex int (the look table form) -> [r, g, b] 0..1 vertex triple.
+// sRGB hex int (the look table form) -> LINEAR [r, g, b] vertex triple.
+// 17b: raw sRGB here rendered the regional roads/river ~60 % too bright.
 export function hexToRgb(hex) {
   const n = Number(hex);
   if (!Number.isFinite(n)) return [0, 0, 0];
-  const v = Math.max(0, Math.min(0xffffff, Math.floor(n)));
-  return [((v >> 16) & 0xff) / 255, ((v >> 8) & 0xff) / 255, (v & 0xff) / 255];
+  return hexToLinearRgb(n);
 }
 
 // Corridor base-map ground rect from the manifest bounds, in three.js

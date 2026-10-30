@@ -3,7 +3,6 @@
 // inputs) with the pure worthItComparison engine. No verdict text — the
 // agent explains, the customer decides.
 import { useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -12,17 +11,15 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { Gloss } from "./gloss.jsx";
-import { fmtWon, fmtPct, badgeFor } from "../money/format.js";
+import { SourceBadge } from "./source-badge.jsx";
+import { fmtWon, fmtPct } from "../money/format.js";
 import { worthItComparison, applyOwnershipCosts, breakevenLabel,
   WORTHIT_HORIZONS, WORTHIT_DEFAULT_SCENARIOS, LENDER_NOTE } from "../money/worthit.js";
 
 const TENURE_COLORS = { "매매": "#b25a33", "전세": "#4a7ba7", "월세": "#7ba05b", "공공임대": "#9b7bb8" };
 
 function SrcBadge({ source }) {
-  return (
-    <Badge variant={source === "rtms" ? "blue" : "orange"}
-      label={badgeFor(source)} />
-  );
+  return <SourceBadge source={source} />;
 }
 
 function numOr(value, fallback) {

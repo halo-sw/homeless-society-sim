@@ -86,6 +86,14 @@ describe("timeline vocabulary", () => {
     assert.equal(stripFrac(0), 0); // clamped
     assert.equal(hhmm(530), "08:50");
   });
+
+  it("formats float minutes as HH:MM, never a float tail", () => {
+    // 18d walkthrough: the 선택 기록 showed 17:40.200000000000045.
+    assert.equal(hhmm(1060.200000000000045), "17:40");
+    assert.equal(hhmm(1060.9), "17:40");
+    assert.equal(hhmm(0), "00:00");
+    assert.equal(hhmm(1439.9), "23:59");
+  });
 });
 
 describe("daySegments", () => {

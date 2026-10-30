@@ -8,7 +8,7 @@
 
 import { solarPosition } from "../lighting.js";
 import { daylightFactor, duskFactor } from "../sim.js";
-import { streetFogRange } from "./look.js";
+import { paintedFogRange, streetFogRange } from "./look.js";
 
 export const PHASES = ["day", "golden", "blue", "night"];
 
@@ -33,6 +33,102 @@ function mixHex(h1, h2, t) {
   const g = Math.round(lerp((h1 >> 8) & 255, (h2 >> 8) & 255, t));
   const b = Math.round(lerp(h1 & 255, h2 & 255, t));
   return (r << 16) | (g << 8) | b;
+}
+
+// Stage 14f painted light rig (sRGB): the photo hemisphere fill is blue
+// (hemiSkyDay #b8cfe4, B−R = 44) and every standard material also takes
+// blue diffuse IBL from the PMREM sky capture — with full-strength
+// shadows, shade reads blue and roads/towers go blue-grey. Painted days
+// use warm neutral fill, a warm haze fog, soft shadows and no sky IBL.
+// 17b: the laptop capture still read shaded walls near-black, so shadows
+// soften to 30 % and the day hemisphere fill gains ×1.35.
+// 17c: the GPU capture reads every sunlit flat brown and ~20 % dark
+// (ground #cfc4ad → (161,137,109) at 08:50): the warm morning sun
+// (#ffd5ab, B/R = 0.4 in linear) dominates the irradiance while the
+// total E×exposure/π sits at ~0.45, so the palette hue never survives.
+// Painted days now use a neutral (white) day sun and a UNIFORM ×1.8 day
+// gain over sun + fill (replacing the fill-only 1.35): E×exposure/π ≈ 1
+// at mid-morning, so sunlit flats render at their authored albedo, and
+// the shade/sun ratio is gain-invariant (17b's ≥ 0.55 bar still holds).
+// Both blend by dayF, so dusk and night keep the photo colours/levels.
+export const PAINTED_LIGHT = {
+  hemiSky: 0xf2ece0,
+  hemiGround: 0xb9ad98,
+  fog: 0xe2d8c4,
+  sunDay: 0xffffff,
+  shadowStrength: 0.3,
+  dayLight: 1.8,
+  // 17d reference for the time-aware day exposure: the ungained total
+  // (sun + fill) horizontal irradiance luminance at the 08:50 calibration
+  // (songpa, 2026-11-02). Normalising against it keeps 08:50 on the flat
+  // gain exactly.
+  refDayE: 1.23148,
+};
+
+// Clamped solar sine for a horizontal surface (same rule as the rig and
+// the chain: a 0.03 floor by day; night is unused, dayF is 0 there).
+function paintedSunY(altitude) {
+  const alt = Number(altitude);
+  if (!Number.isFinite(alt) || alt <= -1) return 0.03;
+  return Math.max(Math.sin((alt * Math.PI) / 180), 0.03);
+}
+
+// sRGB hex to linear luminance (normalisation signal only).
+function paintedLuma(hex) {
+  const toLinear = (u8) => {
+    const c = Math.min(1, Math.max(0, u8 / 255));
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const h = Number(hex) || 0;
+  return 0.299 * toLinear((h >> 16) & 255)
+    + 0.587 * toLinear((h >> 8) & 255)
+    + 0.114 * toLinear(h & 255);
+}
+
+// Painted override over skyParams (pure): hemi/fog/sun colours blend to
+// the rig by daylight so dawn/dusk stay continuous (full rig at dayF 1,
+// untouched photo colours at night); shadows sit at 30 %, sun + fill
+// gain the day boost by day, and the blue sky environment switches off.
+// Bloom/emissive/nightF/phase pass through.
+export function paintedSkyParams(p) {
+  const dayF = Math.min(1, Math.max(0, Number(p.dayF) || 0));
+  // 17d: time-aware day exposure. The flat gain above was calibrated on
+  // the low 08:50 sun; under a high midday sun the same gain clips
+  // sunlit flats, and at 17:00 the low sun leaves them muddy. Sun and
+  // fill share one normalising gain: the ungained total (sun + fill) on a
+  // sunlit horizontal surface is held at the 08:50 reference level, so
+  // that surface resolves to the same palette colour at any daytime
+  // hour. The correction fades in by dayF, so night stays untouched, and
+  // a common gain keeps the shade/sun ratio gain-invariant (17b >= 0.55).
+  const sunY = paintedSunY(p.altitude);
+  const total0 = Math.max(
+    (Number(p.sunIntensity) || 0) * sunY * paintedLuma(p.sunColor)
+      + (Number(p.hemiIntensity) || 0) * paintedLuma(p.hemiSky),
+    1e-6);
+  const full = Math.min(
+    (PAINTED_LIGHT.dayLight * PAINTED_LIGHT.refDayE) / total0, 10);
+  const gain = 1 + (full - 1) * dayF;
+  return {
+    ...p,
+    hemiSky: mixHex(p.hemiSky, PAINTED_LIGHT.hemiSky, dayF),
+    hemiGround: mixHex(p.hemiGround, PAINTED_LIGHT.hemiGround, dayF),
+    fogColor: mixHex(p.fogColor, PAINTED_LIGHT.fog, dayF),
+    sunColor: mixHex(p.sunColor, PAINTED_LIGHT.sunDay, dayF),
+    sunIntensity: (Number(p.sunIntensity) || 0) * gain,
+    hemiIntensity: (Number(p.hemiIntensity) || 0) * gain,
+    shadowStrength: PAINTED_LIGHT.shadowStrength,
+    envIntensity: 0,
+  };
+}
+
+// Diffuse irradiance on one wall in cast shadow vs the same wall in sun:
+// the sun term scales by (1−shadow) while the hemisphere fill stays, so
+// the ratio is (S×(1−s)+H)/(S+H). 17b acceptance: ≥ 0.55 at 14:00.
+export function shadeSunRatio(sunI, hemiI, shadow) {
+  const s = Math.max(0, Number(sunI) || 0);
+  const h = Math.max(0, Number(hemiI) || 0);
+  const k = Math.min(1, Math.max(0, Number(shadow) || 0));
+  return s + h > 0 ? (s * (1 - k) + h) / (s + h) : 1;
 }
 
 export const SKY_COLORS = {
@@ -103,6 +199,15 @@ export function skyParams(lat, lon, date, minute) {
 // the stop framing itself stays crisp (1.5× read milky), and ends at 6×
 // so the skyline melts into the sky colour. Pure; the rig applies it per
 // frame. Factors live in the look table (render/look.js).
-export function fogRangeFor(framedWidthM, look) {
+// Stage 14f: painted style measures from the camera distance instead — at
+// the 10° FOV the camera sits ~3.6× the framed width away, so a pure
+// width multiple starts fog just behind the target and tints the frame.
+// Photo passes no opts and keeps the width multiples exactly.
+export function fogRangeFor(framedWidthM, look, { style = "photo", camDistM = null } = {}) {
+  const hasDist = camDistM !== null && camDistM !== undefined && camDistM !== ""
+    && Number.isFinite(Number(camDistM));
+  if (style === "painted" && hasDist) {
+    return paintedFogRange(camDistM, framedWidthM);
+  }
   return streetFogRange(framedWidthM, look);
 }

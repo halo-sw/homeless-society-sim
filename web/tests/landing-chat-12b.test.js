@@ -87,6 +87,16 @@ describe("profile card", () => {
     assert.ok(text.includes(EXAMPLE_PROFILE_LABEL));
     assert.ok(text.includes("출근 상한?") || text.includes("집 크기?"));
   });
+
+  it("summarises said values as chips with a count line and 자세히", () => {
+    const html = render(React.createElement(chat.ProfileCard, { profile }));
+    const text = textOf(html);
+    assert.ok(text.includes("1인"), "household chip");
+    assert.ok(text.includes("판교 출근"), "workplace chip");
+    assert.ok(text.includes("전세 2억 원 이하"), "tenure+budget chip");
+    assert.match(text, /모르는 값 \d+개 — 채우면 더 정확해요/);
+    assert.ok(text.includes("자세히"), "full table disclosure");
+  });
 });
 
 describe("candidates card", () => {
@@ -123,7 +133,8 @@ describe("candidates card", () => {
       onJeonse: () => {}, onRun: () => {} };
     const none = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: [] })));
-    assert.ok(none.includes("2–3곳을 골라주세요 (지금 0곳)"));
+    // 18: the hint names the action (비교에 담기).
+    assert.ok(none.includes("비교할 집을 2–3곳 담아 주세요 (지금 0곳)"));
     const two = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: ["a", "b"] })));
     assert.ok(two.includes("2곳을 30일씩 살아 보고 비교해 드려요"));
@@ -157,7 +168,7 @@ describe("no demo numbers without 예시", () => {
     const text = textOf(html);
     const figs = [...text.matchAll(FIGURE)].map((m) => m[0]);
     assert.deepEqual(figs, []);
-    assert.ok(text.includes("주거 시뮬레이터"));
+    assert.ok(text.includes("Ithaca"));
   });
 
   it("example input labels every card 예시", () => {
@@ -208,9 +219,12 @@ describe("chat reopen (11b carryover)", () => {
     const src = readFileSync(join(HERE, "..", "src", "main.js"), "utf8");
     assert.ok(src.includes("openChat: () =>"), "openChat action registered");
     assert.ok(src.includes("chatReopenUrl()"), "reopens via /?chat=");
-    const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
-    assert.ok(app.includes('label="대화"'), "TopBar 대화 entry");
+    // 13f-1: the shared bar (topbar.jsx) carries the 대화 entry.
+    const bar = readFileSync(join(HERE, "..", "src", "ui", "topbar.jsx"), "utf8");
+    assert.ok(bar.includes('label: "대화"'), "TopBar 대화 entry");
     // Unconditional: not gated on clock, follow, or night state.
-    assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(app), "not follow-gated");
+    assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(bar), "not follow-gated");
+    const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
+    assert.ok(app.includes("MapTools") && app.includes("TopBar"), "sim/tour render the shared bar");
   });
 });

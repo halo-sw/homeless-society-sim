@@ -100,7 +100,7 @@ describe("demo tour step machine", () => {
     assert.ok(rec);
     assert.match(rec.q, /판교로 출근하는 신입/);
     assert.match(rec.a, /예시로 찾아봤어요/);
-    assert.match(rec.a, /2,934곳 중 6곳/);
+    assert.match(rec.a, /2,928곳 중 6곳/);
     assert.match(rec.a, /6곳 모두 판교 근처 오피스텔/);
     assert.match(rec.a, /천사의도시Ⅱ오피스텔.*1\.85억/);
     assert.match(rec.a, /오라타워.*1\.25억/);
@@ -130,7 +130,8 @@ describe("demo tour step machine", () => {
       "transit", "seoul-metro-interstation.csv"), "utf8"));
     const r = find_homes(ex.profile, build.index,
       { network: build.network, schedule, photos: build.photos, limit: 6 });
-    assert.equal(r.total_matching, 2934);
+    // 18: 6 public-rental complexes no longer count as 전세 results.
+    assert.equal(r.total_matching, 2928);
     assert.deepEqual(r.candidates.map((c) => c.name), [
       "천사의도시Ⅱ오피스텔", "오라타워", "시그마 3", "분당오벨리스크",
       "노블리치1오피스텔", "성남 메트로칸",

@@ -7,9 +7,10 @@ import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, archLensPose, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, tourOffset } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { compare as compareRuns } from "./engine/simulate.js";
+import { oneWayByLabel } from "./verify/numbers.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
 import { parseScenario } from "./engine/scenario.js";
 import { highlightFor } from "./highlight.js";
@@ -17,6 +18,7 @@ import { placeTag, simViewOffset, tagBoxBlocked } from "./stage-tags.js";
 import { commuteSegments, corridorFor, journeyBanner, journeyCameraState, trainPosition } from "./journey.js";
 import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
+import { pickMoments } from "./engine/moments.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
 import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
@@ -26,17 +28,18 @@ import { TREE_CANOPY_R, TREE_CANOPY_Y, TREE_TRUNK_H, TREE_TRUNK_R_BOTTOM, TREE_T
 import { areasOrFallback, FALLBACK_AREAS } from "./areas-index.js";
 import { store } from "./ui/store.js";
 import { mountUI } from "./ui/main.jsx";
+import { revealCompareSection } from "./ui/app.jsx";
 import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // 12b: landing/chat routing, timeline builders + activity colours,
 // custom-run store (?custom=<id>).
 import { routeForSearch, chatUrl, chatReopenUrl } from "./chat/urls.js";
-import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.js";
+import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor } from "./timeline.js";
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
-import { eveningHomeFraction, globalHomeFraction, litFractionWithFallback } from "./render/facades.js";
+import { PAINTED_ROOF_HEX, PAINTED_WALL_HEX, aviationBlink, eveningHomeFraction, facadeTintFor, globalHomeFraction, litFractionWithFallback, needsAviationLight, tourOfficeFraction } from "./render/facades.js";
 import { hashString, hashUnit } from "./palette.js";
-import { capLitFraction, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
+import { PAINTED_NIGHT_GROUND, PAINTED_NIGHT_ROAD_LIT, PAINTED_NIGHT_ROAD_WARM, PAINTED_NIGHT_WALL, PAINTED_WATER, capLitFraction, lerpHex, nightEmissiveHex, nightTint, paintedFogRange, regionalFogRange, resolveLook, streetFogRange } from "./render/look.js";
 import { applyStopFade, makeFadeable } from "./render/fade.js";
 import { createRenderer } from "./render/renderer.js";
 import { createSkyRig } from "./render/rig.js";
@@ -47,8 +50,8 @@ import { agentMaterial, facadeMaterial, groundMaterial, markingMaterial, roofMat
 import { flatHeightAt, makeHeightAt, seatOnTerrain } from "./scene/height.js";
 import { loadScene, toTypedMesh } from "./scene/load.js";
 import { MASK_SIZE, buildTerrainMesh, paintLandMask } from "./scene/terrain.js";
-import { buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
-import { setSway, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
+import { MARKINGS_HIDE_M, buildRoadMarkings, buildRoadMeshes, buildWaterRibbons } from "./scene/roads.js";
+import { fillStreetTrees, setSway, treeColour, treeGeometry, treeMaterial, treeRotation, treeShadowMaterial, treeTint } from "./scene/trees3d.js";
 // Stage 14b: procedural motion — pure state (motion/) evaluated at sim time.
 import { areaSegments, buildFleet, sceneSegments, vehicleCapFor, MAX_VEHICLES_HIGH } from "./motion/vehicles.js";
 import { MAX_PEDS_HIGH, buildCrowd, pedCapFor, stationCongestionScale } from "./motion/pedestrians.js";
@@ -85,6 +88,35 @@ const HEIGHT_SWATCH = { osm_height: "#7ba05b", osm_levels: "#a9bf8e", register_h
 // ?time=HH:MM overrides the tour sun for day/golden/blue/night captures.
 const SUN_DATE = new Date("2026-10-15T15:00:00+09:00");
 const SUN_MINUTE = 15 * 60;
+// Painted leaf colours (14e) read the sim date: the tour's fixed day is
+// 2026-10-15 (inside the autumn window); sim runs use scenario start.
+const TOUR_DATE_ISO = "2026-10-15";
+function simDateISO(startDate, day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startDate || "");
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    + (Number(day) || 0) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+// Building footprint exterior rings in scene coords ([x, z] plan) for
+// the rule-filled street trees (skip spots on/near footprints).
+function footprintRings(buildings, origin) {
+  const rings = [];
+  for (const b of buildings || []) {
+    const g = b.geometry;
+    if (!g) continue;
+    const polys = g.type === "Polygon" ? [g.coordinates]
+      : g.type === "MultiPolygon" ? g.coordinates : [];
+    for (const poly of polys) {
+      const ring = (poly[0] || []).map(([lon, lat]) => {
+        const [x, y] = lonLatToXY(lon, lat, origin);
+        return [x, -y];
+      });
+      if (ring.length >= 3) rings.push(ring);
+    }
+  }
+  return rings;
+}
 const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
 // 12b: map-route colours shared with the day strip (timeline.js).
@@ -92,8 +124,12 @@ const WALK_ROUTE_CSS = ACTIVITIES.walk.color;
 const SUBWAY_ROUTE_CSS = ACTIVITIES.subway.color;
 
 const PARAMS = new URLSearchParams(location.search);
+// Stage 14e: ?style=painted (default, near-isometric) vs ?style=photo
+// (today's look, unchanged pixels). CAM carries fov/pitch/azimuth/rotate.
+const STYLE = resolveStyle(PARAMS);
+const CAM = cameraStyle(STYLE);
 // Stage-11 look table (?look=key:value,… retunes without a rebuild).
-const LOOK = resolveLook(PARAMS);
+const LOOK = resolveLook(PARAMS, STYLE);
 const areaId = PARAMS.get("area") || DEFAULT_AREA;
 
 // Tour sun from ?time=HH:MM (validated) or the fixed afternoon default.
@@ -143,16 +179,23 @@ function addLitAttr(mesh) {
 // Fill every facade mesh's aLit from an occupancy map (or null in tour
 // mode) plus the run-wide at-home share: buildings with simulated
 // residents use their exact share, other residential buildings with real
-// households use the fallback estimate, the rest stay dark.
-function makeLitFiller(litMeshes, householdsById) {
+// households use the fallback estimate, the rest stay dark — except in
+// tour mode (no run, register data sparse): every residential-class
+// building lights from the evening estimate and offices take the small
+// tour office share, so the night frame reads street by street.
+function makeLitFiller(litMeshes, householdsById, { residentialById = null, tour = false } = {}) {
   return (occ, globalFrac) => {
     for (const { mesh, ranges } of litMeshes) {
       const attr = mesh.geometry.attributes.aLit;
       for (const [bid, r] of ranges) {
+        const hh = householdsById.get(bid) || 0;
+        const hash01 = hashUnit(hashString(bid), 3);
+        const res = tour && residentialById ? residentialById.get(bid) === true : hh > 0;
         const v = capLitFraction(litFractionWithFallback(occ ? occ.get(bid) : null, {
-          households: householdsById.get(bid) || 0,
+          households: tour && res ? Math.max(1, hh) : hh,
           globalHomeFrac: globalFrac,
-          hash01: hashUnit(hashString(bid), 3),
+          hash01,
+          emptyFrac: tour && !res ? tourOfficeFraction(globalFrac, hash01) : 0,
         }), LOOK);
         attr.array.fill(v, r.start, r.start + r.count);
       }
@@ -178,7 +221,9 @@ async function fetchArea(wantId) {
 // Static world shared by tour and sim modes: renderer, camera, lights,
 // ground, buildings, trees. Returns every handle the modes need.
 // scene14 is the box's scene.json (or null → flat fallback).
-function buildWorld(area, scene14) {
+// opts.treeDateISO (YYYY-MM-DD) drives the painted autumn leaf window.
+function buildWorld(area, scene14, opts = {}) {
+  const treeDateISO = opts.treeDateISO ?? null;
   const origin = originOf(area);
   const box = bboxToXY(area.bbox, origin);
   const cx = (box.minX + box.maxX) / 2;
@@ -197,19 +242,36 @@ function buildWorld(area, scene14) {
   const renderer = renderCtl.renderer;
   const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const scene = new THREE.Scene();
-  const streetFog0 = streetFogRange(span, LOOK);
-  scene.fog = new THREE.Fog(FOG_DAY, streetFog0.near, streetFog0.far);
   setNightGain(LOOK.nightGain);
   const wrap0 = document.getElementById("scene-wrap");
   const aspect0 = wrap0 && wrap0.clientHeight > 0
     ? wrap0.clientWidth / wrap0.clientHeight : innerWidth / innerHeight;
-  const camera = new THREE.PerspectiveCamera(TOUR_FOV_DEG, aspect0, 1, span * 8);
-  const homeDist = distanceForWidth(span, TOUR_FOV_DEG, camera.aspect);
-  const [hox, hoy, hoz] = tourOffset(homeDist);
+  const camera = new THREE.PerspectiveCamera(CAM.fovDeg, aspect0, 1, span * 8);
+  const homeDist = distanceForWidth(span, CAM.fovDeg, camera.aspect);
+  // The narrow painted FOV needs a much longer distance; the far plane
+  // must cover at least 2× that distance.
+  camera.far = Math.max(span * 8, homeDist * 2);
+  camera.updateProjectionMatrix();
+  // 14f: painted fog measures from the camera distance (the narrow FOV
+  // parks the camera ~3.6× the framed width away); photo keeps multiples.
+  const streetFog0 = STYLE === "painted"
+    ? paintedFogRange(homeDist, span)
+    : streetFogRange(span, LOOK);
+  scene.fog = new THREE.Fog(FOG_DAY, streetFog0.near, streetFog0.far);
+  const [hox, hoy, hoz] = tourOffset(homeDist, CAM.pitchDeg, CAM.azimuth);
   camera.position.set(cx + hox, hoy + ground0, -cy + hoz);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(cx, ground0, -cy);
   controls.maxPolarAngle = Math.PI * 0.49;
+  // Painted: fixed azimuth (no rotate); pan and zoom stay, zoom clamped
+  // to 150 m…span framed width. Photo keeps today's free controls.
+  controls.enableRotate = CAM.rotate;
+  if (STYLE === "painted") {
+    const clamp = zoomClampDistances(span, CAM.fovDeg, camera.aspect);
+    controls.minDistance = clamp.min;
+    controls.maxDistance = clamp.max;
+    camera.userData.clampSpan = span;
+  }
   controls.update();
 
   // --- sky rig: sun + hemi + Sky dome + PMREM environment ---
@@ -224,9 +286,12 @@ function buildWorld(area, scene14) {
   document.getElementById("vignette").style.display = "none";
 
   // --- ground: base plane + merged layer + paint + water skin ---
+  // Painted: the fringe matches the warm ground so the box edge never
+  // shows a grey ring; photo keeps today's darker fringe.
+  const baseDayColor = STYLE === "painted" ? LOOK.terrainBase : BASE_GROUND;
   const base = new THREE.Mesh(
     new THREE.PlaneGeometry(span * 1.5, span * 1.5),
-    new THREE.MeshStandardMaterial({ color: BASE_GROUND, roughness: 1, metalness: 0 })
+    new THREE.MeshStandardMaterial({ color: baseDayColor, roughness: 1, metalness: 0 })
   );
   base.rotation.x = -Math.PI / 2;
   base.position.set(cx, scene14 ? demMin - 1 : -0.05, -cy);
@@ -264,6 +329,7 @@ function buildWorld(area, scene14) {
   let waterMesh = null;
   if (groundData.water.triangles > 0) {
     waterMesh = new THREE.Mesh(toGeometry(groundData.water), waterMaterial());
+    if (STYLE === "painted") waterMesh.material.color.setHex(PAINTED_WATER);
     scene.add(waterMesh);
   }
   // Stage-14 road ribbons + waterway ribbons (≤ 4 + 1 draw calls).
@@ -279,13 +345,32 @@ function buildWorld(area, scene14) {
           metalness: 0, polygonOffset: true,
           polygonOffsetFactor: -offsets[cls], polygonOffsetUnits: -offsets[cls] }));
       mesh.receiveShadow = true;
+      mesh.userData.roadCls = cls;
       scene.add(mesh);
       sceneRoadMeshes.push(mesh);
     }
     const w = buildWaterRibbons(scene14.water, heightAt, LOOK);
     if (w.triangles > 0) {
       sceneWaterMesh = new THREE.Mesh(toIndexedGeometry(w), waterMaterial());
+      if (STYLE === "painted") sceneWaterMesh.material.color.setHex(PAINTED_WATER);
       scene.add(sceneWaterMesh);
+    }
+  }
+  // Painted road paint (14e, one merged mesh): dashes + yellow centre +
+  // zebras from the ribbon stations. The ground lane paint would double
+  // it, so it sits out in painted scene mode (flat mode keeps it).
+  let sceneMarkingsMesh = null;
+  if (scene14 && STYLE === "painted") {
+    if (markMesh) markMesh.visible = false;
+    const mk = buildRoadMarkings(scene14.roads, heightAt);
+    if (mk.mesh.triangles > 0) {
+      const mat = markingMaterial();
+      mat.polygonOffset = true; // paint wins over ribbons at any range
+      mat.polygonOffsetFactor = -4;
+      mat.polygonOffsetUnits = -4;
+      sceneMarkingsMesh = new THREE.Mesh(toIndexedGeometry(mk.mesh), mat);
+      sceneMarkingsMesh.receiveShadow = true;
+      scene.add(sceneMarkingsMesh);
     }
   }
 
@@ -303,6 +388,8 @@ function buildWorld(area, scene14) {
   for (const [cls, data] of Object.entries(built.detail.walls)) {
     if (data.triangles === 0) continue;
     const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso }));
+    // Painted: warm concrete walls (photo keeps white = today's pixels).
+    mesh.material.color.setRGB(...facadeTintFor(cls, STYLE));
     addLitAttr(mesh);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -315,6 +402,7 @@ function buildWorld(area, scene14) {
   if (built.detail.podium.triangles > 0) {
     podiumMesh = new THREE.Mesh(toGeometry(built.detail.podium),
       facadeMaterial("podium", { aniso: maxAniso }));
+    podiumMesh.material.color.setRGB(...facadeTintFor("podium", STYLE));
     addLitAttr(podiumMesh);
     podiumMesh.castShadow = true;
     podiumMesh.receiveShadow = true;
@@ -324,6 +412,7 @@ function buildWorld(area, scene14) {
       ranges: new Map(built.detail.podium.ranges.map((r) => [r.id, r])) });
   }
   const roofMesh = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso }));
+  roofMesh.material.color.setRGB(...facadeTintFor("roof", STYLE));
   roofMesh.castShadow = true;
   roofMesh.receiveShadow = true;
   scene.add(roofMesh);
@@ -334,9 +423,19 @@ function buildWorld(area, scene14) {
   // --- trees: OSM forest/park placements (scene) or decorative (flat) ---
   const treeMeshes = [];
   let trees = [];
+  let fillTrees = 0;
   const tintColor = new THREE.Color();
   if (scene14) {
     trees = scene14.trees;
+    // Painted: rule-fill street trees along empty roads (가정값, see the
+    // legend note) and seed per-instance leaf colours by sim date.
+    const paintedTrees = STYLE === "painted";
+    if (paintedTrees) {
+      const fill = fillStreetTrees(scene14.roads, scene14.trees,
+        footprintRings(area.buildings, origin));
+      fillTrees = fill.trees.length;
+      if (fillTrees > 0) trees = [...scene14.trees, ...fill.trees];
+    }
     const bySpecies = [[], [], []];
     for (const t of trees) bySpecies[t[3]].push(t);
     bySpecies.forEach((list, species) => {
@@ -350,7 +449,15 @@ function buildWorld(area, scene14) {
         dummy.rotation.set(0, treeRotation(x, z), 0);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
-        mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+        // Conifers stay evergreen (greens only); broadleaf/shrub follow
+        // the sim date into the autumn window. Photo keeps the grey tint.
+        const seed = `${x.toFixed(1)},${z.toFixed(1)}`;
+        if (paintedTrees) {
+          mesh.setColorAt(i, tintColor.setHex(
+            treeColour(seed, species === 0 ? null : treeDateISO)));
+        } else {
+          mesh.setColorAt(i, tintColor.setScalar(treeTint(x, z)));
+        }
       });
       mesh.count = list.length;
       mesh.castShadow = true;
@@ -422,6 +529,9 @@ function buildWorld(area, scene14) {
       { seed: area.area || areaId, maxMovers: 0 }),
     { heightAt, fleet });
   scene.add(streetMeshes.group);
+  // 14e: additive lamp halos sit out of the painted depth prepass (they
+  // would punch depth blobs under the override material). Photo ignores it.
+  if (streetMeshes.halo) streetMeshes.halo.userData.noPaintedDepth = true;
 
   // --- ambient crowd: seeded OD pairs on the walk graph (motion) ---
   // Household agents render separately; this crowd never replaces them.
@@ -432,11 +542,15 @@ function buildWorld(area, scene14) {
   scene.add(crowdMeshes.group);
 
   // Real household counts per building (register API) for the night
-  // lighting fallback (buildings without simulated residents).
+  // lighting fallback (buildings without simulated residents), plus the
+  // residential class per building for the tour estimate (no run there).
   const householdsById = new Map();
+  const residentialById = new Map();
   for (const b of area.buildings || []) {
     const hh = b.register && b.register.api && b.register.api.households;
     householdsById.set(b.id, Number(hh) || 0);
+    residentialById.set(b.id,
+      b.residential === "apartment" || b.residential === "house" || b.residential === "mixed");
   }
 
   // Tallest building top (from data) for the shadow-frustum fit.
@@ -449,6 +563,105 @@ function buildWorld(area, scene14) {
   const maxHeightM = maxH > 0 || relief > 0
     ? Math.min(600, Math.max(maxH, relief)) : 250;
 
+  // Red aviation beacons (14e) on roof tips ≥ 60 m: one Points cloud,
+  // blinking hard once per 1.5 s, procedural in t. Both styles.
+  let aviationMat = null;
+  {
+    const pts = [];
+    for (const b of area.buildings || []) {
+      const h = Number(b.height_m) || (Number(b.levels) || 0) * 3 || 0;
+      if (!needsAviationLight(h)) continue;
+      const g = b.geometry;
+      if (!g) continue;
+      const polys = g.type === "Polygon" ? [g.coordinates]
+        : g.type === "MultiPolygon" ? g.coordinates : [];
+      const ring = (polys[0] && polys[0][0]) || [];
+      if (ring.length === 0) continue;
+      let sx = 0;
+      let sy = 0;
+      for (const [lon, lat] of ring) {
+        const [x, y] = lonLatToXY(lon, lat, origin);
+        sx += x;
+        sy += y;
+      }
+      const px = sx / ring.length;
+      const py = sy / ring.length;
+      pts.push(px, heightAt(px, -py) + h + 2.5, -py);
+    }
+    if (pts.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      aviationMat = new THREE.PointsMaterial({ color: 0xff2a1e, size: 4,
+        sizeAttenuation: false, transparent: true, opacity: 0,
+        depthWrite: false });
+      const aviation = new THREE.Points(geo, aviationMat);
+      aviation.frustumCulled = false;
+      aviation.userData.noPaintedDepth = true;
+      scene.add(aviation);
+    }
+  }
+
+  // Painted night (14e, 17b, 17c): ground-plane surfaces lerp toward
+  // navy after dusk; carriageways keep a warm lamp-lit band, walls/roofs
+  // a dark slate, so lit windows pop without the blocks going black.
+  // Entries carry their own night target; `base` composes with an
+  // existing day tint (facades) instead of overwriting it. 17c: every
+  // entry also self-lights to its night albedo — moonlight leaves the
+  // diffuse near black (the GPU capture read ground AND glow-roads as
+  // black), so the emissive carries the authored night colour.
+  // Photo: untouched.
+  const nightMats = [];
+  if (STYLE === "painted") {
+    nightMats.push({ mat: base.material, day: baseDayColor, direct: true });
+    if (terrainMesh) {
+      nightMats.push({ mat: terrainMesh.material, day: LOOK.terrainBase, direct: false });
+    }
+    nightMats.push({ mat: groundMesh.material, day: LOOK.terrainBase, direct: false });
+    for (const m of sceneRoadMeshes) {
+      const cls = m.userData.roadCls;
+      if (cls === "road") {
+        nightMats.push({ mat: m.material, day: LOOK.sceneRoad, direct: false,
+          night: PAINTED_NIGHT_ROAD_WARM, glow: PAINTED_NIGHT_ROAD_LIT });
+        continue;
+      }
+      if (cls === "rail") continue;
+      const day = cls === "foot" ? LOOK.sceneFoot
+        : cls === "cycle" ? LOOK.sceneCycle : LOOK.terrainBase;
+      nightMats.push({ mat: m.material, day, direct: false });
+    }
+    for (const [cls, mesh] of Object.entries(wallMeshes)) {
+      nightMats.push({ mat: mesh.material, day: PAINTED_WALL_HEX, direct: false,
+        night: PAINTED_NIGHT_WALL, base: facadeTintFor(cls, STYLE) });
+    }
+    if (podiumMesh) {
+      nightMats.push({ mat: podiumMesh.material, day: PAINTED_WALL_HEX, direct: false,
+        night: PAINTED_NIGHT_WALL, base: facadeTintFor("podium", STYLE) });
+    }
+    if (roofMesh) {
+      nightMats.push({ mat: roofMesh.material, day: PAINTED_ROOF_HEX, direct: false,
+        night: PAINTED_NIGHT_WALL, base: facadeTintFor("roof", STYLE) });
+    }
+  }
+  let lastNightT = -1;
+  function applyPaintedNight(nightF) {
+    if (STYLE !== "painted") return;
+    const t = Math.min(1, Math.max(0, Number(nightF) || 0));
+    if (Math.abs(t - lastNightT) < 0.005) return;
+    lastNightT = t;
+    for (const { mat, day, direct, night, base, glow } of nightMats) {
+      const target = night === undefined ? PAINTED_NIGHT_GROUND : night;
+      if (direct) mat.color.setHex(lerpHex(day, target, t));
+      else {
+        const k = nightTint(day, target, t);
+        if (base) mat.color.setRGB(base[0] * k[0], base[1] * k[1], base[2] * k[2]);
+        else mat.color.setRGB(...k);
+      }
+      if (mat.emissive) {
+        mat.emissive.setHex(lerpHex(0x000000, nightEmissiveHex({ night, glow }), t));
+      }
+    }
+  }
+
   renderCtl.attach(scene, camera, document.getElementById("scene-wrap"));
   // Stage-14 perf log, once per box load (scene-only draw calls/tris).
   const sceneMeasure = renderCtl.measureScene();
@@ -457,19 +670,28 @@ function buildWorld(area, scene14) {
   return {
     origin, cx, cy, span, renderer, renderCtl, rig, scene, camera, controls,
     base, groundMesh, markMesh, waterMesh, wallMeshes, podiumMesh, roofMesh,
-    dimMeshes, litMeshes, fadeMeshes, householdsById, maxHeightM,
-    trees, treeMeshes, streetMeshes, crowd, crowdMeshes, dummy, heightAt,
-    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh,
+    dimMeshes, litMeshes, fadeMeshes, householdsById, residentialById,
+    maxHeightM,
+    trees, treeMeshes, fillTrees, streetMeshes, crowd, crowdMeshes,
+    dummy, heightAt,
+    ground0, terrainMesh, sceneRoadMeshes, sceneWaterMesh, sceneMarkingsMesh,
+    nightMats, applyPaintedNight, aviationMat,
   };
 }
 
 // Refit the camera + renderer to the (docked-panel-shrunk) canvas.
-function refitToWrap(camera, renderCtl) {
+function refitToWrap(camera, renderCtl, controls = null) {
   const wrap = document.getElementById("scene-wrap");
   const w = wrap ? wrap.clientWidth : innerWidth;
   const h = wrap ? wrap.clientHeight : innerHeight;
   camera.aspect = Math.max(0.2, w / Math.max(1, h));
   camera.updateProjectionMatrix();
+  // Painted: the zoom clamp is aspect-dependent, so refresh it on refit.
+  if (controls && STYLE === "painted" && camera.userData.clampSpan) {
+    const clamp = zoomClampDistances(camera.userData.clampSpan, CAM.fovDeg, camera.aspect);
+    controls.minDistance = clamp.min;
+    controls.maxDistance = clamp.max;
+  }
   renderCtl.fitContainer();
 }
 
@@ -529,9 +751,12 @@ async function fetchScene(wantId) {
 async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
-    dimMeshes, fadeMeshes, litMeshes, householdsById, maxHeightM,
-    streetMeshes, crowdMeshes, trees, treeMeshes, waterMesh, sceneWaterMesh,
-    dummy, heightAt } = buildWorld(area, scene14);
+    dimMeshes, fadeMeshes, litMeshes, householdsById, residentialById,
+    maxHeightM,
+    streetMeshes, crowdMeshes, trees, treeMeshes, fillTrees, waterMesh,
+    sceneWaterMesh, sceneMarkingsMesh, dummy, heightAt,
+    applyPaintedNight, aviationMat } = buildWorld(area, scene14,
+      { treeDateISO: TOUR_DATE_ISO });
   // World position with terrain height (tour route + stops ride +2 m).
   const w2hg = (lon, lat, lift = 2) => {
     const [x, y] = lonLatToXY(lon, lat, origin);
@@ -557,7 +782,7 @@ async function bootTour(uiMode = "tour") {
   // test uses the actual building heights (same clamp as the renderer)
   // and the settled camera pose (same offset/aspect/pitch as poseFor);
   // when no azimuth is clear, the occluders fade instead (stage 4).
-  const stopDist0 = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist0 = distanceForWidth(tourFrameWidths(STYLE).stop, CAM.fovDeg, camera.aspect);
   const footprints = footprintsOf(area.buildings, origin);
   const stopTargets = plan.stops.map((s, i) => {
     const wp = legPaths[i].length > 1
@@ -568,7 +793,8 @@ async function bootTour(uiMode = "tour") {
     return { anchor: lonLatToXY(s.lon, s.lat, origin), end: [wp[0], -wp[2]] };
   });
   const stopAzimuths = plan.stops.map((s, i) => {
-    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0);
+    const picked = pickStopAzimuth([stopTargets[i].anchor, stopTargets[i].end], footprints, stopDist0,
+      undefined, CAM.pitchDeg);
     const moved = picked.azimuth !== TOUR_AZIMUTH;
     console.log(`[occlusion] stop=${i} ${s.name} azimuth=[${picked.azimuth}] ` +
       `occluders=${picked.occluders}${moved ? " (moved)" : ""}`);
@@ -578,7 +804,7 @@ async function bootTour(uiMode = "tour") {
   // tall host tower when a POI stop sits inside one.
   const stopFades = plan.stops.map((s, i) => {
     const targets = [stopTargets[i].anchor, stopTargets[i].end];
-    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i]));
+    const ids = new Set(occludingIds(targets, footprints, stopDist0, stopAzimuths[i], CAM.pitchDeg));
     if (s.kind === "poi") {
       for (const id of hostTowerIds(stopTargets[i].anchor, footprints)) ids.add(id);
     }
@@ -597,10 +823,10 @@ async function bootTour(uiMode = "tour") {
   // The landing and the chat reuse the tour scene as a backdrop; only
   // the tour shows captions, the legend and the area switcher.
   if (uiMode === "tour") {
-    buildUI(area, plan, !!scene14);
+    buildUI(area, plan, !!scene14, fillTrees);
   } else {
     store.set({ area: { id: areaId, label: area.label || areaId } });
-    document.title = uiMode === "chat" ? "주거 시뮬레이터 — 대화" : "주거 시뮬레이터";
+    document.title = uiMode === "chat" ? "Ithaca — 대화" : "Ithaca";
   }
   if (uiMode === "chat") registerChatActions();
   document.getElementById("loading").remove();
@@ -608,20 +834,24 @@ async function bootTour(uiMode = "tour") {
 
   // --- tour sun/sky (?time=HH:MM override; static through the tour) ---
   const { date: tourDate, minute: tourMinute } = tourSun();
-  const fillTourLit = makeLitFiller(litMeshes, householdsById);
+  const fillTourLit = makeLitFiller(litMeshes, householdsById, { residentialById, tour: true });
   let tourEmissive = 0;
   let tourBloom = 0;
+  let tourFramedWidth = null;
   let tourLitDone = false;
   function updateTourSky() {
-    const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
+    const camDist = camera.position.distanceTo(controls.target);
+    const framedWidth = frameWidthFor(camDist, CAM.fovDeg, camera.aspect);
+    tourFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: tourDate,
       minute: tourMinute,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
-      shadowSpan: 240, envKey: "tour", framedWidth, maxHeightM, look: LOOK });
+      shadowSpan: 240, envKey: "tour", framedWidth, camDistM: camDist,
+      style: STYLE, maxHeightM, look: LOOK });
     tourBloom = p.bloom;
     tourEmissive = p.emissive;
     setGlobalNight(p.emissive);
+    applyPaintedNight(p.nightF);
     streetMeshes.setLampGlow(p.emissive);
     // No run in tour mode: light residential windows from the evening
     // estimate (once — the tour sun is static).
@@ -720,7 +950,11 @@ async function bootTour(uiMode = "tour") {
     updateTourSky(); // follows the camera target (shadow frustum)
     controls.update();
     if (archLens) levelCamera();
-    renderCtl.renderFrame({ bloom: tourBloom }, dt);
+    if (sceneMarkingsMesh) {
+      sceneMarkingsMesh.visible = (tourFramedWidth ?? 0) <= MARKINGS_HIDE_M;
+    }
+    if (aviationMat) aviationMat.opacity = aviationBlink(tourTMin * 60);
+    renderCtl.renderFrame({ bloom: tourBloom, framedWidthM: tourFramedWidth }, dt);
     frames++;
     if (frames === 30) {
       console.log(`[scene] area=${areaId} buildings=${area.buildings.length} ` +
@@ -730,7 +964,7 @@ async function bootTour(uiMode = "tour") {
   });
 
   const refitTour = () => {
-    refitToWrap(camera, renderCtl);
+    refitToWrap(camera, renderCtl, controls);
     if (archLens) applyArchLens();
   };
   addEventListener("resize", refitTour);
@@ -744,8 +978,9 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
   const stops = plan.stops;
 
   const schedule = tourSchedule(plan);
-  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
-  const glideDist = distanceForWidth(GLIDE_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const frameW = tourFrameWidths(STYLE); // painted: 450 m stops, 700 m glide
+  const stopDist = distanceForWidth(frameW.stop, CAM.fovDeg, camera.aspect);
+  const glideDist = distanceForWidth(frameW.glide, CAM.fovDeg, camera.aspect);
   const state = { playing: stops.length > 0, leg: 0, legT: 0, dwell: 0, outro: 0, done: false };
   controls.enabled = !state.playing;
 
@@ -769,14 +1004,14 @@ function createPlayer(plan, legPaths, camera, controls, origin, stopAzimuths = [
     const wp = [0, 1, 2].map((k) => path[i0][k] + (path[i1][k] - path[i0][k]) * f);
     const ahead = path[Math.min(path.length - 1, i1 + 2)];
     if (archLens) {
-      const frameW = STOP_FRAME_M + (GLIDE_FRAME_M - STOP_FRAME_M) * (1 - t);
-      const ap = archLensPose(frameW, camera.aspect, stopAzimuths[i] || TOUR_AZIMUTH);
+      const archW = frameW.stop + (frameW.glide - frameW.stop) * (1 - t);
+      const ap = archLensPose(archW, camera.aspect, stopAzimuths[i] || TOUR_AZIMUTH);
       return { pos: new THREE.Vector3(wp[0] + ap.dirX * ap.horiz, wp[1] + ap.vert, wp[2] + ap.dirZ * ap.horiz),
                look: new THREE.Vector3(wp[0], wp[1], wp[2]) };
     }
     const dist = stopDist + (glideDist - stopDist) * (1 - t);
-    const [dox, doy, doz] = tourOffset(dist, undefined, TOUR_AZIMUTH);
-    const [sox, soy, soz] = tourOffset(dist, undefined, stopAzimuths[i] || TOUR_AZIMUTH);
+    const [dox, doy, doz] = tourOffset(dist, CAM.pitchDeg, TOUR_AZIMUTH);
+    const [sox, soy, soz] = tourOffset(dist, CAM.pitchDeg, stopAzimuths[i] || TOUR_AZIMUTH);
     const k = t * t; // ease the azimuth in towards the settled stop
     const ox = dox + (sox - dox) * k;
     const oy = doy + (soy - doy) * k;
@@ -943,8 +1178,10 @@ export const MOTION_NOTE_TOUR_FLAT = "나무는 장식용 모의 표시, 차량�
 export const MOTION_NOTE_SIM_SCENE = "나무는 OSM 숲·공원 자료 기반 절차 배치, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
 export const MOTION_NOTE_SIM_FLAT = "나무는 장식용 모의 표시, 차량·인물·열차는 규칙으로 만든 모의 움직임(가정값)입니다";
 export const MOTION_CONG_SUFFIX = " 역 주변 인파는 실측 혼잡도 기반입니다.";
+// 14e: rule-filled street trees are assumption values, like mock motion.
+export const FILL_TREES_SUFFIX = " 가로수 위치 일부는 규칙으로 채운 값(가정값)입니다.";
 
-function buildUI(area, plan, sceneOn = false) {
+function buildUI(area, plan, sceneOn = false, fillCount = 0) {
   const { resRows, heightRows } = legendRows(area);
   store.set({
     areaOptions: AREAS.map((a) => ({ value: a.id, label: a.label })),
@@ -953,11 +1190,12 @@ function buildUI(area, plan, sceneOn = false) {
       title: "범례",
       resRows,
       heightRows,
-      note: sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT,
+      note: (sceneOn ? MOTION_NOTE_TOUR_SCENE : MOTION_NOTE_TOUR_FLAT)
+        + (fillCount > 0 ? FILL_TREES_SUFFIX : ""),
     },
   });
   if (plan.stops.length === 0) store.set({ tourPlaying: false });
-  document.title = `주거 시뮬레이터 — ${area.label || areaId}`;
+  document.title = `Ithaca — ${area.label || areaId}`;
 }
 
 // Shared UI actions (all modes); mode-specific boots add their own.
@@ -997,7 +1235,10 @@ function registerChatActions() {
       store.set({ compareTab: tab });
     },
     toggleCompare: () => {
-      store.set({ compareOpen: !store.getState().compareOpen });
+      const open = !store.getState().compareOpen;
+      store.set({ compareOpen: open });
+      // 18: land somewhere visible (no-op where the section is absent).
+      if (open) revealCompareSection();
     },
     setMoneyTenure: (label, tenure) => {
       store.set({ moneyTenure: { ...store.getState().moneyTenure, [label]: tenure } });
@@ -1059,7 +1300,9 @@ async function bootSim() {
   registerCommonActions();
   store.set({ mode: "sim" });
   const loading = document.getElementById("loading");
-  const scenarioName = PARAMS.get("scenario") || "demo-two-homes";
+  // 18: a custom run is its own scenario — never the demo default.
+  // (Reassigned once the stored run loads below.)
+  let scenarioName = PARAMS.get("scenario") || "demo-two-homes";
   const homeLabel = PARAMS.get("home") || "A";
   // 12b: ?custom=<id> loads a chat-run simulation (scenario + runs)
   // from IndexedDB instead of /data + /scenarios.
@@ -1075,6 +1318,9 @@ async function bootSim() {
       loading.textContent = `저장된 살아 보기에 홈 ${homeLabel}이(가) 없어요.`;
       throw new Error(`custom run ${customId} has no home ${homeLabel}`);
     }
+  }
+  if (customRecord) {
+    scenarioName = (customRecord.scenario && customRecord.scenario.name) || "custom";
   }
   let scenario = customRecord ? customRecord.scenario : null;
   if (!scenario) {
@@ -1137,8 +1383,10 @@ async function bootSim() {
     : [{ label: homeLabel, area: run.meta.area, complex_name: run.meta.complex }];
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
     dimMeshes, litMeshes, householdsById, maxHeightM, streetMeshes,
-    crowd, crowdMeshes, treeMeshes, waterMesh, sceneWaterMesh,
-    wallMeshes, podiumMesh, roofMesh, heightAt } = buildWorld(area, scene14);
+    crowd, crowdMeshes, treeMeshes, fillTrees, waterMesh, sceneWaterMesh,
+    sceneMarkingsMesh, wallMeshes, podiumMesh, roofMesh, heightAt,
+    nightMats, applyPaintedNight, aviationMat } = buildWorld(area, scene14,
+      { treeDateISO: simDateISO(run.meta.start_date, 0) });
   const fillSimLit = makeLitFiller(litMeshes, householdsById);
   // Calm highlighting (stage 7, Part B): no flashing anywhere, and no
   // pulse animation when the OS asks for reduced motion.
@@ -1429,7 +1677,6 @@ async function bootSim() {
   let playing = shouldAutoplay(PARAMS);
   let speed = 1;
   let follow = Math.min(household.length, Math.max(0, Number.parseInt(PARAMS.get("follow") || "0", 10) || 0));
-  const hhmmOf = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
   function paintClock() {
     store.set({ clock: {
@@ -1615,24 +1862,28 @@ async function bootSim() {
   // 30-minute granularity. Daytime emissive is off (uNight = 0).
   let simBloom = 0;
   let simEmissive = 0;
+  let simFramedWidth = null;
   let lastLightKey = "";
   let lastLitKey = "";
 
   function updateLighting() {
     const m = Math.floor(minute);
     const instant = simInstant(run.meta.start_date, day, m);
-    const framedWidth = frameWidthFor(
-      camera.position.distanceTo(controls.target), TOUR_FOV_DEG, camera.aspect);
+    const camDist = camera.position.distanceTo(controls.target);
+    const framedWidth = frameWidthFor(camDist, CAM.fovDeg, camera.aspect);
+    simFramedWidth = framedWidth;
     const p = rig.update({ lat: origin.lat, lon: origin.lon, date: instant,
       minute: m,
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
-      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth, maxHeightM, look: LOOK });
+      shadowSpan: 240, envKey: `${day}:${Math.floor(m / 30)}`, framedWidth,
+      camDistM: camDist, style: STYLE, maxHeightM, look: LOOK });
     simBloom = p.bloom;
     simEmissive = p.emissive;
     const key = `${day}:${m}`;
     if (key === lastLightKey) return;
     lastLightKey = key;
     setGlobalNight(p.emissive);
+    applyPaintedNight(p.nightF);
     streetMeshes.setLampGlow(p.emissive);
     updateLit(m);
   }
@@ -1646,7 +1897,7 @@ async function bootSim() {
   }
 
   // --- follow camera (2b miniature framing) ---
-  const stopDist = distanceForWidth(STOP_FRAME_M, TOUR_FOV_DEG, camera.aspect);
+  const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   let snapFollow = follow > 0;
 
   function followedSample() {
@@ -1680,7 +1931,7 @@ async function bootSim() {
     const hit = followedSample();
     if (!hit) return;
     const [x, y] = lonLatToXY(hit.s.lon, hit.s.lat, origin);
-    const [ox, oy, oz] = tourOffset(stopDist);
+    const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     const pos = new THREE.Vector3(x + ox, oy, -y + oz);
     const look = new THREE.Vector3(x, 2, -y);
     // Snap when far (a fast clock would lag behind); otherwise glide,
@@ -1719,7 +1970,7 @@ async function bootSim() {
     store.set({ judge: {
       badgeText: badge.text,
       badgeCls: badge.cls,
-      text: `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
+      text: `${hhmm(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
         (v.reason_ko ? ` · “${v.reason_ko}”` : ""),
       canAsk: import.meta.env.DEV,
     } });
@@ -1781,7 +2032,7 @@ async function bootSim() {
         judge: {
           badgeText: badge.text,
           badgeCls: badge.cls,
-          text: `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
+          text: `${hhmm(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
             (live.reason_ko ? ` · “${live.reason_ko}”` : "") +
             ` (${live.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"})`,
           canAsk: true,
@@ -1801,7 +2052,7 @@ async function bootSim() {
       const badge = decisionBadge(v);
       return {
         id: v.id,
-        minute: hhmmOf(v.minute),
+        minute: hhmm(v.minute),
         agent: agentLabelOf(run, v.agent),
         kind: DECISION_KIND_KO[v.kind] || v.kind,
         choice: chosenLabel(v),
@@ -1840,6 +2091,9 @@ async function bootSim() {
   regionalBase.position.y = -0.4;
   regionalBase.visible = false;
   scene.add(regionalBase);
+  if (STYLE === "painted") {
+    nightMats.push({ mat: regionalBase.material, day: LOOK.regionalGround, direct: true });
+  }
 
   async function fetchJson(url) {
     const r = await fetch(url);
@@ -2006,6 +2260,7 @@ async function bootSim() {
     for (const [cls, data] of Object.entries(built.detail.walls)) {
       if (data.triangles === 0) continue;
       const mesh = new THREE.Mesh(toGeometry(data), facadeMaterial(cls, { aniso: maxAniso2 }));
+      mesh.material.color.setRGB(...facadeTintFor(cls, STYLE));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g.add(mesh);
@@ -2013,11 +2268,14 @@ async function bootSim() {
     if (built.detail.podium.triangles > 0) {
       const mesh = new THREE.Mesh(toGeometry(built.detail.podium),
         facadeMaterial("podium", { aniso: maxAniso2 }));
+      mesh.material.color.setRGB(...facadeTintFor("podium", STYLE));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g.add(mesh);
     }
-    g.add(new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 })));
+    const liteRoof = new THREE.Mesh(toGeometry(built.detail.roofs), roofMaterial({ aniso: maxAniso2 }));
+    liteRoof.material.color.setRGB(...facadeTintFor("roof", STYLE));
+    g.add(liteRoof);
     const [ox, oy] = lonLatToXY(liteOrigin.lon, liteOrigin.lat, origin);
     g.position.set(ox, 0, -oy);
     scene.add(g);
@@ -2190,7 +2448,7 @@ async function bootSim() {
 
   function streetPose(lonLat) {
     const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
-    const [ox, oy, oz] = tourOffset(stopDist);
+    const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     return { pos: new THREE.Vector3(x + ox, oy, -y + oz),
       look: new THREE.Vector3(x, 2, -y) };
   }
@@ -2202,7 +2460,7 @@ async function bootSim() {
     const size = box3.getSize(new THREE.Vector3());
     const radius = Math.max(size.x, size.z) / 2;
     const dist = Math.max(4000, radius * 2.6);
-    const [ox, oy, oz] = tourOffset(dist);
+    const [ox, oy, oz] = tourOffset(dist, CAM.pitchDeg, CAM.azimuth);
     return { pos: new THREE.Vector3(center.x + ox, oy, center.z + oz),
       look: new THREE.Vector3(center.x, 0, center.z), dist };
   }
@@ -2216,7 +2474,8 @@ async function bootSim() {
       : (jf.phase === "descending" ? jf.destLonLat : jf.boardLonLat);
     if (!lonLat) return regionalPose();
     const [x, y] = lonLatToXY(lonLat[0], lonLat[1], origin);
-    const pose = journeyCruisePose([x, -y], camera.aspect);
+    const pose = journeyCruisePose([x, -y], camera.aspect,
+      { fovDeg: CAM.fovDeg, pitchDeg: CAM.cruisePitchDeg, azimuth: CAM.azimuth });
     return { pos: new THREE.Vector3(...pose.pos),
       look: new THREE.Vector3(...pose.look), dist: pose.dist };
   }
@@ -2373,11 +2632,15 @@ async function bootSim() {
     if (customId) p.set("custom", customId);
     else p.set("scenario", scenarioName);
     if (f) p.set("follow", String(f));
+    // 18: an explicit style choice survives home/day jumps (custom and
+    // demo render the same painted look by default).
+    if (PARAMS.get("style")) p.set("style", PARAMS.get("style"));
     return `${location.pathname}?${p}`;
   }
 
   // --- sim UI state (published) + actions (UI calls scene) ---
-  simLegendBase = scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT;
+  simLegendBase = (scene14 ? MOTION_NOTE_SIM_SCENE : MOTION_NOTE_SIM_FLAT)
+    + (fillTrees > 0 ? FILL_TREES_SUFFIX : "");
   const { resRows, heightRows } = legendRows(area);
   store.set({
     home: homeLabel,
@@ -2402,7 +2665,7 @@ async function bootSim() {
     introOpen: !PARAMS.has("t") && !PARAMS.has("day") && PARAMS.get("intro") !== "0",
   });
   applyFollowDim();
-  document.title = `주거 시뮬레이터 — ${homeLabel} · ${run.meta.complex}`;
+  document.title = `Ithaca — ${homeLabel} · ${run.meta.complex}`;
 
   // --- 12b day-at-a-glance timeline -------------------------------------------
   // Published once per day/follow/home change (the UI moves the
@@ -2479,14 +2742,44 @@ async function bootSim() {
     paintStripB();
   }
 
+  // 17-3: 살아 보니 — three moments from the 30-day runs, published
+  // once both runs are in (the drawer seeks to them; followIndex
+  // resolves the member key to the follow slot, 0 = time only).
+  async function paintMoments() {
+    try {
+      const other = await ensureOtherRun();
+      if (!other) {
+        store.set({ moments: [] });
+        return;
+      }
+      const pair = [
+        [run.meta.home || homeLabel, run],
+        [other.meta.home || otherRunLabel, other],
+      ].sort((x, y) => (String(x[0]) < String(y[0]) ? -1 : 1));
+      const picked = pickMoments(pair[0][1], pair[1][1], { max: 3 });
+      store.set({ moments: picked.map((m) => {
+        const idx = household.findIndex((a) => a.key === m.agent);
+        const member = idx >= 0 ? household[idx] : null;
+        return { ...m,
+          followIndex: idx >= 0 ? idx + 1 : 0,
+          agentLabel: member ? (member.label || member.key) : m.agent };
+      }) });
+    } catch {
+      store.set({ moments: [] });
+    }
+  }
+
   async function paintCompare() {
     store.set({ compareLoading: true });
     // A custom run compares its in-memory runs (no CLI files exist).
     if (customRecord) {
       const labs = (customRecord.labels || []).slice(0, 2);
       if (labs.length === 2 && customRecord.runs[labs[0]] && customRecord.runs[labs[1]]) {
-        store.set({ compareLoading: false,
-          compare: compareRuns(customRecord.runs[labs[0]], customRecord.runs[labs[1]]) });
+        // 18g: the same one 출퇴근 편도 per home as the chat result —
+        // without one_way the share card falls back to the old per-day row.
+        const cmp = compareRuns(customRecord.runs[labs[0]], customRecord.runs[labs[1]]);
+        cmp.one_way = oneWayByLabel(Object.fromEntries(labs.map((l) => [l, customRecord.runs[l]])));
+        store.set({ compareLoading: false, compare: cmp });
         return;
       }
     }
@@ -2500,6 +2793,9 @@ async function bootSim() {
           if (!others[h.label]) throw new Error(`home ${h.label} run missing`);
         }
         cmp = compareRuns(others[homes[0].label], others[homes[1].label]);
+        // 18g: same one_way as the custom branch so the demo shows
+        // the 편도 row too.
+        cmp.one_way = oneWayByLabel(others);
       } catch {
         cmp = null;
       }
@@ -2515,11 +2811,18 @@ async function bootSim() {
   async function paintMoney() {
     if (store.getState().money) return;
     store.set({ moneyLoading: true });
-    const doc = await fetch(`/data/sim/${scenarioName}-money.json`)
-      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    // 18: a custom run never reads another scenario's money file —
+    // it uses the money doc built with the run, or reports it missing.
+    const doc = customRecord ? (customRecord.moneyDoc || null)
+      : await fetch(`/data/sim/${scenarioName}-money.json`)
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (!doc) {
-      store.set({ moneyLoading: false,
-        money: { error: `node web/scripts/money.mjs --scenario scenarios/${scenarioName}.json 실행 후 새로고침하세요.` } });
+      // 18: a custom run without its money doc says so (with the
+      // stored reason) — it never borrows another scenario's file.
+      const err = customRecord
+        ? `아직 계산하지 못했어요${customRecord.moneyMissing ? ` (${customRecord.moneyMissing})` : ""}. 대화에서 30일 살아 보기를 다시 실행해 주세요.`
+        : `node web/scripts/money.mjs --scenario scenarios/${scenarioName}.json 실행 후 새로고침하세요.`;
+      store.set({ moneyLoading: false, money: { error: err } });
       return;
     }
     // The agent may already have merged home C while we fetched.
@@ -2605,7 +2908,7 @@ async function bootSim() {
     }
     paintClock();
     paintFollow(0.016, true);
-    store.set({ viewChip: `기준 ${id}: ${hit.day + 1}일차 ${hhmmOf(Math.floor(minute))}으로 이동` });
+    store.set({ viewChip: `기준 ${id}: ${hit.day + 1}일차 ${hhmm(Math.floor(minute))}으로 이동` });
   }
 
   store.registerActions({
@@ -2676,9 +2979,13 @@ async function bootSim() {
     toggleCompare: async () => {
       const open = !store.getState().compareOpen;
       store.set({ compareOpen: open });
+      // 18: expand + scroll to the section first (visible feedback
+      // within a frame), then fill it.
       if (open) {
+        revealCompareSection();
         await paintCompare();
         await paintMoney();
+        revealCompareSection();
       }
     },
     ensureShareData: () => ensureShareData(),
@@ -2739,6 +3046,8 @@ async function bootSim() {
   ensureItinerary();
   // The money doc feeds the ticker + QoL hover even with the card shut.
   paintMoney();
+  // 17-3: 살아 보니 moments (async: waits for the other home's run).
+  paintMoments();
   // 12b: the floating agent is gone — ?agent=1 (incl. the tour's agent
   // step) shows the tour card, and the chat answers from there on.
   // ?share=1 opens the result card.
@@ -2802,6 +3111,13 @@ async function bootSim() {
         || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
       journeyLayer.setTrain(jfTrain.ride, minute - Math.floor(minute) + jfTrain.elapsed);
     }
+    // 17c: distance-scaled journey markers (cone ≤ 28 px, dots ≤ 14 px).
+    if (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
+        || jfTrain.phase === "descending" || jfTrain.phase === "hold"
+        || jfTrain.phase === "boarding") {
+      journeyLayer.updateMarkerScale(camera,
+        (renderer.domElement && renderer.domElement.clientHeight) || 800);
+    }
     // Station names ride along the line during the regional phases only.
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending")) {
@@ -2809,7 +3125,11 @@ async function bootSim() {
     }
     trackSimViewOffset(camera); // 13e5: stage centre, not canvas centre
     controls.update();
-    renderCtl.renderFrame({ bloom: simBloom }, dt);
+    if (sceneMarkingsMesh) {
+      sceneMarkingsMesh.visible = (simFramedWidth ?? 0) <= MARKINGS_HIDE_M;
+    }
+    if (aviationMat) aviationMat.opacity = aviationBlink(simTMin * 60);
+    renderCtl.renderFrame({ bloom: simBloom, framedWidthM: simFramedWidth }, dt);
     frames++;
     if (frames === 30) {
       console.log(`[sim] area=${run.meta.area} agents=${run.meta.agents} ` +
@@ -2817,7 +3137,7 @@ async function bootSim() {
     }
   });
 
-  const refitSim = () => refitToWrap(camera, renderCtl);
+  const refitSim = () => refitToWrap(camera, renderCtl, controls);
   addEventListener("resize", refitSim);
   new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }

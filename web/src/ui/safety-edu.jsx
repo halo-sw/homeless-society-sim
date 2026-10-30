@@ -7,10 +7,8 @@
 // minutes, and the child's simulated school route. No scores, no
 // rankings, no colour-coded danger, no school quality. Data comes from
 // <scenario>-money.json — never computed from thin air here.
-import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Heading } from "@astryxdesign/core/Heading";
-import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { Text } from "@astryxdesign/core/Text";
@@ -29,10 +27,7 @@ function SafetyHome({ label, safety }) {
   return (
     <VStack gap={1}>
       <Heading level={4}>{`홈 ${label} · 치안 (${safety.column})`}</Heading>
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Badge variant="purple" label="경찰청" />
-        <Text type="supporting">{`${safety.source} · ${safety.period} · 단위 ${safety.unit} · ${safety.geo_level_ko}`}</Text>
-      </HStack>
+      <Text type="supporting">{`${safety.source} · ${safety.period} · 단위 ${safety.unit} · ${safety.geo_level_ko}`}</Text>
       <MetadataList>
         <MetadataListItem label="1년 동안 기록된 전체 건수">
           <Text hasTabularNumbers>{fmtCount(safety.total, "건")}</Text>
@@ -82,10 +77,7 @@ function EducationHome({ label, home }) {
   return (
     <VStack gap={1}>
       <Heading level={4}>{`홈 ${label} · 교육 (${home.complex_name})`}</Heading>
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Badge variant="teal" label="그래프" />
-        <Text type="supporting">{`걸어서 직접 잰 시간 · 어른 걸음 ${edu.speed_mps} m/s · OSM 기준`}</Text>
-      </HStack>
+      <Text type="supporting">{`걸어서 직접 잰 시간 · 어른 걸음 ${edu.speed_mps} m/s · OSM 기준`}</Text>
       <MetadataList>
         {bands.map((b) => {
           const counts = (edu.counts || {})[`within_${b}min`] || {};

@@ -6,8 +6,10 @@
 // comparison view shows every group A vs B(/C) side by side with the
 // weights labelled as the customer's ("고객님이 정한 비중").
 //
-// The one-number weighted view exists only with explicit weights and its
-// formula visible — and it still never ranks: homes keep their labels, no
+// The one-number weighted view ("내 기준 점수", stage 17) is always shown
+// with its basis labelled — the customer's explicit weights (basis
+// "customer") or 모두 보통 until they set them (basis "default") — and
+// its formula visible. It still never ranks: homes keep their labels, no
 // winner is named, no "추천 집". Safety (치안) is shown side by side but
 // NEVER summed into the number: occurrence counts are not a risk score.
 
@@ -106,14 +108,16 @@ export function validateWeights(weights) {
 // missing values are skipped. Group score = mean of its metrics; the home
 // score = Σ w·group / Σ w over NUMERIC_GROUPS with weight > 0.
 //
-// Safety never enters the sum (see module note). Requires explicit
-// weights: {explicit: true} — the UI sets it only when the customer asks
-// for the one number; the consult agent via set_priorities.
+// Safety never enters the sum (see module note). Without explicit
+// weights ({explicit: true} from the UI stepper or the consult agent's
+// set_priorities) it computes with defaultWeights() and reports
+// basis "default" instead of refusing — the caller labels it.
 export function weightedView(values, weights, opts = {}) {
-  if (!opts.explicit) {
-    return { ok: false, error: "명시적 비중 없이 한 숫자를 내지 않습니다 (먼저 비중을 정해 주세요)" };
-  }
-  const checked = validateWeights(weights);
+  const explicit = !!opts.explicit;
+  const basis = explicit ? "customer" : "default";
+  const checked = explicit
+    ? validateWeights(weights)
+    : { ok: true, weights: defaultWeights() };
   if (!checked.ok) return { ok: false, error: checked.errors.join("; ") };
   const w = checked.weights;
   const labels = Object.keys(values || {});
@@ -149,7 +153,104 @@ export function weightedView(values, weights, opts = {}) {
       score: denom > 0 ? used.reduce((a, g) => a + w[g] * groups[g], 0) / denom : null };
   }
   const fmtW = NUMERIC_GROUPS.map((g) => `${g}=${w[g]}`).join(" · ");
-  return { ok: true, homes, weights: w,
-    formula: `가중치(${fmtW}, 고객님이 정한 비중) × 그룹별 0–1 정규값(보이는 집끼리 최소–최대)의 가중평균. 치안은 합산하지 않음.`,
-    note: "고객님이 정한 비중으로만 계산한 참고값입니다. 추천 집이 아닙니다 — 직접 결정하세요." };
+  const formula = explicit
+    ? `가중치(${fmtW}, 고객님이 정한 비중) × 그룹별 0–1 정규값(보이는 집끼리 최소–최대)의 가중평균. 치안은 합산하지 않음.`
+    : "가중치(모두 보통 3) × 그룹별 0–1 정규값(보이는 집끼리 최소–최대)의 가중평균. 치안은 합산하지 않음.";
+  const note = explicit
+    ? "고객님이 정한 비중으로만 계산한 참고값입니다. 추천 집이 아닙니다 — 직접 결정하세요."
+    : "아직 비중을 안 정해서 모두 보통으로 계산한 참고값입니다. 추천 집이 아닙니다 — 직접 결정하세요.";
+  return { ok: true, basis, homes, weights: w, formula, note };
+}
+
+// Per-home metric values from the money doc (18: leisure comes from
+// each home's embedded run totals, so the score never shifts when
+// another panel loads. compareDoc fills leisure ONLY for money docs
+// built before the field existed — a stale-file shim; fresh docs and
+// custom runs never read it).
+// Returns {homeLabel: {metricId: number|null}}. Pure: the drawer score
+// row, the 내 기준 tab and the share card all read this.
+export function priorityValues(moneyDoc, compareDoc, tenures) {
+  const out = {};
+  const staleLeisure = {};
+  if (compareDoc && Array.isArray(compareDoc.metrics)) {
+    const errands = compareDoc.metrics.find((m) => m.key === "errands_done");
+    const parks = compareDoc.metrics.find((m) => m.key === "park_visits");
+    if (errands && parks) {
+      const homeA = compareDoc.home_a && compareDoc.home_a.label;
+      const homeB = compareDoc.home_b && compareDoc.home_b.label;
+      if (homeA) staleLeisure[homeA] = (errands.a || 0) + (parks.a || 0);
+      if (homeB) staleLeisure[homeB] = (errands.b || 0) + (parks.b || 0);
+    }
+  }
+  for (const [label, h] of Object.entries((moneyDoc && moneyDoc.homes) || {})) {
+    const v = {};
+    const edu = h.qol_education;
+    if (!edu) {
+      // Agent-merged homes (C) carry money only — no invented zeros.
+      v.edu_nearest_school_min = null;
+      v.edu_schools_10min = null;
+      v.edu_academy_10min = null;
+    } else {
+      const c10 = (edu.counts || {}).within_10min || {};
+      const nearSchool = ((edu.nearest || {}).school || [])[0];
+      v.edu_nearest_school_min = nearSchool ? nearSchool.minutes : null;
+      v.edu_schools_10min = (c10.school_elementary || 0) + (c10.school_middle || 0)
+        + (c10.school_high || 0) + (c10.school_unknown || 0);
+      v.edu_academy_10min = c10.academy ?? null;
+    }
+    const time = h.qol_time || {};
+    v.life_commute_min = time.commute_minutes_per_day ?? null;
+    v.life_evening_min = time.evening_at_home_minutes_per_day ?? null;
+    v.life_fatigue = (h.qol_fatigue || {}).avg_30d ?? null;
+    v.life_trips = h.leisure_trips_30d ?? staleLeisure[label] ?? null;
+    const safety = h.qol_safety || {};
+    v.safety_total = safety.total ?? null;
+    if (Array.isArray(safety.groups)) {
+      const pick = (name) => (safety.groups.find((g) => g.cat1 === name) || {}).count;
+      const a = pick("강력범죄");
+      const b = pick("폭력범죄");
+      v.safety_violent = a !== undefined && b !== undefined ? a + b : null;
+    } else {
+      v.safety_violent = null;
+    }
+    const tenure = (tenures && tenures[label]) || "전세";
+    const sel = h.by_tenure && h.by_tenure[tenure];
+    v.money_housing = sel ? sel.housing.monthly_won : null;
+    v.money_burden = sel ? sel.burden_ratio : null;
+    v.money_remaining = sel ? sel.remaining_won : null;
+    const conv = h.qol_convenience || {};
+    v.conv_grocery = conv.grocery ?? null;
+    v.conv_clinic = conv.clinic ?? null;
+    v.conv_station = conv.station ?? null;
+    out[label] = v;
+  }
+  return out;
+}
+
+// 내 기준 점수 (stage 17): one 0–100 number per home for the drawer
+// row and the share card. Score = round(100 × weighted mean). Homes
+// keep input order; safety never enters (weightedView excludes it).
+export const MYSCORE_CAPTIONS = {
+  customer: "내가 정한 비중으로 계산한 주관적인 점수예요",
+  default: "아직 비중을 안 정해서 모두 보통으로 계산했어요",
+};
+
+export function myScore(values, weights, opts = {}) {
+  const v = weightedView(values, weights, opts);
+  if (!v.ok) return { ok: false, error: v.error };
+  const scores = {};
+  const groups = {};
+  for (const label of Object.keys(values || {})) {
+    const h = v.homes[label];
+    scores[label] = h && h.score !== null ? Math.round(100 * h.score) : null;
+    groups[label] = h ? h.groups : null;
+  }
+  return {
+    ok: true,
+    basis: v.basis,
+    scores,
+    groups,
+    caption: MYSCORE_CAPTIONS[v.basis],
+    formula_ko: "각 값을 보이는 집끼리 0–1로 맞춘 뒤 비중으로 평균해 100점으로 바꾼 상대 점수예요. 화면의 집끼리만 비교한 값이라 절대 등급이 아니고, 치안 건수는 합산하지 않았어요.",
+  };
 }

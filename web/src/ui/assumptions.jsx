@@ -11,13 +11,14 @@ import { Text } from "@astryxdesign/core/Text";
 import {
   EDITABLE_ASSUMPTIONS, currentValue, changedCount,
 } from "../assumptions.js";
+import { hhmm } from "../timeline.js";
+import { plainSource } from "./copy.js";
 
 function fmtAssumption(def, value) {
   if (def.unit === "원" || def.unit === "원/월") return `${Number(value).toLocaleString()}${def.unit}`;
   if (def.id === "C-commute-depart.morning_anchor_min") {
-    const h = Math.floor(value / 60);
-    const m = String(value % 60).padStart(2, "0");
-    return `${h}:${m}`;
+    // 18d: the one timeline HH:MM formatter, like every other minute.
+    return hhmm(value);
   }
   return `${value} ${def.unit}`;
 }
@@ -54,7 +55,7 @@ export function AssumptionsPanel({ overrides, onSet, onReset, onClose }) {
                   onChange={(e) => onSet && onSet(def.id, Number(e.target.value))} />
               </HStack>
               <Text type="supporting">{def.help}</Text>
-              <Text type="supporting">{`출처: ${def.source} · 기본값 ${fmtAssumption(def, def.def)}`}</Text>
+              <Text type="supporting">{`출처: ${plainSource(def.source)} · 기본값 ${fmtAssumption(def, def.def)}`}</Text>
             </div>
           );
         })}

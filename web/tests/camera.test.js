@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { GLIDE_FRAME_M, HOST_FADE_MIN_M, STOP_AZIMUTHS, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, TOUR_PITCH_DEG, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, sightOcclusion, tourOffset } from "../src/camera.js";
+import { GLIDE_FRAME_M, HOST_FADE_MIN_M, JOURNEY_CRUISE_PITCH_DEG, PAINTED_FOV_DEG, PAINTED_GLIDE_FRAME_M, PAINTED_MIN_FRAME_M, PAINTED_PITCH_DEG, PAINTED_STOP_FRAME_M, STOP_AZIMUTHS, STOP_FRAME_M, TOUR_AZIMUTH, TOUR_FOV_DEG, TOUR_PITCH_DEG, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, occludingIds, pickStopAzimuth, resolveStyle, sightOcclusion, tourFrameWidths, tourOffset, zoomClampDistances } from "../src/camera.js";
 
 describe("camera", () => {
   it("stays in the miniature brief ranges", () => {
@@ -8,6 +8,15 @@ describe("camera", () => {
     assert.ok(TOUR_PITCH_DEG >= 40 && TOUR_PITCH_DEG <= 50, `pitch ${TOUR_PITCH_DEG}`);
     assert.ok(STOP_FRAME_M >= 250 && STOP_FRAME_M <= 350, `stop ${STOP_FRAME_M}`);
     assert.ok(GLIDE_FRAME_M >= 400 && GLIDE_FRAME_M <= 600, `glide ${GLIDE_FRAME_M}`);
+  });
+
+  it("frames a neighbourhood in painted, keeps photo widths (14f)", () => {
+    assert.equal(PAINTED_STOP_FRAME_M, 450);
+    assert.equal(PAINTED_GLIDE_FRAME_M, 700);
+    assert.deepEqual(tourFrameWidths("painted"), { stop: 450, glide: 700 });
+    assert.deepEqual(tourFrameWidths("photo"),
+      { stop: STOP_FRAME_M, glide: GLIDE_FRAME_M });
+    assert.deepEqual(tourFrameWidths(undefined), { stop: 450, glide: 700 });
   });
 
   it("round-trips frame width and distance", () => {
@@ -134,5 +143,45 @@ describe("stop azimuth (tower occlusion)", () => {
     for (const d of ["1,0", "0,1", "-1,0", "0,-1", "1,1", "-1,1", "-1,-1", "1,-1"]) {
       assert.ok(dirs.includes(d), `candidate ${d}`);
     }
+  });
+});
+
+describe("painted camera style (14e)", () => {
+  it("pins the near-isometric values and the photo fallback", () => {
+    assert.equal(PAINTED_FOV_DEG, 10);
+    assert.equal(PAINTED_PITCH_DEG, 32);
+    assert.deepEqual(cameraStyle("painted"), {
+      fovDeg: 10, pitchDeg: 32, cruisePitchDeg: 32,
+      azimuth: TOUR_AZIMUTH, rotate: false,
+    });
+    assert.deepEqual(cameraStyle("photo"), {
+      fovDeg: TOUR_FOV_DEG, pitchDeg: TOUR_PITCH_DEG,
+      cruisePitchDeg: JOURNEY_CRUISE_PITCH_DEG,
+      azimuth: TOUR_AZIMUTH, rotate: true,
+    });
+    assert.deepEqual(cameraStyle("anything-else"), cameraStyle("painted"));
+    assert.deepEqual(cameraStyle(), cameraStyle("painted"));
+  });
+
+  it("defaults ?style to painted, photo on request", () => {
+    assert.equal(resolveStyle(""), "painted");
+    assert.equal(resolveStyle(null), "painted");
+    assert.equal(resolveStyle("?style=photo"), "photo");
+    assert.equal(resolveStyle(new URLSearchParams("style=photo")), "photo");
+    assert.equal(resolveStyle("?style=painted"), "painted");
+  });
+
+  it("frames 300 m at the narrow painted FOV", () => {
+    const d = distanceForWidth(300, 10, 1.6);
+    assert.ok(Math.abs(frameWidthFor(d, 10, 1.6) - 300) < 1e-9);
+    assert.ok(d > distanceForWidth(300, TOUR_FOV_DEG, 1.6));
+  });
+
+  it("clamps painted zoom between 150 m and the box span", () => {
+    assert.equal(PAINTED_MIN_FRAME_M, 150);
+    const c = zoomClampDistances(1000, 10, 1.6);
+    assert.ok(Math.abs(frameWidthFor(c.min, 10, 1.6) - 150) < 1e-9);
+    assert.ok(Math.abs(frameWidthFor(c.max, 10, 1.6) - 1000) < 1e-9);
+    assert.ok(c.min < c.max);
   });
 });

@@ -120,7 +120,26 @@ export function clearThumbnailCache() {
   thumbCache.clear();
 }
 
+// Equirectangular metres around the area origin (mirrors
+// pipeline/area_build.py local_xy). Area docs carry footprints in
+// EPSG:4326 degrees plus crs.local.origin; the thumbnail works in
+// metres so the frame width means something.
+const METERS_PER_DEG_LAT = 111320;
+
+function localOrigin(area) {
+  const o = area && area.crs && area.crs.local && area.crs.local.origin;
+  if (o && Number.isFinite(o.lon) && Number.isFinite(o.lat)) return o;
+  return null;
+}
+
+function toLocalM(lon, lat, origin) {
+  if (!origin) return [lon, lat];
+  const kx = METERS_PER_DEG_LAT * Math.cos((origin.lat * Math.PI) / 180);
+  return [(lon - origin.lon) * kx, (lat - origin.lat) * METERS_PER_DEG_LAT];
+}
+
 function footprintBoxes(area) {
+  const origin = localOrigin(area);
   const out = [];
   for (const b of (area && area.buildings) || []) {
     const geom = b && b.geometry;
@@ -133,7 +152,8 @@ function footprintBoxes(area) {
     let maxY = -Infinity;
     for (const poly of polys) {
       for (const ring of poly) {
-        for (const [x, y] of ring) {
+        for (const [lon, lat] of ring) {
+          const [x, y] = toLocalM(lon, lat, origin);
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (x > maxX) maxX = x;
@@ -152,10 +172,46 @@ function footprintBoxes(area) {
   return out;
 }
 
-export function thumbnailSceneSpec(area) {
+// 18d: the card thumbnail frames the HOME's own building and its
+// neighbours — centred, ~45°, 150–250 m across, the home outlined —
+// never the whole box area (which shrank buildings out of frame).
+// home is {lon, lat}. Without a home (or without an origin to project
+// it) the spec keeps the old whole-area frame. Returns null when the
+// scene has no building near the home — the card shows the MiniMap
+// instead of ground plus one tree.
+export const THUMB_HOME_MATCH_M = 500;
+export const THUMB_VIEW_MIN_M = 150;
+export const THUMB_VIEW_MAX_M = 250;
+
+export function thumbnailSceneSpec(area, home = null) {
   // Pure, tested part: boxes + frame derived from the area doc.
   const boxes = footprintBoxes(area);
   if (boxes.length === 0) return null;
+  if (home && Number.isFinite(home.lon) && Number.isFinite(home.lat)) {
+    const origin = localOrigin(area);
+    if (!origin) return null;
+    const [hx, hy] = toLocalM(home.lon, home.lat, origin);
+    let homeIndex = -1;
+    let best = Infinity;
+    boxes.forEach((b, i) => {
+      const d = Math.hypot(b.cx - hx, b.cy - hy);
+      if (d < best) { best = d; homeIndex = i; }
+    });
+    if (homeIndex < 0 || best > THUMB_HOME_MATCH_M) return null;
+    const hb = boxes[homeIndex];
+    // The home reads at ~a quarter of the frame (10–40 % either way).
+    const viewW = Math.min(THUMB_VIEW_MAX_M,
+      Math.max(THUMB_VIEW_MIN_M, Math.max(hb.w, hb.d) * 4));
+    const viewH = (viewW * THUMB_H) / THUMB_W;
+    return {
+      boxes,
+      homeIndex,
+      frame: { minX: hb.cx - viewW / 2, maxX: hb.cx + viewW / 2,
+        minY: hb.cy - viewH / 2, maxY: hb.cy + viewH / 2 },
+      width: THUMB_W,
+      height: THUMB_H,
+    };
+  }
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -168,26 +224,30 @@ export function thumbnailSceneSpec(area) {
   }
   return {
     boxes,
+    homeIndex: null,
     frame: { minX, minY, maxX, maxY },
     width: THUMB_W,
     height: THUMB_H,
   };
 }
 
-export async function sceneThumbnail(boxId, deps = {}) {
+export async function sceneThumbnail(boxId, deps = {}, home = null) {
   const { loadArea, createRenderer } = deps;
-  if (thumbCache.has(boxId)) return thumbCache.get(boxId);
+  // The frame depends on the home: cache per home, not per box.
+  const key = home && Number.isFinite(home.lon) && Number.isFinite(home.lat)
+    ? `${boxId}@${home.lon},${home.lat}` : boxId;
+  if (thumbCache.has(key)) return thumbCache.get(key);
   if (typeof loadArea !== "function" || typeof createRenderer !== "function") {
     throw new Error("sceneThumbnail: needs {loadArea, createRenderer}");
   }
   const area = await loadArea(boxId);
-  const spec = thumbnailSceneSpec(area);
+  const spec = thumbnailSceneSpec(area, home);
   if (!spec) return null;
   const renderer = await createRenderer(THUMB_W, THUMB_H);
   if (!renderer) return null;
   try {
     const dataUrl = renderMassing(renderer, spec);
-    thumbCache.set(boxId, dataUrl);
+    thumbCache.set(key, dataUrl);
     return dataUrl;
   } finally {
     if (renderer && typeof renderer.dispose === "function") renderer.dispose();
@@ -233,18 +293,31 @@ export function createWebGLThumbnailRenderer(width, height) {
         const geo = new THREE.BoxGeometry(1, 1, 1);
         const matA = new THREE.MeshLambertMaterial({ color: 0xd9a878 });
         const matB = new THREE.MeshLambertMaterial({ color: 0xcfc8bb });
-        for (const b of spec.boxes) {
-          const mesh = new THREE.Mesh(geo, b.residential === "none" ? matB : matA);
+        const matHome = new THREE.MeshLambertMaterial({ color: 0xe0b070 });
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0xb25a33 });
+        spec.boxes.forEach((b, i) => {
+          const isHome = spec.homeIndex === i;
+          const mesh = new THREE.Mesh(geo,
+            isHome ? matHome : (b.residential === "none" ? matB : matA));
           mesh.scale.set(b.w, b.h, b.d);
           mesh.position.set(b.cx, b.h / 2, -b.cy);
           scene.add(mesh);
-        }
+          if (isHome) {
+            const edges = new THREE.LineSegments(
+              new THREE.EdgesGeometry(geo), edgeMat);
+            edges.scale.set(b.w * 1.04, b.h * 1.04, b.d * 1.04);
+            edges.position.copy(mesh.position);
+            scene.add(edges);
+          }
+        });
         const sun = new THREE.DirectionalLight(0xffffff, 1.6);
         sun.position.set(cx + span, span * 1.2, -cy + span * 0.6);
         scene.add(sun);
         scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a7a, 0.7));
+        // 18d: about 45° above the horizon (height ≈ horizontal
+        // distance), so the home block and its neighbours read in frame.
         const camera = new THREE.PerspectiveCamera(40, width / height, 1, span * 20);
-        camera.position.set(cx + span * 0.55, span * 0.75, -cy + span * 0.85);
+        camera.position.set(cx + span * 0.62, span * 0.88, -cy + span * 0.62);
         camera.lookAt(cx, 0, -cy);
         renderer.render(scene, camera);
         return canvas.toDataURL("image/png");

@@ -11,7 +11,6 @@
 //
 // The app never fetches or scrapes portal sites (their terms forbid it).
 import { useEffect, useState } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -20,6 +19,7 @@ import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList"
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { store } from "./store.js";
+import { SourceBadge } from "./source-badge.jsx";
 import { parseListingText, plainListingFields,
   filterShapedListings } from "../money/listing.js";
 import { fmtWon, fmtDistance } from "../money/format.js";
@@ -188,12 +188,12 @@ function CheckResult({ check, onLiveIn }) {
     <VStack gap={2}>
       <Heading level={4}>매물 확인 결과</Heading>
       <HStack gap={1} vAlign="center" wrap="wrap">
-        <Badge variant="teal" label="실거래" />
+        <SourceBadge source="rtms" />
         <Text type="supporting">{`${check.complex} · ${check.area_m2}㎡ (±5㎡) · ${check.match_method === "parcel+name" ? "땅+단지 이름" : "단지 이름"} ${check.parcel_rows + check.name_rows}건`}</Text>
       </HStack>
       <MetadataList>
         {Object.entries(check.positions || {}).map(([key, pos]) => (
-          <MetadataListItem key={key} label={POSITION_KO[key] || key}>
+          <MetadataListItem key={key} label={POSITION_KO[key] || "기타"}>
             {!pos.computable ? (
               <Text type="supporting">{pos.note}</Text>
             ) : (
@@ -244,7 +244,9 @@ function PublicNotices({ doc }) {
     return (
       <VStack gap={1}>
         <Heading level={4}>공공 매물·공고</Heading>
-        <Text type="supporting">공공 매물 자료가 없어요. money.mjs를 다시 실행하세요.</Text>
+        <Text type="supporting">{doc.custom
+          ? "이 살아 보기에는 공공 매물 자료를 넣지 않았어요. 공공임대 찾기는 대화에서 물어보세요."
+          : "공공 매물 자료가 없어요. money.mjs를 다시 실행하세요."}</Text>
       </VStack>
     );
   }
@@ -263,10 +265,8 @@ function PublicNotices({ doc }) {
   };
   return (
     <VStack gap={2}>
-      <HStack gap={2} vAlign="center" wrap="wrap">
-        <Heading level={4}>공공 매물·공고</Heading>
-        <Badge variant="purple" label={pl.attribution} />
-      </HStack>
+      <Heading level={4}>공공 매물·공고</Heading>
+      <Text type="supporting">{pl.attribution}</Text>
       <Text type="supporting">
         {`직장: ${(pl.workplace && pl.workplace.label) || "못 찾음"} · ${pl.workplace_note}`}
       </Text>
@@ -306,13 +306,13 @@ function PublicNotices({ doc }) {
         )}
         {shaped.complexes.map((c) => (
           <VStack gap={1} key={`${c.source}-${c.id}`}>
-            <HStack gap={1} vAlign="center" wrap="wrap">
-              <Text>{c.name}</Text>
-              {c.distance_to_work_m !== null && (
-                <Badge variant="neutral" label={`직장 ${fmtDistance(c.distance_to_work_m)}`} />
-              )}
-              {!c.has_prices && <Badge variant="neutral" label="값은 공고 원문" />}
-            </HStack>
+            <Text>{c.name}</Text>
+            {(c.distance_to_work_m !== null || !c.has_prices) && (
+              <Text type="supporting" hasTabularNumbers>
+                {[c.distance_to_work_m !== null ? `직장 ${fmtDistance(c.distance_to_work_m)}` : "",
+                  !c.has_prices ? "값은 공고 원문" : ""].filter(Boolean).join(" · ")}
+              </Text>
+            )}
             <Text type="supporting" hasTabularNumbers>
               {`${c.address}`}
               {c.area_min_m2 !== null ? ` · ${c.area_min_m2}${c.area_max_m2 !== c.area_min_m2 ? `~${c.area_max_m2}` : ""}㎡` : ""}

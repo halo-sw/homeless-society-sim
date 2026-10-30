@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { flatHeightAt, makeHeightAt, seatOnTerrain, slopeAt } from "../src/scene/height.js";
 import { MASK_SIZE, buildTerrainMesh, isMaskedKind, maskClassFor,
   paintLandMask, sceneToMask } from "../src/scene/terrain.js";
-import { buildRoadMeshes, buildWaterRibbons, resamplePoints,
-  roadMaterialClass, roadOrder, specWidth } from "../src/scene/roads.js";
-import { broadleafGeometry, coniferGeometry, patchDepthFragment,
-  patchDepthVertex, shrubGeometry, treeRotation, treeTint,
+import { buildRoadMarkings, buildRoadMeshes, buildWaterRibbons,
+  findRoadCrossings, hasYellowCentre, hexToLinearRgb, lanesOf, resamplePoints,
+  roadMaterialClass, roadOrder, roadTone, specWidth } from "../src/scene/roads.js";
+import { LEAF_AUTUMN, LEAF_GREENS, broadleafGeometry, coniferGeometry,
+  fillStreetTrees, inAutumnWindow, patchDepthFragment, patchDepthVertex,
+  shrubGeometry, treeColour, treeRotation, treeTint,
   treeTriangleCount } from "../src/scene/trees3d.js";
 import { loadScene } from "../src/scene/load.js";
 import { DEFAULT_LOOK, resolveLook } from "../src/render/look.js";
@@ -142,6 +144,37 @@ describe("scene roads", () => {
     // Ribbon triangle count: 5 segments × 2.
     assert.equal(meshes.foot.triangles, 10);
   });
+  it("paints arterials dark and minor streets lighter (14e two-tone)", () => {
+    assert.equal(roadTone("primary"), "major");
+    assert.equal(roadTone("secondary"), "major");
+    assert.equal(roadTone("motorway"), "major");
+    assert.equal(roadTone("trunk_link"), "major");
+    assert.equal(roadTone("tertiary"), "minor");
+    assert.equal(roadTone("residential"), "minor");
+    assert.equal(roadTone("service"), "minor");
+    const painted = resolveLook("", "painted");
+    const { meshes } = buildRoadMeshes([
+      { k: "primary", n: null, w: 16, br: 0, p: [[0, 0], [4, 0]] },
+      { k: "residential", n: null, w: 6, br: 0, p: [[0, 30], [4, 30]] },
+    ], () => 0, painted);
+    // Same merged mesh; per-ribbon vertex colours carry the tone.
+    // 17b: vertex colours are linear working-space values.
+    const major = hexToLinearRgb(painted.sceneRoad);
+    const minor = hexToLinearRgb(painted.sceneRoadMinor);
+    const [r0, g0, b0] = meshes.road.colors.slice(0, 3);
+    assert.ok(Math.abs(r0 - major[0]) < 1e-6 && Math.abs(g0 - major[1]) < 1e-6
+      && Math.abs(b0 - major[2]) < 1e-6, "first ribbon is arterial asphalt");
+    const tail = meshes.road.colors.slice(-3);
+    assert.ok(Math.abs(tail[0] - minor[0]) < 1e-6 && Math.abs(tail[1] - minor[1]) < 1e-6
+      && Math.abs(tail[2] - minor[2]) < 1e-6, "last ribbon is the lighter minor tone");
+    // Photo keeps one tone: minor equals major.
+    const photo = buildRoadMeshes([
+      { k: "primary", n: null, w: 16, br: 0, p: [[0, 0], [4, 0]] },
+      { k: "residential", n: null, w: 6, br: 0, p: [[0, 30], [4, 30]] },
+    ], () => 0, { ...DEFAULT_LOOK });
+    assert.deepEqual([...photo.meshes.road.colors.slice(0, 3)],
+      [...photo.meshes.road.colors.slice(-3)]);
+  });
   it("winds ribbon triangles upward", () => {
     const { meshes } = buildRoadMeshes(
       [{ k: "service", n: null, w: 4, br: 0, p: [[0, 0], [4, 0]] }],
@@ -259,5 +292,176 @@ describe("terrain-aware ground + buildings", () => {
     const ys = seated.detail.walls.house.positions.filter((_, i) => i % 3 === 1);
     assert.equal(Math.min(...ys), 10 - 0.6); // footing below the low corner
     assert.ok(Math.max(...ys) >= 16); // walls ride the base
+  });
+});
+
+describe("painted road paint (14e)", () => {
+  it("counts lanes from the ribbon width (3.25 m lanes)", () => {
+    assert.equal(lanesOf({ w: 16 }), 5);
+    assert.equal(lanesOf({ w: 12 }), 4);
+    assert.equal(lanesOf({ w: 9 }), 3);
+    assert.equal(lanesOf({ w: 6 }), 2);
+    assert.equal(lanesOf({ w: 4 }), 1);
+    assert.equal(lanesOf({ w: 6, lanes: 4 }), 4); // explicit tag wins
+    assert.equal(hasYellowCentre("primary"), true);
+    assert.equal(hasYellowCentre("secondary"), true);
+    assert.equal(hasYellowCentre("primary_link"), true);
+    assert.equal(hasYellowCentre("tertiary"), false);
+    assert.equal(hasYellowCentre("motorway"), false); // brief: primary/secondary
+  });
+
+  it("paints dashes on multi-lane roads, yellow on arterials", () => {
+    const { mesh, stats } = buildRoadMarkings([
+      { k: "primary", n: null, w: 16, br: 0, p: [[0, 0], [20, 0]] },
+      { k: "residential", n: null, w: 6, br: 0, p: [[0, 30], [20, 30]] },
+      { k: "service", n: null, w: 4, br: 0, p: [[0, 60], [20, 60]] },
+      { k: "secondary", n: null, w: 12, br: 1, p: [[0, 100], [20, 100]] },
+      { k: "tertiary", n: null, w: 9, br: -1, p: [[0, 140], [20, 140]] },
+    ], () => 0);
+    assert.equal(stats.roads, 4); // tunnel skipped
+    assert.equal(stats.yellowRoads, 2);
+    // 20 m roads → 4 dashes per divider: primary 4 dividers, residential
+    // 1, secondary 2 (centre skipped for the yellow double).
+    assert.equal(stats.dashes, 16 + 4 + 8);
+    assert.ok(mesh.triangles > 0);
+    // Paint rides above its ribbon (bridge deck paint clears 1 m).
+    const ys = [];
+    for (let i = 1; i < mesh.positions.length; i += 3) ys.push(mesh.positions[i]);
+    assert.ok(Math.min(...ys) >= 0.089);
+    assert.ok(Math.max(...ys) > 1.0);
+    // Both paint colours land in the merged mesh (17b: linear values).
+    const has = (hex) => {
+      const t = hexToLinearRgb(hex);
+      for (let i = 0; i < mesh.colors.length; i += 3) {
+        if (Math.abs(mesh.colors[i] - t[0]) < 1e-6
+            && Math.abs(mesh.colors[i + 1] - t[1]) < 1e-6
+            && Math.abs(mesh.colors[i + 2] - t[2]) < 1e-6) return true;
+      }
+      return false;
+    };
+    assert.ok(has(0xf4f2ec), "white dashes present"); // LANE_WHITE
+    assert.ok(has(0xe0b93c), "yellow centre present"); // LANE_YELLOW
+  });
+
+  it("paints nothing for single-lane streets", () => {
+    const { mesh, stats } = buildRoadMarkings(
+      [{ k: "service", n: null, w: 4, br: 0, p: [[0, 0], [20, 0]] }], () => 0);
+    assert.equal(stats.roads, 1);
+    assert.equal(stats.dashes, 0);
+    assert.equal(mesh.triangles, 0);
+  });
+
+  it("finds at-grade footway crossings over multi-lane roads", () => {
+    const road = (k, w, p, br = 0) => ({ k, n: null, w, br, p });
+    const hits = findRoadCrossings([
+      road("tertiary", 9, [[0, 0], [20, 0]]),
+      road("footway", 2, [[10, -10], [10, 10]]),
+    ]);
+    assert.equal(hits.length, 1);
+    assert.ok(Math.abs(hits[0].x - 10) < 1e-9);
+    assert.ok(Math.abs(hits[0].z - 0) < 1e-9);
+    assert.equal(hits[0].width, 9);
+    // Parallel ways never meet; bridges and single-lane roads excluded.
+    assert.equal(findRoadCrossings([
+      road("tertiary", 9, [[0, 0], [20, 0]]),
+      road("footway", 2, [[0, -10], [20, -10]]),
+    ]).length, 0);
+    assert.equal(findRoadCrossings([
+      road("tertiary", 9, [[0, 0], [20, 0]], 1),
+      road("footway", 2, [[10, -10], [10, 10]]),
+    ]).length, 0);
+    assert.equal(findRoadCrossings([
+      road("service", 4, [[0, 0], [20, 0]]),
+      road("footway", 2, [[10, -10], [10, 10]]),
+    ]).length, 0);
+  });
+
+  it("lays zebra bars across the road at crossings, facing up", () => {
+    const { mesh, stats } = buildRoadMarkings([
+      { k: "tertiary", n: null, w: 9, br: 0, p: [[0, 0], [20, 0]] },
+      { k: "footway", n: null, w: 2, br: 0, p: [[10, -10], [10, 10]] },
+    ], () => 0);
+    assert.equal(stats.crossings, 1);
+    // 3 bars × 2 triangles of pure crosswalk white.
+    let white = 0;
+    for (let i = 0; i < mesh.colors.length; i += 3) {
+      if (mesh.colors[i] === 1 && mesh.colors[i + 1] === 1 && mesh.colors[i + 2] === 1) white++;
+    }
+    assert.equal(white, 3 * 4); // 3 bars × 4 corners
+    const P = mesh.positions;
+    const I = mesh.indices;
+    const v = (i) => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
+    for (let t = 0; t < I.length; t += 3) {
+      const [ax, , az] = v(I[t]);
+      const [bx, , bz] = v(I[t + 1]);
+      const [cx, , cz] = v(I[t + 2]);
+      const crossY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+      assert.ok(crossY > 0, `triangle ${t / 3} faces up`);
+    }
+  });
+});
+
+describe("painted trees (14e)", () => {
+  it("clusters broadleaf crowns as overlapping spheres under 60 tris", () => {
+    const tris = treeTriangleCount(broadleafGeometry());
+    assert.ok(tris <= 60, `tris=${tris}`);
+    assert.ok(tris > 20, `tris=${tris}`);
+  });
+
+  it("opens the autumn window mid-October through November", () => {
+    assert.equal(inAutumnWindow("2026-10-14"), false);
+    assert.equal(inAutumnWindow("2026-10-15"), true);
+    assert.equal(inAutumnWindow("2026-11-30"), true);
+    assert.equal(inAutumnWindow("2026-12-01"), false);
+    assert.equal(inAutumnWindow("2026-06-01"), false);
+    assert.equal(inAutumnWindow(null), false);
+    assert.equal(inAutumnWindow("bogus"), false);
+  });
+
+  it("colours leaves by seed and sim date (autumn share in season)", () => {
+    assert.deepEqual(LEAF_AUTUMN, [0xd9b13b, 0xc8742f, 0xa84232]);
+    assert.equal(treeColour("a", "2026-10-20"), treeColour("a", "2026-10-20"));
+    for (let i = 0; i < 50; i++) {
+      assert.ok(LEAF_GREENS.includes(treeColour(`t${i}`, "2026-06-01")));
+    }
+    const kinds = new Set();
+    const autumns = new Set();
+    for (let i = 0; i < 300; i++) {
+      const c = treeColour(`t${i}`, "2026-10-20");
+      kinds.add(LEAF_AUTUMN.includes(c) ? "a" : "g");
+      if (LEAF_AUTUMN.includes(c)) autumns.add(c);
+    }
+    assert.deepEqual([...kinds].sort(), ["a", "g"]);
+    assert.equal(autumns.size, 3); // yellow, orange and red all appear
+  });
+
+  it("fills empty roadsides every 9 m on both sidewalks", () => {
+    const roads = [
+      { k: "residential", w: 6, br: 0, p: [[0, 0], [36, 0]] },
+      { k: "residential", w: 6, br: 0, p: [[0, 40], [36, 40]] },
+      { k: "service", w: 4, br: 0, p: [[0, 80], [36, 80]] },
+      { k: "tertiary", w: 9, br: 1, p: [[0, 120], [36, 120]] },
+    ];
+    const trees = [[18, 40, 1, 1]]; // the second road already has trees
+    const { trees: fill, stats } = fillStreetTrees(roads, trees, []);
+    assert.equal(stats.roads, 2); // service + bridge ineligible
+    assert.equal(stats.emptyRoads, 1);
+    // 36 m at 9 m spacing → stations 4.5…31.5 × 2 sides.
+    assert.equal(fill.length, 8);
+    assert.ok(fill.every((t) => t[3] === 1 && t[2] >= 0.9 && t[2] <= 1.1));
+    assert.ok(fill.every((t) => Math.abs(Math.abs(t[1]) - 5) < 1e-9));
+    assert.deepEqual(fillStreetTrees(roads, trees, []).trees, fill);
+    assert.equal(fillStreetTrees(roads, trees, [], { maxTrees: 3 }).trees.length, 3);
+  });
+
+  it("skips fill spots near buildings and existing trees", () => {
+    const roads = [{ k: "residential", w: 6, br: 0, p: [[0, 0], [18, 0]] }];
+    const rings = [[[2, 3], [7, 3], [7, 8], [2, 8]]];
+    const trees = [[13.5, -7.5, 1, 1]]; // 2.5 m from the (13.5,-5) spot
+    const { trees: fill, stats } = fillStreetTrees(roads, trees, rings);
+    // (4.5,5) blocked by the ring, (13.5,-5) by the tree → 2 placed.
+    assert.equal(fill.length, 2);
+    assert.equal(stats.skippedBuilding, 1);
+    assert.equal(stats.skippedTree, 1);
   });
 });

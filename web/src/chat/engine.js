@@ -27,6 +27,9 @@ export const SCHEDULE_URL = "/scenarios/transit/seoul-metro-interstation.csv";
 export const PHOTOS_MANIFEST_URL = "/scenarios/places/commons-photos.json";
 export const NAMED_PHOTOS_URL = "/scenarios/places/commons-named.json";
 export const REGIONS_URL = "/data/regions.json";
+export const CORRIDOR_TILES_URL = "/data/region/corridor/c1/manifest.json";
+const CORRIDOR_TILE_URL = (id) => `/data/region/corridor/c1/tiles/${id}.json`;
+export const PAYROLL_URL = "/scenarios/assumptions/kr-payroll.json";
 export const BOX_AREA_URL = (boxId) => `/data/${boxId}/area.json`;
 export const WALKGRAPH_URL = (regionId) => `/data/walkgraph/${regionId}.json`;
 
@@ -96,6 +99,27 @@ export async function loadNetwork(fetchJson) {
   }
 }
 
+// Corridor ground tiles intersecting a lon/lat bbox (tiny files with
+// real 시군구 boundaries + open water). Null-tolerant: the stage map
+// paints fine without them.
+export async function loadCorridorTiles(fetchJson, bbox) {
+  try {
+    const manifest = await fetchJson(CORRIDOR_TILES_URL);
+    const tiles = (manifest && manifest.tiles) || [];
+    const hit = (t) => {
+      const b = t && t.bounds;
+      if (!bbox || !Array.isArray(b)) return true;
+      return b[0] <= bbox[2] && b[2] >= bbox[0] && b[1] <= bbox[3] && b[3] >= bbox[1];
+    };
+    const wanted = tiles.filter(hit).slice(0, 24);
+    const docs = await Promise.all(wanted.map((t) =>
+      fetchJson(CORRIDOR_TILE_URL(t.id)).catch(() => null)));
+    return docs.filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function loadSchedule(fetchText) {
   try {
     const text = await fetchText(SCHEDULE_URL);
@@ -131,6 +155,18 @@ export async function loadRegions(fetchJson) {
   try {
     const doc = await fetchJson(REGIONS_URL);
     return doc && Array.isArray(doc.regions) ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
+// 18: payroll rule table for the custom-run money doc (same file
+// money.mjs reads). Null when unserved — the builder then refuses and
+// the card says so honestly.
+export async function loadPayroll(fetchJson) {
+  try {
+    const doc = await fetchJson(PAYROLL_URL);
+    return doc && doc.social_insurance ? doc : null;
   } catch {
     return null;
   }

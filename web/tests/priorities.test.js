@@ -51,10 +51,19 @@ describe("priorities", () => {
     }
   });
 
-  it("refuses the one number without explicit weights", () => {
-    const r = weightedView({ A: {}, B: {} }, defaultWeights());
-    assert.equal(r.ok, false);
-    assert.match(r.error, /명시적 비중/);
+  it("computes with 모두 보통 when weights are not explicit (basis default)", () => {
+    const values = {
+      A: { money_housing: 100 },
+      B: { money_housing: 200 },
+    };
+    const r = weightedView(values, defaultWeights());
+    assert.equal(r.ok, true);
+    assert.equal(r.basis, "default");
+    assert.deepEqual(r.weights, defaultWeights());
+    const explicit = weightedView(values, defaultWeights(), { explicit: true });
+    assert.equal(explicit.basis, "customer");
+    assert.deepEqual(r.homes, explicit.homes);
+    assert.match(r.formula, /모두 보통/);
   });
 
   it("computes the worked weighted example (min-max, directions, group means)", () => {

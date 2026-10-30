@@ -374,9 +374,15 @@ for (const h of scenario.homes) {
       .filter((b) => (complexRec.building_ids || []).includes(b.id))
     : [];
   const register = registerSignals(complexBuildings);
+  // 18: weekend/leisure outings from this home's own run-1 totals
+  // (the same counters compare sums) — the score reads the money doc
+  // only, so it never shifts when another panel opens.
+  const hh = (run.totals && run.totals.household) || {};
+  const leisureTrips = Math.round(((hh.errands_done || 0) + (hh.park_visits || 0)) * 10) / 10;
   homes[h.label] = {
     area: h.area, complex_name: h.complex_name, area_m2: areaM2,
     match_method: matchMethod,
+    leisure_trips_30d: leisureTrips,
     parcel_rows: parcelHits.length, name_rows: nameHits.length,
     flags: { ...spendTl.flags,
       ...(areaMismatch ? { area_mismatch: areaMismatch } : {}) },

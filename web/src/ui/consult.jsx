@@ -7,10 +7,11 @@
 // Dev: live agent over POST /api/consult (key on the dev server only),
 // with the current view attached so "이거" resolves. Conversations
 // live in browser memory only; the server stores nothing.
-import { Badge } from "@astryxdesign/core/Badge";
 import { Citation } from "@astryxdesign/core/Citation";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
+import { Text } from "@astryxdesign/core/Text";
 import {
   ChatMessage, ChatMessageBubble, ChatToolCalls,
 } from "@astryxdesign/core/Chat";
@@ -23,13 +24,17 @@ export function ToolRows({ rows }) {
   if (!rows || rows.length === 0) return null;
   return (
     <ChatMessageBubble variant="ghost" width="100%">
-      <ChatToolCalls calls={rows.map((r) => ({
-        key: r.id,
-        name: toolActionKo(r.name),
-        status: r.ok ? "complete" : "error",
-        target: r.summary,
-        duration: toolDurationKo(r.ms),
-      }))} />
+      <Collapsible
+        trigger={<Text type="supporting">{`확인한 것 ${rows.length}가지`}</Text>}
+        defaultIsOpen={false}>
+        <ChatToolCalls calls={rows.map((r) => ({
+          key: r.id,
+          name: toolActionKo(r.name),
+          status: r.ok ? "complete" : "error",
+          target: r.summary,
+          duration: toolDurationKo(r.ms),
+        }))} />
+      </Collapsible>
     </ChatMessageBubble>
   );
 }
@@ -57,7 +62,7 @@ export function AssistantMsg({ msg, toolRows }) {
     <ChatMessage sender="assistant">
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
-          <Badge variant="yellow" label="기록된 답변" />
+          <Text type="supporting">기록된 답변</Text>
         </ChatMessageBubble>
       )}
       {msg.content && (

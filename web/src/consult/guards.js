@@ -178,7 +178,8 @@ export function withoutSafetyNotes(text) {
 // school scores/rankings ("치안 점수 80점", "학교 순위 1위"), and
 // "recommended home" language ("이 집을 추천합니다"). Plain occurrence
 // counts and access numbers with their caveats pass; polite refusals are
-// stripped first like every other verdict check.
+// stripped first like every other verdict check. The customer's own
+// "내 기준 점수" phrases (stage 17) pass with a number.
 const SCORE_KO_RES = [
   /안전합/, /위험합/,
   /안전한 (동네|집|지역|곳|매물|아파트)/, /위험한 (동네|집|지역|곳|매물|아파트)/,
@@ -200,8 +201,20 @@ const SCORE_EN_RES = [
   "safe area", "safe neighborhood", "dangerous area", "dangerous neighborhood",
 ].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
 
+// "내 기준 점수" allowlist (stage 17): the customer's own subjective
+// score may carry a number without tripping the no-score guard. Only
+// the phrase tokens are stripped — the rest of the sentence is still
+// checked, so a genuine verdict in the same sentence still trips.
+const MYSCORE_PHRASES = ["내 기준 점수", "내가 정한 비중", "주관적인 점수"];
+
+export function withoutMyScore(text) {
+  let s = String(text || "");
+  for (const p of MYSCORE_PHRASES) s = s.split(p).join(" ");
+  return s;
+}
+
 export function scoreVerdict(text) {
-  const s = withoutRefusals(withoutSafetyNotes(text));
+  const s = withoutMyScore(withoutRefusals(withoutSafetyNotes(text)));
   for (const re of SCORE_KO_RES) {
     const m = re.exec(s);
     if (m) return m[0].slice(0, 60);
@@ -519,7 +532,7 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
       }
     } else if (r.summary_30d) {
       const s = r.summary_30d;
-      lines.push(`- 피곤한 정도 30일: 회사 도착할 때 ${s.arrival_work_avg ?? "–"}, 퇴근해서 집에 왔을 때 ${s.after_home_avg ?? "–"}, 30일 평균 ${s.avg_30d ?? "–"}, 만원 지하철에 탄 시간 ${fmtMinutes(s.crowded_min)} (가정으로 계산한 값)`);
+      lines.push(`- 피곤한 정도 30일: 회사 도착할 때 ${s.arrival_work_avg ?? "–"}, 퇴근해서 집에 왔을 때 ${s.after_home_avg ?? "–"}, 하루 평균 (쉬는 시간 포함) ${s.avg_30d ?? "–"}, 만원 지하철에 탄 시간 ${fmtMinutes(s.crowded_min)} (가정으로 계산한 값)`);
       if (r.day_fatigue) {
         const d = r.day_fatigue;
         lines.push(`- ${r.day}일차: 시작 ${d.start} → 끝 ${d.end}, 최고 ${d.peak} (가정으로 계산한 값)`);

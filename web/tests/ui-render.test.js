@@ -238,6 +238,9 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
       `React logged errors for ${search || "(no tour/search)"}: ${errors.join(" | ").slice(0, 2000)}`);
     assert.ok(!html.includes(">NaN<"), "rendered NaN text");
     assert.ok(html.length > 1000, `suspiciously short render (${html.length} chars)`);
+    // 13f-1: no engine ids, category words, or coordinates on screen.
+    const bad = html.match(/[a-z]+_[a-z]+|complex|°\s?[NE]/);
+    assert.ok(!bad, `internal text on screen: ${bad && bad[0]}`);
     return html;
   }
 
@@ -308,13 +311,16 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     assert.ok(html.includes("비교 숫자 불러오는 중"), "loading state on the tour step");
   });
 
-  it("renders the ride-time journey card (t=08:40) with no React errors", () => {
+  it("renders the ride-time hero (t=08:40) with no React errors", () => {
     const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:40"), follow: 1 });
     assert.ok(patch.journey, "08:40 is inside the A commute ride");
     const html = renderCase(patch,
       "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:40&follow=1");
-    assert.ok(html.includes("지하철 이동 중"), "ride Now card");
-    assert.ok(html.includes("이동 중"), "journey card");
+    // 13f2: the drawer hero names the current leg, not the whole trip.
+    assert.ok(html.includes(patch.journey.where), "hero sentence");
+    assert.ok(html.includes(`${patch.journey.minutesLeft}분 남음`), "hero big number");
+    assert.ok(html.includes("다음:"), "hero next event");
+    assert.ok(html.includes("왜 이렇게 판단했나"), "folded why section");
   });
 
   it("renders tour step 1 and step 9 with no React errors or NaN", () => {
@@ -367,22 +373,30 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
   it("renders the chat shell with no React errors", () => {
     const html = renderCase({ mode: "chat", ready: true,
       area: { id: "st-미금", label: "미금역 인근" } }, "?chat=");
-    assert.ok(html.includes("주거 시뮬레이터"), "product name");
-    assert.ok(html.includes("새로 시작"), "reset action");
-    assert.ok(html.includes("지금 보는 장면"), "work area");
+    assert.ok(html.includes("Ithaca"), "product name");
+    // 13f-1: one shared bar — mode switch + 설정; the reset action
+    // lives in the sheet (covered by topbar-13f.test.js).
+    for (const m of ["대화", "살아 보기", "동네 둘러보기"]) {
+      assert.ok(html.includes(m), `mode ${m}`);
+    }
+    assert.ok(html.includes("설정"), "settings button");
+    // 18: the stage header is the customer context, never a fixed scene.
+    assert.ok(html.includes("출근지를 말하면 후보가 지도에 표시돼요"), "work area");
   });
 
   it("renders the day strip + route steps + month strip at A 08:50", () => {
     const patch = simPatch({ home: "A", day: 0, minute: parseTParam("08:50"), follow: 1 });
     const html = renderCase(patch,
       "?mode=sim&scenario=demo-two-homes&home=A&day=1&t=08:50&follow=1");
-    assert.ok(html.includes("2호선 잠실→강남 (9분, 혼잡 91% 실측)"), "ride step");
+    // 13f2: steps live in the drawer's 오늘 list (source word → badge).
+    assert.ok(html.includes("2호선 잠실→강남 (9분, 혼잡 91%)"), "ride step");
     assert.ok(html.includes("강남 환승 4분"), "transfer step");
     assert.ok(html.includes("이전 이동"), "prev trip");
     assert.ok(html.includes("다음 이동"), "next trip");
     assert.ok(html.includes("08:21–08:35 걷기"), "walk segment title");
     assert.ok(html.includes("30일 고르기"), "month strip");
-    assert.ok(html.includes("A·B 하루 같이 보기"), "strip compare toggle");
+    assert.ok(html.includes("ui-bar13f2-row"), "one-row bar");
+    assert.ok(html.includes("더 보기"), "overflow menu");
     assert.ok(html.includes("재생"), "playback stays");
   });
 

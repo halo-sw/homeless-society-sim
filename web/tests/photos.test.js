@@ -124,3 +124,74 @@ describe("sceneThumbnail", () => {
     clearThumbnailCache();
   });
 });
+
+describe("18d home-framed thumbnails", () => {
+  // Degrees around the origin; the spec works in projected metres.
+  const ORIGIN = { lon: 127.1111, lat: 37.3943 };
+  const rect = (lon0, lat0, lon1, lat1) => ({
+    type: "Polygon",
+    coordinates: [[[lon0, lat0], [lon1, lat0], [lon1, lat1],
+      [lon0, lat1], [lon0, lat0]]],
+  });
+  const AREA18D = {
+    crs: { local: { origin: ORIGIN } },
+    buildings: [
+      { id: "home", height_m: 60, residential: "apartment",
+        geometry: rect(127.1108739, 37.3941652, 127.1113261, 37.3944348) },
+      { id: "n2", height_m: 15, residential: "none",
+        geometry: rect(127.1120891, 37.3946594, 127.1123717, 37.394839) },
+      { id: "n3", height_m: 24, residential: "apartment",
+        geometry: rect(127.110026, 37.3936487, 127.1103652, 37.3938733) },
+    ],
+  };
+  const HOME = { lon: 127.1111, lat: 37.3943 };
+
+  it("centres the home footprint at 10–40 % of a 150–250 m frame", () => {
+    const spec = thumbnailSceneSpec(AREA18D, HOME);
+    assert.ok(spec, "spec for a nearby home");
+    assert.equal(spec.boxes.length, 3, "neighbours stay in the scene");
+    assert.equal(spec.homeIndex, 0, "the home building is marked");
+    const { minX, maxX, minY, maxY } = spec.frame;
+    const frameW = maxX - minX;
+    assert.ok(frameW >= 150 && frameW <= 250, `frame ${frameW} m wide`);
+    const frameCx = (minX + maxX) / 2;
+    const frameCy = (minY + maxY) / 2;
+    const hb = spec.boxes[spec.homeIndex];
+    assert.ok(Math.abs(frameCx - hb.cx) < 2, "home centred horizontally");
+    assert.ok(Math.abs(frameCy - hb.cy) < 2, "home centred vertically");
+    const share = Math.max(hb.w, hb.d) / frameW;
+    assert.ok(share >= 0.1 && share <= 0.4, `home fills ${share}`);
+  });
+
+  it("returns null when the scene has no building near the home", () => {
+    assert.equal(
+      thumbnailSceneSpec(AREA18D, { lon: 127.2, lat: 37.5 }), null);
+    assert.equal(thumbnailSceneSpec({ buildings: [] }, HOME), null);
+  });
+
+  it("keeps the whole-area frame without a home", () => {
+    const spec = thumbnailSceneSpec(AREA18D);
+    assert.equal(spec.boxes.length, 3);
+    assert.equal(spec.homeIndex, null);
+    for (const b of spec.boxes) {
+      assert.ok(spec.frame.minX <= b.cx - b.w / 2
+        && spec.frame.maxX >= b.cx + b.w / 2, "frame spans every box");
+    }
+  });
+
+  it("renders per home and misses per far home", async () => {
+    clearThumbnailCache();
+    const deps = {
+      loadArea: async () => AREA18D,
+      createRenderer: async () => ({
+        dispose: () => {},
+        buildMassing: (spec) => `home:${spec.homeIndex}`,
+      }),
+    };
+    assert.equal(await sceneThumbnail("st-18d", deps, HOME), "home:0");
+    assert.equal(await sceneThumbnail("st-18d", deps, HOME), "home:0");
+    assert.equal(
+      await sceneThumbnail("st-18d", deps, { lon: 127.2, lat: 37.5 }), null);
+    clearThumbnailCache();
+  });
+});
