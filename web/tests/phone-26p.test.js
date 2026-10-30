@@ -13,20 +13,29 @@ register("./jsx-loader.mjs", import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(HERE, "..", "src", "ui", "ui.css"), "utf8");
 
-// The last @media (max-width: 480px) block in ui.css.
+// All @media (max-width: 480px) blocks in ui.css, joined.
 function phoneBlock() {
-  const at = css.lastIndexOf("@media (max-width: 480px)");
-  assert.ok(at >= 0, "ui.css has a @media (max-width: 480px) block");
-  let depth = 0;
-  let started = false;
-  for (let i = at; i < css.length; i += 1) {
-    if (css[i] === "{") { depth += 1; started = true; }
-    if (css[i] === "}") {
-      depth -= 1;
-      if (started && depth === 0) return css.slice(at, i + 1);
+  const blocks = [];
+  let from = 0;
+  for (;;) {
+    const at = css.indexOf("@media (max-width: 480px)", from);
+    if (at < 0) break;
+    let depth = 0;
+    let started = false;
+    let end = -1;
+    for (let i = at; i < css.length; i += 1) {
+      if (css[i] === "{") { depth += 1; started = true; }
+      if (css[i] === "}") {
+        depth -= 1;
+        if (started && depth === 0) { end = i; break; }
+      }
     }
+    assert.ok(end > at, "balanced braces in phone media block");
+    blocks.push(css.slice(at, end + 1));
+    from = end + 1;
   }
-  throw new Error("unbalanced braces in phone media block");
+  assert.ok(blocks.length > 0, "ui.css has a @media (max-width: 480px) block");
+  return blocks.join("\n");
 }
 
 let React;

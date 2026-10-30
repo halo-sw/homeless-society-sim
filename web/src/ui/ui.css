@@ -1149,15 +1149,17 @@ button.ui-tag:hover { color: var(--ui-ink); }
   padding: 0 var(--ds-s-24); display: flex; align-items: center;
   gap: var(--ds-s-16); }
 .ds-lp-brand { font-weight: var(--ds-w-bold); font-size: var(--ds-t-20);
-  color: var(--ds-ink-1); }
+  color: var(--ds-ink-1); white-space: nowrap; flex: none; }
 .ds-lp-links { display: flex; gap: var(--ds-s-16); margin-right: auto; }
 .ds-lp-links a { color: var(--ds-ink-2); font-size: var(--ds-t-14);
   text-decoration: none; }
 .ds-lp-nav-right { display: flex; align-items: center; gap: var(--ds-s-12); }
 .ds-lp-pill { background: var(--ds-action); color: var(--ds-surface);
-  border: 0; border-radius: var(--ds-r-pill); padding: var(--ds-s-8) var(--ds-s-16);
+  border: 0; border-radius: var(--ds-r-pill); height: 36px;
+  padding: 0 var(--ds-s-16);
   font-size: var(--ds-t-14); font-weight: var(--ds-w-medium);
-  text-decoration: none; cursor: pointer; display: inline-block; }
+  text-decoration: none; cursor: pointer; display: inline-flex;
+  align-items: center; white-space: nowrap; flex: none; }
 .ds-lp-notice { background: var(--ds-sunken); color: var(--ds-ink-2);
   font-size: var(--ds-t-12); text-align: center;
   padding: var(--ds-s-8) var(--ds-s-16); }
@@ -1180,11 +1182,17 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ds-lp-h { font-family: var(--ds-font-display); font-size: var(--ds-t-28);
   line-height: var(--ds-lh-display); font-weight: var(--ds-w-bold);
   color: var(--ds-ink-1); margin: 0 0 var(--ds-s-24); }
+.ds-lp-sub { font-size: var(--ds-t-16); line-height: var(--ds-lh-body);
+  color: var(--ds-ink-2); text-align: left;
+  margin: calc(-1 * var(--ds-s-16)) 0 var(--ds-s-24); }
+.ds-lp-hero .ds-lp-composer, .ds-lp-hero .ds-lp-composer textarea {
+  text-align: left; }
 .ds-lp-shot { background: var(--ds-sunken); border: 1px solid var(--ds-line);
-  border-radius: var(--ds-r-card); aspect-ratio: 4 / 3; overflow: hidden;
+  border-radius: var(--ds-r-card); aspect-ratio: 16 / 10; overflow: hidden;
   margin: 0 0 var(--ds-s-24); padding: 0; }
 .ds-lp-shot--product { aspect-ratio: 16 / 10; }
-.ds-lp-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ds-lp-shot img { width: 100%; height: 100%; object-fit: cover;
+  object-position: top left; display: block; }
 .ds-lp-cols3 { display: grid; grid-template-columns: repeat(3, 1fr);
   gap: var(--ds-s-16); }
 .ds-lp-col h3 { font-size: var(--ds-t-16); font-weight: var(--ds-w-medium);
@@ -1208,8 +1216,8 @@ button.ui-tag:hover { color: var(--ui-ink); }
   border: 1px solid var(--ds-line); border-radius: var(--ds-r-card);
   padding: var(--ds-s-24); }
 .ds-lp-numcard p { margin: 0; font-size: var(--ds-t-14); color: var(--ds-ink-2); }
-.ds-lp-num { font-size: var(--ds-t-40); font-weight: var(--ds-w-bold);
-  color: var(--ds-ink-1); }
+.ds-lp-num { font-size: var(--ds-t-40); font-weight: 700;
+  color: var(--ds-ink-1); line-height: 1.1; }
 .ds-lp-numcard .ds-lp-num { margin-bottom: var(--ds-s-8); }
 .ds-lp-grid2 { display: grid; grid-template-columns: 1fr 1fr;
   gap: var(--ds-s-16); }
@@ -1232,6 +1240,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
   background: var(--ds-sunken); color: var(--ds-ink-1);
   font-size: var(--ds-t-12); font-weight: var(--ds-w-bold);
   display: inline-flex; align-items: center; justify-content: center; }
+.ds-lp-steptitle { display: block; font-size: var(--ds-t-14);
+  font-weight: var(--ds-w-medium); color: var(--ds-ink-1); }
+.ds-lp-stepline { display: block; font-size: var(--ds-t-14);
+  color: var(--ds-ink-2); }
 .ds-lp-examples { list-style: none; margin: 0; padding: 0;
   display: grid; gap: var(--ds-s-8); }
 .ds-lp-exrow { display: flex; gap: var(--ds-s-8); align-items: center;
@@ -1270,6 +1282,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ds-lp-foot a { color: var(--ds-ink-3); }
 @media (max-width: 480px) {
   .ds-lp-links { display: none; }
+  .ds-lp-nav-inner { gap: var(--ds-s-12); }
+  .ds-lp-nav .ds-pbm-text { display: none; }
+  .ds-lp-nav .ui-lang-toggle { display: none; }
+  .ds-lp-h { font-size: 24px; }
   .ds-lp-hero { padding: 48px var(--ds-s-16) 0; }
   .ds-lp-section { padding: 48px var(--ds-s-16) 0; }
   .ds-lp-title { font-size: var(--ds-t-28); }

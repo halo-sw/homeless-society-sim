@@ -54,10 +54,10 @@ const USE_CASES = [
 ];
 
 const STEPS = [
-  "말로 물어봐요",
-  "Muse가 확인해요(▸ 줄이 남아요)",
-  "요청하면 지도로·동네로 보여줘요",
-  "30일 살아 본 일기로 전해요",
+  { t: "말로 물어봐요", d: "출근지·예산·같이 사는 사람을 한 문장으로" },
+  { t: "Muse가 확인해요", d: "실거래·출근길을 직접 찾아보고 ▸ 줄로 남겨요" },
+  { t: "요청하면 보여 줘요", d: "지도·동네·비교는 말할 때만 열려요" },
+  { t: "30일 살아 보고 전해요", d: "일기 문장은 모두 기록과 대조해요" },
 ];
 
 const FAQ = [
@@ -150,12 +150,14 @@ export function LandingPage() {
       <header className="ds-lp-hero">
         <h1 className="ds-lp-title">어떤 집을 고민 중이세요?</h1>
         <p className="ds-lp-lede">Muse가 직접 확인하고, 대신 30일 살아 보고, 대화로 알려 줘요.</p>
-        <ChatComposer
-          onSubmit={submit}
-          value={value}
-          onChange={setValue}
-          placeholder={HERO_PLACEHOLDER}
-        />
+        <div className="ds-lp-composer">
+          <ChatComposer
+            onSubmit={submit}
+            value={value}
+            onChange={setValue}
+            placeholder={HERO_PLACEHOLDER}
+          />
+        </div>
         <div className="ds-lp-chips">
           <button type="button" className="ds-lp-chip" onClick={() => setValue(COMPOSER_FILL)}>
             출근지로 집 찾기
@@ -178,6 +180,8 @@ export function LandingPage() {
       </header>
 
       <section className="ds-lp-section" id="features">
+        <h2 className="ds-lp-h">Muse가 하는 일</h2>
+        <p className="ds-lp-sub">말하면 Muse가 도구를 골라 쓰고, 한 일은 모두 대화에 남아요.</p>
         <Shot name="product" product />
         <div className="ds-lp-cols3">
           {COLUMNS.map((c) => (
@@ -190,6 +194,7 @@ export function LandingPage() {
       </section>
 
       <section className="ds-lp-section" aria-label="비교">
+        <h2 className="ds-lp-h">직접 찾기·챗봇과 무엇이 다른가요</h2>
         <table className="ds-lp-table">
           <thead>
             <tr>
@@ -225,6 +230,7 @@ export function LandingPage() {
       </section>
 
       <section className="ds-lp-section" id="living">
+        <h2 className="ds-lp-h">이럴 때 써요</h2>
         <div className="ds-lp-grid2">
           {USE_CASES.map((u) => (
             <button
@@ -241,17 +247,23 @@ export function LandingPage() {
       </section>
 
       <section className="ds-lp-section" aria-label="동작 순서">
+        <h2 className="ds-lp-h">이렇게 움직여요</h2>
         <ol className="ds-lp-steps">
           {STEPS.map((s, i) => (
-            <li key={s} className="ds-lp-step">
+            <li key={s.t} className="ds-lp-step">
               <span className="ds-lp-stepnum" aria-hidden="true">{i + 1}</span>
-              <span>{s}</span>
+              <span>
+                <span className="ds-lp-steptitle">{s.t}</span>
+                <span className="ds-lp-stepline">{s.d}</span>
+              </span>
             </li>
           ))}
         </ol>
       </section>
 
       <section className="ds-lp-section" aria-label="예시 프롬프트">
+        <h2 className="ds-lp-h">이렇게 물어보세요</h2>
+        <p className="ds-lp-sub">누르면 바로 대화가 시작돼요.</p>
         <ul className="ds-lp-examples">
           {EXAMPLE_PROMPTS.map((p) => (
             <ExampleRow key={p.id} title={p.title} prompt={p.prompt} />
@@ -260,6 +272,7 @@ export function LandingPage() {
       </section>
 
       <section className="ds-lp-section ds-lp-faq" id="faq">
+        <h2 className="ds-lp-h">자주 묻는 질문</h2>
         {FAQ.map((f) => (
           <details key={f.q}>
             <summary>{f.q}</summary>
@@ -269,6 +282,8 @@ export function LandingPage() {
       </section>
 
       <section className="ds-lp-section" id="data">
+        <h2 className="ds-lp-h">쓰는 데이터</h2>
+        <p className="ds-lp-sub">숫자는 모두 공개 자료에서 세요. 출처와 기간을 화면에 함께 적어요.</p>
         <ul className="ds-lp-datanames">
           {DATA_NAMES.map((n) => (
             <li key={n}>{n}</li>
