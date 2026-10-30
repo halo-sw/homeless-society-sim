@@ -72,11 +72,19 @@ describe("26p phone CSS contract", () => {
 });
 
 describe("26p SSR labels", () => {
-  it("chat pane toggle reads 대화 / 지도·후보", () => {
+  it("chat pane toggle reads 대화 / 지도·후보 once the work panel opens", () => {
+    // 27 (chat-first): the work panel stays closed until asked, so the
+    // first SSR render shows no toggle; the toggle keeps the 26p labels
+    // and appears only when workOpen (own row on phones, in-bar wider).
     const html = renderToString(React.createElement(ChatScreen));
-    assert.ok(html.includes("ui-chat-narrowtabs"), "toggle rendered");
-    assert.ok(html.includes("대화"), "chat label");
-    assert.ok(html.includes("지도·후보"), "map-and-candidates label");
+    assert.ok(!html.includes("ui-chat-narrowtabs"), "no toggle while panel closed");
+    const src = readFileSync(join(HERE, "..", "src", "ui", "chat.jsx"), "utf8");
+    assert.ok(src.includes('label="대화"'), "chat label");
+    assert.ok(src.includes('label="지도·후보"'), "map-and-candidates label");
+    assert.ok(src.includes("extra={workOpen && !phone ? narrowTabs : null}"),
+      "desktop toggle needs workOpen");
+    assert.ok(src.includes("{workOpen && phone ? narrowTabs : null}"),
+      "phone row needs workOpen");
   });
 
   it("intake text step puts the 입력 button after its input", () => {

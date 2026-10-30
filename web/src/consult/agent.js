@@ -22,12 +22,15 @@ function lastUserText(messages) {
 
 export const SYSTEM_PROMPT = [
   "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 한국어로 짧게 답한다. 반말은 절대 쓰지 않는다.",
-  "역할: 고객의 상황을 프로필로 읽고(extract_profile), 실제 집 후보를 찾아(find_homes) 보여주고, 고른 2–3곳으로 시나리오를 만들어(build_scenario) 실행(run_simulation)한 뒤 결과를 쉽게 설명한다. '만약에' 질문에는 조건을 바꿔 다시 실행해 전/후를 비교한다.",
-  "첫 질문은 '어떤 상황이세요?'다: 고객의 말을 extract_profile로 읽고(글에 없는 값은 절대 채우지 않는다), 부족한 필수 조건은 한 번에 최대 2개까지 쉬운 말로 묻는다. 예시 프로필(라벨 예시)이 필요하면 예시임을 밝히고 쓴다. 그 다음 우선순위를 쉽게 묻는다: '아이 교육이 가장 중요하세요?'처럼 다섯 가지(교육·두 사람/나의 생활·치안·돈·생활 편의)를 0–5로 정하게 하고, 각 우선순위가 쓰는 지표(get_priorities)를 함께 밝힌 뒤 set_priorities로 기록한다. 상황 템플릿(apply_persona)은 고객이 고를 때만 쓴다.",
-  "그 뒤 find_homes로 3–6곳 후보를 보여준다(숫자·출처 표시와 함께, 순위를 매기지 않는다). 고객이 2곳(또는 3곳)을 고르면 build_scenario로 시나리오를 만들고 실행을 제안한다. 승차 시간은 앱이 알 수 없으니 고객이 말한 숫자를 그대로 쓰고 가정값이라 밝힌다.",
+  "너는 Ithaca의 Muse다. 고객의 집 고민을 대화로 돕는다. 앱의 기능은 모두 네 도구다: 찾기(find_homes), 매물 읽기(parse_listing·check_listing), 비교(compare), 30일 살아 보기(start_life_run), 생활비·전세·지원 제도·안전·교육·출근길 도구.",
+  "질문은 한 번에 하나만 짧게 한다. 설문처럼 여러 개를 묻지 않는다. 모르는 값은 기본값으로 두고 '가정'이라고 밝힌다. 출근지나 예산 중 하나라도 있으면 extract_profile 다음 바로 find_homes로 후보를 보여 준다. 우선순위는 고객이 말할 때만 set_priorities로 기록한다.",
+  "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support. 동네를 물으면 neighborhood로 걸어서 몇 분인지 확인해 답하고 open_panel(panel=tour, candidate_id)로 3D 동네를 연다. 출근길(commute)과 결과(result) 장면은 살아 보기가 끝난 뒤에만 연다.",
+  "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다. start_life_run을 부른 턴에는 \"시작했어요. 다 살면 일기로 알려 드릴게요.\" 한 문장만 답한다(결과 숫자는 아직 없다).",
+  "다루지 않는 지역이면 '아직 준비 중이에요'라고 말하고 가장 가까운 다루는 지역을 제안한다. 엉뚱한 질문에도 한 줄로 답하고 집 고민으로 돌아온다.",
+  "답은 2~3문장, 본문은 짧게. 후보·숫자 목록은 카드와 지도에 이미 있으니 문장으로 늘어놓지 않고 1~2곳만 짚는다. 본문 다음 새 줄에 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
   "왜 그런지 물을 때(무엇을·왜)는 get_day의 cause와 list_criteria/explain_criterion을 근거로 답하고, 쓴 기준 id(C-로 시작)를 함께 밝힌다.",
-  "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위와 출처(그래프/실거래/공공임대/가정값/추정)를 항상 함께 밝힌다.",
+  "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위는 항상 쓰고, 출처(그래프/실거래/공공임대/가정값/추정)는 숫자마다 붙이지 말고 답 끝에 한 번만 괄호로 밝힌다.",
   "생활비 상담 흐름: set_money로 연봉·보유현금·점유형태(매매/전세/월세/공공임대)·가정값을 받고, estimate_net_pay로 추정 실수령액을 보여준 뒤(고객이 실제 값을 말하면 그 값을 쓴다), price_reference로 실거래 기준가를 조회하고, run_simulation 후 living_cost로 30일 생활비를 계산한다. 공공임대 후보는 recommend_public_rental로 고르고 add_home_c로 C에 추가한다.",
   "집값 전망 질문(예: '잠실 집값이 오를까?')에는 정중히 '이 앱은 집값 전망을 하지 않습니다'라고 답하고, 대신 해당 단지의 최근 12개월 실거래(price_reference)를 제안한다. 전망이나 상승/하락 단정은 절대 하지 않는다.",
   "대출 가능 여부(LTV·DSR)와 입주 자격은 판단하지 않는다. '사세요/사지 마세요' 같은 매매 판단도 하지 않는다. 수치 비교만 보여준다.",
@@ -81,6 +84,32 @@ function shortJson(value, max = 120) {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
+export const PANEL_KO = {
+  map: "지도", compare: "비교", tour: "동네", commute: "출근길",
+  result: "결과", money: "생활비", jeonse: "전세 점검",
+  support: "도움 제도", priorities: "내 기준",
+};
+
+// Split the trailing "[[다음: a | b]]" (or "[[Next: ...]]") suggestion
+// marker off a reply. The marker line is never shown as answer text.
+// The marker must sit at the very end: on its own last line or after
+// text on the same line. A marker followed by more text is not split.
+export function splitSuggestions(reply) {
+  const text = String(reply || "");
+  const m = text.match(/\[\[\s*(?:다음|Next)\s*:\s*([^\]]+?)\s*\]\]\s*$/);
+  if (!m) return { text, suggestions: [] };
+  const start = m.index;
+  const before = text.slice(0, start);
+  // Own-line case keeps the old behaviour (drop the whole last line);
+  // same-line case keeps the text before the marker.
+  const lines = before.split("\n");
+  const ownLine = lines.length > 0 && lines[lines.length - 1].trim() === "";
+  void ownLine;
+  const suggestions = m[1].split("|").map((s) => s.trim())
+    .filter((s) => s !== "").slice(0, 3).map((s) => s.slice(0, 20));
+  return { text: before.trim(), suggestions };
+}
+
 export function summarizeToolCall(name, args, result, ms) {
   const r = result || {};
   if (!r.ok) return { summary: `실패: ${String(r.error || "error").slice(0, 80)}`, ok: false };
@@ -93,6 +122,11 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `시나리오 갱신(${(r.scenario.household.members || []).length}명, 홈 ${(r.scenario.homes || []).length}곳)`, ok: true };
     case "find_places":
       return { summary: `${r.category} ${(r.places || []).length}곳(그래프 분)`, ok: true };
+    case "neighborhood": {
+      const bits = (r.nearest || []).slice(0, 3)
+        .map((n) => `${n.category_ko} ${n.minutes}분`);
+      return { summary: `동네: ${bits.join("·")}`, ok: true };
+    }
     case "list_complexes":
       return { summary: `단지 ${r.count}곳`, ok: true };
     case "list_stations":
@@ -125,6 +159,12 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `${r.term || ""} 뜻풀이`, ok: true };
     case "set_view":
       return { summary: r.chip || "화면 이동", ok: true };
+    case "open_panel":
+      return { summary: `화면 열기: ${PANEL_KO[(args || {}).panel] || (args || {}).panel || ""}`, ok: true };
+    case "pick_homes":
+      return { summary: `찜 ${(((args || {}).candidate_ids) || []).length}곳`, ok: true };
+    case "start_life_run":
+      return { summary: "30일 살아 보기 맡김", ok: true };
     case "set_money":
       return { summary: "생활비 조건 갱신", ok: true };
     case "estimate_net_pay":
@@ -196,7 +236,27 @@ export function formatAgentContext(ctx) {
   if (tenureBits) bits.push(`고른 것: ${tenureBits}`);
   if (ctx.criterion_focus) bits.push(`기준 ${ctx.criterion_focus}`);
   const where = bits.length > 0 ? bits.join(" · ") : "첫 화면";
-  return `현재 화면: ${where}. 고객이 '이거'/'여기'라고 하면 이 화면의 것을 가리킨다.`;
+  let line = `현재 화면: ${where}. 고객이 '이거'/'여기'라고 하면 이 화면의 것을 가리킨다.`;
+  // 27b2: live candidates (real ids for pick_homes) and current picks.
+  if (Array.isArray(ctx.candidates) && ctx.candidates.length > 0) {
+    const items = ctx.candidates.slice(0, 6).map((c) => {
+      const extra = [];
+      if (c.price !== null && c.price !== undefined && typeof c.price !== "object") extra.push(String(c.price));
+      if (c.commute_min !== null && c.commute_min !== undefined) extra.push(`${c.commute_min}분`);
+      if (c.commute_ko) extra.push(String(c.commute_ko));
+      if (c.monthly_cost_won !== null && c.monthly_cost_won !== undefined) {
+        extra.push(`월 ${Number(c.monthly_cost_won).toLocaleString("ko-KR")}원`);
+      }
+      return [`${c.id} ${c.name || ""}`.trim(), ...extra].join(" ").trim();
+    });
+    line += ` 후보: ${items.join("; ")}.`;
+  }
+  if (Array.isArray(ctx.picks) && ctx.picks.length > 0) {
+    const labels = ctx.picks.map((p) =>
+      (p && typeof p === "object" ? `${p.label}=${p.id}` : String(p)));
+    line += ` 찜: ${labels.join(", ")}.`;
+  }
+  return line;
 }
 
 export async function runTurn(opts) {
@@ -208,7 +268,7 @@ export async function runTurn(opts) {
     loadSafety = null, loadPersona = null, loadAssumption = null,
     loadHomes = null, loadPhotos = null, loadAreasIndex = null,
     loadStationBoxes = null, loadTransit = null,
-    fetchImpl = null, completeFn = null, apiKey = null,
+    fetchImpl = null, completeFn = null, apiKey = null, onEvent = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
   const cfg = providerConfig(provider);
@@ -219,6 +279,7 @@ export async function runTurn(opts) {
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
     loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
+    context,
   });
   const history = [{ role: "system", content: SYSTEM_PROMPT }, ...toProviderMessages(messages)];
   const contextLine = formatAgentContext(context);
@@ -232,6 +293,13 @@ export async function runTurn(opts) {
   const appended = []; // new messages for the browser to keep
   const toolCalls = []; // compact rows for the UI
   const toolResults = []; // parsed results, in order (guard scope)
+  const uiActions = []; // panel/pick/run actions for the UI, in order
+  const emit = (ev) => {
+    if (!onEvent) return;
+    try {
+      onEvent(ev);
+    } catch { /* a throwing listener must not break the turn */ }
+  };
   const usage = { prompt_tokens: 0, completion_tokens: 0, calls: 0 };
   let view = null;
   let rounds = 0;
@@ -248,10 +316,12 @@ export async function runTurn(opts) {
     const calls = (res.message && res.message.tool_calls) || [];
     if (calls.length === 0) {
       const reply = (res.message && res.message.content) || "";
-      appended.push({ role: "assistant", content: reply });
-      const checked = checkConsultReply(reply, toolResults);
+      const split = splitSuggestions(reply);
+      appended.push({ role: "assistant", content: split.text });
+      const checked = checkConsultReply(split.text, toolResults);
       if (checked.ok) {
-        return finish({ reply, guardRetries: 0, fallback: false });
+        return finish({ reply: split.text, suggestions: split.suggestions,
+          guardRetries: 0, fallback: false });
       }
       // Retry once with a correction note (text only), else numbers only.
       const retry = await complete({
@@ -265,11 +335,13 @@ export async function runTurn(opts) {
       usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
       usage.calls++;
       const reply2 = (retry.message && retry.message.content) || "";
-      const checked2 = checkConsultReply(reply2, toolResults);
+      const split2 = splitSuggestions(reply2);
+      const checked2 = checkConsultReply(split2.text, toolResults);
       if (checked2.ok) {
         appended.push({ role: "user", content: "(교정 후 재답변)" });
-        appended.push({ role: "assistant", content: reply2 });
-        return finish({ reply: reply2, guardRetries: 1, fallback: false });
+        appended.push({ role: "assistant", content: split2.text });
+        return finish({ reply: split2.text, suggestions: split2.suggestions,
+          guardRetries: 1, fallback: false });
       }
       const fallback = numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
       appended.push({ role: "assistant", content: fallback });
@@ -285,6 +357,7 @@ export async function runTurn(opts) {
     const outgoing = [];
     for (const c of calls) {
       const t0 = Date.now();
+      emit({ type: "tool_start", name: c.name, target: shortJson(c.args || {}, 80) });
       const result = c.args_parse_error
         ? { ok: false, error: "tool arguments are not valid JSON" }
         : await callTool(session, c.name, c.args || {});
@@ -293,6 +366,8 @@ export async function runTurn(opts) {
       const { summary, ok } = summarizeToolCall(c.name, (c.args || {}), result, ms);
       toolCalls.push({ name: c.name, ok, summary, ms,
         target: shortJson(c.args || {}, 80) });
+      emit({ type: "tool_end", name: c.name, ok, summary, ms });
+      if (result && result.ok && result.ui) uiActions.push(result.ui);
       if (c.name === "set_view" && result.ok) view = { ...result.view, chip: result.chip };
       outgoing.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
       history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
@@ -311,7 +386,8 @@ export async function runTurn(opts) {
   function finish(extra) {
     return {
       ok: true, ...extra,
-      messages: appended, toolCalls,
+      messages: appended, toolCalls, uiActions,
+      suggestions: (extra && extra.suggestions) || [],
       usage: { ...usage, est_usd: costUsd(provider, usage) },
       scenario: session.scenario,
       view, provider, model: cfg.model,

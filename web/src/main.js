@@ -40,7 +40,7 @@ import { revealCompareSection } from "./ui/app.jsx";
 import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // 12b: landing/chat routing, timeline builders + activity colours,
 // custom-run store (?custom=<id>).
-import { routeForSearch, chatUrl, chatReopenUrl } from "./chat/urls.js";
+import { routeForSearch, bootKindFor, chatUrl, chatReopenUrl } from "./chat/urls.js";
 import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor, runHasBikeTrip } from "./timeline.js";
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
@@ -779,6 +779,19 @@ async function fetchScene(wantId) {
     if (!r.ok) throw new Error(`${url}: ${r.status}`);
     return r.json();
   });
+}
+
+// 27c1: the chat boots without the 3D world — no fetchArea, no
+// fetchScene, no buildWorld. The scenes open later inside the work
+// panel (SceneFrame) as embed iframes.
+function bootChat() {
+  mountUI();
+  registerCommonActions();
+  store.set({ mode: "chat", area: { id: areaId, label: areaId }, ready: true });
+  document.title = "Ithaca — 대화";
+  registerChatActions();
+  document.getElementById("loading").remove();
+  document.getElementById("fade").classList.add("clear");
 }
 
 async function bootTour(uiMode = "tour") {
@@ -3556,6 +3569,8 @@ loadAreasList().then(() => {
   // 12b: / (no routing params) is the landing, ?chat= the
   // conversation; ?mode=sim… / ?tour=demo deep links keep working.
   const route = routeForSearch(location.search);
-  if (route === "sim") bootSim();
-  else bootTour(route); // tour | landing | chat (same scene, own UI)
+  const kind = bootKindFor(route);
+  if (kind === "sim") bootSim();
+  else if (kind === "chat") bootChat();
+  else bootTour(route); // tour | landing (same scene, own UI)
 });

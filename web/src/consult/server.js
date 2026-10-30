@@ -7,7 +7,8 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { providerConfig } from "../judge/providers.js";
+import { providerConfig, completeWithTools } from "../judge/providers.js";
+import { writeDiary } from "./diary.js";
 import { judgeHome } from "../judge/run.js";
 import { runTurn } from "./agent.js";
 import { BYOK_HEADER, resolveProxyKey, redactSecrets } from "./byok.js";
@@ -17,6 +18,11 @@ import { normalizeSnapshot, createHousingApi, HOUSING_KEY_ENV } from "../money/h
 import { parseInterstationCsv } from "../transit/schedule.js";
 
 export const CONSULT_BODY_MAX = 1048576; // 1 MB (scenario + history)
+
+// One NDJSON line for the streaming consult response.
+export function ndjsonLine(ev) {
+  return `${JSON.stringify(ev)}\n`;
+}
 
 export function readBody(req, max = CONSULT_BODY_MAX) {
   // Platforms that already parsed the body (Vercel, the relay): reuse it
@@ -256,6 +262,24 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         err.code = "missing_key";
         throw err;
       }
+      if (body.task === "diary") {
+        if (!Array.isArray(body.digests) || body.digests.length < 1 || body.digests.length > 3) {
+          throw new Error("digests must be an array of 1–3");
+        }
+        for (const d of body.digests) {
+          if (!d || !Array.isArray(d.facts) || d.facts.length > 60) {
+            throw new Error("each digest must have at most 60 facts");
+          }
+        }
+        const out = await writeDiary({
+          complete: (args) => completeWithTools({ ...args, fetchImpl: fetchImpl || fetch, apiKey }),
+          provider,
+          digests: body.digests,
+        });
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(out));
+        return;
+      }
       if (!body.scenario || typeof body.scenario !== "object") {
         throw new Error("scenario must be an object");
       }
@@ -266,7 +290,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
           && (typeof body.context !== "object" || Array.isArray(body.context))) {
         throw new Error("context must be an object");
       }
-      const out = await runTurn({
+      const turnArgs = {
         provider,
         apiKey,
         keyFrom,
@@ -285,7 +309,34 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         loadAssumption,
         loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
         fetchImpl,
-      });
+      };
+      if (body.stream === true) {
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache");
+        res.flushHeaders?.();
+        try {
+          const out = await runTurn({
+            ...turnArgs,
+            onEvent: (ev) => {
+              try {
+                res.write(ndjsonLine(ev));
+              } catch { /* a slow reader must not break the turn */ }
+            },
+          });
+          res.write(ndjsonLine({ type: "done", ...out }));
+          res.end();
+        } catch (err) {
+          const msg = redactSecrets(String((err && err.message) || err),
+            [typeof byok === "string" ? byok : ""]).slice(0, 500);
+          try {
+            res.write(ndjsonLine({ type: "error", error: msg }));
+          } catch { /* headers already sent; just end */ }
+          res.end();
+        }
+        return;
+      }
+      const out = await runTurn(turnArgs);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(out)); // out.ok is true here
     } catch (err) {

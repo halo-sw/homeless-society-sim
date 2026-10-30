@@ -18,21 +18,18 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { store } from "./store.js";
-import { appUrl } from "../paths.js";
+import { LIVE_API, appUrl } from "../paths.js";
 import { ModelPanel } from "./model-panel.jsx";
 import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
 import { newUsageLog } from "../models/catalog.js";
 import { LangToggle } from "./lang-toggle.jsx";
-import { LANG } from "../i18n/lang.js";
 
 const EMPTY_LOG = newUsageLog();
 
-const MODES = [
-  { value: "chat", label: "대화" },
-  { value: "sim", label: "살아 보기" },
-  { value: "tour", label: "동네 둘러보기" },
-];
+export function museStatusLabel(live) {
+  return live ? "연결됨 · Muse Spark 1.3" : "규칙 모드";
+}
 
 // 26m: short mode labels for phones (390 px) — the full labels above
 // ("살아 보기", "동네 둘러보기") do not fit. Carries both languages
@@ -157,20 +154,19 @@ export function SettingsContent({ settings, onClose }) {
 export function TopBar({ mode, summary, extra, settings }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
-  // 26m: phones show the short labels (대화 / 보기 / 둘러보기);
-  // desktop renders exactly the full labels as before.
-  const phone = usePhoneMedia();
   return (
     <header className="ui-bar overlay">
       <div className="ui-bar-left">
         <span className="ui-bar-title">Ithaca</span>
-        <SegmentedControl label="화면 선택" value={mode}
-          onChange={(v) => gotoMode(v, mode)} size="sm">
-          {MODES.map((m) => (
-            <SegmentedControlItem key={m.value} value={m.value}
-              label={phone ? shortModeLabel(m.value, LANG) : m.label} />
-          ))}
-        </SegmentedControl>
+        {mode === "chat" ? (
+          <>
+            <span className="ui-bar-muse">Muse</span>
+            <Badge variant="info" label={museStatusLabel(LIVE_API)} />
+          </>
+        ) : (
+          <Button size="sm" variant="ghost" label="← 대화로"
+            onClick={() => gotoMode("chat", mode)} />
+        )}
       </div>
       <div className="ui-bar-center">
         {mode === "chat" && (summary

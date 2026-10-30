@@ -160,7 +160,7 @@ describe("26n row SSR", () => {
         picks: [], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "판교" }));
-    assert.ok(html.includes("마음에 드는 집을 2곳 담으면"), "pick hint stays");
+    assert.ok(html.includes("마음에 드는 집을 2곳 담고"), "pick hint stays");
     assert.ok(html.includes(AERIAL_CREDIT), "Korean list credits VWorld");
   });
 

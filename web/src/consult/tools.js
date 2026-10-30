@@ -126,6 +126,12 @@ export const TOOL_DEFS = [
         home: str("Home label from the scenario (default: the scenario home in this area)."),
         limit: { type: "integer", description: "How many places (1..12, default 8)." },
       }, required: ["area", "category"] } } },
+  { type: "function", function: { name: "neighborhood",
+    description: "후보 집 주변 생활 장소까지 실제 걷는 길로 몇 분인지.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        candidate_id: str("Candidate id from the context candidates."),
+      }, required: ["candidate_id"] } } },
   { type: "function", function: { name: "list_stations",
     description: "Real station POIs in an area (names the commute can use verbatim).",
     parameters: { type: "object", additionalProperties: false,
@@ -221,6 +227,26 @@ export const TOOL_DEFS = [
         follow: { type: "integer", description: "Followed member 1-based index (0 = free camera)." },
         mode: str('"sim" or "tour".'),
       } } } },
+  { type: "function", function: { name: "open_panel",
+    description: "고객이 요청한 것을 오른쪽 작업판에 연다.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        panel: str('One of: map, compare, tour, commute, result, money, jeonse, support, priorities.'),
+        home: str('Optional home label: A, B or C.'),
+        candidate_id: str("Optional candidate id to focus."),
+        day: { type: "integer", description: "Optional 1-based day number (1-30)." },
+        time: str('Optional "HH:MM", e.g. "08:18".'),
+      }, required: ["panel"] } } },
+  { type: "function", function: { name: "pick_homes",
+    description: "고객이 고른 후보 2–3곳을 찜한다.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        candidate_ids: { type: "array", description: "Chosen candidate ids (1-3).",
+          items: { type: "string" } },
+      }, required: ["candidate_ids"] } } },
+  { type: "function", function: { name: "start_life_run",
+    description: "고객이 '살아 봐 줘'처럼 요청했을 때만, 찜한 집들로 30일 살아 보기를 시작한다.",
+    parameters: { type: "object", properties: {}, additionalProperties: false } } },
 ];
 
 for (const def of MONEY_TOOL_DEFS) TOOL_DEFS.push(def);
@@ -280,6 +306,7 @@ export function createSession(opts) {
     provider: opts.provider || "meta",
     fetchImpl: opts.fetchImpl || null,
     museRunsPrior: opts.museRunsPrior || 0,
+    context: opts.context || null,
   };
 }
 
@@ -616,6 +643,57 @@ async function find_places(session, args) {
       distance_m: round1(h.route.lengthM), source: "graph",
     })),
   };
+}
+
+const NEIGHBORHOOD_CATEGORIES = [
+  ["station", "역"],
+  ["supermarket", "마트"],
+  ["convenience", "편의점"],
+  ["park", "공원"],
+  ["clinic", "병원·약국"],
+  ["school", "학교"],
+];
+
+async function neighborhood(session, args) {
+  const cands = (session.context && session.context.candidates) || [];
+  const cand = cands.find((c) => c && c.id === String((args || {}).candidate_id));
+  if (!cand) {
+    return fail(`unknown candidate ${JSON.stringify((args || {}).candidate_id)} — the context lists today's candidates`);
+  }
+  if (!cand.scene || !Number.isFinite(cand.lon) || !Number.isFinite(cand.lat)) {
+    return fail("이 집은 아직 3D 동네 자료가 없어요");
+  }
+  const area = await needArea(session, cand.scene).catch((err) => ({ __error: err }));
+  if (area.__error) return fail(area.__error.message);
+  let router;
+  try {
+    router = new Router(area.graph);
+  } catch (err) {
+    return fail(`graph failed: ${err.message}`);
+  }
+  const places = buildPlaces(area, router);
+  let resolved;
+  try {
+    resolved = resolveHome(area,
+      { label: "X", area: cand.scene, lon: cand.lon, lat: cand.lat }, router);
+  } catch (err) {
+    return fail(err.message);
+  }
+  const nearest = [];
+  for (const [category, category_ko] of NEIGHBORHOOD_CATEGORIES) {
+    const hits = nearestReachable(router, resolved.nodeId,
+      placesOfCategory(places, category), 1);
+    if (!hits || hits.length === 0) continue;
+    const h = hits[0];
+    nearest.push({ category, category_ko,
+      name: h.place.name,
+      minutes: round1(h.route.lengthM / ADULT_MPS / 60),
+      distance_m: round1(h.route.lengthM) });
+  }
+  return { ok: true, candidate_id: cand.id, name: cand.name,
+    area: cand.scene, area_label: areaLabel(cand.scene), nearest,
+    speed_note: "minutes assume adult speed 1.3 m/s",
+    source: "OSM 장소 + 보행 그래프" };
 }
 
 async function list_stations(session, args) {
@@ -1184,9 +1262,53 @@ function define_term(session, args) {
   return { ok: true, term: hit.term, def: hit.def, source_url: hit.source_url };
 }
 
+const PANELS = ["map", "compare", "tour", "commute", "result",
+  "money", "jeonse", "support", "priorities"];
+const HOMES = ["A", "B", "C"];
+
+function open_panel(session, args) {
+  const a = args || {};
+  if (!PANELS.includes(a.panel)) {
+    return fail(`unknown panel ${JSON.stringify(a.panel)} (panels: ${PANELS.join(", ")})`);
+  }
+  if (a.home !== undefined && !HOMES.includes(a.home)) {
+    return fail(`unknown home ${JSON.stringify(a.home)} (homes: ${HOMES.join(", ")})`);
+  }
+  if (a.candidate_id !== undefined && typeof a.candidate_id !== "string") {
+    return fail("candidate_id must be a string");
+  }
+  if (a.day !== undefined && (!Number.isInteger(a.day) || a.day < 1 || a.day > 30)) {
+    return fail(`day must be an integer 1-30 (got ${JSON.stringify(a.day)})`);
+  }
+  if (a.time !== undefined && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(a.time)) {
+    return fail(`time must be "HH:MM" (got ${JSON.stringify(a.time)})`);
+  }
+  const ui = { action: "panel", panel: a.panel };
+  if (a.home !== undefined) ui.home = a.home;
+  if (a.candidate_id !== undefined) ui.candidate_id = a.candidate_id;
+  if (a.day !== undefined) ui.day = a.day;
+  if (a.time !== undefined) ui.time = a.time;
+  return { ok: true, ui };
+}
+
+function pick_homes(session, args) {
+  const ids = (args || {}).candidate_ids;
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > 3
+      || !ids.every((id) => typeof id === "string")) {
+    return fail("candidate_ids must be 1-3 candidate id strings");
+  }
+  return { ok: true, ui: { action: "pick", ids: [...ids] } };
+}
+
+function start_life_run(session, args) {
+  return { ok: true, ui: { action: "run" } };
+}
+
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
+  neighborhood,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
+  open_panel, pick_homes, start_life_run,
   list_criteria, explain_criterion, get_journey, get_fatigue,
   apply_persona, get_priorities, set_priorities, get_safety, get_education,
   define_term,

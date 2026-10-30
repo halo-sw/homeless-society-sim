@@ -130,23 +130,20 @@ describe("candidates card", () => {
     assert.ok(two.indexOf("집b") < two.indexOf("집a"));
   });
 
-  it("points at the tray instead of running in the list", () => {
+  it("no run button in the list; the footer says what to say", () => {
     const base = { data: data(["a", "b"]), tenure: "jeonse", sort: "commute",
       onSort: () => {}, onTogglePick: () => {}, onPreview3D: () => {},
       onJeonse: () => {}, onRun: () => {} };
     const { RUN_BUTTON_LABEL } = chat;
     const none = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: [] })));
-    // 19a: no run button in the list; the line points at the tray.
-    // (The 2-pick line quotes the tray button's label, so it appears
-    // exactly once as quoted text.)
+    // 19a: no run button in the list; the footer says what to say.
     assert.ok(!none.includes(RUN_BUTTON_LABEL));
-    assert.ok(none.includes("마음에 드는 집을 2곳 담으면 지도 아래에서"));
+    assert.ok(none.includes("마음에 드는 집을 2곳 담고"));
     const two = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: ["a", "b"] })));
-    assert.equal(two.split(RUN_BUTTON_LABEL).length - 1, 1);
-    assert.ok(two.includes(`‘${RUN_BUTTON_LABEL}’`));
-    assert.ok(two.includes("지도 아래"));
+    assert.equal(two.split(RUN_BUTTON_LABEL).length - 1, 0);
+    assert.ok(two.includes("두 집에서 살아 봐 줘"));
   });
 });
 
@@ -175,7 +172,7 @@ describe("no demo numbers without 예시", () => {
     // render is the shell + composer + chips only.
     const html = render(React.createElement(chat.ChatScreen));
     const text = textOf(html);
-    const figs = [...text.matchAll(FIGURE)].map((m) => m[0]);
+    const figs = [...text.matchAll(FIGURE)].map((m) => m[0]).filter((f) => f !== "30일"); // 30일은 제품명(30일 살아 보기)이라 데모 수치가 아님
     assert.deepEqual(figs, []);
     assert.ok(text.includes("Ithaca"));
   });
@@ -228,9 +225,9 @@ describe("chat reopen (11b carryover)", () => {
     const src = readFileSync(join(HERE, "..", "src", "main.js"), "utf8");
     assert.ok(src.includes("openChat: () =>"), "openChat action registered");
     assert.ok(src.includes("chatReopenUrl()"), "reopens via /?chat=");
-    // 13f-1: the shared bar (topbar.jsx) carries the 대화 entry.
+    // Chat-first: sim/tour screens offer the ← 대화로 button back to the chat.
     const bar = readFileSync(join(HERE, "..", "src", "ui", "topbar.jsx"), "utf8");
-    assert.ok(bar.includes('label: "대화"'), "TopBar 대화 entry");
+    assert.ok(bar.includes("대화로"), "TopBar ← 대화로 button");
     // Unconditional: not gated on clock, follow, or night state.
     assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(bar), "not follow-gated");
     const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");

@@ -93,22 +93,55 @@ export function isPublicRentalHome(home) {
 // Pure over one shown tenure entry + the full index home list.
 export const THIN_DEAL_NOTE = "실거래 1건 · 시세보다 크게 낮아 확인이 필요해요";
 
-export function groupMedianFor({ kind, region, centerM2, tenureKey }, homes) {
-  const meds = [];
+const groupMedianCache = new WeakMap();
+
+export function groupMedianIndex(homes) {
+  let idx = groupMedianCache.get(homes);
+  if (idx) return idx;
+  const collected = new Map();
   for (const h of homes || []) {
-    if (!h || h.kind !== kind || h.region !== region) continue;
-    if (isPublicRentalHome(h)) continue;
+    if (!h || isPublicRentalHome(h)) continue;
     for (const b of h.buckets || []) {
-      if (!b || b.center_m2 !== centerM2) continue;
-      const stat = tenureKey === "wolse" ? b.wolse && b.wolse.monthly : b[tenureKey];
-      const med = stat ? stat.median_won : null;
-      if (Number.isFinite(med) && med > 0) meds.push(med);
+      if (!b || b.center_m2 === undefined) continue;
+      for (const tenureKey of ["jeonse", "wolse", "trade"]) {
+        const stat = tenureKey === "wolse" ? b.wolse && b.wolse.monthly : b[tenureKey];
+        const med = stat ? stat.median_won : null;
+        if (!Number.isFinite(med) || !(med > 0)) continue;
+        const key = `${h.kind}|${h.region}|${b.center_m2}|${tenureKey}`;
+        if (!collected.has(key)) collected.set(key, []);
+        collected.get(key).push(med);
+      }
     }
   }
-  if (meds.length === 0) return null;
-  meds.sort((a, b) => a - b);
-  const mid = Math.floor(meds.length / 2);
-  return meds.length % 2 === 1 ? meds[mid] : Math.round((meds[mid - 1] + meds[mid]) / 2);
+  idx = new Map();
+  for (const [key, meds] of collected) {
+    meds.sort((a, b) => a - b);
+    const mid = Math.floor(meds.length / 2);
+    idx.set(key, meds.length % 2 === 1 ? meds[mid] : Math.round((meds[mid - 1] + meds[mid]) / 2));
+  }
+  groupMedianCache.set(homes, idx);
+  return idx;
+}
+
+export function groupMedianFor({ kind, region, centerM2, tenureKey }, homes) {
+  if (!Array.isArray(homes)) {
+    const meds = [];
+    for (const h of homes || []) {
+      if (!h || h.kind !== kind || h.region !== region) continue;
+      if (isPublicRentalHome(h)) continue;
+      for (const b of h.buckets || []) {
+        if (!b || b.center_m2 !== centerM2) continue;
+        const stat = tenureKey === "wolse" ? b.wolse && b.wolse.monthly : b[tenureKey];
+        const med = stat ? stat.median_won : null;
+        if (Number.isFinite(med) && med > 0) meds.push(med);
+      }
+    }
+    if (meds.length === 0) return null;
+    meds.sort((a, b) => a - b);
+    const mid = Math.floor(meds.length / 2);
+    return meds.length % 2 === 1 ? meds[mid] : Math.round((meds[mid - 1] + meds[mid]) / 2);
+  }
+  return groupMedianIndex(homes).get(`${kind}|${region}|${centerM2}|${tenureKey}`) ?? null;
 }
 
 export function thinDealNote({ medianWon, deals, kind, region, centerM2, tenureKey }, homes) {
@@ -641,7 +674,7 @@ export function find_homes(profile, index, opts = {}) {
       walkgraph: !home.scene && commute.walk.known && commute.walk.via === "walkgraph",
       must_have_minutes: mustHaveMinutes,
       scene: home.scene || null,
-      photos: manifest ? photosNear(home.lon, home.lat, manifest, { limit: 6 }) : [],
+      photos: [],
       photos_note: PHOTOS_DISCLAIMER,
       sources: [
         SOURCE_BADGES.rtms,
@@ -652,13 +685,19 @@ export function find_homes(profile, index, opts = {}) {
     });
   }
   const { rows: sorted, sort_note } = sortResults(rows, sort, profile, boxes);
+  const candidates = sorted.slice(0, limit);
+  if (manifest) {
+    for (const row of candidates) {
+      row.photos = photosNear(row.lon, row.lat, manifest, { limit: 6 });
+    }
+  }
   return {
     ok: true,
     count: sorted.length,
     total_matching: rows.length,
     sort,
     sort_note,
-    candidates: sorted.slice(0, limit),
+    candidates,
     tenure: tenure || "undecided",
   };
 }
