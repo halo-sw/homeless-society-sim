@@ -270,9 +270,7 @@ const seedPhrases = {
 const seedPatterns = [
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
   { ko: "다루는 지역 {0}곳: {1}", en: "Areas covered ({0}): {1}" },
-  // Counts without English plurals ("1 things checked").
-  { ko: "확인한 것 {0}가지", en: "Things checked: {0}" },
-  { ko: "모르는 값 {0}개 — 채우면 더 정확해요", en: "Unknown values: {0} — fill them in for better accuracy" },
+  // Counts use the plural functions in the generated table ("1 thing checked").
   // chat-27 templates.
   { ko: "월 ₩{0}", en: "₩{0}/mo" },
   // 26t action confirmations (guards.js actionConfirmation, joined by spaces).

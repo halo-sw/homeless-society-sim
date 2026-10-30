@@ -14,6 +14,8 @@ import { simBadgeFor } from "../mapsim.js";
 import { aerialCreditFor } from "../aerial/drape.js";
 import { basemapApiBase, isUsLonLat } from "../basemap.js";
 import { SceneThumb, MiniMap, AerialThumb } from "./preview.jsx";
+import { LANG } from "../i18n/lang.js";
+import { romanizeName } from "../i18n/romanize.js";
 
 export function tenurePriceLine(candidate, tenure) {
   const t = (candidate.tenures || []).find((x) => x.tenure === tenure)
@@ -108,6 +110,20 @@ export function commuteRowLine(candidate, destName) {
 
 const SRC_KO = { official: "공식", estimate: "추정", said: "내가 말한 값", unknown: "미확인" };
 const SRC_CLS = { official: "ui-src-official", estimate: "ui-src-estimate", said: "ui-src-said", unknown: "" };
+
+// 29a1: home/complex names keep the Hangul original (the DOM
+// translator skips it); English mode adds a romanized gloss beside it.
+export function HomeName({ name, lang = LANG }) {
+  const original = String(name ?? "");
+  const gloss = lang === "en" && /[가-힣]/.test(original)
+    ? romanizeName(original).replace(/([^\d\s])(\d)/g, "$1 $2") : "";
+  return (
+    <span className="ui-home-name">
+      <span data-no-i18n>{original}</span>
+      {gloss && gloss !== original ? <span className="ui-name-gloss">{` (${gloss})`}</span> : null}
+    </span>
+  );
+}
 
 export function SourceDot({ source }) {
   if (!source || source === "unknown" || !SRC_KO[source]) return null;
@@ -246,7 +262,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
       <div className="ui-cand-row-main">
         <div className="ui-cand-row-top">
           <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true">{disc}</span>
-          <span className="ui-cand-row-name">{displayNameFor(candidate)}</span>
+          <span className="ui-cand-row-name"><HomeName name={displayNameFor(candidate)} /></span>
           <Button size="sm" variant={picked ? "secondary" : "primary"}
             label={picked ? "담음 ✓" : "담기"}
             onClick={() => onLive && onLive(candidate)} />
@@ -311,7 +327,7 @@ function FullCard({ candidate, price, facts, row, hero, rest,
       )}
       <div className="ui-cand-body">
         <div>
-          <div className="ui-cand-name">{displayNameFor(candidate)}</div>
+          <div className="ui-cand-name"><HomeName name={displayNameFor(candidate)} /></div>
           {candidate.dong && <div className="ui-cand-place">{candidate.dong}</div>}
           {candidate.kind_mismatch && <Text type="supporting">{KIND_MISMATCH_KO}</Text>}
         </div>

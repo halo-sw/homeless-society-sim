@@ -39,7 +39,7 @@ import {
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
-import { CandidateCard, CandidateSkeleton, areaForList } from "./candidate-card.jsx";
+import { CandidateCard, CandidateSkeleton, areaForList, HomeName } from "./candidate-card.jsx";
 import { aerialCreditFor } from "../aerial/drape.js";
 import { exampleLine } from "./copy.js";
 import { TopBar, usePhoneMedia } from "./topbar.jsx";
@@ -541,7 +541,7 @@ export function ResultSummary({ data, onScene }) {
       {labels.map((l) => (
         <span key={l} className="ui-result-head">
           <span className="ui-pick-disc" aria-hidden="true">{l}</span>
-          <span className="ui-result-name">{(names[l] || "").trim() || l}</span>
+          <span className="ui-result-name"><HomeName name={(names[l] || "").trim() || l} /></span>
         </span>
       ))}
       {scored.ok && [
@@ -954,7 +954,7 @@ export function localNoAnswerLine(text) {
   const t = String(text || "");
   if (t.includes("찜")) return "찜은 후보 카드의 ‘담기’로 할 수 있어요.";
   if (t.includes("동네")) return "동네는 후보 카드의 3D 미리보기에서 볼 수 있어요.";
-  if (t.includes("살아")) return "두 곳을 담으면 지도 아래 ‘이 집들로 30일 살아 보기’로 시작할 수 있어요.";
+  if (t.includes("살아")) return "두 곳을 담고 \"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요.";
   return "이 요청은 Muse가 다시 연결되면 할 수 있어요. 잠시 뒤 다시 말씀해 주세요.";
 }
 
@@ -1790,10 +1790,16 @@ export function ChatScreen() {
       scene: c.scene ?? null, lon: c.lon ?? null, lat: c.lat ?? null,
       ...(c.price !== undefined && c.price !== null ? { price: c.price } : {}),
     }));
+    // 29a1: the customer's own words — extract_profile reads these,
+    // not Muse's English paraphrase.
+    const customer_text = [...st.messages
+      .filter((m) => m.role === "user" && m.kind === "text"
+        && typeof m.content === "string" && m.content)
+      .map((m) => m.content).slice(-6), text];
     const ctx = { ...agentContext(store.getState()), lang: LANG,
       candidates: liveCands,
       picks: st.picks.map((id, i) => ({ label: "ABC"[i], id })),
-      work_open: workOpen, profile: st.profile || null };
+      work_open: workOpen, profile: st.profile || null, customer_text };
     try {
       let byoKey = "";
       try {
@@ -2248,7 +2254,7 @@ export function ChatScreen() {
                   <MsgBoundary key={m.id}>
                     {m.role === "user" ? (
                       <ChatMessage sender="user">
-                        <ChatMessageBubble>{m.content}</ChatMessageBubble>
+                        <ChatMessageBubble data-no-i18n>{m.content}</ChatMessageBubble>
                       </ChatMessage>
                     ) : m.role === "system" ? (
                       <ChatSystemMessage>{m.content}</ChatSystemMessage>
@@ -2540,7 +2546,7 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
               <span className="ui-pick-disc" aria-hidden="true">
                 {PICK_LETTERS[i] || "·"}
               </span>
-              <span className="ui-pick-name">{c.name}</span>
+              <span className="ui-pick-name"><HomeName name={c.name} /></span>
               <button type="button" className="ui-pick-x"
                 aria-label={`${c.name} 빼기`}
                 onClick={() => onRemove && onRemove(c)}>×</button>

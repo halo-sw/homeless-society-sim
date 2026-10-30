@@ -133,7 +133,10 @@ function stationNames(network) {
 }
 
 async function extract_profile(session, args) {
-  const text = String(args.text || "");
+  // 29a1: English mode passes an English paraphrase as text — the
+  // Korean parser reads the customer's original words with it.
+  const text = [...((session.context && session.context.customer_text) || []), args.text]
+    .filter((s) => typeof s === "string" && s.trim() !== "").join("\n");
   if (!text.trim()) return fail("text must be a non-empty string");
   const network = await needNetwork(session);
   const ctxProfile = session.context && session.context.profile;
@@ -289,7 +292,7 @@ async function build_scenario(session, args) {
 
 export const SEARCH_TOOL_DEFS = [
   { type: "function", function: { name: "extract_profile",
-    description: "Read the customer's situation text into a profile (household, workplace, salary, cash, tenure, budget, size, commute ceiling). Fills only values present in the text; every number must appear in the customer's words. Returns the profile plus at most 2 plain-word questions for the missing essentials.",
+    description: "Read the customer's situation text into a profile (household, workplace, salary, cash, tenure, budget, size, commute ceiling). Fills only values present in the text; every number must appear in the customer's words. Returns the profile plus at most 2 plain-word questions for the missing essentials. In English mode pass the customer's words as written (do not translate); the tool also reads the original messages.",
     parameters: { type: "object", additionalProperties: false,
       properties: {
         text: { type: "string", description: "The customer's words (Korean)." },

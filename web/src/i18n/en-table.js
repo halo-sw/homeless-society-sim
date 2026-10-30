@@ -2,6 +2,11 @@
 // web/src and translated by hand-checked passes. Content only — the
 // engine is translate.js. Regenerate with the orchestrator's extract →
 // translate → assemble steps; edit en.js for one-off fixes (it wins).
+// 29a1: English plurals for count patterns ("1 thing checked").
+const countEn = (n, one, many) => {
+  const digits = String(n).replace(/,/g, "");
+  return digits === "1" ? `1 ${one}` : `${digits} ${many}`;
+};
 export const tablePhrases = {
  "항공사진 © 국토교통부 공간정보 오픈플랫폼(VWorld)": "Aerial imagery © Ministry of Land, Infrastructure and Transport, Spatial Information Open Platform (VWorld)",
  "판교": "Pangyo",
@@ -758,8 +763,9 @@ export const tablePhrases = {
  "집 크기:": "Home size:",
  "출퇴근": "Commute",
  "이 집들로 30일 살아 보기": "Live it for 30 days in these homes",
- "마음에 드는 집을 2곳 담으면 지도 아래에서 30일 살아 보기를 시작할 수 있어요": "Pick 2 homes you like to start 30-day Live it below the map",
- "지도 아래 ‘이 집들로 30일 살아 보기’를 눌러 주세요": "Tap “Live it for 30 days in these homes” below the map",
+ "마음에 드는 집을 2곳 담고 \"살아 봐 줘\"라고 말해 보세요": "Save 2 homes you like, then say \"살아 봐 줘\"",
+ "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요": "Say \"두 집에서 살아 봐 줘\" to live in them for 30 days",
+ "두 곳을 담고 \"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요.": "Save two homes, then say \"두 집에서 살아 봐 줘\" to live in them for 30 days.",
  "30일 계산이 시간 안에 끝나지 않았어요. 다시 시도해 주세요.": "The 30-day calculation didn't finish in time. Please try again.",
  "고른 집 중에 3D 장면이 없는 곳이 있어요. 장면이 있는 집으로 다시 골라주세요.": "Some picked homes have no 3D scene. Please pick homes that have one.",
  "역까지 걸어서 몇 분인지 모르는 집이 있어요. 도보 시간이 확인된 집으로 다시 골라주세요.": "Some homes have unknown walking time to the station. Please pick homes with confirmed walking time.",
@@ -1315,6 +1321,10 @@ export const tablePatterns = [
   "en": "{0} about {1} min ({2} · subway {3} min) · estimate (before Live it)"
  },
  {
+  "ko": "{0}까지 약 {1}분",
+  "en": "about {1} min to {0}"
+ },
+ {
   "ko": "저녁 산책 판단 → {0} 선택 (고객 입력 주 {1}회 중)",
   "en": "Evening walk choice → {0} (of {1}/week user input)"
  },
@@ -1504,7 +1514,7 @@ export const tablePatterns = [
  },
  {
   "ko": "모르는 값 {0}개 — 채우면 더 정확해요",
-  "en": "{0} unknown values — fill them in for better accuracy"
+  "en": (c) => `${countEn(c[0], "unknown value", "unknown values")} — fill them in for better accuracy`
  },
  {
   "ko": "· 출퇴근 {0} (걸어서 직접 잰 시간)",
@@ -2124,7 +2134,7 @@ export const tablePatterns = [
  },
  {
   "ko": "확인한 것 {0}가지",
-  "en": "{0} things checked"
+  "en": (c) => countEn(c[0], "thing checked", "things checked")
  },
  {
   "ko": "· 보증금 {0}부터",

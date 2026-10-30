@@ -593,6 +593,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-cand-row-name { font-size: 15px; font-weight: var(--ui-w600);
   flex: 1 1 0; min-width: 0;
   word-break: keep-all; overflow-wrap: anywhere; }
+/* 29a1: romanized gloss beside the Hangul home name (English mode). */
+.ui-name-gloss { color: var(--ds-ink-3); font-size: 12px; }
 .ui-cand-row-btn { flex: none; }
 /* 26p: the Pick button never shrinks (its label must never clip to
    "P..."); the name takes the free width and may break a single long

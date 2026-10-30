@@ -117,7 +117,8 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
       }
       return escapeRegExp(part);
     }).join("");
-    return { en: String(p.en), re: new RegExp("^" + src + "$"), slots };
+    // 29a1: en may be a function of the translated captures (plurals).
+    return { en: p.en, re: new RegExp("^" + src + "$"), slots };
   });
 
   function exactOrPattern(s) {
@@ -148,6 +149,16 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
         if (Object.hasOwn(words, bare)) return words[bare];
         if (Object.hasOwn(phrases, bare)) return phrases[bare];
       }
+      // 29a1: "<name>까지/에서/으로·로" — the particle is a
+      // preposition, never part of the romanized name ("Gangnamkkaji").
+      const pm = /^(.*?)(까지|에서|으로|로)$/.exec(tok);
+      if (pm && (pm[1].length >= 2 || Object.hasOwn(words, pm[1]) || Object.hasOwn(phrases, pm[1]))) {
+        const head = pm[1];
+        const headEn = Object.hasOwn(words, head) ? words[head]
+          : Object.hasOwn(phrases, head) ? phrases[head]
+          : HANGUL.test(head) ? romanizeName(head) : head;
+        if (!HANGUL.test(headEn)) return `${pm[2] === "에서" ? "from" : "to"} ${headEn}`;
+      }
       return romanizeName(tok);
     });
     return mapped.join(" ").replace(/ ([,):])/g, "$1").replace(/\( /g, "(");
@@ -157,8 +168,7 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
     for (const p of compiled) {
       const m = s.match(p.re);
       if (!m) continue;
-      let en = p.en;
-      p.slots.forEach((n, i) => {
+      const caps = p.slots.map((n, i) => {
         let cap = m[i + 1] ?? "";
         if (HANGUL.test(cap)) {
           if (cap !== s) {
@@ -168,7 +178,14 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
             cap = wordFallback(cap);
           }
         }
-        en = en.split("{" + n + "}").join(cap);
+        return cap;
+      });
+      // 29a1: a function en picks the wording from the captures
+      // ("1 thing checked" vs "3 things checked").
+      if (typeof p.en === "function") return p.en(caps);
+      let en = String(p.en);
+      p.slots.forEach((n, i) => {
+        en = en.split("{" + n + "}").join(caps[i]);
       });
       return en;
     }

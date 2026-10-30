@@ -419,7 +419,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
                 <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={box.h / 2}
                   fill={MAP_COLORS.workPin} />
                 <text x={cx} y={box.y + fs(17)} fontSize={fs(12)} fontWeight={600}
-                  textAnchor="middle" fill="#ffffff">{label}</text>
+                  textAnchor="middle" fill="#ffffff" data-no-i18n>{label}</text>
               </g>
               {!l.leader && (
                 <polygon points={`${cx - fs(5)},${box.y + box.h} ${cx + fs(5)},${box.y + box.h} ${px},${py}`}

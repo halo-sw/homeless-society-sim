@@ -26,7 +26,7 @@ describe("27j Muse recovers after a slow turn", () => {
   it("always answers on the rules path", () => {
     assert.ok(localNoAnswerLine("1번이랑 2번 찜해 줘").includes("담기"));
     assert.ok(localNoAnswerLine("1번 동네는 어때?").includes("3D 미리보기"));
-    assert.ok(localNoAnswerLine("두 집에서 살아 봐 줘").includes("30일 살아 보기"));
+    assert.ok(localNoAnswerLine("두 집에서 살아 봐 줘").includes("30일"));
     assert.ok(localNoAnswerLine("안녕").includes("잠시 뒤"));
   });
 
