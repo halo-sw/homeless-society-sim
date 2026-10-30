@@ -794,6 +794,16 @@ function bootChat() {
   document.getElementById("fade").classList.add("clear");
 }
 
+// 28d: the landing at / — no 3D world, no area fetch.
+function bootLanding() {
+  mountUI();
+  registerCommonActions();
+  store.set({ mode: "landing", ready: true });
+  document.title = "Ithaca — 살아 보고 고르는 집";
+  document.getElementById("loading").remove();
+  document.getElementById("fade").classList.add("clear");
+}
+
 async function bootTour(uiMode = "tour") {
   const [area, scene14] = await Promise.all([fetchArea(areaId), fetchScene(areaId)]);
   const { origin, renderer, renderCtl, rig, scene, camera, controls,
@@ -3572,5 +3582,6 @@ loadAreasList().then(() => {
   const kind = bootKindFor(route);
   if (kind === "sim") bootSim();
   else if (kind === "chat") bootChat();
-  else bootTour(route); // tour | landing (same scene, own UI)
+  else if (kind === "landing") bootLanding();
+  else bootTour(route); // tour
 });

@@ -28,7 +28,7 @@ describe("27a chat-first (SSR, no DOM)", () => {
   });
 
   it("routes / to chat, keeps deep links", () => {
-    assert.equal(routeForSearch(""), "chat");
+    assert.equal(routeForSearch(""), "landing");
     assert.equal(routeForSearch("?mode=sim"), "sim");
     assert.equal(routeForSearch("?area=x"), "tour");
   });

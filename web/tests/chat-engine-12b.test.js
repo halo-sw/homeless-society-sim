@@ -40,7 +40,7 @@ function memStorage() {
 
 describe("chat urls", () => {
   it("routes screens from the search string", () => {
-    assert.equal(routeForSearch(""), "chat");
+    assert.equal(routeForSearch(""), "landing");
     assert.equal(routeForSearch("?chat="), "chat");
     assert.equal(routeForSearch("?chat=hello"), "chat");
     assert.equal(routeForSearch("?mode=sim"), "sim");
