@@ -123,6 +123,41 @@ export function httpReadText(baseUrl, fetchImpl) {
   };
 }
 
+export async function mergeHomesIndex(index, summary, readRegion) {
+  const regionIds = summary && summary.regions ? Object.keys(summary.regions) : [];
+  const list = Array.isArray(index) ? index : (index.homes || []);
+  const haveRegions = new Set();
+  for (const h of list) { if (h && h.region) haveRegions.add(h.region); }
+  for (const id of regionIds) {
+    if (haveRegions.has(id)) continue;
+    try {
+      const raw = await readRegion(id);
+      const extra = Array.isArray(raw) ? raw : (raw.homes || []);
+      for (const h of extra) {
+        if (h && !h.region) h.region = id;
+        list.push(h);
+      }
+      haveRegions.add(id);
+    } catch { /* a missing region file narrows coverage, never throws */ }
+  }
+  return index;
+}
+
+export function createHomesLoader(read) {
+  let homesCache = null;
+  return async () => {
+    if (!homesCache) {
+      homesCache = JSON.parse(await read("data", "homes-index.json"));
+      try {
+        const summary = JSON.parse(await read("data", "homes/summary.json"));
+        await mergeHomesIndex(homesCache, summary, async (id) =>
+          JSON.parse(await read("data", `homes/${id}.json`)));
+      } catch { /* a missing summary narrows coverage, never throws */ }
+    }
+    return homesCache;
+  };
+}
+
 export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImpl = null, readText = null, env = process.env } = {}) {
   // File reads go through readText(root, rel): "data" or "scen" plus a
   // "/"-joined relative path. The default reads the local dirs exactly
@@ -191,13 +226,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     housingCache = normalizeSnapshot({ fetched_at: new Date().toISOString(), complexes, notices });
     return housingCache;
   };
-  let homesCache = null;
-  const loadHomes = async () => {
-    if (!homesCache) {
-      homesCache = JSON.parse(await read("data", "homes-index.json"));
-    }
-    return homesCache;
-  };
+  const loadHomes = createHomesLoader(read);
   let photosCache = null;
   const loadPhotos = async () => {
     if (!photosCache) {
