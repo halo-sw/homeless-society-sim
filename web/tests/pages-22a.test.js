@@ -1,7 +1,7 @@
 // 22a: GitHub Pages (static only — no /api/* routes).
 //
 // - assetUrl(p) prefixes the Vite base, so client fetches of /data/…
-//   and /scenarios/… work under /homeless-society-sim/ and at /.
+//   and /scenarios/… work under /ithaca/ and at /.
 //   assetUrlWith(base, p) is the injectable pure form used by tests.
 // - STATIC_SITE is true for the VITE_STATIC=1 build. 23b: /api/consult,
 //   /api/model/status, /api/aerial/* and /api/tiles/* go through the
@@ -35,10 +35,10 @@ describe("22a base-aware urls", () => {
     assert.equal(assetUrl("/scenarios/a.json"), "/scenarios/a.json");
   });
   it("assetUrlWith prefixes the Pages base", () => {
-    assert.equal(assetUrlWith("/homeless-society-sim/", "/data/x.json"),
-      "/homeless-society-sim/data/x.json");
-    assert.equal(assetUrlWith("/homeless-society-sim/", "/scenarios/a.json"),
-      "/homeless-society-sim/scenarios/a.json");
+    assert.equal(assetUrlWith("/ithaca/", "/data/x.json"),
+      "/ithaca/data/x.json");
+    assert.equal(assetUrlWith("/ithaca/", "/scenarios/a.json"),
+      "/ithaca/scenarios/a.json");
   });
   it("STATIC_SITE is off without VITE_STATIC=1", () => {
     assert.equal(STATIC_SITE, false);
@@ -124,7 +124,7 @@ describe("22a pages workflow + vite base", () => {
   it("pages.yml deploys with the data asset and static flags", async () => {
     const yml = await readFile(
       join(ROOT, ".github", "workflows", "pages.yml"), "utf8");
-    for (const needle of ["deploy-pages", "PAGES_BASE=/homeless-society-sim/",
+    for (const needle of ["deploy-pages", "PAGES_BASE=/ithaca/",
       "VITE_STATIC=1", "runtime-data.tgz"]) {
       assert.ok(yml.includes(needle), needle);
     }
