@@ -36,12 +36,24 @@ describe("17b-2 painted day light values", () => {
     assert.equal(PAINTED_LIGHT.dayLight, 1.8);
   });
 
-  it("boosts sun and fill uniformly by day, never at night", () => {
-    const base = { dayF: 1, hemiSky: 0, hemiGround: 0, fogColor: 0,
-      sunColor: 0, sunIntensity: 3.0, hemiIntensity: 0.85 };
-    const day = paintedSkyParams(base);
-    assert.ok(Math.abs(day.hemiIntensity - 0.85 * 1.8) < 1e-9);
-    assert.ok(Math.abs(day.sunIntensity - 3.0 * 1.8) < 1e-9);
+  it("normalises the day gain to the 08:50 reference, never at night (17d)", () => {
+    // 17d replaces the flat x1.8: sun and fill share one gain that holds
+    // a sunlit horizontal surface at dayLight x refDayE, fading in by
+    // dayF. The 08:50 calibration keeps the flat gain exactly; higher sun
+    // reduces it, lower sun raises it; night passes through untouched.
+    const cal = (hhmm, minute) => skyParams(37.5132169, 127.1001365,
+      new Date(`2026-11-02T${hhmm}:00+09:00`), minute);
+    const gainOf = (p) => paintedSkyParams(p).sunIntensity / p.sunIntensity;
+    assert.ok(Math.abs(gainOf(cal("08:50", 530)) - 1.8) < 1e-6);
+    assert.ok(gainOf(cal("11:00", 660)) < 1.8);
+    assert.ok(gainOf(cal("14:00", 840)) < 1.8);
+    assert.ok(gainOf(cal("17:00", 1020)) > 1.8);
+    const base = { dayF: 1, altitude: 20, hemiSky: 0xf2ece0,
+      hemiGround: 0xb9ad98, fogColor: 0xe2d8c4, sunColor: 0xffffff,
+      sunIntensity: 3.0, hemiIntensity: 0.85 };
+    const rig = paintedSkyParams(base);
+    assert.ok(Math.abs(rig.sunIntensity / 3.0 - rig.hemiIntensity / 0.85) < 1e-9,
+      "sun and fill still share one uniform gain");
     const night = paintedSkyParams({ ...base, dayF: 0 });
     assert.ok(Math.abs(night.hemiIntensity - 0.85) < 1e-9);
     assert.ok(Math.abs(night.sunIntensity - 3.0) < 1e-9);

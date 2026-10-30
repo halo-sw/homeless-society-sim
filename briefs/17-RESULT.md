@@ -357,3 +357,49 @@ every journey phase.
   AgX (still lamp-orange grids).
 - The sim-night corridor keeps day albedo under moonlight (dark,
   like trees); only the detailed box self-lights (tour URL above).
+
+# Stage 17d — RESULT: time-aware day exposure
+
+Date: 2026-10-30. Brief: `briefs/17d-day-exposure.md` (the 14:00 tour
+`?area=songpa-jamsil&shot=0&q=high&time=14:00` over-exposes: sunlit
+ground (251,252,247) vs beige `#cfc4ad`, roof (248,249,244), road
+(180,175,160)). Product code by Muse (agent mode). No sub-agents.
+Commit on `ithaca-17`: `17d: time-aware day exposure` (done before
+stage-18 parts 3–4, which needed longer exploration; all parts land).
+
+Found cause: the flat ×1.8 `dayLight` gain was calibrated on the low
+08:50 sun. The chain confirms it — ungained sunlit-flat irradiance
+luminance is 1.231 at 08:50 but 1.86–1.96 at 11:00–14:00 and 0.354 at
+17:00, so one gain cannot fit all hours.
+
+What changed (`web/src/render/sky.js`, `paintedSkyParams`): sun and
+fill share one normalising gain holding the ungained total (sun + fill)
+on a sunlit horizontal surface at the 08:50 reference level
+(`PAINTED_LIGHT.refDayE = 1.23148`, fading in by dayF so night is
+untouched). A common gain keeps the shade/sun ratio gain-invariant
+(17b ≥ 0.55 untouched). Before → after (`resolvePaintedPixel`, sim
+framing, sunlit ground / roof max channel / road):
+
+- 08:50: (204,191,166) ΔE 2.2 → identical (204,191,166) ΔE 2.2 —
+  the 17c result is kept exactly (roof +19.2 over ground, road neutral).
+- 11:00: (243,229,200) ΔE 12.2, roof clips 255 → (197,186,162)
+  ΔE 3.7, roof max 211.
+- 14:00: (237,223,195) ΔE 10.1, roof 253 → (197,186,162) ΔE 3.7,
+  roof max 211.
+- 17:00: (114,106,92) ΔE 34.5 → (188,176,153) ΔE 7.2, roof max 201.
+- Bonus, 12:00: (248,234,204) ΔE 14.0, roof clips → (198,186,162)
+  ΔE 3.7, roof max 211.
+
+Roads stay neutral and ≥ 98 levels under the ground at all five times.
+Pins: new `web/tests/painted-17d.test.js` (13 tests: ΔE ≤ 10, roof
+lighter and < 245, road neutral and ≥ 25 under, at all four brief
+times, plus the exact 08:50 17c pin). One justified pin update in
+`web/tests/painted-17b.test.js`: "boosts sun and fill uniformly"
+pinned the flat ×1.8 this brief removes; it now pins the normalising
+contract (08:50 ≈ 1.8, lower at 11:00/14:00, higher at 17:00, one
+shared gain, night untouched).
+
+- `cd web && npm test`: **1204 pass, 0 fail, 1 skipped** (the skip
+  is pre-existing).
+- `npx vite build`: see stage-18 result notes (same sandbox EPERM
+  stand-ins as 17c when run).

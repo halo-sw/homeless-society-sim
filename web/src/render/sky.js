@@ -58,7 +58,32 @@ export const PAINTED_LIGHT = {
   sunDay: 0xffffff,
   shadowStrength: 0.3,
   dayLight: 1.8,
+  // 17d reference for the time-aware day exposure: the ungained total
+  // (sun + fill) horizontal irradiance luminance at the 08:50 calibration
+  // (songpa, 2026-11-02). Normalising against it keeps 08:50 on the flat
+  // gain exactly.
+  refDayE: 1.23148,
 };
+
+// Clamped solar sine for a horizontal surface (same rule as the rig and
+// the chain: a 0.03 floor by day; night is unused, dayF is 0 there).
+function paintedSunY(altitude) {
+  const alt = Number(altitude);
+  if (!Number.isFinite(alt) || alt <= -1) return 0.03;
+  return Math.max(Math.sin((alt * Math.PI) / 180), 0.03);
+}
+
+// sRGB hex to linear luminance (normalisation signal only).
+function paintedLuma(hex) {
+  const toLinear = (u8) => {
+    const c = Math.min(1, Math.max(0, u8 / 255));
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const h = Number(hex) || 0;
+  return 0.299 * toLinear((h >> 16) & 255)
+    + 0.587 * toLinear((h >> 8) & 255)
+    + 0.114 * toLinear(h & 255);
+}
 
 // Painted override over skyParams (pure): hemi/fog/sun colours blend to
 // the rig by daylight so dawn/dusk stay continuous (full rig at dayF 1,
@@ -67,7 +92,22 @@ export const PAINTED_LIGHT = {
 // Bloom/emissive/nightF/phase pass through.
 export function paintedSkyParams(p) {
   const dayF = Math.min(1, Math.max(0, Number(p.dayF) || 0));
-  const gain = 1 + (PAINTED_LIGHT.dayLight - 1) * dayF;
+  // 17d: time-aware day exposure. The flat gain above was calibrated on
+  // the low 08:50 sun; under a high midday sun the same gain clips
+  // sunlit flats, and at 17:00 the low sun leaves them muddy. Sun and
+  // fill share one normalising gain: the ungained total (sun + fill) on a
+  // sunlit horizontal surface is held at the 08:50 reference level, so
+  // that surface resolves to the same palette colour at any daytime
+  // hour. The correction fades in by dayF, so night stays untouched, and
+  // a common gain keeps the shade/sun ratio gain-invariant (17b >= 0.55).
+  const sunY = paintedSunY(p.altitude);
+  const total0 = Math.max(
+    (Number(p.sunIntensity) || 0) * sunY * paintedLuma(p.sunColor)
+      + (Number(p.hemiIntensity) || 0) * paintedLuma(p.hemiSky),
+    1e-6);
+  const full = Math.min(
+    (PAINTED_LIGHT.dayLight * PAINTED_LIGHT.refDayE) / total0, 10);
+  const gain = 1 + (full - 1) * dayF;
   return {
     ...p,
     hemiSky: mixHex(p.hemiSky, PAINTED_LIGHT.hemiSky, dayF),
