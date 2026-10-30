@@ -288,6 +288,8 @@ const seedPhrases = {
   "건너뛰기": "Skip",
   "직접 해 보기": "Try it yourself",
   "기록된 대화 보기": "Watch the recorded conversation",
+  // 29a6c: USGS source whole name (the 29a4 chip uses short: "USGS").
+  "USGS The National Map (지도·항공사진, 퍼블릭 도메인)": "USGS The National Map (map · aerial photo, public domain)",
   "퍼블릭 도메인": "public domain",
   "퍼블릭 도메인 (미국 정부 제작)": "public domain (US government work)",
   "기록을 불러오지 못했어요 · 직접 해 보기": "Couldn't load the recording · try it yourself",
@@ -295,6 +297,8 @@ const seedPhrases = {
 };
 
 const seedPatterns = [
+  // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
+  { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
   // 29a4: top-bar summary edit button (aria-label carries the summary).
   { ko: "조건 고치기: {0}", en: "Edit conditions: {0}" },

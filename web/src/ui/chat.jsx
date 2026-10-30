@@ -215,7 +215,8 @@ function readinessNote(candidate) {
 // 18: one run-readiness verdict shared by the chat card, the drawer
 // card and the sticky run button — same label, same disabled state,
 // same handler, so no copy can stall while another works.
-export const RUN_BUTTON_LABEL = "이 집들로 30일 살아 보기";
+// 29a6c: short tray CTA — the full sentence truncated in the map tray.
+export const RUN_BUTTON_LABEL = "30일 살아 보기";
 
 // 26m: split a joined money cell ("월 $4,261 (ZIP 추정)",
 // "$4,261 (ZIP estimate)/mo") into its amount line and its small source
@@ -2502,8 +2503,8 @@ export function ChatScreen() {
           data-panel={chatMainPanelAttr(detail, compareOpen)}
           data-work={chatWorkAttr(workOpen)}>
           <section className="ui-chat-thread" aria-label="대화">
-            {replayId && (
-              <div className="ui-chat-replaybanner">
+            {replayId && replaying && (
+              <div className="ds-replay-bar">
                 <Text type="supporting" data-no-i18n>{currentLang() === "en" ? `Recorded conversation · real ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} answers from ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} · plays without a key` : `기록된 대화 · ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생`}</Text>
                 <Button size="sm" variant="ghost" label="건너뛰기" onClick={skipReplay} />
                 <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
@@ -2551,6 +2552,11 @@ export function ChatScreen() {
                   </ChatMessage>
                 )}
               </ChatMessageList>
+              {replayId && !replaying && (
+                <div className="ds-replay-done">
+                  <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
+                </div>
+              )}
               {messages.length > 0 && chipsNearBottom && (() => {
                 const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
                 const chips = chipsForLatest(messages, fallback);

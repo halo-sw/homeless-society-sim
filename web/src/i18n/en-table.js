@@ -822,7 +822,7 @@ export const tablePhrases = {
  "출근 없이 살아 봤어요": "Lived it without a commute",
  "출퇴근 편도": "One-way commute",
  "30일 살아 보는 중": "Living 30 days",
- "30일 살아 보기": "Live it: 30 days",
+ "30일 살아 보기": "Live 30 days",
  "자세한 이유": "Detailed reasons",
  "30일 살아 보기 결과": "30-day Live it result",
  "기록된 답변": "Recorded answer",

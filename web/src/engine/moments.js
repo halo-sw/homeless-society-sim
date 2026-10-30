@@ -277,7 +277,11 @@ function gapCandidate(runA, runB, labelA, labelB) {
     evidence = awayEvidence(run, ids, away, [pick.key]);
   }
   if (!evidence) return null;
-  const text = `${pick.noun} ${labelA} ${pick.unit(pick.a)} vs ${labelB} ${pick.unit(pick.b)}`;
+  // 29a6c: the evening-at-home line names the metric up front and joins
+  // the homes with · (translated whole in en.js seedPatterns).
+  const text = pick.key === "evening"
+    ? `저녁에 집에 있던 시간: ${labelA} ${pick.unit(pick.a)} · ${labelB} ${pick.unit(pick.b)}`
+    : `${pick.noun} ${labelA} ${pick.unit(pick.a)} vs ${labelB} ${pick.unit(pick.b)}`;
   return {
     kind: "gap", gapRel: pick.rel,
     moment: {

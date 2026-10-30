@@ -346,6 +346,20 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-cites a > span, .ui-cites span > span {
   white-space: normal; overflow: visible; }
 .ui-chat-thread > p { padding: var(--ui-s4) var(--ui-s12) var(--ui-s8); }
+/* 29a6c: replay banner — one compact sticky row at the top of the
+   thread. The text wraps inside its own flex item; the buttons keep
+   their size and never slide under the text. */
+.ds-replay-bar { display: flex; align-items: center; gap: var(--ds-s-8);
+  padding: var(--ds-s-8) var(--ds-s-12); background: var(--ds-sunken);
+  border-bottom: 1px solid var(--ds-line);
+  position: sticky; top: 0; z-index: 5; }
+.ds-replay-bar > * { flex: none; }
+.ds-replay-bar > :first-child { flex: 1 1 auto; min-width: 0; margin: 0;
+  font-size: var(--ds-t-12); color: var(--ds-ink-2); }
+/* 29a6c: when the replay finishes, the bar hides and Try-it-yourself
+   stays as one chip under the last message. */
+.ds-replay-done { display: flex; justify-content: center;
+  padding: var(--ds-s-8) var(--ds-s-12); }
 .ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   overflow: auto; padding: var(--ui-s12); pointer-events: none; }
 .ui-chat-workcol { pointer-events: none; }
@@ -1003,6 +1017,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
   font-size: var(--ui-t16); font-weight: var(--ui-w600); min-width: 0;
   word-break: keep-all; overflow-wrap: normal;
 }
+/* 29a6c: the 26m money source note is always the small second line, so
+   "$4,261/mo" never joins its "(ZIP estimate)" on one row. */
+.ui-result-note { display: block; font-size: var(--ui-t12); font-weight: var(--ui-w400);
+  color: var(--ui-ink2); }
 .ui-result-span { grid-column: 1 / -1; font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-result-missing { font-size: var(--ui-t12); color: var(--ui-ink2); }
 /* Score bar: neutral ink for both homes, never a winner colour. */

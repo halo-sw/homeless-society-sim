@@ -185,6 +185,7 @@ export const SOURCES = [
   {
     id: "usgs",
     name: "USGS The National Map (지도·항공사진, 퍼블릭 도메인)",
+    short: "USGS",
     use: "미국 지도의 바탕 지도와 항공사진.",
     licence: "퍼블릭 도메인 (미국 정부 제작)",
     version: "USGSTopo · USGSImageryOnly",
