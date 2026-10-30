@@ -386,6 +386,14 @@ def cmd_boxes(args) -> int:
 
 
 def cmd_homes(args) -> int:
+    if getattr(args, "us", False):
+        from .homes_us import run_us_homes
+
+        summary = run_us_homes(build_dir=Path(args.build_dir),
+                               raw_dir=Path(args.raw_dir))
+        print(json.dumps(summary, indent=2, sort_keys=True,
+                         ensure_ascii=False))
+        return 0
     from .homes import run_build
 
     summary = run_build(raw_dir=Path(args.raw_dir),
@@ -575,6 +583,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="debug: stop after N RTMS rows per file")
     h.add_argument("--skip-osm-names", action="store_true",
                    help="debug: skip the OSM complex-name second join")
+    h.add_argument("--us", action="store_true",
+                   help="build US homes (data/build/homes/us-menlo.json)")
     h.set_defaults(func=cmd_homes)
 
     w = sub.add_parser("walkgraph",

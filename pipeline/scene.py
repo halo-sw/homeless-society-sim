@@ -764,10 +764,11 @@ def run_scene(area_id: str, build_dir: str | Path,
               species_ratio: tuple[int, int, int] = SPECIES_RATIO,
               overwrite: bool = False) -> dict:
     """Build (or skip) ``scene.json`` for one area."""
-    from .areas import AREA_IDS, is_station_box
+    from .areas import AREA_IDS, is_station_box, is_us_area
 
     started = time.perf_counter()
-    if area_id not in AREA_IDS and not is_station_box(area_id):
+    if (area_id not in AREA_IDS and not is_station_box(area_id)
+            and not is_us_area(area_id)):
         raise KeyError(f"unknown area {area_id!r}")
     build_dir = Path(build_dir)
     area_dir = build_dir / area_id
