@@ -62,6 +62,7 @@ import { HowCalculated, tenureOf } from "./money.jsx";
 import { fmtMinutes, fmtWon } from "../money/format.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
+import { oneWayByLabel, oneWayDelta } from "../verify/numbers.js";
 import { ShareDialog } from "./share.jsx";
 import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
@@ -327,7 +328,7 @@ export function resultScoreOf(moneyDoc, compare, weights, explicit) {
   }
 }
 
-function ResultSummary({ data }) {
+export function ResultSummary({ data }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
   const names = data.names || {};
@@ -335,7 +336,10 @@ function ResultSummary({ data }) {
   const scored = resultScoreOf(data.moneyDoc, data.compare,
     pw && pw.weights, pw && pw.explicit);
   const days = (data.compare && data.compare.days) || 30;
-  const commutes = commuteOneWayOf(data.compare);
+  // 18d: one 출퇴근 편도 per home off the runs (compare.one_way);
+  // older payloads without it fall back to the member aggregates.
+  const oneWay = oneWayDelta(data.compare && data.compare.one_way);
+  const commutes = oneWay ? [] : commuteOneWayOf(data.compare);
   const texts = data.momentTexts || [];
   const showMoney = !!(data.moneyDoc || data.moneyMissing);
   return (
@@ -373,7 +377,19 @@ function ResultSummary({ data }) {
           })}
         </VStack>
       )}
-      {commutes.length > 0 && (
+      {oneWay ? (
+        <VStack gap={1}>
+          <Text>출퇴근 편도 (문 앞→회사, 30일 살아 보기)</Text>
+          <Text hasTabularNumbers>
+            {labels.map((l) => `${l} ${fmtMinutes((data.compare.one_way || {})[l])}`).join(" · ")}
+          </Text>
+          <Text type="supporting">
+            {oneWay.d === 0
+              ? `A와 B가 같아요 (편도 평균 ${fmtMinutes(oneWay.a)})`
+              : `${oneWay.d > 0 ? "B" : "A"}가 편도 평균 ${fmtMinutes(Math.abs(oneWay.d))} 더 걸려요`}
+          </Text>
+        </VStack>
+      ) : commutes.length > 0 && (
         <VStack gap={1}>
           <Text>하루 출퇴근 (문 앞→회사 편도 평균)</Text>
           {commutes.map((c) => (
@@ -1083,6 +1099,11 @@ export function ChatScreen() {
         momentTexts = [];
       }
       compare.anchors = anchors;
+      // 18d: the one customer-facing 출퇴근 편도 per home, straight off
+      // the runs (door-to-door minutes per one-way commute = C01). The
+      // result card, share card and compare table all read this.
+      compare.one_way = oneWayByLabel(
+        Object.fromEntries(labels.map((l) => [l, runs[l]])));
       let extraLine = "";
       if (labels.length > 2) {
         const third = runs[labels[2]];

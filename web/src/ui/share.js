@@ -41,7 +41,7 @@ const SRC_KO = {
   graph: "걸어서 잰 시간", rtms: "실거래", scenario: "가정값",
   payroll_estimate: "추정", user_input: "고객 입력", police: "경찰청",
   register: "관청 자료", housing_api: "공공임대", mixed: "섞임",
-  customer_listing: "붙여넣은 매물",
+  customer_listing: "붙여넣은 매물", run: "30일 살아 보기",
 };
 
 export function shareSourceKo(source) {
@@ -95,13 +95,23 @@ export function buildCompareRows({ money, compare = null, tenures = {}, days = 3
     raw: null, sources: ["scenario"], assumed: true,
     note: "차·지하철을 탄 시간이 0분이면 도보로 적어요" });
 
+  // 18d: one 출퇴근 편도 per home, the same C01 number as the result
+  // card and the compare table. Older compares without runs keep the
+  // per-day fallback under its old label.
+  const ow = compare && compare.one_way;
+  const owA = ow ? num(ow.A) : null;
+  const owB = ow ? num(ow.B) : null;
   const dayA = num(A && A.qol_time && A.qol_time.commute_minutes_per_day);
   const dayB = num(B && B.qol_time && B.qol_time.commute_minutes_per_day);
-  push({ id: "commute_day", label: "하루 출퇴근 시간",
-    a: dayA === null ? "–" : fmtMinutes(dayA),
-    b: dayB === null ? "–" : fmtMinutes(dayB),
-    raw: { a: dayA, b: dayB }, sources: ["graph", "scenario"], assumed: true,
-    note: "차·지하철을 탄 시간은 정해 둔 값이에요" });
+  push(owA !== null && owB !== null
+    ? { id: "commute_day", label: "출퇴근 편도 (문 앞→회사)",
+      a: fmtMinutes(owA), b: fmtMinutes(owB),
+      raw: { a: owA, b: owB }, sources: ["run"], assumed: false, note: "" }
+    : { id: "commute_day", label: "하루 출퇴근 시간",
+      a: dayA === null ? "–" : fmtMinutes(dayA),
+      b: dayB === null ? "–" : fmtMinutes(dayB),
+      raw: { a: dayA, b: dayB }, sources: ["graph", "scenario"], assumed: true,
+      note: "차·지하철을 탄 시간은 정해 둔 값이에요" });
 
   const rideM = metricByKey(compare, "commute_ride_minutes");
   const rideA = rideM ? num(rideM.a) : null;

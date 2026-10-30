@@ -13,9 +13,19 @@ let howCalculatedLines;
 let monthlyHousingOf;
 let commuteOneWayOf;
 let resultScoreOf;
+let ResultSummary;
+let CompareTabBody;
+let buildCompareRows;
+let oneWayCommuteOfRun;
+let oneWayByLabel;
+let engineValue;
 before(async () => {
-  ({ plainMetricLine, howCalculatedLines } = await import("../src/ui/app.jsx"));
-  ({ monthlyHousingOf, commuteOneWayOf, resultScoreOf } = await import("../src/ui/chat.jsx"));
+  ({ plainMetricLine, howCalculatedLines, CompareTabBody } = await import("../src/ui/app.jsx"));
+  ({ monthlyHousingOf, commuteOneWayOf, resultScoreOf, ResultSummary } =
+    await import("../src/ui/chat.jsx"));
+  ({ buildCompareRows } = await import("../src/ui/share.js"));
+  ({ oneWayCommuteOfRun, oneWayByLabel, engineValue } =
+    await import("../src/verify/numbers.js"));
 });
 
 const cmp = (metrics, extra = {}) => ({
@@ -143,5 +153,64 @@ describe("18-3 chat summary helpers", () => {
     assert.deepEqual(Object.keys(scored.scores), ["A", "B"]);
     assert.ok(scored.caption.length > 0, "caption travels with the score");
     assert.ok(resultScoreOf(null, compare).ok === false);
+  });
+});
+
+describe("18d one 출퇴근 편도 everywhere", () => {
+  // A custom run for each home: 10 days × (morning trip + evening ride)
+  // = 20 one-way commutes. A walks+rides 320분 (편도 16분), B 420분
+  // (편도 21분) — the walkthrough pair.
+  function synthRun(walkTotal, rideTotal) {
+    const trips = [];
+    const aways = [];
+    for (let day = 0; day < 10; day++) {
+      trips.push({ id: `t${day}`, agent: "h1", purpose: "commute",
+        day, depart_min: 480, arrive_min: 500, minutes: 1 });
+      aways.push({ id: `w${day}`, agent: "h1", kind: "ride",
+        day, start_min: 1080, end_min: 1100,
+        detail: { ride: { minutesTotal: 1 } } });
+    }
+    return {
+      agents: [{ key: "h1", household: true }],
+      trips,
+      aways,
+      totals: { per_member: { h1: {
+        commute_walk_minutes: walkTotal, commute_ride_minutes: rideTotal } } },
+    };
+  }
+  const runA = () => synthRun(140, 180);
+  const runB = () => synthRun(160, 260);
+
+  it("reads door-to-door minutes per one-way commute (C01)", () => {
+    assert.equal(oneWayCommuteOfRun(runA()), 16);
+    assert.equal(oneWayCommuteOfRun(runB()), 21);
+    assert.deepEqual(oneWayByLabel({ A: runA(), B: runB() }), { A: 16, B: 21 });
+    assert.equal(oneWayCommuteOfRun(runA()), engineValue("C01", runA()).value);
+    assert.equal(oneWayCommuteOfRun(runB()), engineValue("C01", runB()).value);
+    assert.equal(oneWayCommuteOfRun(null), null);
+  });
+
+  it("result card, share card and compare row show the same C01 number", async () => {
+    const React = (await import("react")).default;
+    const { renderToString } = await import("react-dom/server");
+    const oneWay = oneWayByLabel({ A: runA(), B: runB() });
+    const compare = { days: 30, metrics: [], members: [], one_way: oneWay };
+    const resultHtml = renderToString(React.createElement(ResultSummary, {
+      data: { labels: ["A", "B"], names: { A: "천사의도시", B: "시그마" },
+        compare, moneyMissing: "" } }));
+    assert.ok(resultHtml.includes("출퇴근 편도"), "result card 편도 heading");
+    assert.ok(resultHtml.includes("A 16분 · B 21분"),
+      `result card shows C01: ${resultHtml.slice(0, 200)}`);
+    const rows = buildCompareRows({
+      money: { homes: { A: {}, B: {} } }, compare, tenures: {}, days: 30 });
+    const day = rows.find((r) => r.id === "commute_day");
+    assert.equal(day.label, "출퇴근 편도 (문 앞→회사)");
+    assert.equal(day.a, "16분");
+    assert.equal(day.b, "21분");
+    const cmpHtml = renderToString(React.createElement(CompareTabBody, {
+      state: { compare, compareLoading: false } }));
+    assert.ok(cmpHtml.includes("출퇴근 편도 (문 앞→회사)"), "compare row");
+    assert.ok(cmpHtml.includes("A 16분"), "compare row A");
+    assert.ok(cmpHtml.includes("B 21분"), "compare row B");
   });
 });

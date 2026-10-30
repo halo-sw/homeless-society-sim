@@ -183,6 +183,36 @@ export function engineValue(itemId, run, opts = {}) {
   return mean === null ? null : { value: mean, unit: "분" };
 }
 
+// 18d: the ONE customer-facing 출퇴근 편도 — door-to-door minutes
+// per one-way commute for one home's run, i.e. engineValue("C01").
+// The chat result card, the share card, the drawer compare table and
+// the moments all read this helper, so one home shows one number.
+// (The candidate card's pre-run estimate is a different, labelled
+// number: 추정 (살아 보기 전).)
+export function oneWayCommuteOfRun(run) {
+  const v = engineValue("C01", run);
+  return v && Number.isFinite(v.value) ? v.value : null;
+}
+
+// Per-home one-way values for a label→run map ({A: runA, B: runB}).
+// Missing runs read null (never another home's number, never zero).
+export function oneWayByLabel(runsByLabel) {
+  const out = {};
+  for (const [label, run] of Object.entries(runsByLabel || {})) {
+    out[label] = oneWayCommuteOfRun(run);
+  }
+  return out;
+}
+
+// The A/B pair behind compare.one_way for display, or null when
+// either side is missing. d is B−A in minutes (1-decimal).
+export function oneWayDelta(oneWay) {
+  const a = oneWay ? Number(oneWay.A) : NaN;
+  const b = oneWay ? Number(oneWay.B) : NaN;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { a, b, d: Math.round((b - a) * 10) / 10 };
+}
+
 // Every number cited in the text (via the judge guards' extraction).
 export function textNumbers(textKo) {
   return findInventedNumbers(textKo, "", new Set());

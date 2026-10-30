@@ -43,7 +43,9 @@ export function commuteShortLine(candidate, destName) {
       : c.ride.derived && (c.ride.derived.methodsUsed || []).includes("estimate")
         && !(c.ride.derived.methodsUsed || []).includes("schedule") ? "estimate" : "official";
     const where = destName ? `${destName}까지 ` : "";
-    return { text: `${where}약 ${total}분 (${walkBit} · 지하철 ${c.ride.minutes}분)`, source: src };
+    // 18d: the pre-run estimate keeps its own label — never the 30-day
+    // 살아 보기 편도 (oneWayCommuteOfRun) shown after the run.
+    return { text: `${where}약 ${total}분 (${walkBit} · 지하철 ${c.ride.minutes}분) · 추정 (살아 보기 전)`, source: src };
   }
   if (c.walk && c.walk.known) {
     return { text: `${c.walk.station} 도보 ${c.walk.minutes < 1 ? "1분 이내" : `${c.walk.minutes}분`} · 승차 미확인`, source: "official" };

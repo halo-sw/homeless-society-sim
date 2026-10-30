@@ -172,7 +172,10 @@ function commuteCandidate(runA, runB, labelA, labelB) {
   const side = !best[1] || (best[0] && best[0].span >= best[1].span) ? 0 : 1;
   const win = best[side];
   const home = side === 0 ? labelA : labelB;
-  const text = `출근 ${fmtDur(win.span)}`;
+  // 18d: this is the longest SINGLE commute day (trip-evidenced), never
+  // the 편도 평균 — labelled so it cannot be read as the one shared
+  // 출퇴근 편도 (oneWayCommuteOfRun) shown in the result/share/compare.
+  const text = `가장 오래 걸린 날 출근 ${fmtDur(win.span)}`;
   return {
     kind: "commute", gapRel,
     moment: {

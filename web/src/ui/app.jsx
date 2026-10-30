@@ -665,6 +665,12 @@ export function plainMetricLine(m, days = 30) {
   if (!m) return null;
   const d = m.delta_b_minus_a;
   if (d === null || d === undefined || !Number.isFinite(m.a) || !Number.isFinite(m.b)) return null;
+  // 18d: the one 출퇴근 편도 (same C01 number as the result and share
+  // cards) — a per-commute value, never divided by days again.
+  if (m.key === "commute_one_way") {
+    if (d === 0) return `A와 B가 같아요 (편도 평균 ${fmtMetric("minutes", m.a)})`;
+    return `${d > 0 ? "B" : "A"}가 편도 평균 ${fmtMetric("minutes", Math.abs(d))} 더 걸려요`;
+  }
   if (d === 0) return "A와 B가 같아요";
   const span = Number(days) > 0 ? Number(days) : 30;
   const win = d > 0 ? "B" : "A";
@@ -726,6 +732,18 @@ export function CompareTabBody({ state }) {
   if (!cmp || !cmp.metrics) return null;
   const days = Number(cmp.days) > 0 ? Number(cmp.days) : 30;
   const how = howCalculatedLines(cmp);
+  // 18d: the one 출퇴근 편도 row, first — same C01 number as the
+  // result card and the share card.
+  const oneWayRow = (() => {
+    const ow = cmp.one_way;
+    if (!ow || !Number.isFinite(Number(ow.A)) || !Number.isFinite(Number(ow.B))) return null;
+    const a = Number(ow.A);
+    const b = Number(ow.B);
+    return { key: "commute_one_way", label: "출퇴근 편도 (문 앞→회사)",
+      unit: "minutes", a, b,
+      delta_b_minus_a: Math.round((b - a) * 10) / 10, source: "run" };
+  })();
+  const rows = oneWayRow ? [oneWayRow, ...cmp.metrics] : cmp.metrics;
   return (
     <>
       <HStack gap={1} vAlign="center">
@@ -736,7 +754,7 @@ export function CompareTabBody({ state }) {
         <Text type="supporting">피곤한 정도 0–10, 높을수록 피곤해요</Text>
       )}
       <MetadataList>
-        {cmp.metrics.map((m) => {
+        {rows.map((m) => {
           const plain = plainMetricLine(m, days);
           return (
             <MetadataListItem key={m.key} label={m.label}>
