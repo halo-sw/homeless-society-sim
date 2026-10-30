@@ -50,6 +50,7 @@ Run only:
 cd web && node --test tests/intake-form-29a3.test.js $(grep -ln "IntakeCard\|HouseholdCard\|prefillFromExtract\|addMember" tests/*.test.js | tr '\n' ' ') 2>&1 | grep -E "^# (pass|fail)|not ok" | head -12
 ```
 Update older pins only where they assert the removed stepper markup or `ageBand` defaulting to `20대`.
+Also fix one pin left by 29a2: `web/tests/eok-space-26q.test.js:25` expects `59m² or larger`; the UI now writes `㎡` everywhere, so change that expected string to `59㎡ or larger` (nothing else in that file).
 
 ## Do not touch
 Landing files, `candidate-card.jsx` (29a2 just changed it), map / 3D / engine files, `web/src/i18n/dom.js`.
