@@ -425,6 +425,19 @@ function SimHero({ state }) {
       </div>
       <div className="ui-hero-line">{heroSentence(state)}</div>
       {big && <div className="ui-hero-big">{big}</div>}
+      {n.evidence && n.evidence.length > 0 && (
+        <div className="ui-hero-evidence">
+          <div className="ui-hero-evidence-head">이 장면이 결과에 들어가는 곳</div>
+          <ul className="ui-hero-evidence-list">
+            {n.evidence.map((e, i) => (
+              <li key={i} className="ui-hero-evidence-line">
+                <span>{e.text}</span>
+                {e.tag && <span className="ui-tag">{e.tag}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {leg && (
         <div className="ui-hero-cong">
           <div className="ui-progress" role="progressbar" aria-label="타는 구간 붐비는 정도"

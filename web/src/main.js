@@ -21,6 +21,7 @@ import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
 import { pickMoments } from "./engine/moments.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
+import { sceneEvidence } from "./evidence.js";
 import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { memberLabelFor } from "./profile.js";
@@ -1911,8 +1912,10 @@ async function bootSim() {
         rows: householdNow({ run, indexed, day, minute: m }) }, ticker: [] });
     } else {
       const agent = household[follow - 1];
+      const card = nowCardFor({ run, indexed, agentKey: agent.key, day, minute: m });
+      card.evidence = sceneEvidence({ run, agentKey: agent.key, day, minute: m, now: card });
       store.set({
-        now: nowCardFor({ run, indexed, agentKey: agent.key, day, minute: m }),
+        now: card,
         ticker: tickerFor({ run, indexed, agentKey: agent.key, day, minute: m,
           moneyEvents: spendingEvents() }),
       });
