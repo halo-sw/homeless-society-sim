@@ -64,7 +64,7 @@ describe("18-2 one run verdict everywhere", () => {
     assert.match(r.hint, /B집/);
   });
 
-  it("chat card and drawer card render the same label + verdict", async () => {
+  it("chat card points at the tray; the wrapper renders the one run button", async () => {
     const React = (await import("react")).default;
     const { renderToString } = await import("react-dom/server");
     const { CandidatesCard, DrawerArea } =
@@ -77,16 +77,18 @@ describe("18-2 one run verdict everywhere", () => {
         picks: ["a", "b"], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "판교" }));
-    assert.ok(chatHtml.includes(RUN_BUTTON_LABEL), "chat run button");
-    assert.ok(chatHtml.includes("2곳을 30일씩"), "chat hint");
+    // 19a: no run button inside the list — the label appears only
+    // as the quoted pointer at the tray.
+    assert.equal(chatHtml.split(RUN_BUTTON_LABEL).length - 1, 1, "label only quoted, no button");
+    assert.ok(chatHtml.includes("지도 아래"), "chat points at the tray");
     const drawerHtml = renderToString(React.createElement(DrawerArea,
       { picks: ["a", "b"],
         candidatesData: { result: { candidates: cands }, tenure: "jeonse" },
         onRun: noop, detail: null, onCloseDetail: noop, photoDeps: {},
         destName: "판교", tenure: "jeonse", onTogglePick: noop,
         onJeonse: noop }));
-    assert.ok(drawerHtml.includes(RUN_BUTTON_LABEL), "drawer run button");
-    assert.ok(drawerHtml.includes("2곳을 30일씩"), "drawer hint");
+    assert.ok(drawerHtml.includes(RUN_BUTTON_LABEL), "tray run button");
+    assert.ok(!drawerHtml.includes("disabled"), "tray button enabled at 2 ready picks");
   });
 });
 

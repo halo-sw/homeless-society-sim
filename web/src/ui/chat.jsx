@@ -23,7 +23,6 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -259,7 +258,6 @@ export function runReadiness(picks, candidates) {
 export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
     onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
   const candidates = (data && data.candidates) || [];
-  const { canRun, hint } = runReadiness(picks, candidates);
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
   return (
@@ -303,12 +301,11 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
           </div>
         ))}
         {candidates.length > 0 && (
-          <VStack gap={1}>
-            <Button size="sm" label={RUN_BUTTON_LABEL}
-              isDisabled={!canRun}
-              onClick={() => onRun && onRun()} />
-            <Text type="supporting">{hint}</Text>
-          </VStack>
+          <Text type="supporting">
+            {picks.length < 2
+              ? "마음에 드는 집을 2곳 담으면 지도 아래에서 30일 살아 보기를 시작할 수 있어요"
+              : "지도 아래 ‘이 집들로 30일 살아 보기’를 눌러 주세요"}
+          </Text>
         )}
       </VStack>
     </Card>
@@ -1050,8 +1047,8 @@ export function ChatScreen() {
       data: { status: "running", progress: { done: 0, total: picked.length, label: "" } },
       example: st.exampleId });
     // 18d: the new card renders far below — move the chat there at
-    // once so the progress stays visible (all three run buttons funnel
-    // through here: sticky, drawer, in-chat).
+    // once so the progress stays visible (the tray's run button
+    // funnels through here).
     soon(() => scrollChatToSim(simId));
     const setProgress = (progress) => {
       setMessages((prev) => prev.map((m) => (m.id === simId
@@ -1516,20 +1513,6 @@ export function ChatScreen() {
                   onClick={() => chipAction(chip)} />
               ))}
             </div>
-            {(() => {
-              const sticky = runReadiness(picks,
-                (candidatesData && candidatesData.result.candidates) || []);
-              return sticky.picked.length >= 2 ? (
-                <div className="ui-chat-sticky-run">
-                  <Button label={RUN_BUTTON_LABEL}
-                    isDisabled={!sticky.canRun}
-                    onClick={() => handleRun()} />
-                  {!sticky.canRun && (
-                    <Text type="supporting">{sticky.hint}</Text>
-                  )}
-                </div>
-              ) : null;
-            })()}
           </section>
           <MsgBoundary>
           <StageArea
@@ -1564,7 +1547,10 @@ export function ChatScreen() {
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
           </MsgBoundary>
-          <DrawerArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
+          <PicksTray picks={picks}
+            candidates={(candidatesData && candidatesData.result.candidates) || []}
+            onRun={handleRun} onRemove={handleTogglePick} />
+          <SidePanel picks={picks} candidatesData={candidatesData}
             detail={detail} onCloseDetail={() => setDetail(null)}
             photoDeps={handlers.photoDeps} destName={destName}
             tenure={candidatesData?.tenure || "undecided"}
@@ -1614,15 +1600,10 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, co
   const regions = (map && map.regions) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">
-      <div style={{ padding: "8px 12px", background: "rgba(255,253,248,0.98)",
-        borderBottom: "1px solid var(--border, #d8d2c4)" }}>
-        <Text type="supporting">
-          {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
-          {" · "}
-          {regions.length > 0 ? `지역 ${regions.length}곳` : "지역을 불러오는 중…"}
-        </Text>
-      </div>
       <div className="ui-chat-stage-body">
+        <div className="ui-stage-pill" role="status">
+          {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
+        </div>
         {regions.length > 0 ? (
           <ChatMap map={map} cardHi={cardHi}
             onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />
@@ -1642,52 +1623,85 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, co
   );
 }
 
-export function DrawerArea({ picks, candidatesData, onRun,
-  detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
-  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
-  const candidates = (candidatesData && candidatesData.result.candidates) || [];
-  // Same verdict + same handler as the chat card (runReadiness).
+const PICK_LETTERS = ["A", "B", "C"];
+
+// 19a: the only run button on the chat screen. It floats over the
+// bottom of the map stage; nothing renders until a home is picked.
+export function PicksTray({ picks, candidates, onRun, onRemove }) {
   const { picked, canRun, hint } = runReadiness(picks, candidates);
-  const open = Boolean(detail || state.compareOpen || picked.length > 0);
+  if (picked.length === 0) return null;
+  const trayHint = picked.length === 1
+    ? "한 곳 더 담으면 비교할 수 있어요"
+    : hint;
+  return (
+    <div className="ui-picks-tray" role="group" aria-label="고른 집">
+      <div className="ui-picks-tray-row">
+        <div className="ui-picks-tray-chips">
+          {picked.map((c, i) => (
+            <span key={c.id} className="ui-pick-chip">
+              <span className="ui-pick-disc" aria-hidden="true">
+                {PICK_LETTERS[i] || "·"}
+              </span>
+              <span className="ui-pick-name">{c.name}</span>
+              <button type="button" className="ui-pick-x"
+                aria-label={`${c.name} 빼기`}
+                onClick={() => onRemove && onRemove(c)}>×</button>
+            </span>
+          ))}
+        </div>
+        <Button label={RUN_BUTTON_LABEL}
+          isDisabled={!canRun} onClick={() => onRun && onRun()} />
+      </div>
+      {!canRun && (
+        <Text type="supporting">{trayHint}</Text>
+      )}
+    </div>
+  );
+}
+
+// 19a: detail / compare open over the stage's right edge only on demand.
+export function SidePanel({ picks, candidatesData, detail, onCloseDetail,
+  photoDeps, destName, tenure, onTogglePick, onJeonse }) {
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  if (!detail && !state.compareOpen) return null;
   const detailPhotos = detail
     ? selectPhotosForList([detail], photoDeps || {})[0].photos : null;
   return (
-    <aside className="ui-chat-drawer" data-open={open ? "true" : "false"} aria-label="상세 패널">
-      <div className="ui-chat-drawer-inner">
-        {detail && (
-          <Card padding={3}>
-            <VStack gap={2}>
-              <HStack gap={1} vAlign="center">
-                <Heading level={4}>자세히</Heading>
-                <span className="ui-panel-spacer" />
-                <Button size="sm" variant="ghost" label="닫기" onClick={onCloseDetail} />
-              </HStack>
-              <CandidateCard candidate={detail} tenure={tenure} destName={destName}
-                photos={detailPhotos} picked={picks.includes(detail.id)}
-                onLive={() => onTogglePick(detail)}
-                onJeonse={() => onJeonse(detail)} onDetail={null} />
-            </VStack>
-          </Card>
-        )}
-        {picked.length > 0 && (
-          <Card padding={3}>
-            <VStack gap={1}>
-              <Heading level={4}>{`고른 집 ${picked.length}곳`}</Heading>
-              {picked.map((c) => (
-                <Text key={c.id}>{c.name}</Text>
-              ))}
-              <Button size="sm" label={RUN_BUTTON_LABEL}
-                isDisabled={!canRun} onClick={() => onRun && onRun()} />
-              <Text type="supporting">{hint}</Text>
-            </VStack>
-          </Card>
-        )}
+    <aside className="ui-side-panel" aria-label="상세 패널">
+      <HStack gap={1} vAlign="center">
+        <Heading level={4}>{detail ? "자세히" : "비교"}</Heading>
+        <span className="ui-panel-spacer" />
+        <Button size="sm" variant="ghost" label="닫기"
+          onClick={() => {
+            if (detail && onCloseDetail) onCloseDetail();
+            else store.set({ compareOpen: false });
+          }} />
+      </HStack>
+      {detail && (
+        <CandidateCard candidate={detail} tenure={tenure} destName={destName}
+          photos={detailPhotos} picked={(picks || []).includes(detail.id)}
+          onLive={() => onTogglePick && onTogglePick(detail)}
+          onJeonse={() => onJeonse && onJeonse(detail)} onDetail={null} />
+      )}
+      {state.compareOpen && (
         <CompareCard state={state} />
-        {!detail && picked.length === 0 && !state.compareOpen && (
-          <EmptyState isCompact title="대화에서 집을 고르면"
-            description="여기에 고른 집과 비교·돈·안심·매물 탭이 열려요." />
-        )}
-      </div>
+      )}
     </aside>
+  );
+}
+
+// 19a: kept for older callers — the tray + panel without a drawer column.
+export function DrawerArea({ picks, candidatesData, onRun,
+  detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
+  const candidates = (candidatesData && candidatesData.result.candidates) || [];
+  return (
+    <>
+      <PicksTray picks={picks} candidates={candidates}
+        onRun={onRun} onRemove={onTogglePick} />
+      <SidePanel picks={picks} candidatesData={candidatesData}
+        detail={detail} onCloseDetail={onCloseDetail} photoDeps={photoDeps}
+        destName={destName} tenure={tenure}
+        onTogglePick={onTogglePick} onJeonse={onJeonse} />
+    </>
   );
 }
