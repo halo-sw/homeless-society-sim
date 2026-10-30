@@ -35,11 +35,14 @@ describe("landing", () => {
     const text = textOf(html);
     assert.ok(text.includes("계약 전에, 그 집에서 30일 먼저 살아 봐요"));
     assert.ok(text.includes("어디로 출근하고, 누구와 살고, 예산은 얼마인가요?"));
-    // Scrim for contrast (dim + blurred backdrop, CSS-verified).
+    // Scrim for contrast (radial veil, no blur — CSS-verified).
     assert.ok(html.includes("ui-landing-scrim"));
     const css = readFileSync(join(HERE, "..", "src", "ui", "ui.css"), "utf8");
     assert.ok(css.includes("ui-landing-scrim"));
-    assert.ok(css.includes("backdrop-filter: blur("));
+    assert.ok(css.includes("radial-gradient"));
+    const scrim = css.slice(css.indexOf(".ui-landing-scrim"));
+    assert.ok(!scrim.slice(0, scrim.indexOf("}")).includes("backdrop-filter"),
+      "scrim must not blur the city");
   });
 
   it("suggests the three personas (예시) + listing paste + coverage", () => {
