@@ -150,7 +150,8 @@ function clean(parts) {
 // Items: { id, level, title, sub, glyph, accent, lon, lat }.
 // Order: home pill first, then destination, then complexes / POIs / dongs.
 export function labelItemsFor(area, opts = {}) {
-  const { homeBuildingId = null, destination = null, cameraDistM = 600 } = opts;
+  const { homeBuildingId = null, destination = null, destinationSuffix = "",
+    cameraDistM = 600 } = opts;
   const items = [];
   const buildings = area?.buildings || [];
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -181,7 +182,7 @@ export function labelItemsFor(area, opts = {}) {
     items.push({
       id: `dest:${destLabel}`,
       level: "always",
-      title: `${destLabel} · 가는 곳`,
+      title: destinationSuffix ? `${destLabel} · ${destinationSuffix}` : `${destLabel} · 가는 곳`,
       sub: "",
       glyph: "",
       lon: destLonLat ? destLonLat[0] : null,
@@ -256,7 +257,16 @@ export function labelItemsFor(area, opts = {}) {
 // skip boxes intersecting an already placed one, at most 40 per frame.
 // Items carry screen px boxes { x, y, w, h }; items without a box get a
 // text-length estimate so labelItemsFor output can flow straight through.
-export function placeLabels(items, viewW, viewH) {
+export function placeLabels(items, viewW, viewH, reserved = []) {
+  const zones = (reserved || []).map((r) => ({
+    left: r.left ?? r.x ?? 0,
+    top: r.top ?? r.y ?? 0,
+    right: r.right ?? (r.left ?? r.x ?? 0) + (r.width ?? r.w ?? 0),
+    bottom: r.bottom ?? (r.top ?? r.y ?? 0) + (r.height ?? r.h ?? 0),
+  }));
+  const hitsZone = (box) => zones.some((z) =>
+    box.left < z.right && box.right > z.left
+    && box.top < z.bottom && box.bottom > z.top);
   const ranked = (items || [])
     .map((item, index) => ({ item, index }))
     .sort((a, b) => {
@@ -269,10 +279,28 @@ export function placeLabels(items, viewW, viewH) {
     if (placed.length >= MAX_LABELS) break;
     const w = item.w ?? estimateW(item);
     const h = item.h ?? (item.sub ? 30 : 22);
-    const x = item.x ?? 0;
-    const y = item.y ?? 0;
+    let x = item.x ?? 0;
+    let y = item.y ?? 0;
     if (x + w < 0 || y + h < 0 || x > viewW || y > viewH) continue;
-    const box = { left: x, top: y, right: x + w, bottom: y + h };
+    const always = item.level === "always";
+    let box = { left: x, top: y, right: x + w, bottom: y + h };
+    if (hitsZone(box)) {
+      if (!always) continue;
+      const zone = zones.find((z) =>
+        box.left < z.right && box.right > z.left
+        && box.top < z.bottom && box.bottom > z.top);
+      const below = zone.bottom + 4;
+      const above = zone.top - h - 4;
+      if (below + h <= viewH) {
+        y = below;
+      } else if (above >= 0) {
+        y = above;
+      } else {
+        continue;
+      }
+      box = { left: x, top: y, right: x + w, bottom: y + h };
+      if (hitsZone(box)) continue;
+    }
     let hit = false;
     for (const other of boxes) {
       if (
@@ -286,7 +314,7 @@ export function placeLabels(items, viewW, viewH) {
       }
     }
     if (hit) continue;
-    placed.push(item);
+    placed.push(always && (box.top !== (item.y ?? 0)) ? { ...item, x, y } : item);
     boxes.push(box);
   }
   return placed;

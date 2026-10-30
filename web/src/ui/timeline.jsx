@@ -306,6 +306,9 @@ export function TimelineBar({ state, compact = true, defaultMenuOpen = false }) 
               icon={<Icon icon="moreHorizontal" />}
               onClick={() => setMenuOpen(!menuOpen)} />
           </div>
+          <div className="ui-strip-legend">
+            <ActivityLegend />
+          </div>
           {menuOpen && (
             <div className="ui-bar13f2-menu">
               <Button size="sm" label="A·B 비교" variant="secondary"

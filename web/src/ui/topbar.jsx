@@ -186,6 +186,14 @@ export function MapTools({ state, legendOpen, onLegend }) {
       )}
       <Button size="sm" variant={legendOpen ? "secondary" : "ghost"}
         label="범례" onClick={onLegend} />
+      {isSim && (
+        <>
+          <Button size="sm" variant="ghost"
+            label="동네 전체" onClick={() => store.act("showOverview")} />
+          <Button size="sm" variant="ghost"
+            label="따라가기" onClick={() => store.act("resumeFollow")} />
+        </>
+      )}
     </div>
   );
 }

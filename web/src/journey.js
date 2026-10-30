@@ -319,7 +319,7 @@ export function journeyBanner({ ride, dir, elapsed, rideMinutes }) {
   return { where, legIndex: at.legIndex, inTransfer: at.inTransfer,
     minutesLeft: left,
     legs: ride.legs.map((l) => ({ line: l.lineName, from: l.from, to: l.to,
-      minutes: l.minutes, valuePct: l.congestion.valuePct,
+      minutes: Math.round(l.minutes), valuePct: l.congestion.valuePct,
       source: l.congestion.source,
       band: congestionBand(l.congestion.valuePct).key })) };
 }

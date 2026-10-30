@@ -717,7 +717,18 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   position: static; width: auto; max-width: none; max-height: none;
   transform: none; overflow: visible;
 }
-.ui-sim13 .ui-attr { display: none; }
+/* 20e: the sim credit is a licence condition — one small line bottom-left
+   just above the timeline, never hidden. (The full AttrLine stays in the
+   legend card.) */
+.ui-simcredit {
+  align-self: flex-start; pointer-events: none;
+  font-size: 11px; line-height: 1.5; color: var(--ui-ink2);
+  background: rgba(255,255,255,.8); border-radius: 6px;
+  padding: 2px 8px; margin-bottom: 4px; max-width: 100%;
+}
+/* 20e: one-line meaning under the timeline colour bar. */
+.ui-strip-legend { margin-top: 2px; font-size: 11px; color: var(--ui-ink2); }
+.ui-strip-legend .ui-swatch { width: 9px; height: 9px; }
 @media (max-width: 1099px) {
   .ui-sim13 {
     grid-template-rows: auto minmax(0, 1fr) auto;

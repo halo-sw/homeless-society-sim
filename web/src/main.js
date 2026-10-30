@@ -3,12 +3,15 @@
 // (unit-tested); this file only wires three.js, the DOM, and playback.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineGeometry } from "three/addons/lines/LineGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildingCard, labelItemsFor, placeLabels } from "./labels3d.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { drapeAerial } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
@@ -124,7 +127,6 @@ function footprintRings(buildings, origin) {
 const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
 // 12b: map-route colours shared with the day strip (timeline.js).
-const WALK_ROUTE_CSS = ACTIVITIES.walk.color;
 const SUBWAY_ROUTE_CSS = ACTIVITIES.subway.color;
 
 const PARAMS = new URLSearchParams(location.search);
@@ -1534,16 +1536,30 @@ async function bootSim() {
   // Route: one bright line ahead of the followed resident, one faded
   // line behind. Destination: a pin label + a small ground marker. The
   // ride stub is a dashed line for off-area station rides.
-  const routeAhead = new THREE.Line(new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95, depthTest: false }));
-  const routeDone = new THREE.Line(new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ color: 0x8a8a8a, transparent: true, opacity: 0.3 }));
+  // 20e: the remaining trip path reads on the ground — 4 px, #2f6fed at
+  // 85 %, above the road ribbons (renderOrder + no depth test). The
+  // walked part is grey at 40 %. Fat lines (Line2): plain THREE.Line is
+  // always 1 px, which the follow view could never show.
+  const routeAheadMat = new LineMaterial({ color: 0x2f6fed, linewidth: 4,
+    transparent: true, opacity: 0.85, depthTest: false });
+  const routeDoneMat = new LineMaterial({ color: 0x8a8a8a, linewidth: 4,
+    transparent: true, opacity: 0.4, depthTest: false });
+  const routeAhead = new Line2(new LineGeometry(), routeAheadMat);
+  const routeDone = new Line2(new LineGeometry(), routeDoneMat);
   routeAhead.renderOrder = 998;
+  routeDone.renderOrder = 998;
   routeAhead.frustumCulled = false;
   routeDone.frustumCulled = false;
   routeAhead.visible = false;
   routeDone.visible = false;
   scene.add(routeAhead, routeDone);
+  function syncRouteResolution() {
+    const w = (renderer.domElement && renderer.domElement.clientWidth) || innerWidth;
+    const h = (renderer.domElement && renderer.domElement.clientHeight) || innerHeight;
+    routeAheadMat.resolution.set(w, h);
+    routeDoneMat.resolution.set(w, h);
+  }
+  syncRouteResolution();
   const destPin = document.createElement("div");
   destPin.className = "hopin";
   destPin.style.display = "none";
@@ -1718,11 +1734,13 @@ async function bootSim() {
       if (!hiState) return;
       const camDist = camera.position.distanceTo(controls.target);
       const destLonLat = hiState.destNodeId ? nodeLonLat.get(hiState.destNodeId) : null;
+      const tripNow = hiState.trip ? tripById.get(hiState.trip.id) : null;
       const items = labelItemsFor(area, {
         homeBuildingId: hiState.homeBuildingId || null,
         destination: hiState.destLabel
           ? { label: hiState.destLabel, lonlat: destLonLat || undefined }
           : null,
+        destinationSuffix: destSuffixFor(tripNow),
         cameraDistM: camDist,
       });
       const canvasEl = document.getElementById("scene");
@@ -1746,7 +1764,19 @@ async function bootSim() {
         projected.push({ ...item, x: sx - rect.left, y: sy - rect.top, w, h,
           _sx: sx - wrap.left, _sy: sy - wrap.top });
       }
-      const placed = placeLabels(projected, rect.width, rect.height);
+      // 20e label safe zones: the top-left toolbar (A·B / 집만 밝게 보기 /
+      // 범례) and the bottom timeline reserve screen space. Overlapping
+      // labels are skipped; always-items (home, destination) nudge out.
+      const reserved = [];
+      for (const sel of [".ui-tools", ".ui-simbar"]) {
+        const el = document.querySelector(sel);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        reserved.push({ left: r.left - rect.left, top: r.top - rect.top,
+          right: r.right - rect.left, bottom: r.bottom - rect.top });
+      }
+      const placed = placeLabels(projected, rect.width, rect.height, reserved);
       const seen = new Set(placed.map((p) => p.id));
       for (const p of placed) paintLabel20b(label20bEl(p.id, p.level), p);
       for (const [id, el] of label20bEls) {
@@ -1854,6 +1884,13 @@ async function bootSim() {
   }
 
   function setLine(line, pts) {
+    if (line && line.isLine2) {
+      const list = pts.length > 1 ? pts
+        : pts.length === 1 ? [pts[0], pts[0].clone()]
+        : [new THREE.Vector3(0, -100, 0), new THREE.Vector3(0, -100, 0)];
+      line.geometry.setPositions(list.flatMap((p) => [p.x, p.y, p.z]));
+      return;
+    }
     line.geometry.setFromPoints(pts.length > 0 ? pts : [new THREE.Vector3(0, -100, 0)]);
     if (line.computeLineDistances) line.computeLineDistances();
   }
@@ -1932,6 +1969,7 @@ async function bootSim() {
       const agent = household[follow - 1];
       const card = nowCardFor({ run, indexed, agentKey: agent.key, day, minute: m });
       card.evidence = sceneEvidence({ run, agentKey: agent.key, day, minute: m, now: card });
+      card.familyRows = householdNow({ run, indexed, day, minute: m });
       store.set({
         now: card,
         ticker: tickerFor({ run, indexed, agentKey: agent.key, day, minute: m,
@@ -2001,6 +2039,31 @@ async function bootSim() {
     bgMesh.material.needsUpdate = true;
   }
 
+  // 20e: the destination pill — "{to} · {출근|장보기|병원|산책} 가는 곳".
+  // The walk leg of a commute ends at the station, so it reads
+  // "잠실역 · 지하철 타는 곳" instead of guessing the workplace.
+  const TRIP_VERB_20E = { commute: "출근", school: "등교",
+    errand: "장보기", clinic: "병원", park: "산책" };
+  function destPillText(destLabel, trip) {
+    const base = destLabel || "";
+    if (!base) return "";
+    if (trip && trip.purpose === "commute" && /역$/.test(base)) {
+      return `${base} · 지하철 타는 곳`;
+    }
+    const verb = trip ? TRIP_VERB_20E[trip.purpose] : "";
+    return verb ? `${base} · ${verb} 가는 곳` : `${base} · 가는 곳`;
+  }
+  function destSuffixFor(trip) {
+    if (!trip) return "";
+    if (trip.purpose === "commute") {
+      const to = (trip.to && (trip.to.label || trip.to.id)) || "";
+      if (/역$/.test(to)) return "지하철 타는 곳";
+      return "출근 가는 곳";
+    }
+    const verb = TRIP_VERB_20E[trip.purpose];
+    return verb ? `${verb} 가는 곳` : "";
+  }
+
   function paintHighlightFrame() {
     if (pulse) {
       const k = (performance.now() - pulse.t0) / 700;
@@ -2024,14 +2087,12 @@ async function bootSim() {
         const { behind, ahead } = splitRoute(trip, frac);
         setLine(routeAhead, ahead);
         setLine(routeDone, behind);
-        // 12b: the walked route shares the day strip's 걷기 colour.
-        routeAhead.material.color.set(WALK_ROUTE_CSS);
       }
       routeAhead.visible = true;
       routeDone.visible = true;
       const dp = h.destNodeId ? nodeWorld(h.destNodeId, 0) : null;
       if (dp && h.destLabel) {
-        paintTagPin(destPin, dp.x, tagY(dp.x, dp.z, 10), dp.z, h.destLabel);
+        paintTagPin(destPin, dp.x, tagY(dp.x, dp.z, 10), dp.z, destPillText(h.destLabel, trip));
         destMark.position.set(dp.x, tagY(dp.x, dp.z, 3), dp.z);
         destMark.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
         destMark.visible = true;
@@ -2049,7 +2110,7 @@ async function bootSim() {
       if (sp) {
         setLine(rideStub, [sp, new THREE.Vector3(sp.x, tagY(sp.x, sp.z, 30), sp.z)]);
         rideStub.visible = true;
-        paintTagPin(destPin, sp.x, tagY(sp.x, sp.z, 34), sp.z, `지하철 탑승 (가정값 ${h.rideAway.rideMinutes}분)`);
+        paintTagPin(destPin, sp.x, tagY(sp.x, sp.z, 34), sp.z, `지하철 탑승 (가정값 ${Math.round(h.rideAway.rideMinutes)}분)`);
       } else {
         rideStub.visible = false;
         destPin.style.display = "none";
@@ -2117,6 +2178,23 @@ async function bootSim() {
   // --- follow camera (2b miniature framing) ---
   const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   let snapFollow = follow > 0;
+  // 20e: follow keeps the user in control. followZoom (0.5–6) scales the
+  // camera-to-target distance, followYaw adds an azimuth around the
+  // followed target. The wheel zooms, a drag orbits; the controls stay
+  // enabled so both reach the camera. followMode "overview" (동네 전체)
+  // parks the camera on home + destination + route until 따라가기.
+  let followZoom = 1;
+  let followYaw = 0;
+  let followMode = "follow"; // "follow" | "overview"
+  const clampFollowZoom = (z) => Math.min(6, Math.max(0.5, z));
+  function setFollowPose(pos, look) {
+    const off = applyFollowOffset(
+      { pos: [pos.x, pos.y, pos.z], look: [look.x, look.y, look.z] },
+      [look.x, look.y, look.z], { zoom: followZoom, yaw: followYaw });
+    camera.position.set(off.pos[0], off.pos[1], off.pos[2]);
+    controls.target.set(off.look[0], off.look[1], off.look[2]);
+    controls.enabled = true;
+  }
 
   function followedSample() {
     if (follow < 1 || follow > household.length) return null;
@@ -2126,6 +2204,69 @@ async function bootSim() {
     return { agent, s };
   }
 
+  // 20e "동네 전체": frame home, the current destination and the route.
+  function frameOverview() {
+    followMode = "overview";
+    const pts = [];
+    const pushLL = (lon, lat) => {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      const [x, y] = lonLatToXY(lon, lat, origin);
+      pts.push([x, -y]);
+    };
+    const agent = household[follow - 1];
+    if (agent) {
+      const home = homeLonLat.get(agent.key);
+      if (home) pushLL(home[0], home[1]);
+    }
+    const h = hiState;
+    const trip = h && h.trip ? tripById.get(h.trip.id) : null;
+    if (trip && Array.isArray(trip.path)) {
+      for (const id of trip.path) {
+        const p = nodeLonLat.get(id);
+        if (p) pushLL(p[0], p[1]);
+      }
+    }
+    if (h && h.destNodeId) {
+      const p = nodeLonLat.get(h.destNodeId);
+      if (p) pushLL(p[0], p[1]);
+    }
+    if (h && h.rideAway && h.rideAway.stationNodeId) {
+      const p = nodeLonLat.get(h.rideAway.stationNodeId);
+      if (p) pushLL(p[0], p[1]);
+    }
+    if (pts.length === 0) return;
+    let cx = 0, cz = 0;
+    for (const p of pts) { cx += p[0]; cz += p[1]; }
+    cx /= pts.length; cz /= pts.length;
+    let radius = 150;
+    for (const p of pts) radius = Math.max(radius, Math.hypot(p[0] - cx, p[1] - cz));
+    const span = Math.min(4000, Math.max(300, radius * 2.6));
+    const dist = distanceForWidth(span, CAM.fovDeg, camera.aspect);
+    const [ox, oy, oz] = tourOffset(dist, CAM.pitchDeg, CAM.azimuth);
+    camera.position.set(cx + ox, oy, cz + oz);
+    controls.target.set(cx, 0, cz);
+    controls.enabled = true;
+  }
+
+  // 20e: the wheel zooms (followZoom 0.5–6), a drag orbits the followed
+  // target (followYaw). OrbitControls stays enabled; the per-frame pose
+  // below re-applies the stored offset, so both inputs land on screen.
+  if (renderer.domElement) {
+    renderer.domElement.addEventListener("wheel", (e) => {
+      if (!follow || followMode !== "follow") return;
+      followZoom = clampFollowZoom(followZoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12));
+    }, { passive: true });
+    let dragX = null;
+    renderer.domElement.addEventListener("pointerdown", (e) => { dragX = e.clientX; });
+    window.addEventListener("pointermove", (e) => {
+      if (dragX === null || !follow || followMode !== "follow") return;
+      if (e.buttons === 0) { dragX = null; return; }
+      followYaw += (e.clientX - dragX) * 0.25;
+      dragX = e.clientX;
+    });
+    window.addEventListener("pointerup", () => { dragX = null; });
+  }
+
   function paintFollow(dt, forceCaption) {
     if (!follow) {
       if (forceCaption) {
@@ -2133,6 +2274,11 @@ async function bootSim() {
         paintNow();
       }
       controls.enabled = true;
+      return;
+    }
+    if (followMode === "overview") {
+      controls.enabled = true;
+      if (forceCaption) paintNow();
       return;
     }
     // The journey camera owns follow mode while a station ride plays.
@@ -2152,18 +2298,23 @@ async function bootSim() {
     const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     const pos = new THREE.Vector3(x + ox, oy, -y + oz);
     const look = new THREE.Vector3(x, 2, -y);
+    const goal = applyFollowOffset(
+      { pos: [pos.x, pos.y, pos.z], look: [look.x, look.y, look.z] },
+      [look.x, look.y, look.z], { zoom: followZoom, yaw: followYaw });
+    const gpos = new THREE.Vector3(goal.pos[0], goal.pos[1], goal.pos[2]);
+    const glook = new THREE.Vector3(goal.look[0], goal.look[1], goal.look[2]);
     // Snap when far (a fast clock would lag behind); otherwise glide,
     // so the followed member stays in frame at any speed.
-    if (snapFollow || controls.target.distanceTo(look) > 60) {
-      camera.position.copy(pos);
-      controls.target.copy(look);
+    if (snapFollow || controls.target.distanceTo(glook) > 60) {
+      camera.position.copy(gpos);
+      controls.target.copy(glook);
       snapFollow = false;
     } else {
       const k = 1 - Math.pow(0.001, dt);
-      camera.position.lerp(pos, k);
-      controls.target.lerp(look, k);
+      camera.position.lerp(gpos, k);
+      controls.target.lerp(glook, k);
     }
-    controls.enabled = false;
+    controls.enabled = true;
     if (forceCaption) {
       paintNow();
       paintJudgeCaption(hit.agent.key);
@@ -2715,10 +2866,10 @@ async function bootSim() {
     if (jf.phase === "hold") {
       if (jf.destLonLat) {
         const pose = streetPose(jf.destLonLat);
-        camera.position.copy(pose.pos);
-        controls.target.copy(pose.look);
+        setFollowPose(pose.pos, pose.look);
+      } else {
+        controls.enabled = true;
       }
-      controls.enabled = false;
       journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
       return true;
@@ -2726,10 +2877,10 @@ async function bootSim() {
     if (jf.phase === "boarding") {
       if (jf.boardLonLat) {
         const pose = streetPose(jf.boardLonLat);
-        camera.position.copy(pose.pos);
-        controls.target.copy(pose.look);
+        setFollowPose(pose.pos, pose.look);
+      } else {
+        controls.enabled = true;
       }
-      controls.enabled = false;
       journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
       return true;
@@ -2755,9 +2906,7 @@ async function bootSim() {
       pos = regional.pos;
       look = regional.look;
     }
-    camera.position.copy(pos);
-    controls.target.copy(look);
-    controls.enabled = false;
+    setFollowPose(pos, look);
     // Regional depth range + fog (the street fit only spans ~1 km).
     // Fog follows the live camera-to-target distance (not altitude): the
     // line, the train and the stations stay clear of the haze. Far ≥ 6×.
@@ -3155,11 +3304,29 @@ async function bootSim() {
     setFollow: (next) => {
       follow = Math.min(household.length, Math.max(0, next));
       snapFollow = follow > 0;
+      followMode = "follow";
       store.set({ follow });
       applyFollowDim();
       paintFollow(0.016, true);
       ensureItinerary();
       paintTimeline();
+    },
+    showOverview: () => {
+      frameOverview();
+    },
+    resumeFollow: () => {
+      followZoom = 1;
+      followYaw = 0;
+      followMode = "follow";
+      snapFollow = true;
+      if (!follow && household.length > 0) {
+        follow = 1;
+        store.set({ follow });
+        applyFollowDim();
+        ensureItinerary();
+        paintTimeline();
+      }
+      paintFollow(0.016, true);
     },
     toggleStripCompare: async () => {
       store.set({ stripCompare: !store.getState().stripCompare });
@@ -3356,7 +3523,10 @@ async function bootSim() {
     }
   });
 
-  const refitSim = () => refitToWrap(camera, renderCtl, controls);
+  const refitSim = () => {
+    refitToWrap(camera, renderCtl, controls);
+    syncRouteResolution();
+  };
   addEventListener("resize", refitSim);
   new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }

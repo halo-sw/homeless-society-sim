@@ -178,7 +178,7 @@ describe("17-3 drawer moments section (SSR, no DOM)", () => {
     };
   }
 
-  it("shows three one-line cards open by default, under the score row", () => {
+  it("shows three one-line cards open by default, below the hero (20e now-first drawer)", () => {
     const html = renderToString(
       React.createElement(SimDrawer, { state: stateWith(MOMENTS) }));
     assert.ok(html.includes("살아 보니"), "section head");
@@ -192,8 +192,8 @@ describe("17-3 drawer moments section (SSR, no DOM)", () => {
       assert.ok(html.includes(`data-minute="${m.minute}"`), `${m.kind} seek minute`);
       assert.ok(html.includes("data-follow=\"1\""), `${m.kind} follow member`);
     }
-    assert.ok(html.indexOf("section-moments") < html.indexOf("sim-hero"),
-      "moments above the hero");
+    assert.ok(html.indexOf("sim-hero") < html.indexOf("section-moments"),
+      "moments below the hero (now first)");
   });
 
   it("hides quietly without moments", () => {
