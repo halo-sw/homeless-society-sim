@@ -897,8 +897,19 @@ export function chatChipsFor(currency) {
 }
 
 // 27b2: every message goes to Muse when live; the rule flow is the fallback.
-export function routeTurn({ live, museDown }) {
-  return live && !museDown ? "agent" : "local";
+// 27j: Muse gets another chance next turn until 3 straight failures.
+export function routeTurn({ live, museFails = 0, museDown }) {
+  const fails = museDown === true ? 3 : museFails;
+  return live && fails < 3 ? "agent" : "local";
+}
+
+// 27j: the rules path always answers — fallback line when nothing else replied.
+export function localNoAnswerLine(text) {
+  const t = String(text || "");
+  if (t.includes("찜")) return "찜은 후보 카드의 ‘담기’로 할 수 있어요.";
+  if (t.includes("동네")) return "동네는 후보 카드의 3D 미리보기에서 볼 수 있어요.";
+  if (t.includes("살아")) return "두 곳을 담으면 지도 아래 ‘이 집들로 30일 살아 보기’로 시작할 수 있어요.";
+  return "이 요청은 Muse가 다시 연결되면 할 수 있어요. 잠시 뒤 다시 말씀해 주세요.";
 }
 
 // 27b2: one live tool row as a busy-bubble line.
@@ -1150,8 +1161,8 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
-  // 27b2: Muse down → rules answer; liveRows → the busy bubble rows.
-  const [museDown, setMuseDown] = useState(false);
+  // 27j: straight Muse failures (3 → rules answer); liveRows → the busy bubble rows.
+  const [museFails, setMuseFails] = useState(0);
   const [liveRows, setLiveRows] = useState([]);
   const [error, setError] = useState("");
   // 13f: usage lives in the 설정 sheet's 모델 section (usage log).
@@ -1823,14 +1834,18 @@ export function ChatScreen() {
         latencyMs: out.latencyMs || 0,
       }));
       setModelErrors((e) => ({ ...e, [provider]: null }));
+      setMuseFails(0);
     } catch (err) {
       setLiveRows([]);
       setModelErrors((e) => ({ ...e, [provider]: {
         httpStatus: err.httpStatus || null, message: String(err.message || err).slice(0, 200),
       } }));
-      // 27b2: Muse is down — one system line, then the rules answer.
-      setMuseDown(true);
-      pushMsg({ role: "system", kind: "system", content: "Muse 연결이 안 돼서 규칙으로 답했어요" });
+      // 27j: count straight failures; Muse gets another chance on the next turn.
+      const fails = (typeof museFails === "number" ? museFails : 0) + 1;
+      setMuseFails(fails);
+      pushMsg({ role: "system", kind: "system", content: fails >= 3
+        ? "Muse 연결이 계속 안 돼서 규칙으로 이어 갈게요"
+        : "Muse 답이 늦어서 이번엔 규칙으로 답했어요. 다시 말하면 Muse가 이어받아요" });
       await structuredFlow(text);
     }
   }
@@ -1876,10 +1891,12 @@ export function ChatScreen() {
     setError("");
     pushMsg({ role: "user", kind: "text", content });
     setComposer("");
+    // 27j: the rules path always answers — count replies added after this point.
+    const before = stateRef.current.messages.length;
     try {
       if (content === "매물 글 붙여 넣기") {
         pushMsg({ role: "assistant", kind: "listing", data: {} });
-      } else if (routeTurn({ live: LIVE_API, museDown }) === "agent") {
+      } else if (routeTurn({ live: LIVE_API, museFails }) === "agent") {
         await askAgent(content);
       } else if (/check_listing으로 확인해줘|add_listing_c로 C에 추가해줘|C로 추가해줘/.test(content)) {
         pushMsg({ role: "assistant", kind: "text",
@@ -1919,6 +1936,17 @@ export function ChatScreen() {
         }
       } else {
         await structuredFlow(content);
+      }
+      // 27j: the rules path always answers — fallback line when nothing replied.
+      if (routeTurn({ live: LIVE_API, museFails }) !== "agent") {
+        const msgs = stateRef.current.messages;
+        let answered = false;
+        for (let i = before; i < msgs.length; i++) {
+          if (msgs[i] && msgs[i].role !== "user") { answered = true; break; }
+        }
+        if (!answered) {
+          pushMsg({ role: "assistant", kind: "text", content: localNoAnswerLine(content) });
+        }
       }
     } catch (err) {
       setError(String((err && err.message) || err));
