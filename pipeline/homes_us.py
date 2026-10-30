@@ -63,14 +63,21 @@ def load_zori(csv_path: str | Path) -> dict[str, dict]:
     return zori
 
 
-def postcode_points(pbf_path: str | Path) -> list[tuple[float, float, str]]:
-    """Every node/way/relation in the extract with an ``addr:postcode``."""
+def address_points(pbf_path: str | Path) -> dict:
+    """Scan once for postcode points and OSM address points.
+
+    Returns ``{"postcodes": [(lon, lat, zip)],
+    "addresses": [(lon, lat, housenumber, street)]}``.  An address is
+    any node/way/relation with both ``addr:housenumber`` and
+    ``addr:street``; ways use the centroid, as with postcodes.
+    """
     import osmium
 
     class _Scan(osmium.SimpleHandler):
         def __init__(self) -> None:
             super().__init__()
             self.points: list[tuple[float, float, str]] = []
+            self.addresses: list[tuple[float, float, str, str]] = []
             self._nodes: dict[int, tuple[float, float]] = {}
             self._ways: dict[int, tuple[float, float]] = {}
 
@@ -83,6 +90,18 @@ def postcode_points(pbf_path: str | Path) -> list[tuple[float, float, str]]:
             m = ZIP_RE.match(str(raw).strip())
             return m.group(1) if m else None
 
+        @staticmethod
+        def _addr(tags) -> tuple[str, str] | None:
+            try:
+                house = tags.get("addr:housenumber") or ""
+                street = tags.get("addr:street") or ""
+            except (AttributeError, LookupError):
+                return None
+            house, street = str(house).strip(), str(street).strip()
+            if not house or not street:
+                return None
+            return house, street
+
         def node(self, n) -> None:
             if n.location.valid():
                 xy = (n.location.lon, n.location.lat)
@@ -90,6 +109,9 @@ def postcode_points(pbf_path: str | Path) -> list[tuple[float, float, str]]:
                 z = self._zip(n.tags)
                 if z:
                     self.points.append((xy[0], xy[1], z))
+                a = self._addr(n.tags)
+                if a:
+                    self.addresses.append((xy[0], xy[1], a[0], a[1]))
 
         def way(self, w) -> None:
             try:
@@ -105,10 +127,14 @@ def postcode_points(pbf_path: str | Path) -> list[tuple[float, float, str]]:
             z = self._zip(w.tags)
             if z:
                 self.points.append((xy[0], xy[1], z))
+            a = self._addr(w.tags)
+            if a:
+                self.addresses.append((xy[0], xy[1], a[0], a[1]))
 
         def relation(self, r) -> None:
             z = self._zip(r.tags)
-            if not z:
+            a = self._addr(r.tags)
+            if not z and not a:
                 return
             xs, ys = [], []
             try:
@@ -122,13 +148,137 @@ def postcode_points(pbf_path: str | Path) -> list[tuple[float, float, str]]:
                 elif m.type == "w" and m.ref in self._ways:
                     xs.append(self._ways[m.ref][0])
                     ys.append(self._ways[m.ref][1])
-            if xs:
-                self.points.append((sum(xs) / len(xs),
-                                    sum(ys) / len(ys), z))
+            if not xs:
+                return
+            xy = (sum(xs) / len(xs), sum(ys) / len(ys))
+            if z:
+                self.points.append((xy[0], xy[1], z))
+            if a:
+                self.addresses.append((xy[0], xy[1], a[0], a[1]))
 
     scan = _Scan()
     scan.apply_file(str(pbf_path), locations=True)
-    return scan.points
+    return {"postcodes": scan.points, "addresses": scan.addresses}
+
+
+def postcode_points(pbf_path: str | Path) -> list[tuple[float, float, str]]:
+    """Every node/way/relation in the extract with an ``addr:postcode``."""
+    return address_points(pbf_path)["postcodes"]
+
+
+def _point_in_ring(lon: float, lat: float, ring: list) -> bool:
+    inside = False
+    n = len(ring)
+    if n < 3:
+        return False
+    x, y = lon, lat
+    j = n - 1
+    for i in range(n):
+        try:
+            xi, yi = float(ring[i][0]), float(ring[i][1])
+            xj, yj = float(ring[j][0]), float(ring[j][1])
+        except (IndexError, TypeError, ValueError):
+            j = i
+            continue
+        if ((yi > y) != (yj > y)) and (
+                x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _as_ring_list(ring) -> list | None:
+    if ring is None:
+        return None
+    if isinstance(ring, dict):
+        coords = ring.get("coordinates")
+        gtype = ring.get("type")
+        if gtype == "Polygon" and coords:
+            return list(coords[0]) if coords else None
+        if gtype == "MultiPolygon" and coords:
+            best = None
+            best_n = 0
+            for poly in coords:
+                if poly and len(poly[0]) > best_n:
+                    best, best_n = list(poly[0]), len(poly[0])
+            return best
+        return None
+    if hasattr(ring, "exterior"):
+        try:
+            return [(c[0], c[1]) for c in list(ring.exterior.coords)]
+        except (AttributeError, TypeError, ValueError):
+            pass
+    if hasattr(ring, "contains") or hasattr(ring, "covers"):
+        return ring
+    if isinstance(ring, (list, tuple)):
+        return list(ring)
+    return None
+
+
+def _ring_contains(ring, lon: float, lat: float) -> bool:
+    norm = _as_ring_list(ring)
+    if norm is None:
+        return False
+    if hasattr(norm, "contains") or hasattr(norm, "covers"):
+        try:
+            from shapely.geometry import Point
+            pt = Point(lon, lat)
+            if hasattr(norm, "covers"):
+                try:
+                    if norm.covers(pt):
+                        return True
+                except Exception:
+                    pass
+            return bool(norm.contains(pt))
+        except Exception:
+            return False
+    return _point_in_ring(lon, lat, norm)
+
+
+def _ring_area(ring: list) -> float:
+    try:
+        pts = [(float(p[0]), float(p[1])) for p in ring]
+    except (IndexError, TypeError, ValueError):
+        return 0.0
+    if len(pts) < 3:
+        return 0.0
+    area = 0.0
+    for i in range(len(pts) - 1):
+        area += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1]
+    return abs(area) / 2.0
+
+
+def nearest_address(lon: float, lat: float,
+                    addresses: list[tuple[float, float, str, str]],
+                    max_m: float = 40, ring=None) -> str | None:
+    """``"<housenumber> <street>"`` of the nearest address within ``max_m``.
+
+    When ``ring`` (a building polygon, shapely or a ring list) is given,
+    an address whose point lies inside it wins over a closer one outside.
+    """
+    if not addresses:
+        return None
+    scored = []
+    for rec in addresses:
+        try:
+            alon, alat, house, street = rec
+        except (TypeError, ValueError):
+            continue
+        d = haversine_m(lon, lat, alon, alat)
+        if d <= max_m:
+            scored.append((d, alon, alat, str(house).strip(),
+                           str(street).strip()))
+    if not scored:
+        return None
+    if ring is not None:
+        inside = [(d, alon, alat, house, street) for
+                  (d, alon, alat, house, street) in scored
+                  if _ring_contains(ring, alon, alat)]
+        if inside:
+            inside.sort(key=lambda t: t[0])
+            return f"{inside[0][3]} {inside[0][4]}"
+    scored.sort(key=lambda t: t[0])
+    return f"{scored[0][3]} {scored[0][4]}"
 
 
 def zip_for(lon: float, lat: float,
@@ -248,10 +398,41 @@ def _has_name(name: object) -> bool:
     return bool(name) and not NO_NAME_RE.match(str(name).strip())
 
 
+def _building_ring(geom: dict | None) -> list | None:
+    if not isinstance(geom, dict):
+        return None
+    coords = geom.get("coordinates")
+    if geom.get("type") == "Polygon" and coords and coords[0]:
+        return list(coords[0])
+    if geom.get("type") == "MultiPolygon" and coords:
+        best, best_a = None, -1.0
+        for poly in coords:
+            if poly and poly[0]:
+                a = _ring_area(poly[0])
+                if a > best_a:
+                    best, best_a = list(poly[0]), a
+        return best
+    return None
+
+
+def _building_area(geom: dict | None) -> float:
+    ring = _building_ring(geom)
+    return _ring_area(ring) if ring else 0.0
+
+
 def build_us_homes(area_dir: str | Path, zori: dict[str, dict],
-                   points: list[tuple[float, float, str]],
-                   stats: dict | None = None) -> list[dict]:
+                   points=None,
+                   stats: dict | None = None,
+                   addresses: list | None = None) -> list[dict]:
     """Group OSM apartment buildings into homes with ZORI rent."""
+    if isinstance(points, dict):
+        if addresses is None:
+            addresses = points.get("addresses") or []
+        points = points.get("postcodes") or []
+    if points is None:
+        points = []
+    if addresses is None:
+        addresses = []
     area_dir = Path(area_dir)
     payload = json.loads((area_dir / "buildings.json").read_text(
         encoding="utf-8"))
@@ -337,13 +518,24 @@ def build_us_homes(area_dir: str | Path, zori: dict[str, dict],
         if name is not None:
             home_name, match = name, "osm_name"
         else:
-            road = _nearest_road_name(lon, lat, roads)
-            if road:
-                home_name = f"Apartments on {road}"
+            addr = None
+            if addresses:
+                big = max(idxs, key=lambda i: (
+                    _building_area(cands[i][0].get("geometry")), i))
+                bloc, blat = cands[big][1], cands[big][2]
+                bring = _building_ring(cands[big][0].get("geometry"))
+                addr = nearest_address(bloc, blat, addresses, 40,
+                                       ring=bring)
+            if addr:
+                home_name, match = addr, "osm_address"
             else:
-                fallback_n += 1
-                home_name = f"Apartment building {fallback_n}"
-            match = "osm"
+                road = _nearest_road_name(lon, lat, roads)
+                if road:
+                    home_name = f"Apartments on {road}"
+                else:
+                    fallback_n += 1
+                    home_name = f"Apartment building {fallback_n}"
+                match = "osm"
         usd = z["monthly_usd"]
         st = nearest_station_walk(lon, lat, box)
         station = None
@@ -404,6 +596,15 @@ def build_us_homes(area_dir: str | Path, zori: dict[str, dict],
                       "label": ZORI_LABEL},
             "work_targets": work_targets,
         })
+    by_name: dict[str, list[int]] = defaultdict(list)
+    for k, h in enumerate(homes):
+        by_name[h["name"]].append(k)
+    for dup_name, keys in by_name.items():
+        if len(keys) > 1:
+            ordered = sorted(keys, key=lambda k: (-homes[k]["lat"],
+                                                  homes[k]["lon"]))
+            for n, k in enumerate(ordered, start=1):
+                homes[k]["name"] = f"{dup_name} · {n}"
     if stats is not None:
         stats["dropped_no_zori"] = dropped
     return homes
@@ -416,9 +617,12 @@ def run_us_homes(build_dir: str | Path = DEFAULT_BUILD_DIR,
     area_dir = build_dir / AREA_ID
     zori = load_zori(raw_dir / ZORI_CSV)
     extract = area_dir / "extract.osm.pbf"
-    points = postcode_points(extract) if extract.exists() else []
+    scanned = address_points(extract) if extract.exists() else {
+        "postcodes": [], "addresses": []}
+    points = scanned["postcodes"]
     stats: dict = {}
-    homes = build_us_homes(area_dir, zori, points, stats=stats)
+    homes = build_us_homes(area_dir, zori, points, stats=stats,
+                           addresses=scanned["addresses"])
 
     out_dir = build_dir / "homes"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -454,6 +658,10 @@ def run_us_homes(build_dir: str | Path = DEFAULT_BUILD_DIR,
 
     zips: dict[str, int] = {}
     named = sum(1 for h in homes if h["match"] == "osm_name")
+    named_by_address = sum(1 for h in homes
+                           if h["match"] == "osm_address")
+    names = [h["name"] for h in homes]
+    duplicate_names_after = len(names) - len(set(names))
     with_station = sum(1 for h in homes if h.get("station"))
     bikes = [h["work_targets"]["meta-hq"]["bike_minutes"]
              for h in homes
@@ -467,6 +675,8 @@ def run_us_homes(build_dir: str | Path = DEFAULT_BUILD_DIR,
         "homes": len(homes),
         "named": named,
         "unnamed": len(homes) - named,
+        "named_by_address": named_by_address,
+        "duplicate_names_after": duplicate_names_after,
         "dropped_no_zori": stats.get("dropped_no_zori", 0),
         "zips": zips,
         "station_walk_share": (round(with_station / len(homes), 3)

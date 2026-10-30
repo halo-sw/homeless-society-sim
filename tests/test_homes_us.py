@@ -11,8 +11,8 @@ import pipeline.extract as extract_mod
 import pipeline.graph as graph_mod
 import pipeline.osm_parse as osm_parse_mod
 from pipeline.areas import US_RAW_PBF
-from pipeline.homes_us import (build_us_homes, load_zori, run_us_homes,
-                               zip_for)
+from pipeline.homes_us import (build_us_homes, load_zori, nearest_address,
+                               run_us_homes, zip_for)
 from pipeline.scene import run_scene
 
 LON0, LAT0 = -122.14823, 37.48485
@@ -111,10 +111,10 @@ def test_build_us_homes_grouping_and_fields(tmp_path: Path) -> None:
     assert live["name"] == "Live Oak Apartments"
     assert live["match"] == "osm_name"
     assert live["osm_name"] == "Live Oak Apartments"
-    assert bldg_a["name"] == "Apartments on Oak Ave"
+    assert bldg_a["name"] == "Apartments on Oak Ave · 1"
     assert bldg_a["match"] == "osm"
     assert bldg_a["osm_name"] is None
-    assert unnamed["name"] == "Apartments on Oak Ave"
+    assert unnamed["name"] == "Apartments on Oak Ave · 2"
     assert not any(h["name"] == "Grad Housing" for h in homes)
 
     for h in homes:
@@ -141,6 +141,53 @@ def test_build_us_homes_grouping_and_fields(tmp_path: Path) -> None:
     assert hq["bike_minutes"] == round(88.0 / (15 / 3.6) / 60, 1)
     assert hq["bike_speed_kmh"] == 15
     assert hq["bike_speed_source"] == "assumed"
+
+
+def test_nearest_address_near_and_far() -> None:
+    addresses = [(LON0, LAT0, "12", "Bay Road")]
+    assert nearest_address(LON0, LAT0 + 0.00009, addresses) == "12 Bay Road"
+    assert nearest_address(LON0, LAT0 + 0.00060, addresses) is None
+
+
+def test_nearest_address_inside_ring_wins() -> None:
+    close = (LON0, LAT0 + 0.00009, "10", "Close Street")
+    far_lat = LAT0 + 0.00027
+    far = (LON0, far_lat, "30", "Far Street")
+    ring = _sq(LON0, far_lat)
+    assert nearest_address(LON0, LAT0, [close, far],
+                           ring=ring) == "30 Far Street"
+
+
+def test_build_us_homes_address_and_duplicates(tmp_path: Path) -> None:
+    area_dir = tmp_path / "us-menlo"
+    barch_lon = LON0 + 0.003
+    b1_lat, b2_lat, b3_lat = LAT0 + 0.002, LAT0 + 0.001, LAT0
+    _write(area_dir, "buildings.json", {"buildings": [
+        _building("c1", "apartments", None, barch_lon, b1_lat),
+        _building("c2", "apartments", None, barch_lon, b2_lat),
+        _building("c3", "apartments", None, barch_lon, b3_lat),
+    ]})
+    _write(area_dir, "area.json", {
+        "area": "us-menlo",
+        "roads": [{"id": "w1", "highway": "residential", "name": "Bay Road",
+                   "geometry": {"type": "LineString",
+                                "coordinates": [[LON0, LAT0],
+                                                [LON0 + 0.004, LAT0]]}}],
+        "pois": [],
+        "workplaces": [],
+    })
+    _write(area_dir, "graph.json",
+           {"nodes": {}, "edges": {"walk": [], "bike": [], "drive": []}})
+    points = [(barch_lon, b2_lat, "94025")]
+    addresses = [(barch_lon, b1_lat + 0.000045, "12", "Bay Road")]
+    homes = build_us_homes(area_dir, ZORI, points, addresses=addresses)
+
+    assert homes[0]["name"] == "12 Bay Road"
+    assert homes[0]["match"] == "osm_address"
+    rest = sorted(homes[1:], key=lambda h: -h["lat"])
+    assert rest[0]["name"] == "Apartments on Bay Road · 1"
+    assert rest[1]["name"] == "Apartments on Bay Road · 2"
+    assert len({h["name"] for h in homes}) == 3
 
 
 def test_run_us_homes_summary_and_idempotent(tmp_path: Path) -> None:
