@@ -9,7 +9,7 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
-import { buildingCard, labelItemsFor, placeLabels } from "./labels3d.js";
+import { buildingCard, destSuffixFor, labelItemsFor, placeLabels } from "./labels3d.js";
 import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
@@ -1740,7 +1740,7 @@ async function bootSim() {
         destination: hiState.destLabel
           ? { label: hiState.destLabel, lonlat: destLonLat || undefined }
           : null,
-        destinationSuffix: destSuffixFor(tripNow),
+        destinationSuffix: destSuffixFor(tripNow, run.aways),
         cameraDistM: camDist,
       });
       const canvasEl = document.getElementById("scene");
@@ -2039,30 +2039,10 @@ async function bootSim() {
     bgMesh.material.needsUpdate = true;
   }
 
-  // 20e: the destination pill — "{to} · {출근|장보기|병원|산책} 가는 곳".
-  // The walk leg of a commute ends at the station, so it reads
-  // "잠실역 · 지하철 타는 곳" instead of guessing the workplace.
-  const TRIP_VERB_20E = { commute: "출근", school: "등교",
-    errand: "장보기", clinic: "병원", park: "산책" };
-  function destPillText(destLabel, trip) {
-    const base = destLabel || "";
-    if (!base) return "";
-    if (trip && trip.purpose === "commute" && /역$/.test(base)) {
-      return `${base} · 지하철 타는 곳`;
-    }
-    const verb = trip ? TRIP_VERB_20E[trip.purpose] : "";
-    return verb ? `${base} · ${verb} 가는 곳` : `${base} · 가는 곳`;
-  }
-  function destSuffixFor(trip) {
-    if (!trip) return "";
-    if (trip.purpose === "commute") {
-      const to = (trip.to && (trip.to.label || trip.to.id)) || "";
-      if (/역$/.test(to)) return "지하철 타는 곳";
-      return "출근 가는 곳";
-    }
-    const verb = TRIP_VERB_20E[trip.purpose];
-    return verb ? `${verb} 가는 곳` : "";
-  }
+  // 20f: destination pill wording lives in labels3d.js (pure, tested).
+  // The walk leg of a commute ends at the station, so the text is decided
+  // by the trip (a ride follows within 30 min, or the trip ends at a
+  // station node) — not by whether the name ends in 역.
 
   function paintHighlightFrame() {
     if (pulse) {
@@ -2092,7 +2072,9 @@ async function bootSim() {
       routeDone.visible = true;
       const dp = h.destNodeId ? nodeWorld(h.destNodeId, 0) : null;
       if (dp && h.destLabel) {
-        paintTagPin(destPin, dp.x, tagY(dp.x, dp.z, 10), dp.z, destPillText(h.destLabel, trip));
+        // 20f: the 20b destination label already carries this pill —
+        // painting destPin too would draw it twice.
+        destPin.style.display = "none";
         destMark.position.set(dp.x, tagY(dp.x, dp.z, 3), dp.z);
         destMark.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
         destMark.visible = true;
@@ -2194,6 +2176,10 @@ async function bootSim() {
     camera.position.set(off.pos[0], off.pos[1], off.pos[2]);
     controls.target.set(off.look[0], off.look[1], off.look[2]);
     controls.enabled = true;
+    // 20f: while following, only our wheel/drag handlers act —
+    // OrbitControls' own dolly/rotate would fight the follow offset.
+    controls.enableZoom = false;
+    controls.enableRotate = false;
   }
 
   function followedSample() {
@@ -2246,11 +2232,15 @@ async function bootSim() {
     camera.position.set(cx + ox, oy, cz + oz);
     controls.target.set(cx, 0, cz);
     controls.enabled = true;
+    // 20f: overview is user-driven — hand zoom/rotate back to OrbitControls.
+    controls.enableZoom = true;
+    controls.enableRotate = CAM.rotate;
   }
 
-  // 20e: the wheel zooms (followZoom 0.5–6), a drag orbits the followed
-  // target (followYaw). OrbitControls stays enabled; the per-frame pose
-  // below re-applies the stored offset, so both inputs land on screen.
+  // 20f: the wheel zooms (followZoom 0.5–6, down zooms out), a drag
+  // orbits the followed target (followYaw). OrbitControls' own zoom and
+  // rotate are off while following (see setFollowPose), so only these
+  // handlers move the camera; the per-frame pose re-applies the offset.
   if (renderer.domElement) {
     renderer.domElement.addEventListener("wheel", (e) => {
       if (!follow || followMode !== "follow") return;
@@ -2274,10 +2264,16 @@ async function bootSim() {
         paintNow();
       }
       controls.enabled = true;
+      // 20f: free camera — OrbitControls owns zoom/rotate again.
+      controls.enableZoom = true;
+      controls.enableRotate = CAM.rotate;
       return;
     }
     if (followMode === "overview") {
       controls.enabled = true;
+      // 20f: overview (동네 전체) is user-driven — restore OrbitControls.
+      controls.enableZoom = true;
+      controls.enableRotate = CAM.rotate;
       if (forceCaption) paintNow();
       return;
     }
@@ -2303,6 +2299,10 @@ async function bootSim() {
       [look.x, look.y, look.z], { zoom: followZoom, yaw: followYaw });
     const gpos = new THREE.Vector3(goal.pos[0], goal.pos[1], goal.pos[2]);
     const glook = new THREE.Vector3(goal.look[0], goal.look[1], goal.look[2]);
+    // 20f: the walk branch applies the same follow offset (zoom/yaw)
+    // as setFollowPose above — OrbitControls stays out of it.
+    controls.enableZoom = false;
+    controls.enableRotate = false;
     // Snap when far (a fast clock would lag behind); otherwise glide,
     // so the followed member stays in frame at any speed.
     if (snapFollow || controls.target.distanceTo(glook) > 60) {
@@ -2869,6 +2869,8 @@ async function bootSim() {
         setFollowPose(pose.pos, pose.look);
       } else {
         controls.enabled = true;
+        controls.enableZoom = false;
+        controls.enableRotate = false;
       }
       journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
@@ -2880,6 +2882,8 @@ async function bootSim() {
         setFollowPose(pose.pos, pose.look);
       } else {
         controls.enabled = true;
+        controls.enableZoom = false;
+        controls.enableRotate = false;
       }
       journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);

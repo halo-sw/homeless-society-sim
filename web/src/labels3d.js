@@ -360,3 +360,63 @@ export function buildingCard(building) {
     source: "OpenStreetMap",
   };
 }
+
+// Stage 20f: destination pill wording (pure, no DOM).
+//
+// The walk leg of a commute ends at the station ("잠실", not "잠실역"),
+// so the pill is decided by the trip — not by the name: a commute walk
+// followed by a ride reads "{label}역 · 지하철 타는 곳". The 역 is never
+// doubled ("강남역" stays "강남역").
+const TRIP_VERB_20F = { commute: "출근", school: "등교",
+  errand: "장보기", clinic: "병원", park: "산책" };
+
+export function stationNameFor(base) {
+  const b = String(base || "");
+  return /역$/.test(b) ? b : `${b}역`;
+}
+
+function tripToOf(trip) {
+  return (trip && trip.to) || {};
+}
+
+// A commute walk is station-bound when the trip's destination is a
+// station node, when the destination name already ends in 역, or when a
+// ride away for the same agent and day starts within 30 min of arrival.
+// aways is the run's away list (filtered inside by agent and day).
+export function isStationBoundCommute(trip, aways) {
+  if (!trip || trip.purpose !== "commute") return false;
+  const to = tripToOf(trip);
+  const toLabel = to.label || to.id || "";
+  if (/역$/.test(toLabel)) return true;
+  if (to.kind === "station") return true;
+  if (/station|railway/i.test(String(to.category || ""))) return true;
+  if (Number.isFinite(trip.arrive_min) && Array.isArray(aways)) {
+    for (const a of aways) {
+      if (!a || a.agent !== trip.agent || a.day !== trip.day) continue;
+      if (!Number.isFinite(a.start_min)) continue;
+      const dt = a.start_min - trip.arrive_min;
+      if (dt >= 0 && dt <= 30) return true;
+    }
+  }
+  return false;
+}
+
+// "{to} · {출근|장보기|병원|산책} 가는 곳" — the station-bound commute
+// walk reads "지하철 타는 곳" instead.
+export function destPillText(destLabel, trip, aways) {
+  const base = destLabel || "";
+  if (!base) return "";
+  if (isStationBoundCommute(trip, aways)) {
+    return `${stationNameFor(base)} · 지하철 타는 곳`;
+  }
+  const verb = trip ? TRIP_VERB_20F[trip.purpose] : "";
+  return verb ? `${base} · ${verb} 가는 곳` : `${base} · 가는 곳`;
+}
+
+export function destSuffixFor(trip, aways) {
+  if (!trip) return "";
+  if (isStationBoundCommute(trip, aways)) return "지하철 타는 곳";
+  if (trip.purpose === "commute") return "출근 가는 곳";
+  const verb = TRIP_VERB_20F[trip.purpose];
+  return verb ? `${verb} 가는 곳` : "";
+}
