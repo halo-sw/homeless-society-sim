@@ -16,7 +16,7 @@ import { checkConsultReply, numbersOnlyAnswer, actionConfirmation, isMostlyKorea
 // message before the final completion so it sits after the tool results
 // (Korean tool output otherwise drags the model back to Korean).
 const ENGLISH_NOTE =
-  "The customer reads English. Answer in plain English. Write place and station names romanized with the Korean once in parentheses, e.g. Gangnam Stn (강남역). Write money as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M. Every rule above still applies.";
+  "The customer reads English. Answer in plain English. Write place and station names romanized with the Korean once in parentheses, e.g. Gangnam Stn (강남역). Write money as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M. Every rule above still applies. Write the [[다음: …]] suggestions in English too, e.g. [[다음: Compare them | Show the commute | Live in both]].";
 const ENGLISH_RETRY_NOTE =
   "Your last answer was in Korean. Rewrite it in plain English with the same facts and numbers.";
 
@@ -29,7 +29,7 @@ function lastUserText(messages) {
 }
 
 export const SYSTEM_PROMPT = [
-  "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 한국어로 짧게 답한다. 반말은 절대 쓰지 않는다.",
+  "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 고객의 화면 언어로(기본 한국어, 영어 화면이면 영어로) 짧게 답한다. 반말은 절대 쓰지 않는다.",
   "너는 Ithaca의 Muse다. 고객의 집 고민을 대화로 돕는다. 앱의 기능은 모두 네 도구다: 찾기(find_homes), 매물 읽기(parse_listing·check_listing), 비교(compare), 30일 살아 보기(start_life_run), 생활비·전세·지원 제도·안전·교육·출근길 도구.",
   "질문은 한 번에 하나만 짧게 한다. 설문처럼 여러 개를 묻지 않는다. 모르는 값은 기본값으로 두고 '가정'이라고 밝힌다. 출근지나 예산 중 하나라도 있으면 extract_profile 다음 바로 find_homes로 후보를 보여 준다. 우선순위는 고객이 말할 때만 set_priorities로 기록한다.",
   "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support. 동네를 물으면 neighborhood로 걸어서 몇 분인지 확인해 답하고 open_panel(panel=tour, candidate_id)로 3D 동네를 연다. 출근길(commute)과 결과(result) 장면은 살아 보기가 끝난 뒤에만 연다.",
@@ -53,7 +53,7 @@ export const SYSTEM_PROMPT = [
   "쉬운 말로 설명한다: '월 주거비'는 '전세로 살면 매달 집에 드는 돈'처럼 일상 말로 풀고, '부담률'은 '월급에서 집에 나가는 비율'이라고만 말하고, '피로도'는 '피곤한 정도'라고 말한다. 전문용어는 꼭 필요할 때만 쓰고 바로 풀어 설명한다.",
   "돈 계산을 보여준 뒤에는 '어떻게 계산했나요?라고 물어보시면 재료를 풀어 설명해 드립니다'라고 덧붙이고, 물으면 도구 결과의 재료(무슨 값을 더했는지)와 가정(무엇을 정해 두었는지)을 한 줄씩 밝힌다.",
   "출퇴근 경로 질문에는 get_journey로 노선·소요 분할·붐비는 정도를 답한다(합계는 고객님이 정한 값, 붐비는 정도는 서울교통공사 실측 또는 정해 둔 값과 출처를 함께 밝힌다). 피곤한 정도 질문에는 get_fatigue로 답하고, 항상 '피곤한 정도는 가정으로 계산한 값이에요. 건강·의학적 판단이 아니에요'라고 밝히고, 쓴 기준 id(C-congestion·C-fatigue-load·C-fatigue-recovery)와 자료 출처를 함께 밝힌다. 피곤한 정도로 건강 조언을 하지 않는다.",
-  "오늘 고를 수 있는 지역은 서울 성동구·송파구·강남구·강동구, 성남 분당구·수정구·중원구, 용인 수지구, 위례이고, 3D 상자는 list_areas 목록에 있는 역세권뿐이다. 공공임대는 송파·성동·분당 자료만 있어 다른 지역은 '이 지역 공공임대 자료 없음'이라 밝힌다.",
+  "오늘 고를 수 있는 지역은 서울 성동구·송파구·강남구·강동구, 성남 분당구·수정구·중원구, 용인 수지구, 위례이고, 미국 캘리포니아 Menlo Park · East Palo Alto(Meta 본사 1 Hacker Way 주변, 월세는 USD)도 고를 수 있다. 미국 집은 월세(USD) 후보만 있고 전세·매매·공공임대·한국 지원 제도는 해당 없음이라 밝힌다. 3D 상자는 list_areas 목록에 있는 역세권뿐이다. 공공임대는 송파·성동·분당 자료만 있어 다른 지역은 '이 지역 공공임대 자료 없음'이라 밝힌다.",
   "시뮬레이션은 현실 예측이 아니라 '가정한 조건의 시나리오'임을 분명히 한다. 현실을 예언하는 표현을 쓰지 않는다.",
   "decisions=muse 실행은 느리고 비용이 든다: 실행 전에 경고하고 고객 확인을 받는다. 한 대화에서 1회까지만.",
   "설명할 때는 set_view로 화면을 함께 보여준다(홈·일차·시간·따라가기).",
@@ -102,6 +102,12 @@ export const PANEL_KO = {
 // marker off a reply. The marker line is never shown as answer text.
 // The marker must sit at the very end: on its own last line or after
 // text on the same line. A marker followed by more text is not split.
+// 29a7: every final-answer branch in English mode retries once when the
+// accepted text is still mostly Korean.
+export function needsEnglishRetry(text, isEnglish) {
+  return !!(isEnglish && isMostlyKorean(String(text || "")));
+}
+
 export function splitSuggestions(reply) {
   const text = String(reply || "");
   const m = text.match(/\[\[\s*(?:다음|Next)\s*:\s*([^\]]+?)\s*\]\]\s*$/);
@@ -294,10 +300,12 @@ export async function runTurn(opts) {
   if (contextLine) {
     history.push({ role: "system", content: contextLine });
   }
-  if (context && context.lang === "en") {
-    history.push({ role: "system", content: ENGLISH_NOTE });
-  }
   const isEnglish = !!(context && context.lang === "en");
+  // 29a7: in English mode ENGLISH_NOTE is the last system message of
+  // every provider request in the turn, not only after tool results.
+  const requestMessages = (extra = []) => isEnglish
+    ? [...history, ...extra, { role: "system", content: ENGLISH_NOTE }]
+    : [...history, ...extra];
   const appended = []; // new messages for the browser to keep
   const toolCalls = []; // compact rows for the UI
   const toolResults = []; // parsed results, in order (guard scope)
@@ -312,15 +320,36 @@ export async function runTurn(opts) {
   let view = null;
   let rounds = 0;
 
+  // 29a7: one English rewrite of an accepted reply ("same facts and
+  // numbers"). Returns the split reply plus its guard verdict; callers
+  // keep the retry text when it passes, never the first Korean reply.
+  async function englishRewrite(reply) {
+    const retry = await complete({
+      provider,
+      messages: requestMessages([
+        { role: "assistant", content: reply },
+        { role: "system", content: ENGLISH_RETRY_NOTE }]),
+    });
+    usage.prompt_tokens += (retry.usage && retry.usage.prompt_tokens) || 0;
+    usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
+    usage.calls++;
+    const text = (retry.message && retry.message.content) || "";
+    const split = splitSuggestions(text);
+    return { split, checked: checkConsultReply(split.text, toolResults) };
+  }
+  // A guard-fallback text rewritten in English when it is still Korean;
+  // the original is kept unless the rewrite passes the guard in English.
+  async function englishFallback(fallback) {
+    if (!needsEnglishRetry(fallback, isEnglish)) return null;
+    const en = await englishRewrite(fallback);
+    if (en.checked.ok && !isMostlyKorean(en.split.text)) return en.split;
+    return null;
+  }
+
   for (;;) {
     rounds++;
-    // 26u: after tool results pile up, re-send the English anchor last
-    // so the turn's answer is written in English.
-    const requestMessages = (isEnglish && history.some((m) => m && m.role === "tool"))
-      ? [...history, { role: "system", content: ENGLISH_NOTE }]
-      : history;
     const res = await complete({
-      provider, messages: requestMessages, tools: TOOL_DEFS,
+      provider, messages: requestMessages(), tools: TOOL_DEFS,
       maxTokens: 2000,
     });
     usage.prompt_tokens += (res.usage && res.usage.prompt_tokens) || 0;
@@ -335,48 +364,40 @@ export async function runTurn(opts) {
       if (checked.ok) {
         // 26u: a Korean final answer would carry data-no-i18n and show
         // raw Korean to English readers — retry once in English.
-        if (isEnglish && isMostlyKorean(split.text)) {
-          const retry = await complete({
-            provider,
-            messages: [...history,
-              { role: "assistant", content: reply },
-              { role: "system", content: ENGLISH_RETRY_NOTE }],
-          });
-          usage.prompt_tokens += (retry.usage && retry.usage.prompt_tokens) || 0;
-          usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
-          usage.calls++;
-          const reply2 = (retry.message && retry.message.content) || "";
-          const split2 = splitSuggestions(reply2);
-          const checked2 = checkConsultReply(split2.text, toolResults);
-          if (checked2.ok && !isMostlyKorean(split2.text)) {
-            appended.push({ role: "assistant", content: split2.text });
-            return finish({ reply: split2.text, suggestions: split2.suggestions,
+        if (needsEnglishRetry(split.text, isEnglish)) {
+          const en = await englishRewrite(reply);
+          if (en.checked.ok && !isMostlyKorean(en.split.text)) {
+            appended.push({ role: "assistant", content: en.split.text });
+            return finish({ reply: en.split.text, suggestions: en.split.suggestions,
               guardRetries: 1, fallback: false });
           }
-          if (checked2.ok) {
+          if (en.checked.ok) {
             // Still Korean: keep the text but leave it translatable —
             // the fallback flag clears fromModel so the UI skips
             // data-no-i18n and the phrase layer translates what it can.
-            appended.push({ role: "assistant", content: split2.text });
-            return finish({ reply: split2.text, suggestions: split2.suggestions,
+            appended.push({ role: "assistant", content: en.split.text });
+            return finish({ reply: en.split.text, suggestions: en.split.suggestions,
               guardRetries: 1, fallback: true, guardCause: "english_retry_korean" });
           }
           const retryFallback = actionConfirmation(toolResults)
             ?? numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
           appended.push({ role: "assistant", content: retryFallback });
           return finish({ reply: retryFallback, guardRetries: 1, fallback: true,
-            guardCause: checked2.cause });
+            guardCause: en.checked.cause });
         }
         return finish({ reply: split.text, suggestions: split.suggestions,
           guardRetries: 0, fallback: false });
       }
       // Retry once with a correction note (text only), else numbers only.
+      // 29a7: in English mode the correction asks in English and every
+      // request still ends with ENGLISH_NOTE.
       const retry = await complete({
         provider,
-        messages: [...history,
+        messages: requestMessages([
           { role: "assistant", content: reply },
-          { role: "user",
-            content: `교정: 방금 답은 가드 실패(${checked.cause}: ${checked.detail}). 도구 결과의 수치만 그대로 쓰고, 금지 주제·현실예측 표현 없이 3줄 이내 한국어로 다시 답하라. 도구는 쓰지 마라.` }],
+          { role: "user", content: isEnglish
+            ? `Correction: the last answer failed the guard (${checked.cause}: ${checked.detail}). Rewrite using only the tool numbers, no forbidden topics, no predictive wording, in plain English, max 3 lines. Do not use tools.`
+            : `교정: 방금 답은 가드 실패(${checked.cause}: ${checked.detail}). 도구 결과의 수치만 그대로 쓰고, 금지 주제·현실예측 표현 없이 3줄 이내 한국어로 다시 답하라. 도구는 쓰지 마라.` }]),
       });
       usage.prompt_tokens += (retry.usage && retry.usage.prompt_tokens) || 0;
       usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
@@ -385,15 +406,35 @@ export async function runTurn(opts) {
       const split2 = splitSuggestions(reply2);
       const checked2 = checkConsultReply(split2.text, toolResults);
       if (checked2.ok) {
-        appended.push({ role: "user", content: "(교정 후 재답변)" });
-        appended.push({ role: "assistant", content: split2.text });
-        return finish({ reply: split2.text, suggestions: split2.suggestions,
-          guardRetries: 1, fallback: false });
+        // 29a7: the corrected answer is a final answer too — in English
+        // mode it gets the same once-only English retry.
+        if (needsEnglishRetry(split2.text, isEnglish)) {
+          const en = await englishRewrite(reply2);
+          if (en.checked.ok) {
+            const stillKo = isMostlyKorean(en.split.text);
+            appended.push({ role: "user", content: "(교정 후 재답변)" });
+            appended.push({ role: "assistant", content: en.split.text });
+            return finish({ reply: en.split.text, suggestions: en.split.suggestions,
+              guardRetries: 1, fallback: stillKo,
+              ...(stillKo ? { guardCause: "english_retry_korean" } : {}) });
+          }
+        } else {
+          appended.push({ role: "user", content: "(교정 후 재답변)" });
+          appended.push({ role: "assistant", content: split2.text });
+          return finish({ reply: split2.text, suggestions: split2.suggestions,
+            guardRetries: 1, fallback: false });
+        }
       }
       // 26t: action-only turns confirm what was done instead of the
       // numbers-only text (which would read "수치가 없어요").
       const fallback = actionConfirmation(toolResults)
         ?? numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
+      const enFallback = await englishFallback(fallback);
+      if (enFallback) {
+        appended.push({ role: "assistant", content: enFallback.text });
+        return finish({ reply: enFallback.text, suggestions: enFallback.suggestions,
+          guardRetries: 1, fallback: false });
+      }
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 1, fallback: true,
         guardCause: checked2.cause });
@@ -402,6 +443,13 @@ export async function runTurn(opts) {
       const actionFallback = actionConfirmation(toolResults);
       const fallback = actionFallback
         ?? `도구 호출이 ${MAX_TOOL_ROUNDS}라운드를 넘었다.\n${numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) })}`;
+      // 29a7: a final answer in English mode gets the English retry too.
+      const enFallback = await englishFallback(fallback);
+      if (enFallback) {
+        appended.push({ role: "assistant", content: enFallback.text });
+        return finish({ reply: enFallback.text, suggestions: enFallback.suggestions,
+          guardRetries: 0, fallback: false });
+      }
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 0, fallback: true,
         guardCause: "too_many_rounds" });

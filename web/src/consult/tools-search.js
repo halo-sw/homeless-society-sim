@@ -176,6 +176,17 @@ export async function boxesForHomes(session, homes, max = 6) {
   return boxes;
 }
 
+// 29a7: default regions for a US profile — exactly us-menlo, the same
+// rule as the 26c client path (named us-menlo or currency USD).
+export function usRegionsForProfile(profile) {
+  const currency = profile && profile.currency && profile.currency.value;
+  const wp = profile && profile.workplaces && profile.workplaces.value;
+  const usWork = Array.isArray(wp) && wp.some(
+    (e) => e && e.resolved && e.resolved.region === "us-menlo");
+  if (currency === "USD" || usWork) return ["us-menlo"];
+  return null;
+}
+
 async function find_homes(session, args) {
   const profile = mergeProfiles(session.context && session.context.profile,
     session.lastProfile, profileFromArgs(args));
@@ -188,7 +199,9 @@ async function find_homes(session, args) {
   const network = await needNetwork(session);
   const manifest = await needPhotos(session);
   const schedule = await needTransit(session);
-  const regions = args.regions ? regionsForNames(args.regions) : null;
+  // 29a7: a USD profile (or a Meta-HQ workplace) searches exactly
+  // us-menlo — never Korean regions (same rule as the 26c client path).
+  const regions = args.regions ? regionsForNames(args.regions) : usRegionsForProfile(profile);
   const kind = kindForName(args.kind);
   if (args.kind && !kind) {
     return fail(`kind wants one of 아파트/연립·다세대(빌라)/오피스텔 (got ${JSON.stringify(args.kind)})`);

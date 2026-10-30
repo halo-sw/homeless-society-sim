@@ -140,6 +140,49 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
   // 26t: a comma inside digits (/\d,\d{3}/) is not a split point, so
   // "₩835,000" never becomes "₩835, 000". The comma is guarded through
   // the split and restored before the per-token pass.
+  // 29a7: verb-frame table for the short chip phrases Muse writes
+  // ("후보 찾아줘" → "Find candidates"). The object goes through the
+  // normal word/phrase lookup; CHIP_OBJECTS pins the four words the
+  // lookup leaves singular or missing.
+  const CHIP_OBJECTS = {
+    "후보": "candidates", "동네": "neighborhood",
+    "돈": "costs", "출근길": "commute route",
+  };
+  const CHIP_FRAMES = [
+    [/^(.+?)\s*찾아\s*줘$/, "Find"],
+    [/^(.+?)\s*보여\s*줘$/, "Show"],
+    [/^(.+?)\s*계산해\s*줘$/, "Calculate"],
+    [/^(.+?)\s*비교해\s*줘$/, "Compare"],
+    [/^(.+?)\s*알려\s*줘$/, "Tell me"],
+  ];
+  function chipObject(x) {
+    const t = String(x).trim();
+    if (!t) return "";
+    if (Object.hasOwn(CHIP_OBJECTS, t)) return CHIP_OBJECTS[t];
+    const hit = exactOrPattern(t);
+    if (typeof hit === "string" && hit && !HANGUL.test(hit)) {
+      return hit.charAt(0).toLowerCase() + hit.slice(1);
+    }
+    if (Object.hasOwn(words, t) && !HANGUL.test(words[t])) return words[t];
+    const w = wordFallback(t);
+    return HANGUL.test(w) ? "" : w;
+  }
+  function matchChipFrame(core) {
+    const s = String(core);
+    if (/^\s*살아\s*봐\s*줘\s*$/.test(s)) return "Live in them";
+    for (const [re, verb] of CHIP_FRAMES) {
+      const m = s.match(re);
+      if (!m) continue;
+      const obj = chipObject(m[1]);
+      if (!obj) return undefined;
+      return `${verb} ${obj}`;
+    }
+    return undefined;
+  }
+  // 29a7: a token ending in a verb/request tail is never a name — it is
+  // never passed to romanizeName. Korean beats fake romanization.
+  const VERB_TAIL = /(줘|해|해요|요|다|까)[.?!…]*$/;
+
   function wordFallback(s) {
     const guarded = String(localizeNumbers(s)).replace(/(\d),(\d)/g, `$1${COMMA_GUARD}$2`);
     const tokens = guarded.split(/([·(),:])/g)
@@ -167,8 +210,14 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
           : HANGUL.test(head) ? romanizeName(head) : head;
         if (!HANGUL.test(headEn)) return `${pm[2] === "에서" ? "from" : "to"} ${headEn}`;
       }
+      // 29a7: a verb/request tail (줘/해/…) is never a name. Mark the
+      // token untranslatable so the whole string keeps its Korean.
+      if (VERB_TAIL.test(tok)) return null;
       return romanizeName(tok);
     });
+    // No gloss exists for an unknown sentence: keep the original Korean
+    // instead of fake romanization.
+    if (mapped.some((m) => m === null)) return s;
     return mapped.join(" ").replace(/ ([,):])/g, "$1").replace(/\( /g, "(");
   }
 
@@ -217,6 +266,8 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
       }
     }
     if (result === undefined) result = exactOrPattern(core);
+    // 29a7: chip-like request phrases ("후보 찾아줘") become frames.
+    if (result === undefined) result = matchChipFrame(core);
     if (result === undefined && !numFirst) {
       const loc = localizeNumbers(core);
       if (loc !== core) {
