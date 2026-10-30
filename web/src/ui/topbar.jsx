@@ -23,6 +23,7 @@ import { ModelPanel } from "./model-panel.jsx";
 import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
 import { newUsageLog } from "../models/catalog.js";
+import { LangToggle } from "./lang-toggle.jsx";
 
 const EMPTY_LOG = newUsageLog();
 
@@ -144,6 +145,7 @@ export function TopBar({ mode, summary, extra, settings }) {
       </div>
       <div className="ui-bar-right">
         {extra}
+        <LangToggle />
         <IconButton label="설정" variant="ghost" size="sm"
           icon={<Icon icon="wrench" />} onClick={() => setOpen(true)} />
       </div>

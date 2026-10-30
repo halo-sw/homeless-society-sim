@@ -168,7 +168,16 @@ export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) 
     return [padL + (((fx - view[0]) / view[2]) * iw),
       padT + (((view[1] + view[3] - lat) / view[3]) * ih)];
   };
-  return { view, toXY, midLat };
+  // 25a: the exact inverse of toXY (for the raster basemap), plus
+  // the base metres-per-pixel: the flat-degree span back to real
+  // metres over the inner width.
+  const k = Math.cos((midLat * Math.PI) / 180) || 1;
+  const toLonLat = (x, y) => [
+    (view[0] + (((x - padL) / iw) * view[2])) / k,
+    view[1] + view[3] - (((y - padT) / ih) * view[3]),
+  ];
+  const metersPerPx = (view[2] * 111320) / iw;
+  return { view, toXY, toLonLat, midLat, metersPerPx };
 }
 
 // Simplify + round one lon/lat ring (~18 m spacing, ~1 m precision).

@@ -225,6 +225,10 @@ export async function runTurn(opts) {
   if (contextLine) {
     history.push({ role: "system", content: contextLine });
   }
+  if (context && context.lang === "en") {
+    history.push({ role: "system", content:
+      "The customer reads English. Answer in plain English. Write place and station names romanized with the Korean once in parentheses, e.g. Gangnam Stn (강남역). Write money as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M. Every rule above still applies." });
+  }
   const appended = []; // new messages for the browser to keep
   const toolCalls = []; // compact rows for the UI
   const toolResults = []; // parsed results, in order (guard scope)

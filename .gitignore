@@ -8,3 +8,5 @@ __pycache__/
 .pytest_cache/
 web/node_modules/
 web/dist/
+relay/dist/
+relay/.vercel/

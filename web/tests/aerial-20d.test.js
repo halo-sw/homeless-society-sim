@@ -146,13 +146,13 @@ describe("aerial proxy plugin", () => {
     assert.equal(res.statusCode, 400);
   });
   it("returns 503 without a key", async () => {
-    const res = await callAerial("/17/50510/111797.jpeg");
+    const res = await callAerial("/17/50789/111785.jpeg");
     assert.equal(res.statusCode, 503);
     assert.deepEqual(JSON.parse(Buffer.concat(res.chunks).toString()), { missing: "VWORLD_KEY" });
   });
   it("streams upstream bytes with no-store and never echoes key or URL", async () => {
     let seenUrl = "";
-    const ok = await callAerial("/17/50510/111797.jpeg", {
+    const ok = await callAerial("/17/50789/111785.jpeg", {
       key: "SECRET",
       fetchStub: async (url) => {
         seenUrl = String(url);
@@ -163,7 +163,7 @@ describe("aerial proxy plugin", () => {
     assert.equal(ok.headers["content-type"], "image/jpeg");
     assert.equal(ok.headers["cache-control"], "no-store");
     assert.ok(seenUrl.includes("/SECRET/"), "key must travel in the upstream path only");
-    const bad = await callAerial("/17/50510/111797.jpeg", {
+    const bad = await callAerial("/17/50789/111785.jpeg", {
       key: "SECRET",
       fetchStub: async () => ({ ok: false, status: 500 }),
     });

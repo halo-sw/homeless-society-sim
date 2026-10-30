@@ -19,6 +19,18 @@ import { parseInterstationCsv } from "../transit/schedule.js";
 export const CONSULT_BODY_MAX = 1048576; // 1 MB (scenario + history)
 
 export function readBody(req, max = CONSULT_BODY_MAX) {
+  // Platforms that already parsed the body (Vercel, the relay): reuse it
+  // instead of the stream, under the same size limit.
+  const parked = req && req.body !== undefined && req.body !== null ? req.body : undefined;
+  if (parked !== undefined) {
+    let text;
+    if (typeof parked === "string") text = parked;
+    else if (Buffer.isBuffer(parked)) text = parked.toString("utf8");
+    else if (typeof parked === "object") text = JSON.stringify(parked);
+    else text = String(parked);
+    if (Buffer.byteLength(text, "utf8") > max) return Promise.reject(new Error("body too large"));
+    return Promise.resolve(text);
+  }
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -36,14 +48,13 @@ export function readBody(req, max = CONSULT_BODY_MAX) {
   });
 }
 
-async function loadAreaFs(dataDir, areaCache, areaId) {
+async function loadAreaFs(readText, areaCache, areaId) {
   if (areaCache.has(areaId)) return areaCache.get(areaId);
-  const dir = join(dataDir, areaId);
-  const area = JSON.parse(await readFile(join(dir, "area.json"), "utf8"));
+  const area = JSON.parse(await readText("data", `${areaId}/area.json`));
   for (const [key, value] of Object.entries(area)) {
     if (value && typeof value === "object" && !Array.isArray(value)
         && Object.keys(value).join() === "$ref") {
-      area[key] = JSON.parse(await readFile(join(dir, value.$ref), "utf8"));
+      area[key] = JSON.parse(await readText("data", `${areaId}/${value.$ref}`));
     }
   }
   areaCache.set(areaId, area);
@@ -52,19 +63,19 @@ async function loadAreaFs(dataDir, areaCache, areaId) {
 
 // Bounding boxes for destination-area discovery (stage 9c): the full
 // area.json parses are cached, so the four candidates cost one read.
-async function loadAreaMetaFs(dataDir, areaMetaCache, areaId) {
+async function loadAreaMetaFs(readText, areaMetaCache, areaId) {
   if (areaMetaCache.has(areaId)) return areaMetaCache.get(areaId);
-  const doc = JSON.parse(await readFile(join(dataDir, areaId, "area.json"), "utf8"));
+  const doc = JSON.parse(await readText("data", `${areaId}/area.json`));
   const meta = { bbox: doc.bbox || null };
   areaMetaCache.set(areaId, meta);
   return meta;
 }
 
-async function loadRegionFs(dataDir) {
+async function loadRegionFs(readText) {
   const region = {};
   for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
     try {
-      region[key] = JSON.parse(await readFile(join(dataDir, "region", file), "utf8"));
+      region[key] = JSON.parse(await readText("data", `region/${file}`));
     } catch {
       region[key] = null;
     }
@@ -73,27 +84,45 @@ async function loadRegionFs(dataDir) {
   return region;
 }
 
-async function loadSafetyFs(dataDir) {
-  return JSON.parse(await readFile(join(dataDir, "region", "safety.json"), "utf8"));
+async function loadSafetyFs(readText) {
+  return JSON.parse(await readText("data", "region/safety.json"));
 }
 
-async function loadPersonaFs(scenDir, personaId) {
+async function loadPersonaFs(readText, personaId) {
   if (!/^[a-z0-9-]+$/.test(personaId)) throw new Error("bad persona id");
-  return JSON.parse(await readFile(join(scenDir, "personas", `${personaId}.json`), "utf8"));
+  return JSON.parse(await readText("scen", `personas/${personaId}.json`));
 }
 
-async function loadDecisionsFs(scenDir, scenarioName, label) {
+async function loadDecisionsFs(readText, scenarioName, label) {
   for (const provider of ["meta", "baseten"]) {
     try {
-      const raw = await readFile(
-        join(scenDir, "decisions", `${scenarioName}-${label}-${provider}.json`), "utf8");
+      const raw = await readText("scen", `decisions/${scenarioName}-${label}-${provider}.json`);
       return JSON.parse(raw);
     } catch { /* try the next provider file */ }
   }
   return null;
 }
 
-export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImpl = null } = {}) {
+// Read data/scenario files over HTTP (the public relay has no data dir).
+// base always ends in "/"; a non-2xx answer throws.
+export function httpReadText(baseUrl, fetchImpl) {
+  const base = String(baseUrl || "");
+  const root = base.endsWith("/") ? base : `${base}/`;
+  const get = fetchImpl || fetch;
+  return async (kind, rel) => {
+    const url = `${root}${kind === "data" ? "data" : "scenarios"}/${rel}`;
+    const res = await get(url);
+    if (!res.ok) throw new Error("not found: " + rel);
+    return await res.text();
+  };
+}
+
+export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImpl = null, readText = null, env = process.env } = {}) {
+  // File reads go through readText(root, rel): "data" or "scen" plus a
+  // "/"-joined relative path. The default reads the local dirs exactly
+  // as before; the relay passes an HTTP reader instead.
+  const read = readText || ((root, rel) =>
+    readFile(join(root === "data" ? dataDir : scenDir, rel), "utf8"));
   const cache = createRunCache();
   const areaCache = new Map();
   const areaMetaCache = new Map();
@@ -102,7 +131,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
   let housingCache = null;
   const loadPayroll = async () => {
     if (!payrollCache) {
-      payrollCache = JSON.parse(await readFile(join(scenDir, "assumptions", "kr-payroll.json"), "utf8"));
+      payrollCache = JSON.parse(await read("scen", "assumptions/kr-payroll.json"));
     }
     return payrollCache;
   };
@@ -149,7 +178,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         }
       } catch { /* fall through to the API */ }
     }
-    const key = process.env[HOUSING_KEY_ENV];
+    const key = env[HOUSING_KEY_ENV];
     if (!key) throw new Error("public-rental data needs the dev snapshot or HOUSING_API_KEY on the server");
     const api = createHousingApi({ key, fetchImpl: fetchImpl || fetch });
     const [complexes, notices] = await Promise.all([api.complexes(), api.notices()]);
@@ -159,35 +188,35 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
   let homesCache = null;
   const loadHomes = async () => {
     if (!homesCache) {
-      homesCache = JSON.parse(await readFile(join(dataDir, "homes-index.json"), "utf8"));
+      homesCache = JSON.parse(await read("data", "homes-index.json"));
     }
     return homesCache;
   };
   let photosCache = null;
   const loadPhotos = async () => {
     if (!photosCache) {
-      photosCache = JSON.parse(await readFile(join(scenDir, "places", "commons-photos.json"), "utf8"));
+      photosCache = JSON.parse(await read("scen", "places/commons-photos.json"));
     }
     return photosCache;
   };
   let areasIndexCache = null;
   const loadAreasIndex = async () => {
     if (!areasIndexCache) {
-      areasIndexCache = JSON.parse(await readFile(join(dataDir, "areas-index.json"), "utf8"));
+      areasIndexCache = JSON.parse(await read("data", "areas-index.json"));
     }
     return areasIndexCache;
   };
   let stationBoxesCache = null;
   const loadStationBoxes = async () => {
     if (!stationBoxesCache) {
-      stationBoxesCache = JSON.parse(await readFile(join(dataDir, "station-boxes.json"), "utf8"));
+      stationBoxesCache = JSON.parse(await read("data", "station-boxes.json"));
     }
     return stationBoxesCache;
   };
   let transitCache = null;
   const loadTransit = async () => {
     if (!transitCache) {
-      const text = await readFile(join(scenDir, "transit", "seoul-metro-interstation.csv"), "utf8");
+      const text = await read("scen", "transit/seoul-metro-interstation.csv");
       transitCache = parseInterstationCsv(text);
     }
     return transitCache;
@@ -201,7 +230,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     if (!ASSUMPTION_ALLOWLIST.has(name)) throw new Error(`unknown assumption file ${JSON.stringify(name)}`);
     if (!assumptionCache.has(name)) {
       assumptionCache.set(name,
-        JSON.parse(await readFile(join(scenDir, "assumptions", name), "utf8")));
+        JSON.parse(await read("scen", `assumptions/${name}`)));
     }
     return assumptionCache.get(name);
   };
@@ -220,7 +249,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
       const byok = req.headers ? (req.headers[BYOK_HEADER] || req.headers[BYOK_HEADER.toLowerCase()]) : null;
       const { key: apiKey, from: keyFrom } = resolveProxyKey({
         headers: byok ? { [BYOK_HEADER]: byok } : {},
-        provider, env: process.env,
+        provider, env,
       });
       if (!apiKey) {
         const err = new Error(`${cfg.keyEnv} is not set on the dev server`);
@@ -245,14 +274,14 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         scenario: body.scenario,
         context: body.context && typeof body.context === "object" ? body.context : null,
         cache,
-        loadArea: (areaId) => loadAreaFs(dataDir, areaCache, areaId),
-        loadAreaMeta: (areaId) => loadAreaMetaFs(dataDir, areaMetaCache, areaId),
-        loadDecisions: (name, label) => loadDecisionsFs(scenDir, name, label),
-        loadRegion: () => loadRegionFs(dataDir),
+        loadArea: (areaId) => loadAreaFs(read, areaCache, areaId),
+        loadAreaMeta: (areaId) => loadAreaMetaFs(read, areaMetaCache, areaId),
+        loadDecisions: (name, label) => loadDecisionsFs(read, name, label),
+        loadRegion: () => loadRegionFs(read),
         judgeHome: (args) => judgeHome({ ...args, fetchImpl }),
         loadPayroll, loadRtms, loadHousing,
-        loadSafety: () => loadSafetyFs(dataDir),
-        loadPersona: (id) => loadPersonaFs(scenDir, id),
+        loadSafety: () => loadSafetyFs(read),
+        loadPersona: (id) => loadPersonaFs(read, id),
         loadAssumption,
         loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
         fetchImpl,
