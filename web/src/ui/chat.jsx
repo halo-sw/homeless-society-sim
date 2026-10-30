@@ -199,6 +199,49 @@ function readinessNote(candidate) {
 // same handler, so no copy can stall while another works.
 export const RUN_BUTTON_LABEL = "이 집들로 30일 살아 보기";
 
+// 18d: the scroll target for a fresh simulation card. handleRun sets
+// it the moment the card is created (progress and result render inside
+// the same card far below the fold), so the chat moves there at once.
+export const SIM_CARD_ATTR = "data-sim-card";
+
+// After the next paints, so the pushed card exists in the DOM.
+function soon(fn) {
+  try {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => requestAnimationFrame(fn));
+      return;
+    }
+  } catch {
+    // Fall through to the timer.
+  }
+  setTimeout(fn, 0);
+}
+
+// Scroll the chat thread to the simulation card. Takes a
+// document-like so tests pass a fake. Returns true when a target was
+// scrolled into view.
+export function scrollChatToSim(simId, root) {
+  try {
+    const doc = root || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.querySelector !== "function") return false;
+    const el = (simId && doc.querySelector(`[${SIM_CARD_ATTR}="${simId}"]`))
+      || doc.querySelector(`[${SIM_CARD_ATTR}]`);
+    if (!el || typeof el.scrollIntoView !== "function") return false;
+    let reduced = false;
+    try {
+      const mq = doc.defaultView && doc.defaultView.matchMedia
+        && doc.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
+      reduced = !!(mq && mq.matches);
+    } catch {
+      // Motion default stands.
+    }
+    el.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function runReadiness(picks, candidates) {
   const list = Array.isArray(candidates) ? candidates : [];
   const picked = list.filter((c) => picks.includes(c.id));
@@ -635,8 +678,10 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
             profile={handlers.profile} handlers={handlers} />
         )}
         {msg.kind === "simulation" && (
-          <SimulationCard data={data} example={msg.example}
-            onRetry={handlers.onRun} />
+          <div data-sim-card={msg.id}>
+            <SimulationCard data={data} example={msg.example}
+              onRetry={handlers.onRun} />
+          </div>
         )}
         {msg.kind === "listing" && (
           <ListingCard onAsk={handlers.onAsk} />
@@ -1016,6 +1061,10 @@ export function ChatScreen() {
     const simId = pushMsg({ role: "assistant", kind: "simulation", replace: true,
       data: { status: "running", progress: { done: 0, total: picked.length, label: "" } },
       example: st.exampleId });
+    // 18d: the new card renders far below — move the chat there at
+    // once so the progress stays visible (all three run buttons funnel
+    // through here: sticky, drawer, in-chat).
+    soon(() => scrollChatToSim(simId));
     const setProgress = (progress) => {
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: { ...m.data, status: "running", progress } } : m)));
@@ -1126,6 +1175,9 @@ export function ChatScreen() {
           tool_calls: [{ id: buildId, name: "build_scenario" },
             { id: runId, name: "run_simulation" }, { id: cmpId, name: "compare" }] }
         : m)));
+      // 18d: the finished result replaces the progress in the same
+      // card — keep it in view.
+      soon(() => scrollChatToSim(simId));
     } catch (err) {
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: { status: "error", error: String((err && err.message) || err) } } : m)));

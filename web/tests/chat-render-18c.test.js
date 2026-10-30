@@ -175,3 +175,26 @@ describe("18c chat message list renders without throwing", () => {
     assert.ok(html.includes("healthy card"), "healthy children pass through");
   });
 });
+
+describe("18d run scroll target", () => {
+  it("marks the simulation card and scrolls the chat to it", async () => {
+    const { scrollChatToSim, SIM_CARD_ATTR } = await import("../src/ui/chat.jsx");
+    assert.equal(SIM_CARD_ATTR, "data-sim-card");
+    const html = renderToString(React.createElement(CardMsg,
+      { msg: { id: "m-sim", role: "assistant", kind: "simulation",
+          data: { status: "running", progress: { done: 1, total: 3, label: "A" } },
+          example: "single-firstjob" },
+        handlers: handlersFor(), toolRows: {} }));
+    assert.ok(html.includes('data-sim-card="m-sim"'), "card carries the target");
+    const seen = [];
+    const card = { scrollIntoView: (opts) => seen.push(opts) };
+    const doc = {
+      querySelector: (sel) => (sel === '[data-sim-card="m-sim"]' ? card : null),
+      defaultView: { matchMedia: () => ({ matches: false }) },
+    };
+    assert.equal(scrollChatToSim("m-sim", doc), true);
+    assert.deepEqual(seen, [{ block: "start", behavior: "smooth" }]);
+    assert.equal(scrollChatToSim("m-sim", { querySelector: () => null }), false);
+    assert.equal(scrollChatToSim("m-sim", null), false);
+  });
+});
