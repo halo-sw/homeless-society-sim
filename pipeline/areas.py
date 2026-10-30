@@ -20,9 +20,30 @@ import osmium
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RAW_PBF = REPO_ROOT / "data" / "raw" / "south-korea-latest.osm.pbf"
+US_RAW_PBF = REPO_ROOT / "data" / "raw" / "us" / "norcal-latest.osm.pbf"
 DEFAULT_BUILD_DIR = REPO_ROOT / "data" / "build"
 
 AREA_IDS = ("pangyo", "seongsu", "songpa", "songpa-jamsil")
+
+# Stage 26a US scene box: Menlo Park around Meta HQ (1 Hacker Way).
+# Fixed bbox from the brief; never resolved by scanning a PBF.
+US_AREAS = {
+    "us-menlo": {
+        "label": "Menlo Park · Meta HQ",
+        "bbox": (-122.190, 37.450, -122.125, 37.492),
+        "center": (-122.14823, 37.48485),
+        "country": "US",
+        "currency": "USD",
+        "workplaces": [
+            {"id": "meta-hq", "name": "Meta HQ (1 Hacker Way)",
+             "lon": -122.14823, "lat": 37.48485},
+        ],
+    },
+}
+
+
+def is_us_area(area_id: str) -> bool:
+    return area_id in US_AREAS
 
 # Stage 12a station scene boxes: ids are "st-<station>" (e.g. "st-판교").
 # They are dynamic (see pipeline.boxes station-boxes.json), so they are
@@ -56,6 +77,9 @@ class AreaDef:
     center: tuple[float, float] | None  # lon, lat (station)
     station: dict | None  # {name, lon, lat, osm_kind, osm_id}
     boundary: dict | None  # {name, relation_id, admin_level}
+    country: str = "KR"
+    currency: str = "KRW"
+    workplaces: list | None = None  # [{id, name, lon, lat}]
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -236,6 +260,15 @@ def resolve_area(area_id: str, raw_pbf: str | Path = DEFAULT_RAW_PBF,
                  hits: list[dict] | None = None,
                  osmium_bin: str = "osmium") -> AreaDef:
     """Resolve one area id, scanning the national PBF if hits not given."""
+    if is_us_area(area_id):
+        # Fixed US scene box: no PBF scan, ever.
+        spec = US_AREAS[area_id]
+        return AreaDef(
+            id=area_id, label=spec["label"], kind="bbox",
+            bbox=tuple(spec["bbox"]), center=tuple(spec["center"]),
+            station=None, boundary=None, country=spec["country"],
+            currency=spec["currency"],
+            workplaces=[dict(w) for w in spec["workplaces"]])
     if area_id not in AREA_IDS:
         raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)}")
     if hits is None:

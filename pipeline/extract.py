@@ -92,9 +92,10 @@ def ensure_extract(area_id: str, raw_pbf: Path = DEFAULT_RAW_PBF,
                    overwrite: bool = False,
                    area: AreaDef | None = None) -> dict:
     """Resolve the area (OSM lookup) and clip the national PBF to it."""
-    from .areas import is_station_box, write_area_def
+    from .areas import is_station_box, is_us_area, write_area_def
 
-    if area_id not in AREA_IDS and not is_station_box(area_id):
+    if (area_id not in AREA_IDS and not is_station_box(area_id)
+            and not is_us_area(area_id)):
         raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)} or st-<station>")
     binary = find_osmium(osmium_bin)
     raw_pbf, build_dir = Path(raw_pbf), Path(build_dir)
@@ -102,7 +103,12 @@ def ensure_extract(area_id: str, raw_pbf: Path = DEFAULT_RAW_PBF,
         raise FileNotFoundError(f"national extract not found: {raw_pbf}")
 
     if area is None:
-        if is_station_box(area_id):
+        if is_us_area(area_id):
+            # Fixed US box: resolve directly, no candidate scan.
+            from .areas import resolve_area as _resolve_area
+
+            area = _resolve_area(area_id)
+        elif is_station_box(area_id):
             from .areas import resolve_station_box
 
             area = resolve_station_box(area_id, build_dir, raw_pbf,
@@ -186,9 +192,10 @@ def ensure_buffered_extract(area_id: str, raw_pbf: Path = DEFAULT_RAW_PBF,
     """
     import json
 
-    from .areas import is_station_box
+    from .areas import is_station_box, is_us_area
 
-    if area_id not in AREA_IDS and not is_station_box(area_id):
+    if (area_id not in AREA_IDS and not is_station_box(area_id)
+            and not is_us_area(area_id)):
         raise KeyError(f"unknown area {area_id!r}; expected one of {list(AREA_IDS)} or st-<station>")
     binary = find_osmium(osmium_bin)
     raw_pbf, build_dir = Path(raw_pbf), Path(build_dir)

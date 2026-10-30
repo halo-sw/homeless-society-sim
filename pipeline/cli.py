@@ -49,11 +49,15 @@ def build_area(area_id: str, raw_pbf: Path, build_dir: Path,
                osmium_bin: str | None, overwrite: bool) -> dict:
     from . import extract as extract_mod
     from . import osm_parse
-    from .areas import is_station_box
+    from .areas import US_RAW_PBF, is_station_box, is_us_area
 
     started = time.time()
-    if area_id not in AREA_IDS and not is_station_box(area_id):
+    if (area_id not in AREA_IDS and not is_station_box(area_id)
+            and not is_us_area(area_id)):
         raise KeyError(f"unknown area {area_id!r}; choose from {list(AREA_IDS)}, st-<station>, or station:*")
+    if is_us_area(area_id) and Path(raw_pbf) == DEFAULT_RAW_PBF:
+        raw_pbf = US_RAW_PBF
+        print(f"using US extract for {area_id}: {raw_pbf}")
     area_dir = build_dir / area_id
     area_dir.mkdir(parents=True, exist_ok=True)
 
@@ -149,7 +153,7 @@ def expand_area_patterns(patterns: list[str], build_dir: Path) -> list[str]:
     ``region:<id>`` selects that region's boxes. Unknown ids raise
     KeyError; duplicates collapse (order kept).
     """
-    from .areas import is_station_box
+    from .areas import is_station_box, is_us_area
     from .boxes import box_id_of, load_boxes
 
     out: list[str] = []
@@ -177,7 +181,7 @@ def expand_area_patterns(patterns: list[str], build_dir: Path) -> list[str]:
             for box in boxes.get("boxes", []):
                 if box.get("region") == region and box.get("lon") is not None:
                     out.append(box_id_of(box["station"]))
-        elif pat in AREA_IDS or is_station_box(pat):
+        elif pat in AREA_IDS or is_station_box(pat) or is_us_area(pat):
             out.append(pat)
         else:
             raise KeyError(f"unknown area {pat!r}; choose from "
@@ -338,6 +342,20 @@ def cmd_safety(args) -> int:
 
 
 def cmd_regions(args) -> int:
+    if args.us:
+        from .areas import US_RAW_PBF
+        from .regions import run_us_regions
+
+        raw = Path(args.raw)
+        if raw == DEFAULT_RAW_PBF:
+            raw = US_RAW_PBF
+        summary = run_us_regions(raw_pbf=raw,
+                                 build_dir=Path(args.build_dir),
+                                 osmium_bin=args.osmium or "osmium",
+                                 refresh=args.refresh)
+        print(json.dumps(summary, indent=2, sort_keys=True,
+                         ensure_ascii=False))
+        return 0
     from .regions import run_build
 
     summary = run_build(raw_pbf=Path(args.raw),
@@ -526,6 +544,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--osmium", default="osmium")
     g.add_argument("--refresh", action="store_true",
                    help="rebuild cached prefilters/relation files even when fresh")
+    g.add_argument("--us", action="store_true",
+                   help="clip the US region(s) from the NorCal extract "
+                        "and merge into regions.json")
     g.set_defaults(func=cmd_regions)
 
     x = sub.add_parser("boxes",
