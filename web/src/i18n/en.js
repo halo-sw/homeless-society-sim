@@ -1,7 +1,9 @@
 // Seed phrase table: every visible Korean string of ui/landing.jsx and
 // ui/topbar.jsx, plus the #loading text in web/index.html.
 // Plain, friendly English; Ithaca stays as is.
-export const phrases = {
+import { tablePhrases, tablePatterns } from "./en-table.js";
+
+const seedPhrases = {
   // web/index.html
   "지역을 불러오는 중…": "Loading the area…",
   "Ithaca — 미니어처 3D": "Ithaca — Miniature 3D",
@@ -72,8 +74,21 @@ export const phrases = {
   "따라가기": "Follow",
 };
 
-export const patterns = [
+const seedPatterns = [
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
   { ko: "다루는 지역 {0}곳: {1}", en: "Areas covered ({0}): {1}" },
+];
+
+// The seed wins over the generated table (one-off fixes go above).
+export const phrases = { ...tablePhrases, ...seedPhrases };
+
+// Specific patterns first; the generic splits go last so they never
+// pre-empt a longer pattern that contains the same separator.
+export const patterns = [
+  ...seedPatterns,
+  ...tablePatterns,
   { ko: "{0} · {1}", en: "{0} · {1}" },
+  { ko: "{0} — {1}", en: "{0} — {1}" },
+  { ko: "{0} ({1})", en: "{0} ({1})" },
+  { ko: "{0}: {1}", en: "{0}: {1}" },
 ];
