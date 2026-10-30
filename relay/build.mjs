@@ -29,6 +29,8 @@ await writeFile(
   new URL("./dist/vercel.json", import.meta.url),
   JSON.stringify({
     rewrites: [{ source: "/api/:path*", destination: "/api/relay?path=:path*" }],
+    // VWorld refuses requests from outside Korea, so the function runs in Seoul.
+    regions: ["icn1"],
     functions: { "api/relay.js": { maxDuration: 60 } },
   }, null, 2) + "\n",
 );

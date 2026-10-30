@@ -85,7 +85,7 @@ import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { postConsult, loadScenario } from "./consult-client.js";
-import { STATIC_SITE, appUrl } from "../paths.js";
+import { LIVE_API, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
@@ -1346,7 +1346,7 @@ export function ChatScreen() {
 
   // --- live agent (dev key) for free questions + tab-originated checks ---
   async function askAgent(text) {
-    if (STATIC_SITE) {
+    if (!LIVE_API) {
       pushMsg({ role: "assistant", kind: "text", content: STATIC_OFF_LINE });
       return;
     }

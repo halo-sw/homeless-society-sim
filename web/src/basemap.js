@@ -2,23 +2,21 @@
 // Pure, no DOM — except one env read in basemapApiBase. The tiles come
 // from our own proxy (/api/tiles/white/…); no key, no stored geocoder.
 import { tileToLonLat, tilesForBBox } from "./aerial/tiles.js";
+import { API_BASE, LIVE_API } from "./paths.js";
 
 // Web-Mercator metres per pixel at zoom 0 on the equator.
 const WEB_MERC_M_PER_PX_Z0 = 156543.03;
 const MIN_Z = 7;
 const MAX_Z = 19;
 
-// Where the tile proxy lives: an explicit base when set, the same
-// origin's /api/tiles on a dev server, or null for a static build
-// with no proxy (no basemap). Node (tests) has no import.meta.env,
-// which reads as "" (same-origin, harmless without a server).
+// Where the tile proxy lives: the relay origin (API_BASE) on the
+// public site, the same origin's /api/tiles on a dev server, or null
+// for a static build with no relay (no basemap). Node (tests) has no
+// import.meta.env, which reads as API_BASE "" with LIVE_API true
+// (same-origin, harmless without a server).
 export function basemapApiBase() {
-  const env = (typeof import.meta !== "undefined" && import.meta.env) || null;
-  if (!env) return "";
-  const base = env.VITE_API_BASE;
-  if (base) return String(base).replace(/\/+$/, "");
-  if (env.VITE_STATIC === "1") return null;
-  return "";
+  if (!LIVE_API) return null;
+  return API_BASE;
 }
 
 export function basemapTileUrl(apiBase, z, y, x) {
