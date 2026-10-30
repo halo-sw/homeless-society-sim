@@ -85,6 +85,7 @@ import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { postConsult, loadScenario } from "./consult-client.js";
+import { STATIC_SITE, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
@@ -761,6 +762,7 @@ const GREETING = [
 ].join("\n");
 
 const NO_KEY_NOTICE = "이 질문은 개발 서버 + 키에서 답해요 (기록된 화면에서는 물음에 답만 해요). 상황·후보·살아 보기는 키 없이도 돼요.";
+const STATIC_OFF_LINE = "공개 사이트에서는 Muse와 대화하기가 꺼져 있어요 (키 보호). 조건 읽기·후보·30일 살아 보기는 그대로 돼요.";
 
 // --- ?agent=1 card for sim/tour screens (replaces the floating panel) ---------------------
 
@@ -1254,7 +1256,7 @@ export function ChatScreen() {
       const buildId = addToolRow({ name: "build_scenario", ok: true,
         summary: picked.map((p) => p.name).join(" · "), ms: sc.ms });
       const labels = picked.map((_, i) => "ABC"[i]);
-      const runner = createWorkerRunner(new URL("../sim-worker.js", import.meta.url));
+      const runner = createWorkerRunner(() => new Worker(new URL("../sim-worker.js", import.meta.url), { type: "module" }));
       const { runs, compare, ms } = await runStep(
         (s, l, onP) => runner(s, l, (pg) => setProgress(
           { done: pg.done + 1, total: picked.length + 1, label: pg.label })),
@@ -1344,6 +1346,10 @@ export function ChatScreen() {
 
   // --- live agent (dev key) for free questions + tab-originated checks ---
   async function askAgent(text) {
+    if (STATIC_SITE) {
+      pushMsg({ role: "assistant", kind: "text", content: STATIC_OFF_LINE });
+      return;
+    }
     const st = stateRef.current;
     let scen = st.scenario;
     if (!scen) {
@@ -1638,7 +1644,7 @@ export function ChatScreen() {
                 onSet: (id, v) => setOverrides((o) => setOverride(o, id, v)),
                 onReset: (id) => setOverrides((o) => resetOverride(o, id)) },
               onIntro: null,
-              onRestart: () => { clearTranscript(); window.location.href = "/"; },
+              onRestart: () => { clearTranscript(); window.location.href = appUrl(); },
             }} />
         )}>
         <div className="ui-chat-main"

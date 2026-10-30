@@ -5,8 +5,14 @@
 // browser, and ?ask=… replays recorded replies. Nothing here imports
 // server modules or provider code, so no key material can enter the
 // bundle.
+//
+// 22a: on the static site (GitHub Pages) there are no /api/* routes,
+// so the model calls stay off and the rule-based flow keeps working.
+
+import { assetUrl, STATIC_SITE } from "../paths.js";
 
 export async function postConsult({ provider, messages, scenario, context = null, byoKey = "" }) {
+  if (STATIC_SITE) return { off: true, messages: [] };
   const headers = { "Content-Type": "application/json" };
   // 13: BYOK travels in a header to our same-origin proxy only.
   if (byoKey) headers["x-model-key"] = byoKey;
@@ -33,13 +39,14 @@ export async function postConsult({ provider, messages, scenario, context = null
 }
 
 export async function fetchModelStatus() {
+  if (STATIC_SITE) return { off: true };
   const r = await fetch("/api/model/status");
   if (!r.ok) throw new Error(`모델 상태 조회 실패 (HTTP ${r.status})`);
   return r.json();
 }
 
 export async function loadScenario(name) {
-  const r = await fetch(`/scenarios/${name}.json`);
+  const r = await fetch(assetUrl(`/scenarios/${name}.json`));
   if (!r.ok) throw new Error(`시나리오를 불러오지 못했습니다 (${name})`);
   return r.json();
 }

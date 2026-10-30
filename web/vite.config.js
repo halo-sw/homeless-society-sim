@@ -297,6 +297,8 @@ function aerialApiPlugin() {
 }
 
 export default {
+  // 22a: GitHub Pages serves under /homeless-society-sim/, not /.
+  base: process.env.PAGES_BASE || "/",
   plugins: [react(), areaDataPlugin(), judgeApiPlugin(), consultApiPlugin(), aerialApiPlugin()],
   server: { port: 5173 },
 };

@@ -4,8 +4,10 @@
 // the injected fetchJson (browser: fetch().then(r => r.json()); tests:
 // fs reads) and inlines every {"$ref": file} section.
 
+import { assetUrl } from "./paths.js";
+
 export async function loadArea(areaId, fetchJson) {
-  const base = `/data/${areaId}`;
+  const base = assetUrl(`/data/${areaId}`);
   const area = await fetchJson(`${base}/area.json`);
   for (const [key, value] of Object.entries(area)) {
     if (value && typeof value === "object" && !Array.isArray(value)) {

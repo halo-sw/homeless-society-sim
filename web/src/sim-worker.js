@@ -10,6 +10,7 @@
 // ({progress: {done, total, label}}). Callers must ignore progress
 // posts (they carry no runs).
 import { simulate } from "./engine/simulate.js";
+import { assetUrl } from "./paths.js";
 
 async function fetchJson(url) {
   const r = await fetch(url);
@@ -18,11 +19,11 @@ async function fetchJson(url) {
 }
 
 async function loadArea(areaId) {
-  const area = await fetchJson(`/data/${areaId}/area.json`);
+  const area = await fetchJson(assetUrl(`/data/${areaId}/area.json`));
   for (const [key, value] of Object.entries(area)) {
     if (value && typeof value === "object" && !Array.isArray(value)
         && Object.keys(value).join() === "$ref") {
-      area[key] = await fetchJson(`/data/${areaId}/${value.$ref}`);
+      area[key] = await fetchJson(assetUrl(`/data/${areaId}/${value.$ref}`));
     }
   }
   return area;
@@ -32,7 +33,7 @@ async function loadRegion() {
   const region = {};
   for (const [key, file] of [["network", "network.json"], ["congestion", "congestion.json"]]) {
     try {
-      region[key] = await fetchJson(`/data/region/${file}`);
+      region[key] = await fetchJson(assetUrl(`/data/region/${file}`));
     } catch {
       region[key] = null;
     }
@@ -45,7 +46,7 @@ self.onmessage = async (e) => {
   const { scenario: name, scenarioInline, labels } = e.data || {};
   const post = (msg) => self.postMessage(msg);
   try {
-    const scen = scenarioInline || await fetchJson(`/scenarios/${name}.json`);
+    const scen = scenarioInline || await fetchJson(assetUrl(`/scenarios/${name}.json`));
     const region = await loadRegion();
     const runs = {};
     const list = Array.isArray(labels) ? labels : [];

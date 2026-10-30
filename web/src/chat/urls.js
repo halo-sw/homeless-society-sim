@@ -6,6 +6,8 @@
 //   /?chat=&area=<box> chat with the work-area scene on another box
 //   ?mode=sim… / ?tour=demo deep links keep working (main.js).
 
+import { appUrl, appUrlWith } from "../paths.js";
+
 export const CHAT_STORE_KEY = "sim.chat.v1";
 
 // Which search keys route to which screen.
@@ -29,37 +31,62 @@ export function parseChatSearch(search) {
 
 // First message → chat URL (the message rides in ?chat= so the first
 // turn is deep-linkable; later turns live in session memory).
-export function chatUrl(message, extra = {}) {
+// Base-aware (22b): every link keeps the Pages base. The *With
+// variants take an explicit base for tests.
+function chatQuery(message, extra = {}) {
   const q = new URLSearchParams();
   q.set("chat", String(message || ""));
   for (const [k, v] of Object.entries(extra)) {
     if (v !== "" && v !== null && v !== undefined) q.set(k, String(v));
   }
-  const s = q.toString();
-  return s ? `/?${s}` : "/";
+  return q.toString();
+}
+
+export function chatUrlWith(base, message, extra = {}) {
+  return appUrlWith(base, chatQuery(message, extra));
+}
+
+export function chatUrl(message, extra = {}) {
+  return appUrl(chatQuery(message, extra));
 }
 
 // "대화" reopen from any screen: the transcript comes from session
 // memory, so the URL stays clean.
+export function chatReopenUrlWith(base) {
+  return appUrlWith(base, "chat=");
+}
+
 export function chatReopenUrl() {
-  return "/?chat=";
+  return appUrl("chat=");
 }
 
 // "새로 시작": forget the transcript, back to the landing.
+export function landingUrlWith(base) {
+  return appUrlWith(base);
+}
+
 export function landingUrl() {
-  return "/";
+  return appUrl();
 }
 
 // 3D에서 보기: a moment in a committed scenario, or in a custom
 // client-run simulation (?custom=<id> loads runs from IndexedDB).
 // 18: carries an explicit style choice (both default to painted).
-export function simMomentUrl({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null } = {}) {
+function simMomentQuery({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null } = {}) {
   const q = new URLSearchParams({ mode: "sim", home, day: String(day), t });
   if (follow) q.set("follow", String(follow));
   if (custom) q.set("custom", custom);
   else if (scenario) q.set("scenario", scenario);
   if (style) q.set("style", style);
-  return `/?${q}`;
+  return q.toString();
+}
+
+export function simMomentUrlWith(base, opts = {}) {
+  return appUrlWith(base, simMomentQuery(opts));
+}
+
+export function simMomentUrl({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null } = {}) {
+  return appUrl(simMomentQuery({ scenario, custom, home, day, t, follow, style }));
 }
 
 export function parseSimSearch(search) {
