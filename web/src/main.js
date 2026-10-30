@@ -6,6 +6,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
+import { buildingCard, labelItemsFor, placeLabels } from "./labels3d.js";
 import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
@@ -1622,6 +1623,192 @@ async function bootSim() {
     paintTag(el, x, y, z, true);
   }
 
+  // --- 20b: what-every-building-is labels + hover card ---
+  // Items come from labels3d.js (pure); anchors are projected with the
+  // same camera helper the household tags use, then placeLabels resolves
+  // screen-space collisions. Home + destination always show; complexes
+  // show in overview, POIs + dong names up close. Rendered into #tags.
+  const label20bEls = new Map();
+  const label20bV = new THREE.Vector3();
+  function label20bLift(level) {
+    if (level === "complex") return 42;
+    if (level === "dong") return 30;
+    if (level === "always") return 34;
+    return 12;
+  }
+  function label20bEl(id, level) {
+    let el = label20bEls.get(id);
+    if (!el) {
+      el = document.createElement("div");
+      el.dataset.lb20b = level;
+      tagsLayer.appendChild(el);
+      label20bEls.set(id, el);
+    }
+    return el;
+  }
+  function paintLabel20b(el, item) {
+    const base = "font-family:Pretendard,system-ui,sans-serif;";
+    if (item.level === "dong") {
+      el.textContent = item.title;
+      el.setAttribute("style", `${base}font-size:11px;color:#5b6472;` +
+        `text-shadow:0 1px 2px rgba(255,255,255,.9);white-space:nowrap;`);
+    } else if (item.level === "poi") {
+      el.textContent = "";
+      el.setAttribute("style", `${base}display:flex;align-items:center;gap:4px;` +
+        `background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:999px;` +
+        `box-shadow:0 1px 2px rgba(0,0,0,.2);padding:2px 8px 2px 2px;` +
+        `font-size:12px;font-weight:600;color:#222;white-space:nowrap;`);
+      const dot = document.createElement("span");
+      dot.textContent = item.glyph || "•";
+      dot.setAttribute("style", "display:inline-flex;align-items:center;justify-content:center;" +
+        "width:16px;height:16px;border-radius:999px;background:#eef2f7;color:#2f6fed;" +
+        "font-size:11px;font-weight:700;");
+      const name = document.createElement("span");
+      name.textContent = item.title;
+      el.append(dot, name);
+    } else {
+      const accent = item.accent || item.level === "always";
+      el.textContent = "";
+      el.setAttribute("style", `${base}background:${accent ? "#2f6fed" : "#fff"};` +
+        `color:${accent ? "#fff" : "#222"};border:1px solid rgba(0,0,0,.08);` +
+        `border-radius:999px;box-shadow:0 1px 2px rgba(0,0,0,.2);padding:3px 10px;` +
+        `font-size:${item.level === "complex" ? "12px" : "12px"};font-weight:600;` +
+        `white-space:nowrap;` +
+        (item.level === "complex" && item.sub
+          ? "text-align:center;line-height:1.25;"
+          : ""));
+      const main = document.createElement("div");
+      main.textContent = item.title;
+      el.append(main);
+      if (item.level === "complex" && item.sub) {
+        const sub = document.createElement("div");
+        sub.textContent = item.sub;
+        sub.setAttribute("style", `font-size:10px;font-weight:400;color:${accent ? "#dbe6ff" : "#8a93a3"};`);
+        el.append(sub);
+      }
+    }
+    el.style.display = "block";
+    el.style.position = "absolute";
+    el.style.transform = "translate(-50%,-100%)";
+    el.style.left = `${item._sx}px`;
+    el.style.top = `${item._sy}px`;
+    el.style.pointerEvents = "none";
+  }
+  function paintLabels20b() {
+    try {
+      if (!hiState) return;
+      const camDist = camera.position.distanceTo(controls.target);
+      const destLonLat = hiState.destNodeId ? nodeLonLat.get(hiState.destNodeId) : null;
+      const items = labelItemsFor(area, {
+        homeBuildingId: hiState.homeBuildingId || null,
+        destination: hiState.destLabel
+          ? { label: hiState.destLabel, lonlat: destLonLat || undefined }
+          : null,
+        cameraDistM: camDist,
+      });
+      const canvasEl = document.getElementById("scene");
+      const rect = canvasEl ? canvasEl.getBoundingClientRect()
+        : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+      const wrapEl = document.getElementById("scene-wrap");
+      const wrap = wrapEl ? wrapEl.getBoundingClientRect() : { left: 0, top: 0 };
+      const projected = [];
+      for (const item of items) {
+        if (item.lon == null || item.lat == null) continue;
+        const [wx, wy] = lonLatToXY(item.lon, item.lat, origin);
+        const lift = label20bLift(item.level);
+        label20bV.set(wx, heightAt(wx, -wy) + lift, -wy).project(camera);
+        if (label20bV.z > 1) continue;
+        const sx = rect.left + ((label20bV.x + 1) / 2) * rect.width;
+        const sy = rect.top + ((1 - label20bV.y) / 2) * rect.height;
+        if (sx < rect.left || sy < rect.top || sx > rect.left + rect.width || sy > rect.top + rect.height) continue;
+        const glyphW = item.glyph ? 20 : 0;
+        const w = [...String(item.title || "")].length * 13 + 24 + glyphW;
+        const h = item.level === "complex" && item.sub ? 36 : 22;
+        projected.push({ ...item, x: sx - rect.left, y: sy - rect.top, w, h,
+          _sx: sx - wrap.left, _sy: sy - wrap.top });
+      }
+      const placed = placeLabels(projected, rect.width, rect.height);
+      const seen = new Set(placed.map((p) => p.id));
+      for (const p of placed) paintLabel20b(label20bEl(p.id, p.level), p);
+      for (const [id, el] of label20bEls) {
+        if (id.startsWith("hover20b")) continue;
+        if (!seen.has(id)) el.style.display = "none";
+      }
+    } catch {
+      // Labels must never break the frame.
+    }
+  }
+  // Hover a building: raycast the merged building meshes and map the hit
+  // triangle back to its building id via the ranges buildBuildings groups
+  // them by, then show the 건축물대장 card.
+  const hover20bEl = document.createElement("div");
+  hover20bEl.dataset.lb20b = "hover";
+  hover20bEl.style.display = "none";
+  hover20bEl.style.position = "absolute";
+  hover20bEl.style.zIndex = "30";
+  hover20bEl.style.pointerEvents = "none";
+  tagsLayer.appendChild(hover20bEl);
+  const ray20b = new THREE.Raycaster();
+  const ptr20b = new THREE.Vector2();
+  function buildingIdFromHit(hit) {
+    const ranges = (hit.object && hit.object.userData && hit.object.userData.ranges) || [];
+    const faceIndex = hit.faceIndex ?? (hit.face ? hit.faceIndex : null);
+    if (faceIndex == null) return null;
+    const v = faceIndex * 3;
+    for (const r of ranges) {
+      if (v >= r.start && v < r.start + r.count) return r.id;
+    }
+    return null;
+  }
+  function onHover20b(ev) {
+    try {
+      const canvasEl = document.getElementById("scene");
+      const rect = canvasEl ? canvasEl.getBoundingClientRect()
+        : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+      ptr20b.set(
+        (((ev.clientX - rect.left) / rect.width) * 2) - 1,
+        -(((ev.clientY - rect.top) / rect.height) * 2) + 1);
+      ray20b.setFromCamera(ptr20b, camera);
+      const meshes = [...Object.values(wallMeshes), podiumMesh, roofMesh].filter(Boolean);
+      const hits = ray20b.intersectObjects(meshes, false);
+      if (hits.length === 0) {
+        hover20bEl.style.display = "none";
+        return;
+      }
+      const id = buildingIdFromHit(hits[0]);
+      const b = (area.buildings || []).find((x) => x.id === id);
+      if (!b) {
+        hover20bEl.style.display = "none";
+        return;
+      }
+      const card = buildingCard(b);
+      hover20bEl.textContent = "";
+      hover20bEl.setAttribute("style", "display:block;position:absolute;z-index:30;pointer-events:none;" +
+        "font-family:Pretendard,system-ui,sans-serif;background:#fff;color:#222;" +
+        "border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.2);" +
+        "padding:8px 10px;font-size:12px;max-width:230px;white-space:normal;");
+      const t = document.createElement("div");
+      t.textContent = card.title;
+      t.setAttribute("style", "font-weight:700;");
+      const m = document.createElement("div");
+      m.textContent = card.meta;
+      m.setAttribute("style", "color:#444;margin-top:2px;");
+      const s = document.createElement("div");
+      s.textContent = card.source;
+      s.setAttribute("style", "color:#8a93a3;font-size:11px;margin-top:2px;");
+      hover20bEl.append(t, m, s);
+      const wrapEl = document.getElementById("scene-wrap");
+      const wrap = wrapEl ? wrapEl.getBoundingClientRect() : { left: 0, top: 0 };
+      hover20bEl.style.left = `${ev.clientX - wrap.left + 14}px`;
+      hover20bEl.style.top = `${ev.clientY - wrap.top + 10}px`;
+    } catch {
+      hover20bEl.style.display = "none";
+    }
+  }
+  if (renderer.domElement) {
+    renderer.domElement.addEventListener("pointermove", onHover20b);
+  }
+
   function nodeWorld(nodeId, lift = 1.5) {
     const p = nodeLonLat.get(nodeId);
     if (!p) return null;
@@ -3116,6 +3303,7 @@ async function bootSim() {
     updateLighting();
     paintFollow(dt, false);
     paintHighlightFrame();
+    paintLabels20b();
     const jfTrain = journeyFrame();
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
