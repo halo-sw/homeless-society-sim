@@ -199,8 +199,11 @@ describe("18d one 출퇴근 편도 everywhere", () => {
       data: { labels: ["A", "B"], names: { A: "천사의도시", B: "시그마" },
         compare, moneyMissing: "" } }));
     assert.ok(resultHtml.includes("출퇴근 편도"), "result card 편도 heading");
-    assert.ok(resultHtml.includes("A 16분 · B 21분"),
+    // 19d: A|B table cells, no longer one "A x · B y" line.
+    assert.ok(resultHtml.includes("16분") && resultHtml.includes("21분"),
       `result card shows C01: ${resultHtml.slice(0, 200)}`);
+    assert.ok(resultHtml.indexOf("16분") < resultHtml.indexOf("21분"),
+      "A, B order kept");
     const rows = buildCompareRows({
       money: { homes: { A: {}, B: {} } }, compare, tenures: {}, days: 30 });
     const day = rows.find((r) => r.id === "commute_day");

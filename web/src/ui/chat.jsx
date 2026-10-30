@@ -58,7 +58,7 @@ import { defaultOverrides, setOverride, resetOverride,
 // so module evaluation order is safe.
 import { CompareCard, CompareTabBody } from "./app.jsx";
 import { HowCalculated, tenureOf } from "./money.jsx";
-import { fmtMinutes, fmtWon } from "../money/format.js";
+import { fmtMinutes, fmtWon, fmtWonShort } from "../money/format.js";
 import { monthlyHousingOf } from "../money/monthly.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
@@ -356,6 +356,12 @@ export function resultScoreOf(moneyDoc, compare, weights, explicit) {
   }
 }
 
+// 19d: the 30-day result as an A|B table — one grid, never sorted,
+// never crowned. Header: letter disc + name per home. Rows: 내 기준
+// 점수 (score + neutral bar, caption spanning below), 월 주거비
+// (short value, full value in title), 출퇴근 편도 (one_way, or one
+// row per member on older payloads). 살아 보니 and the single
+// 어떻게 계산했나요 disclosure live in the SimulationCard done branch.
 export function ResultSummary({ data }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
@@ -368,75 +374,62 @@ export function ResultSummary({ data }) {
   // older payloads without it fall back to the member aggregates.
   const oneWay = oneWayDelta(data.compare && data.compare.one_way);
   const commutes = oneWay ? [] : commuteOneWayOf(data.compare);
-  const texts = data.momentTexts || [];
   const showMoney = !!(data.moneyDoc || data.moneyMissing);
   return (
-    <VStack gap={2}>
-      {scored.ok && (
-        <VStack gap={1}>
-          <Text>내 기준 점수</Text>
-          {labels.map((l) => (
-            <Text key={l} hasTabularNumbers>
-              {`${l} ${(names[l] || "").trim()} ${scored.scores[l] === null || scored.scores[l] === undefined ? "–" : `${scored.scores[l]}점`}`.trim()}
-            </Text>
-          ))}
-          <Text type="supporting">{scored.caption}</Text>
-        </VStack>
-      )}
-      {showMoney && (
-        <VStack gap={1}>
-          <Text>월 주거비 (보증금 기회비용·관리비·교통비)</Text>
-          {labels.map((l) => {
-            const mh = monthlyHousingOf(data.moneyDoc, l, days);
-            if (mh.missing) {
-              return (
-                <Text key={l} type="supporting">
-                  {`${l} 월 주거비: 아직 계산하지 못했어요${data.moneyMissing ? ` · ${data.moneyMissing}` : ""}`}
-                </Text>
-              );
-            }
-            return (
-              <VStack gap={1} key={l}>
-                <Text hasTabularNumbers>{`${l} 월 주거비 ${fmtWon(mh.monthly, { monthly: true })} (${mh.tenure})`}</Text>
-                <HowCalculated tenure={mh.tenure} housing={mh.housingDoc}
-                  maintenanceWon={mh.maintenanceWon} transitWon={mh.transitWon} />
-              </VStack>
-            );
-          })}
-        </VStack>
-      )}
-      {oneWay ? (
-        <VStack gap={1}>
-          <Text>출퇴근 편도 (문 앞→회사, 30일 살아 보기)</Text>
-          <Text hasTabularNumbers>
-            {labels.map((l) => `${l} ${fmtMinutes((data.compare.one_way || {})[l])}`).join(" · ")}
-          </Text>
-          <Text type="supporting">
-            {oneWay.d === 0
-              ? `A와 B가 같아요 (편도 평균 ${fmtMinutes(oneWay.a)})`
-              : `${oneWay.d > 0 ? "B" : "A"}가 편도 평균 ${fmtMinutes(Math.abs(oneWay.d))} 더 걸려요`}
-          </Text>
-        </VStack>
-      ) : commutes.length > 0 && (
-        <VStack gap={1}>
-          <Text>하루 출퇴근 (문 앞→회사 편도 평균)</Text>
-          {commutes.map((c) => (
-            <VStack gap={1} key={c.member}>
-              <Text hasTabularNumbers>{`${c.label} A ${fmtMinutes(c.a)} · B ${fmtMinutes(c.b)}`}</Text>
-              <Text type="supporting">{c.plain}</Text>
-            </VStack>
-          ))}
-        </VStack>
-      )}
-      {texts.length > 0 && (
-        <VStack gap={1}>
-          <Text>살아 보니</Text>
-          {texts.map((t, i) => (
-            <Text key={i} type="supporting">{`${t.when_ko} ${t.home} — ${t.text_ko}`}</Text>
-          ))}
-        </VStack>
-      )}
-    </VStack>
+    <div className="ui-result-grid">
+      <span aria-hidden="true" />
+      {labels.map((l) => (
+        <span key={l} className="ui-result-head">
+          <span className="ui-pick-disc" aria-hidden="true">{l}</span>
+          <span className="ui-result-name">{(names[l] || "").trim() || l}</span>
+        </span>
+      ))}
+      {scored.ok && [
+        <span key="score-label" className="ui-result-label">내 기준 점수</span>,
+        ...labels.map((l) => (
+          <span key={`score-${l}`} className="ui-result-value">
+            {scored.scores[l] === null || scored.scores[l] === undefined ? "–" : `${scored.scores[l]}점`}
+            <span className="ui-result-bar" aria-hidden="true">
+              <span className="ui-result-fill" style={{ width: `${Number(scored.scores[l]) || 0}%` }} />
+            </span>
+          </span>
+        )),
+        <span key="score-caption" className="ui-result-span">{scored.caption}</span>,
+      ]}
+      {showMoney && [
+        <span key="money-label" className="ui-result-label">월 주거비</span>,
+        ...labels.map((l) => {
+          const mh = monthlyHousingOf(data.moneyDoc, l, days);
+          if (mh.missing) {
+            return <span key={`money-${l}`} className="ui-result-missing">계산 전</span>;
+          }
+          return (
+            <span key={`money-${l}`} className="ui-result-value"
+              title={fmtWon(mh.monthly, { monthly: true })}>
+              {fmtWonShort(mh.monthly)}
+            </span>
+          );
+        }),
+      ]}
+      {oneWay ? [
+        <span key="commute-label" className="ui-result-label">출퇴근 편도</span>,
+        ...labels.map((l) => (
+          <span key={`commute-${l}`} className="ui-result-value">
+            {fmtMinutes((data.compare.one_way || {})[l])}
+          </span>
+        )),
+        <span key="commute-delta" className="ui-result-span">
+          {oneWay.d === 0
+            ? `A와 B가 같아요 (편도 평균 ${fmtMinutes(oneWay.a)})`
+            : `${oneWay.d > 0 ? "B" : "A"}가 편도 평균 ${fmtMinutes(Math.abs(oneWay.d))} 더 걸려요`}
+        </span>,
+      ] : commutes.map((c) => [
+        <span key={`${c.member}-label`} className="ui-result-label">{`${c.label} 출퇴근 편도`}</span>,
+        <span key={`${c.member}-a`} className="ui-result-value">{fmtMinutes(c.a)}</span>,
+        <span key={`${c.member}-b`} className="ui-result-value">{fmtMinutes(c.b)}</span>,
+        <span key={`${c.member}-plain`} className="ui-result-span">{c.plain}</span>,
+      ])}
+    </div>
   );
 }
 
@@ -507,19 +500,68 @@ export function SimulationCard({ data, example, onRetry }) {
     );
   }
   const labels = data.labels || [];
+  const names = data.names || {};
+  const days = (data.compare && data.compare.days) || 30;
+  // 19d: one 계산 disclosure for the card (the two HowCalculated
+  // blocks, each headed by its letter disc).
+  const calcs = (data.moneyDoc ? labels : []).map((l) => ({
+    label: l, mh: monthlyHousingOf(data.moneyDoc, l, days),
+  })).filter(({ mh }) => !mh.missing);
+  const texts = data.momentTexts || [];
+  const moments = data.moments || [];
   return (
     <Card padding={3}>
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>30일 살아 보기 결과</Heading>
-          {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
+          {example && <span className="ui-result-example">{EXAMPLE_PROFILE_LABEL}</span>}
           {data.recorded && <Text type="supporting">기록된 답변</Text>}
         </HStack>
         <Text type="supporting">
-          {`${labels.map((l) => `${l} ${(data.names || {})[l] || ""}`.trim()).join(" · ")}`
-            + " — 같은 식구가 30일 산 결과예요. 어느 쪽이 나은지는 고객님이 정하세요."}
+          같은 식구가 두 집에서 30일씩 살아 봤어요. 고르는 건 고객님 몫이에요.
         </Text>
         <ResultSummary data={data} />
+        {texts.length > 0 && (
+          <VStack gap={1}>
+            <Text>살아 보니</Text>
+            {texts.map((t, i) => {
+              const mo = moments.find((m) => m.label === t.home) || null;
+              return (
+                <div key={i} className="ui-result-moment">
+                  <span className="ui-result-when">{t.when_ko}</span>
+                  <span className="ui-pick-disc" aria-hidden="true">{t.home}</span>
+                  <span className="ui-result-text">{t.text_ko}</span>
+                  {mo && (
+                    <Button size="sm" variant="ghost" label="3D로 보기 →"
+                      onClick={() => {
+                        window.location.href = simMomentUrl({
+                          custom: data.customId, scenario: data.scenario || null,
+                          home: mo.label, day: mo.day, t: mo.t, follow: mo.follow,
+                        });
+                      }} />
+                  )}
+                </div>
+              );
+            })}
+          </VStack>
+        )}
+        {calcs.length > 0 && (
+          <details className="ui-section">
+            <summary className="ui-section-head">어떻게 계산했나요</summary>
+            <div className="ui-section-body">
+              {calcs.map(({ label, mh }) => (
+                <VStack gap={1} key={label}>
+                  <HStack gap={1} vAlign="center">
+                    <span className="ui-pick-disc" aria-hidden="true">{label}</span>
+                    <Text type="supporting">{(names[label] || "").trim() || label}</Text>
+                  </HStack>
+                  <HowCalculated tenure={mh.tenure} housing={mh.housingDoc}
+                    maintenanceWon={mh.maintenanceWon} transitWon={mh.transitWon} />
+                </VStack>
+              ))}
+            </div>
+          </details>
+        )}
         <details className="ui-section">
           <summary className="ui-section-head">자세히 보기</summary>
           <div className="ui-section-body">
@@ -527,18 +569,6 @@ export function SimulationCard({ data, example, onRetry }) {
           </div>
         </details>
         {data.extraLine && <Text type="supporting">{data.extraLine}</Text>}
-        <HStack gap={2} vAlign="center" wrap="wrap">
-          {(data.moments || []).map((mo) => (
-            <Button key={mo.label} size="sm" variant="secondary"
-              label={`${mo.label} 3D에서 보기`}
-              onClick={() => {
-                window.location.href = simMomentUrl({
-                  custom: data.customId, scenario: data.scenario || null,
-                  home: mo.label, day: mo.day, t: mo.t, follow: mo.follow,
-                });
-              }} />
-          ))}
-        </HStack>
       </VStack>
     </Card>
   );
