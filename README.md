@@ -51,7 +51,7 @@
 | Numbers never come from the model | Every minute and won is computed by the deterministic engine; replies with a number not in the tool results are rejected | [Verification](#verification) |
 | Muse's choices are stable across models | Spark 1.3 and Spark Open made the same choice at **120 of 139** shared decision points (**86 %**) | [Meta models](#meta-models) |
 | Guards hold on real runs | **154 of 154** decisions answered per model, **0** guard fallbacks | [Meta models](#meta-models) |
-| Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. A live run on 2026-10-31 checked all 8 diary sentences against the record | [Verification](#verification) |
+| Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. Live English run on 2026-10-31 (Pangyo, 2 homes): all 8 diary sentences matched the record, after 1 rewrite | [Verification](#verification) |
 | Tested | **1,748** JavaScript and **266** Python tests, CI on every push | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 
