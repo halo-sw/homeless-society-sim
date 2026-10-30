@@ -21,6 +21,14 @@ export const GLIDE_FRAME_M = 500;
 // Camera azimuth: offset direction (x east, z south-positive in the
 // x-right/z-towards-viewer sense main.js uses), unnormalized.
 export const TOUR_AZIMUTH = [0.45, 0.75];
+// Stage 20g: follow-mode wheel zoom scales with wheel delta, not event count.
+export function followZoomAfterWheel(zoom, deltaY, deltaMode) {
+  let px = Number(deltaY) || 0;
+  if (Number(deltaMode) === 1) px *= 16;
+  else if (Number(deltaMode) === 2) px *= 400;
+  const z = Number(zoom) || 1;
+  return Math.min(6, Math.max(0.5, z * Math.exp(px * 0.0015)));
+}
 // Stage 14e: painted (near-isometric) vs photo camera style.
 export const PAINTED_FOV_DEG = 10;
 export const PAINTED_PITCH_DEG = 32; // above the horizon (≈0.56 rad)

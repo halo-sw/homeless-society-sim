@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { destPillText, destSuffixFor, isStationBoundCommute } from "../src/labels3d.js";
+import { followZoomAfterWheel } from "../src/camera.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const mainSrc = readFileSync(join(HERE, "../src/main.js"), "utf8");
@@ -75,5 +76,34 @@ describe("20f follow camera source pins", () => {
   it("the trip branch no longer paints destPin (one destination pill)", () => {
     const paints = mainSrc.match(/paintTagPin\(destPin/g) || [];
     assert.equal(paints.length, 1, "only the ride-away boarding pill uses destPin");
+  });
+
+  it("the wheel handler scales with delta via followZoomAfterWheel", () => {
+    assert.match(mainSrc, /followZoomAfterWheel\(followZoom,\s*e\.deltaY,\s*e\.deltaMode\)/);
+    assert.ok(!/1\.12/.test(mainSrc), "no fixed per-event factor remains");
+  });
+});
+
+describe("20g followZoomAfterWheel", () => {
+  it("wheel down 500px zooms out ~2.1x", () => {
+    const z = followZoomAfterWheel(1, 500, 0);
+    assert.ok(z > 2.0 && z < 2.2, `got ${z}`);
+  });
+
+  it("wheel up 500px clamps at 0.5", () => {
+    const z = followZoomAfterWheel(1, -500, 0);
+    assert.ok(z >= 0.45 && z <= 0.5, `got ${z}`);
+  });
+
+  it("line mode scales x16", () => {
+    assert.equal(followZoomAfterWheel(1, 3, 1), followZoomAfterWheel(1, 48, 0));
+  });
+
+  it("a huge wheel-down clamps at 6", () => {
+    assert.equal(followZoomAfterWheel(5, 5000, 0), 6);
+  });
+
+  it("a trackpad nudge stays small", () => {
+    assert.ok(followZoomAfterWheel(1, 4, 0) < 1.01);
   });
 });

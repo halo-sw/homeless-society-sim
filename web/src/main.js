@@ -11,7 +11,7 @@ import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
 import { buildingCard, destSuffixFor, labelItemsFor, placeLabels } from "./labels3d.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, followZoomAfterWheel, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { drapeAerial } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
@@ -2244,7 +2244,7 @@ async function bootSim() {
   if (renderer.domElement) {
     renderer.domElement.addEventListener("wheel", (e) => {
       if (!follow || followMode !== "follow") return;
-      followZoom = clampFollowZoom(followZoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12));
+      followZoom = followZoomAfterWheel(followZoom, e.deltaY, e.deltaMode);
     }, { passive: true });
     let dragX = null;
     renderer.domElement.addEventListener("pointerdown", (e) => { dragX = e.clientX; });
