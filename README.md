@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-1743_JS_·_266_Python-2f5d50?style=flat-square" alt="1743 JavaScript and 266 Python tests">
+  <img src="https://img.shields.io/badge/tests-1745_JS_·_266_Python-2f5d50?style=flat-square" alt="1745 JavaScript and 266 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -52,7 +52,7 @@
 | Muse's choices are stable across models | Spark 1.3 and Spark Open made the same choice at **120 of 139** shared decision points (**86 %**) | [Meta models](#meta-models) |
 | Guards hold on real runs | **154 of 154** decisions answered per model, **0** guard fallbacks | [Meta models](#meta-models) |
 | Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. A live run on 2026-10-31 checked all 8 diary sentences against the record | [Verification](#verification) |
-| Tested | **1,743** JavaScript and **266** Python tests, CI on every push | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| Tested | **1,745** JavaScript and **266** Python tests, CI on every push | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 
 <p align="center">
