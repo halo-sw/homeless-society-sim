@@ -19,6 +19,7 @@
 
 import { findPath } from "./engine/journey.js";
 import { rideMinutes as derivedRideMinutes } from "./transit/schedule.js";
+import { romanize, NAMES } from "./i18n/romanize.js";
 
 export const PROFILE_SOURCES = ["customer", "default", "derived", "asked"];
 
@@ -105,15 +106,52 @@ export function parseKoreanMoney(text) {
   return parseMoneyChunk(text);
 }
 
+// English money words (24b): 300M, 300 M, 300m won, 300 million,
+// ₩300M, KRW 300M, 1.5B, 40K, ₩40,000,000, 40,000,000 won.
+// A bare comma number counts only with a ₩/KRW/won marker; a bare
+// plain number ("300") is never money.
+export function parseEnglishMoney(chunk) {
+  const m = /^(?:(₩|KRW)\s*)?([\d,]+(?:\.\d+)?)\s*(M|B|K|millions?|billions?)?\s*(won)?$/i
+    .exec(String(chunk || "").trim());
+  if (!m) return null;
+  const hasPrefix = !!m[1];
+  const mag = (m[3] || "").toLowerCase();
+  const hasWon = !!m[4];
+  if (!hasPrefix && !mag && !hasWon) return null;
+  const num = Number(m[2].replace(/,/g, ""));
+  if (!Number.isFinite(num) || num <= 0) return null;
+  let mult = 1;
+  if (mag === "k") mult = 1000;
+  else if (mag === "m" || mag === "million" || mag === "millions") mult = 1000000;
+  else if (mag === "b" || mag === "billion" || mag === "billions") mult = 1000000000;
+  else if (!hasPrefix && !hasWon) return null;
+  return Math.round(num * mult);
+}
+
 // Find money expressions with their evidence spans. Returns
 // [{won, evidence}] in text order.
 function findMoney(text) {
+  const src = String(text || "");
   const out = [];
-  const re = /\d[\d,]*\s*억(?:\s*\d[\d,]*\s*(?:천|만))?|\d[\d,]*\s*천(?:\s*만)?|\d[\d,]*\s*만\s*원?/g;
+  const hits = [];
+  const koRe = /\d[\d,]*\s*억(?:\s*\d[\d,]*\s*(?:천|만))?|\d[\d,]*\s*천(?:\s*만)?|\d[\d,]*\s*만\s*원?/g;
+  const enRe = /(?:₩\s*|KRW\s*)\d[\d,]*(?:\.\d+)?\s*(?:[MBK]\b|millions?\b|billions?\b)?(?:\s*won\b)?|\d[\d,]*(?:\.\d+)?\s*(?:[MBK]\b|millions?\b|billions?\b)(?:\s*won\b)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*won\b/gi;
   let m;
-  while ((m = re.exec(text)) !== null) {
-    const won = parseMoneyChunk(m[0]);
-    if (won !== null) out.push({ won, evidence: m[0] });
+  while ((m = koRe.exec(src)) !== null) {
+    hits.push({ index: m.index, evidence: m[0], kind: "ko" });
+  }
+  while ((m = enRe.exec(src)) !== null) {
+    hits.push({ index: m.index, evidence: m[0], kind: "en" });
+  }
+  hits.sort((a, b) => a.index - b.index || b.evidence.length - a.evidence.length);
+  let lastEnd = -1;
+  for (const h of hits) {
+    if (h.index < lastEnd) continue;
+    const won = h.kind === "ko" ? parseMoneyChunk(h.evidence) : parseEnglishMoney(h.evidence);
+    if (won !== null) {
+      out.push({ won, evidence: h.evidence });
+      lastEnd = h.index + h.evidence.length;
+    }
   }
   return out;
 }
@@ -131,6 +169,18 @@ function findTenure(text) {
   if (text.includes("아직 모름") || text.includes("아직 몰라")) {
     return { key: "undecided", evidence: "아직 모름" };
   }
+  // English cues (24b): word-bounded, case-insensitive, Korean first.
+  const en = [
+    [/\bpublic\s+(?:rental|housing)\b/i, "public"],
+    [/\bjeonse\b|\bchonsei\b/i, "jeonse"],
+    [/\bmonthly\s+rent\b|\bwolse\b/i, "wolse"],
+    [/\bbuy\b|\bpurchase\b|\bbuying\b/i, "trade"],
+    [/\bnot\s+sure\b|\bundecided\b|\bdon't\s+know\s+yet\b/i, "undecided"],
+  ];
+  for (const [re, key] of en) {
+    const m = re.exec(text);
+    if (m) return { key, evidence: m[0] };
+  }
   return null;
 }
 
@@ -138,17 +188,27 @@ function findMembers(text) {
   const two = ["부부", "신혼", "둘이", "2인", "두 사람", "맞벌이"];
   const child = ["아이", "자녀", "초등", "어린이", "애기", "아기"];
   const one = ["혼자", "신입", "1인", "나 혼자", "자취"];
+  // English cues (24b): word-bounded, case-insensitive, Korean first.
+  const enTwo = /\b(?:couple|married|newlywed|my\s+(?:wife|husband|partner|spouse)|two of us|both work)\b/i.exec(text);
+  const enOne = /\b(?:alone|by myself|single|on my own|just me)\b/i.exec(text);
+  const enChild = /\b(?:kid|kids|child|children|son|daughter|baby|toddler|elementary)\b/i.exec(text);
   const members = [];
   let evidence = null;
-  if (two.some((w) => text.includes(w))) {
-    evidence = two.find((w) => text.includes(w));
+  if (two.some((w) => text.includes(w)) || enTwo) {
+    evidence = two.some((w) => text.includes(w))
+      ? two.find((w) => text.includes(w))
+      : enTwo[0];
     members.push({ role: "adult" }, { role: "adult" });
-  } else if (one.some((w) => text.includes(w))) {
-    evidence = one.find((w) => text.includes(w));
+  } else if (one.some((w) => text.includes(w)) || enOne) {
+    evidence = one.some((w) => text.includes(w))
+      ? one.find((w) => text.includes(w))
+      : enOne[0];
     members.push({ role: "adult" });
   }
-  if (child.some((w) => text.includes(w))) {
-    const cw = child.find((w) => text.includes(w));
+  if (child.some((w) => text.includes(w)) || enChild) {
+    const cw = child.some((w) => text.includes(w))
+      ? child.find((w) => text.includes(w))
+      : enChild[0];
     evidence = evidence ? `${evidence}·${cw}` : cw;
     if (members.length === 0) members.push({ role: "adult" });
     members.push({ role: "child" });
@@ -179,6 +239,21 @@ export function findHomeKinds(text) {
   if (!kinds.includes("오피스텔") && /오피(?!스텔)/.test(src)) {
     kinds.push("오피스텔");
     hits.push("오피");
+  }
+  // English cues (24b): evidence is the English slice as written.
+  const kindEn = [
+    [/\bofficetel\b/i, "오피스텔"],
+    [/\bapartments?\b|\bapt\b/i, "아파트"],
+    [/\bvilla\b|\bmulti-unit\b|\bmultiplex\b|\brow house\b/i, "연립·다세대"],
+    [/\bstudio\b|\bone-room\b|\bone room\b/i, "원룸"],
+  ];
+  for (const [re, kind] of kindEn) {
+    if (kinds.includes(kind)) continue;
+    const m = re.exec(src);
+    if (m) {
+      kinds.push(kind);
+      hits.push(m[0]);
+    }
   }
   if (kinds.length === 0) return null;
   return { kinds, evidence: hits.join("·") };
@@ -222,6 +297,54 @@ function findWorkplace(text, stations) {
         text: mention, evidence: m[0],
         resolved: resolveWorkplace(mention, stations),
       };
+    }
+  }
+  // English patterns (24b), only when no Korean pattern matched.
+  const mentionPat = "[A-Za-z][A-Za-z .'-]{1,40}?";
+  const tail = "(?=[.,;!]|\\s+(?:and|but|every|daily|for|by)\\b|$)";
+  const enPats = [
+    new RegExp(`commute to (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
+    new RegExp(`work (?:at|in|near|around) (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
+    new RegExp(`(?:office|job|workplace|company) (?:is )?(?:at|in|near) (${mentionPat})(?:\\s+station|\\s+stn)?${tail}`, "i"),
+  ];
+  for (const re of enPats) {
+    const m = re.exec(text);
+    if (m && m[1] && m[1].trim()) {
+      const mention = m[1].trim().replace(/\s+(?:station|stn)\.?$/i, "");
+      if (!mention) continue;
+      return {
+        text: mention, evidence: m[0],
+        resolved: resolveEnglishStation(mention, stations),
+      };
+    }
+  }
+  // "near X station" only with a work context (24b).
+  if (/\b(?:work|office|commute)\b/i.test(text)) {
+    const m = new RegExp(`\\bnear (${mentionPat}) (?:station|stn)\\b`, "i").exec(text);
+    if (m && m[1] && m[1].trim()) {
+      const mention = m[1].trim();
+      return {
+        text: mention, evidence: m[0],
+        resolved: resolveEnglishStation(mention, stations),
+      };
+    }
+  }
+  return null;
+}
+
+// Resolve an English station mention ("Gangnam") to the Korean station
+// name via romanize() + the NAMES overrides (24b, pure).
+function resolveEnglishStation(mention, stations) {
+  const norm = String(mention || "").toLowerCase().replace(/[\s.\-]/g, "");
+  if (!norm) return null;
+  for (const s of stations || []) {
+    const base = String(s).replace(/역$/, "");
+    const forms = new Set([base]);
+    if (Object.hasOwn(NAMES, base)) forms.add(NAMES[base]);
+    if (Object.hasOwn(NAMES, s)) forms.add(NAMES[s]);
+    forms.add(romanize(base));
+    for (const f of forms) {
+      if (String(f).toLowerCase().replace(/[\s.\-]/g, "") === norm) return base;
     }
   }
   return null;
@@ -303,27 +426,39 @@ export function extract_profile(text, current = null, opts = {}) {
 
   const tenure = findTenure(src);
   const salaryHit = nearMoney(src, /연봉|세전|급여/, monies)
+    || nearMoney(src, /salary|earn|make|income/i, monies, 24)
     || (/(신입|초봉).*?(4천|3천|5천)/.test(src) ? null : null);
-  const cashHit = nearMoney(src, /모은\s*돈|모은돈|보유|현금|수중|마련|종잣돈/, monies, 20);
+  const cashHit = nearMoney(src, /모은\s*돈|모은돈|보유|현금|수중|마련|종잣돈/, monies, 20)
+    || nearMoney(src, /savings|saved|cash|in the bank/i, monies, 24);
   const depositHit = nearMoney(src, /전세/, monies)
-    || nearMoney(src, /보증금/, monies);
+    || nearMoney(src, /보증금/, monies)
+    || nearMoney(src, /jeonse|deposit/i, monies, 24);
   const monthlyHit = nearMoney(src, /월\s*\d|월세/, monies)
+    || nearMoney(src, /per month|a month|\/month/i, monies, 24)
+    || nearMoney(src, /monthly(?: rent)?|wolse/i, monies, 24)
     || (() => {
       const m = /월\s*(\d[\d,]*)/.exec(src);
       if (!m) return null;
       const won = Number(m[1].replace(/,/g, "")) * WON_MAN;
       return { won, evidence: m[0] };
     })();
-  const priceHit = nearMoney(src, /매매|매매가|집값/, monies);
+  const priceHit = nearMoney(src, /매매|매매가|집값/, monies)
+    || nearMoney(src, /buy|purchase|price/i, monies, 24);
   const sizeHit = (() => {
     const m = /(\d+(?:\.\d+)?)\s*(?:㎡|평|제곱)/.exec(src);
-    if (!m) return null;
-    return { value: Number(m[1]), evidence: m[0] };
+    if (m) return { value: Number(m[1]), evidence: m[0] };
+    // English units (24b); pyeong keeps the number as said, no conversion.
+    const e = /(\d+(?:\.\d+)?)\s*(?:m2|m²|㎡|sqm|square meters?|pyeong)/i.exec(src);
+    if (!e) return null;
+    return { value: Number(e[1]), evidence: e[0] };
   })();
   const commuteHit = (() => {
     const m = /(\d+)\s*분\s*(?:이내|안에|까지|컷)/.exec(src);
-    if (!m) return null;
-    return { value: Number(m[1]), evidence: m[0] };
+    if (m) return { value: Number(m[1]), evidence: m[0] };
+    const e = /(?:within|under|at most|max(?:imum)?|no more than)\s*(\d+)\s*(?:min|mins|minutes)/i.exec(src)
+      || /(\d+)\s*(?:min|mins|minutes)\s*(?:or less|max|at most|commute)/i.exec(src);
+    if (!e) return null;
+    return { value: Number(e[1]), evidence: e[0] };
   })();
   const membersHit = findMembers(src);
   const workHit = findWorkplace(src, stations);
