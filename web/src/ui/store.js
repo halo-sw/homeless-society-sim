@@ -70,6 +70,7 @@ export const INITIAL_STATE = {
   stripCompare: false, // A·B day strips stacked
   chatSummary: "", // top-bar profile chip in chat mode ("판교 출근 · 1인 · …")
   aerial: false, // 20d/20e: true once the VWorld aerial drape lands (set() drops unknown keys)
+  pendingScene: null, // 27c2: Muse's open_panel scene effect, consumed by the chat
 };
 
 function clone(value) {

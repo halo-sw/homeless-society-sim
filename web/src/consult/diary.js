@@ -116,7 +116,7 @@ export async function writeDiary({ complete, provider, digests }) {
     { role: "system", content: DIARY_PROMPT },
     { role: "user", content: JSON.stringify(digests) },
   ];
-  const first = await complete({ provider, messages: baseMessages, maxTokens: 2000 });
+  const first = await complete({ provider, messages: baseMessages, maxTokens: 8000 });
   const firstContent = (first && first.message && first.message.content) || "";
   let parsed;
   try {
@@ -138,7 +138,7 @@ export async function writeDiary({ complete, provider, digests }) {
       messages: [...baseMessages,
         { role: "assistant", content: currentContent },
         { role: "user", content: `고쳐 써주세요.\n${notes.map((n) => `${n}`).join("\n")}` }],
-      maxTokens: 2000,
+      maxTokens: 8000,
     });
     usage = (retry && retry.usage) || usage;
     const retryContent = (retry && retry.message && retry.message.content) || "";

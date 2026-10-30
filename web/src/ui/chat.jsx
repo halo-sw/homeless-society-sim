@@ -256,6 +256,60 @@ export function scrollChatToSim(simId, root) {
   }
 }
 
+// 27f: follow the conversation — scroll the message list to the end.
+export function scrollChatToEnd(root) {
+  try {
+    const doc = root || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.querySelector !== "function") return false;
+    const list = doc.querySelector(".astryx-chat-message-list");
+    if (!list) return false;
+    list.scrollTop = list.scrollHeight;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 27f: one bubble per turn — pure part of askAgent message merging.
+export function turnBubble(out) {
+  const msgs = (out && out.messages) || [];
+  let content = (out && typeof out.reply === "string" && out.reply.trim() !== "")
+    ? out.reply
+    : "";
+  if (!content) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m && m.role === "assistant" && typeof m.content === "string" && m.content.trim() !== "") {
+        content = m.content;
+        break;
+      }
+    }
+  }
+  const tool_calls = [];
+  for (const m of msgs) {
+    if (m && m.role === "assistant" && Array.isArray(m.tool_calls)) {
+      for (const c of m.tool_calls) tool_calls.push(c);
+    }
+  }
+  return { content, tool_calls };
+}
+
+// 27f: diary failure fallback line — pure, tested.
+export function diaryFallbackLine(oneWay, names) {
+  const fmt = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v))
+    ? "—" : `${Math.round(Number(v))}분`);
+  const a = fmt(oneWay && oneWay.A);
+  const b = fmt(oneWay && oneWay.B);
+  const nmA = (names && names.A) || "A";
+  const nmB = (names && names.B) || "B";
+  let line = `다 살아 봤어요. A ${nmA}는 출근 편도 평균 ${a}, B ${nmB}는 ${b}이었어요. 일기는 이번에 못 썼어요.`;
+  if (names && names.C !== undefined && names.C !== null && names.C !== "") {
+    const c = fmt(oneWay && oneWay.C);
+    line = `다 살아 봤어요. A ${nmA}는 출근 편도 평균 ${a}, B ${nmB}는 ${b}, C ${names.C}는 ${c}이었어요. 일기는 이번에 못 썼어요.`;
+  }
+  return line;
+}
+
 export function runReadiness(picks, candidates) {
   const list = Array.isArray(candidates) ? candidates : [];
   const picked = list.filter((c) => picks.includes(c.id));
@@ -323,8 +377,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
         {candidates.length > 0 && (
           <Text type="supporting">
             {picks.length < 2
-              ? "마음에 드는 집을 2곳 담으면 지도 아래에서 30일 살아 보기를 시작할 수 있어요"
-              : "지도 아래 ‘이 집들로 30일 살아 보기’를 눌러 주세요"}
+              ? "마음에 드는 집을 2곳 담고 \"살아 봐 줘\"라고 말해 보세요"
+              : "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요"}
           </Text>
         )}
       </VStack>
@@ -1598,10 +1652,16 @@ export function ChatScreen() {
           }).catch(() => {
             setMessages((prev) => prev.map((m) => (m.id === simId
               ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
+            pushMsg({ role: "assistant", kind: "text",
+              content: diaryFallbackLine(compare.one_way, payload.names),
+              suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
           });
         } catch {
           setMessages((prev) => prev.map((m) => (m.id === simId
             ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
+          pushMsg({ role: "assistant", kind: "text",
+            content: diaryFallbackLine(compare.one_way, payload.names),
+            suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
         }
       }
     } catch (err) {
@@ -1687,11 +1747,11 @@ export function ChatScreen() {
       for (const m of appended) {
         if (m.role === "system") {
           pushMsg({ role: "system", kind: "system", content: m.content });
-        } else if (m.role === "assistant") {
-          pushMsg({ role: "assistant", kind: "text", content: m.content || "",
-            tool_calls: m.tool_calls || [], suggestions: [...suggestions] });
         }
       }
+      const bubble = turnBubble(out);
+      pushMsg({ role: "assistant", kind: "text", content: bubble.content || "",
+        tool_calls: bubble.tool_calls, suggestions: [...suggestions] });
       appendToolCards(out.messages);
       mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
@@ -1963,6 +2023,13 @@ export function ChatScreen() {
     }
     store.set({ pendingScene: null });
   }, [pendingScene]);
+  // 27f: follow the conversation — newest message stays in view,
+  // except a done simulation card keeps its own scroll target.
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last && last.kind === "simulation" && last.data && last.data.status === "done") return;
+    soon(() => scrollChatToEnd());
+  }, [messages.length, liveRows.length]);
   // 26c: a resolved place (Meta HQ) names the destination and pins
   // the map's work pin at its lon/lat.
   const wpResolved = (profile && profile.workplaces && profile.workplaces.value
