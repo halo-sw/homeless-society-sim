@@ -277,29 +277,30 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         </HStack>
         {data && (
           <Text type="supporting">
-            {`조건에 맞는 집 ${data.total_matching.toLocaleString()}곳 중 ${candidates.length}곳 보여드려요 · ${data.sort_note || ""}`}
+            {`조건에 맞는 집 ${data.total_matching.toLocaleString()}곳 중 ${candidates.length}곳 · ${data.sort_note || ""}`}
           </Text>
         )}
         {candidates.length === 0 && (
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
         )}
-        {withPhotos.map(({ candidate: c, photos }, i) => (
-          <div key={c.id} id={`cand-${c.id}`}
-            onMouseEnter={() => onHover && onHover(`home:${c.id}`)}
-            onMouseLeave={() => onHover && onHover(null)}
-            style={highlightId === `home:${c.id}`
-              ? { outline: "2px solid #2f6fed", borderRadius: 12 } : undefined}>
-            <VStack gap={1}>
-              <CandidateCard candidate={c} tenure={tenure} destName={destName}
-                photos={photos} index={i} picked={picks.includes(c.id)}
-                onLive={() => onTogglePick(c)}
-                onJeonse={() => onJeonse(c)} onDetail={() => onDetail && onDetail(c)} />
-              {readinessNote(c) && (
-                <Text type="supporting">{`살아 보기 불가: ${readinessNote(c)}`}</Text>
-              )}
-            </VStack>
-          </div>
-        ))}
+        <div className="ui-cand-list">
+          {withPhotos.map(({ candidate: c, photos }, i) => {
+            const pickIdx = (picks || []).indexOf(c.id);
+            return (
+              <div key={c.id} id={`cand-${c.id}`}
+                onMouseEnter={() => onHover && onHover(`home:${c.id}`)}
+                onMouseLeave={() => onHover && onHover(null)}>
+                <CandidateCard candidate={c} tenure={tenure} destName={destName}
+                  variant="row" photos={photos} index={i} picked={pickIdx >= 0}
+                  pickLetter={pickIdx >= 0 ? (PICK_LETTERS[pickIdx] || null) : null}
+                  highlighted={highlightId === `home:${c.id}`}
+                  note={readinessNote(c)}
+                  onLive={() => onTogglePick(c)}
+                  onJeonse={() => onJeonse(c)} onDetail={() => onDetail && onDetail(c)} />
+              </div>
+            );
+          })}
+        </div>
         {candidates.length > 0 && (
           <Text type="supporting">
             {picks.length < 2
@@ -1679,7 +1680,7 @@ export function SidePanel({ picks, candidatesData, detail, onCloseDetail,
       </HStack>
       {detail && (
         <CandidateCard candidate={detail} tenure={tenure} destName={destName}
-          photos={detailPhotos} picked={(picks || []).includes(detail.id)}
+          variant="full" photos={detailPhotos} picked={(picks || []).includes(detail.id)}
           onLive={() => onTogglePick && onTogglePick(detail)}
           onJeonse={() => onJeonse && onJeonse(detail)} onDetail={null} />
       )}

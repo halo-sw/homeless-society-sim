@@ -403,7 +403,8 @@ describe("18f real tracks, spread tags, one 추정", () => {
       tenures: [{ tenure: "jeonse", median_won: 195000000, deals: 5 }] };
     const html = renderToString(React.createElement(CandidateCard,
       { candidate: full, tenure: "jeonse", destName: "판교" }));
-    assert.match(html, /추정 \(살아 보기 전\)/);
-    assert.equal(html.match(/추정/g).length, 1, "card shows 추정 exactly once");
+    assert.ok(!html.includes("살아 보기 전"), "row has no pre-run label");
+    assert.equal(html.match(/추정/g).length, 1, "row shows 추정 exactly once");
+    assert.ok(!/\d+\.\d+분/.test(html), "row rounds minutes");
   });
 });

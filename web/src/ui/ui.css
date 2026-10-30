@@ -495,6 +495,40 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-cand-badges { display: flex; gap: var(--ui-s8); flex-wrap: wrap; }
 .ui-cand-actions { display: flex; gap: var(--ui-s8); align-items: center; flex-wrap: wrap; }
 .ui-cand-credit { font-size: var(--ui-t12); color: var(--ui-ink3); }
+/* ---------- 19c: candidate rows (chat list, name first) ---------- */
+.ui-cand-list { display: flex; flex-direction: column; gap: 8px; }
+.ui-cand-row { display: flex; gap: var(--ui-s12); align-items: flex-start;
+  border: 1px solid var(--ui-border); border-radius: var(--ui-r-card);
+  background: var(--ui-card); padding: var(--ui-s8);
+  min-height: 112px; box-sizing: border-box; cursor: pointer; }
+.ui-cand-row.is-picked { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
+.ui-cand-row.is-hi { outline: 1px solid var(--ui-accent); outline-offset: -1px;
+  background: #eef3fe; }
+.ui-cand-thumb { width: 96px; height: 96px; flex: none;
+  border-radius: 10px; overflow: hidden; background: var(--ui-sunken); }
+.ui-cand-thumb > * { width: 100%; height: 100%; }
+.ui-cand-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ui-cand-row-main { flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px; }
+.ui-cand-row-top { display: flex; align-items: center; gap: var(--ui-s8); }
+.ui-cand-disc { width: 20px; height: 20px; border-radius: 50%; flex: none;
+  background: var(--ui-sunken); color: var(--ui-ink2);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--ui-t12); font-weight: var(--ui-w600); }
+.ui-cand-disc.is-pick { background: var(--ui-accent); color: #fff; }
+.ui-cand-row-name { font-size: 15px; font-weight: var(--ui-w600);
+  flex: 1 1 auto; min-width: 0;
+  word-break: keep-all; overflow-wrap: anywhere; }
+.ui-cand-row-btn { flex: none; }
+.ui-cand-row-price { font-size: 15px; font-weight: var(--ui-w600); }
+.ui-cand-row-facts { font-size: var(--ui-t12); color: var(--ui-ink2); }
+.ui-cand-row-commute { font-size: var(--ui-t12); }
+.ui-cand-est { font-size: 11px; color: var(--ui-ink2); background: var(--ui-sunken);
+  border-radius: 6px; padding: 1px 6px; }
+/* 19c: the full card in the side panel — wide photo, name then price. */
+.ui-cand-full .ui-cand-photo { aspect-ratio: 16 / 9; }
+.ui-cand-full .ui-cand-name { font-size: 18px; }
+.ui-cand-full .ui-cand-price { font-size: 24px; }
 /* Card entrance: stagger ≤40ms each, once, transform+opacity only. */
 @keyframes uiCardIn {
   from { opacity: 0; transform: translateY(8px); }

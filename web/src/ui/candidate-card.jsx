@@ -1,6 +1,7 @@
-// Real-estate grade candidate card (13, Part 6). Hierarchy studied
-// from Korean and global listing services: photo, price, facts,
-// place, then OUR decisive extra — the commute and the 30-day life.
+// Real-estate grade candidate card (13, Part 6; 19c row/full).
+// Hierarchy studied from Korean and global listing services.
+// Two variants: "row" (default, the chat list — name first, ~112 px)
+// and "full" (the 19a side-panel detail — photo, name, price first).
 // SSR-safe.
 import { useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
@@ -53,6 +54,33 @@ export function commuteShortLine(candidate, destName) {
   return { text: "도보 미확인", source: "unknown" };
 }
 
+// 19c: the chat-list commute line — rounded minutes, no decimals.
+// { text, estimate } so the row renders "추정" as a chip.
+export function commuteRowLine(candidate, destName) {
+  const c = candidate.commute;
+  if (!c) return { text: "출퇴근 정보를 확인 중이에요", estimate: false };
+  if (candidate.commute_ko && candidate.commute_ko.includes(SAME_STATION_KO)) {
+    return { text: SAME_STATION_KO, estimate: false };
+  }
+  const walkKnown = !!(c.walk && c.walk.known);
+  const rideKnown = !!(c.ride && c.ride.known
+    && Number.isFinite(c.ride.minutes) && c.ride.minutes > 0);
+  const src = c.ride && c.ride.source === "customer" ? "said"
+    : c.ride && c.ride.derived && (c.ride.derived.methodsUsed || []).includes("estimate")
+      && !(c.ride.derived.methodsUsed || []).includes("schedule") ? "estimate" : "official";
+  const near = (m) => (m < 1 ? "1분 이내" : `${Math.round(m)}분`);
+  const where = destName ? `${destName}까지 ` : "";
+  if (rideKnown) {
+    const total = Math.round((walkKnown ? c.walk.minutes : 0) + c.ride.minutes);
+    const walkBit = walkKnown ? `${c.walk.station}역 걸어서 ${near(c.walk.minutes)}` : "도보 미확인";
+    return { text: `${where}약 ${total}분 · ${walkBit}`, estimate: src === "estimate" };
+  }
+  if (walkKnown) {
+    return { text: `${c.walk.station}역 걸어서 ${near(c.walk.minutes)}`, estimate: false };
+  }
+  return { text: "도보 미확인", estimate: false };
+}
+
 const SRC_KO = { official: "공식", estimate: "추정", said: "내가 말한 값", unknown: "미확인" };
 const SRC_CLS = { official: "ui-src-official", estimate: "ui-src-estimate", said: "ui-src-said", unknown: "" };
 
@@ -66,34 +94,106 @@ export function SourceDot({ source }) {
   );
 }
 
-export function CandidateCard({ candidate, tenure, destName, photos, index,
-  onLive, onJeonse, onDetail, picked = false }) {
-  const [slide, setSlide] = useState(0);
-  const [openHow, setOpenHow] = useState(false);
-  const price = tenurePriceLine(candidate, tenure);
-  const commute = commuteShortLine(candidate, destName);
-  const slots = (photos && photos.slots) || [];
-  const facts = [
+// 19c: facts without any ✓ glyph — the budget fit is plain wording.
+function factsFor(candidate, price) {
+  return [
     candidate.kind,
     candidate.sizeLabel || (candidate.tenures?.[0] ? `${candidate.tenures[0].bucket_center_m2}㎡` : null),
     candidate.build_year ? `${candidate.build_year}년` : null,
-    price.fit === "all" ? "예산 안 ✓" : price.fit === "partial" ? "예산 일부 ✓" : price.fit === "none" ? "예산 밖" : null,
+    price.fit === "all" ? "예산 안" : price.fit === "partial" ? "예산 일부" : price.fit === "none" ? "예산 밖" : null,
   ].filter(Boolean);
-  const badges = [simBadgeFor(candidate)];
-  if (price.thin) badges.push(price.thin);
-  else if (price.deals > 0) badges.push(`실거래 ${price.deals}건`);
-  if (candidate.match === "osm_name") badges.push("OSM 위치");
+}
+
+function RowThumb({ candidate, hero }) {
+  if (hero) {
+    return (
+      <img src={hero.thumb_url} alt={hero.title || "단지 사진"} loading="lazy"
+        title={`${hero.credit} · 원본 보기`} />
+    );
+  }
+  if (candidate.scene) {
+    return (
+      <SceneThumb boxId={candidate.scene}
+        home={{ lon: candidate.lon, lat: candidate.lat }}
+        fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+    );
+  }
+  return <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />;
+}
+
+// 19c: the supporting walk/ride breakdown for the full card.
+function commuteDetailLine(candidate) {
+  const c = candidate.commute;
+  if (!c) return "";
+  const near = (m) => (m < 1 ? "1분 이내" : `${Math.round(m)}분`);
+  const parts = [];
+  if (c.walk && c.walk.known) parts.push(`걷기 ${near(c.walk.minutes)}`);
+  if (c.ride && c.ride.known && Number.isFinite(c.ride.minutes) && c.ride.minutes > 0) {
+    parts.push(`지하철 ${Math.round(c.ride.minutes)}분`);
+  }
+  return parts.join(" · ");
+}
+
+export function CandidateCard({ candidate, tenure, destName, photos, index,
+  onLive, onJeonse, onDetail, picked = false, variant = "row",
+  pickLetter = null, highlighted = false, note = "" }) {
+  const [slide, setSlide] = useState(0);
+  const price = tenurePriceLine(candidate, tenure);
+  const row = commuteRowLine(candidate, destName);
+  const facts = factsFor(candidate, price);
+  const rangeTitle = price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub;
   // 18: the hero is the complex photo when one exists, else the
   // painted 3D thumbnail — never a station or street photo. Nearby
   // photos stay visible as a small labelled strip with their licences.
-  // No empty grey box: without a hero the area is omitted entirely.
+  const slots = (photos && photos.slots) || [];
   const hero = slots.find((s) => s.slot === "complex") || null;
   const rest = slots.filter((s) => s !== hero);
+  if (variant === "full") return (
+    <FullCard candidate={candidate} price={price} facts={facts} row={row}
+      hero={hero} rest={rest} slide={slide} setSlide={setSlide}
+      picked={picked} rangeTitle={rangeTitle}
+      onLive={onLive} onJeonse={onJeonse} />
+  );
+  const disc = picked ? (pickLetter || String((index ?? 0) + 1)) : String((index ?? 0) + 1);
+  return (
+    <article className={`ui-cand-row${picked ? " is-picked" : ""}${highlighted ? " is-hi" : ""}`}
+      role="button" tabIndex={0}
+      onClick={() => onDetail && onDetail(candidate)}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" && onDetail) onDetail(candidate);
+      }}>
+      <div className="ui-cand-thumb">
+        <RowThumb candidate={candidate} hero={hero} />
+      </div>
+      <div className="ui-cand-row-main">
+        <div className="ui-cand-row-top">
+          <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true">{disc}</span>
+          <span className="ui-cand-row-name">{candidate.name}</span>
+          <span className="ui-cand-row-btn" onClick={(e) => e.stopPropagation()}>
+            <Button size="sm" variant={picked ? "secondary" : "primary"}
+              label={picked ? "담음 ✓" : "담기"}
+              onClick={() => onLive && onLive(candidate)} />
+          </span>
+        </div>
+        <div className="ui-cand-row-price ui-num" title={rangeTitle}>{price.price}</div>
+        <div className="ui-cand-row-facts ui-num">{facts.join(" · ")}</div>
+        <div className="ui-cand-row-commute ui-num">
+          {row.text}{row.estimate ? " " : null}{row.estimate && <span className="ui-cand-est">추정</span>}
+        </div>
+        {note && <Text type="supporting">{`살아 보기 불가 · ${note}`}</Text>}
+      </div>
+    </article>
+  );
+}
+
+function FullCard({ candidate, price, facts, row, hero, rest,
+  slide, setSlide, picked, rangeTitle, onLive, onJeonse }) {
   const shot = rest.length > 0 ? rest[slide % rest.length] : null;
   const showHero = !!(hero || candidate.scene);
+  const detail = commuteDetailLine(candidate);
   return (
-    <article className="ui-cand ui-card-enter"
-      style={index !== undefined ? { animationDelay: `${Math.min(index, 12) * 40}ms` } : undefined}>
+    <article className="ui-cand ui-cand-full ui-card-enter">
       {showHero && (
         <div className="ui-cand-photo">
           {hero ? (
@@ -108,61 +208,57 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
           {hero && <span className="ui-cand-label">{hero.label}</span>}
         </div>
       )}
-      {shot && (
-        <div className="ui-cand-strip">
-          <a href={shot.page_url} target="_blank" rel="noreferrer" title={`${shot.credit} · 원본 보기`}>
-            <img src={shot.thumb_url} alt={shot.title || "주변 사진"} loading="lazy" />
-          </a>
-          <div className="ui-cand-strip-meta">
-            <Text type="supporting">{shot.label}</Text>
-            <Text type="supporting">{shot.credit}</Text>
-          </div>
-          {rest.length > 1 && (
-            <span style={{ display: "flex", gap: 4 }}>
-              <Button size="sm" variant="secondary" label="‹"
-                onClick={() => setSlide((slide + rest.length - 1) % rest.length)} />
-              <Button size="sm" variant="secondary" label="›"
-                onClick={() => setSlide((slide + 1) % rest.length)} />
-              <Text type="supporting">{`${(slide % rest.length) + 1}/${rest.length}`}</Text>
-            </span>
-          )}
-        </div>
-      )}
       <div className="ui-cand-body">
-        <div className="ui-cand-price ui-num" title={price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub}>
-          {price.price} <small>{price.sub}</small>
+        <div>
+          <div className="ui-cand-name">{candidate.name}</div>
+          {candidate.dong && <div className="ui-cand-place">{candidate.dong}</div>}
+        </div>
+        <div>
+          <div className="ui-cand-price ui-num" title={rangeTitle}>{price.price}</div>
+          <div className="ui-cand-facts ui-num">{price.sub}</div>
         </div>
         <div className="ui-cand-facts ui-num">{facts.join(" · ")}</div>
         <div>
-          <div className="ui-cand-name">{candidate.name}</div>
-          <div className="ui-cand-place">
-            {[candidate.dong, candidate.commute?.walk?.known
-              ? `${candidate.commute.walk.station} 도보 ${candidate.commute.walk.minutes < 1 ? "1분 이내" : `${candidate.commute.walk.minutes}분`}`
-              : "도보 미확인"].filter(Boolean).join(" · ")}
+          <div className="ui-commute ui-num">
+            {row.text}{row.estimate ? " " : null}{row.estimate && <span className="ui-cand-est">추정</span>}
           </div>
+          {detail && <Text type="supporting">{detail}</Text>}
         </div>
-        <div className="ui-commute ui-num">
-          {commute.text} {!/추정/.test(commute.text) && <SourceDot source={commute.source} />}
-        </div>
-        <div className="ui-cand-facts ui-num">{badges.join(" · ")}</div>
-        {hero && <div className="ui-cand-credit">{hero.credit}</div>}
+        {shot && (
+          <div className="ui-cand-strip">
+            <a href={shot.page_url} target="_blank" rel="noreferrer" title={`${shot.credit} · 원본 보기`}>
+              <img src={shot.thumb_url} alt={shot.title || "주변 사진"} loading="lazy" />
+            </a>
+            <div className="ui-cand-strip-meta">
+              <Text type="supporting">{shot.label}</Text>
+              <Text type="supporting">{shot.credit}</Text>
+            </div>
+            {rest.length > 1 && (
+              <span style={{ display: "flex", gap: 4 }}>
+                <Button size="sm" variant="secondary" label="‹"
+                  onClick={() => setSlide((slide + rest.length - 1) % rest.length)} />
+                <Button size="sm" variant="secondary" label="›"
+                  onClick={() => setSlide((slide + 1) % rest.length)} />
+                <Text type="supporting">{`${(slide % rest.length) + 1}/${rest.length}`}</Text>
+              </span>
+            )}
+          </div>
+        )}
         {!showHero && !shot && (
           <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
         )}
         <div className="ui-cand-actions">
           <Button size="sm" variant={picked ? "secondary" : "primary"}
-            label={picked ? "담김 ✓ · 빼기" : "비교에 담기"}
+            label={picked ? "담음 ✓" : "담기"}
             onClick={() => onLive && onLive(candidate)} />
-          <Button size="sm" variant="ghost" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />
-          <Button size="sm" variant="ghost" label="자세히" onClick={() => onDetail && onDetail(candidate)} />
+          <Button size="sm" variant="secondary" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />
         </div>
-        <div>
-          <Button size="sm" variant="ghost" label={openHow ? "어떻게 계산했나요 ▲" : "어떻게 계산했나요 ▽"}
-            onClick={() => setOpenHow(!openHow)} />
-          {openHow && (
+        <details className="ui-section">
+          <summary className="ui-section-head">어떻게 계산했나요</summary>
+          <div className="ui-section-body">
             <Text type="supporting">{candidate.commute_ko || "계산 근거를 불러오는 중이에요"}</Text>
-          )}
-        </div>
+          </div>
+        </details>
       </div>
     </article>
   );
