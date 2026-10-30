@@ -8,19 +8,23 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-1398_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 1398개, Python 테스트 244개">
+  <img src="https://img.shields.io/badge/tests-1421_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 1421개, Python 테스트 244개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
   <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
 </p>
 
 <p align="center">
+  <a href="https://halo-sw.github.io/homeless-society-sim/"><img src="https://img.shields.io/badge/바로_써_보기-live-2f5d50?style=for-the-badge" alt="바로 써 보기"></a>
+  &nbsp;
   <a href="#빠른-시작"><img src="https://img.shields.io/badge/직접_실행-빠른_시작-2f5d50?style=for-the-badge" alt="직접 실행하기"></a>
   &nbsp;
   <a href="briefs/"><img src="https://img.shields.io/badge/Muse_Code-작업_기록-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Muse Code 작업 기록"></a>
   &nbsp;
   <a href="README.md"><img src="https://img.shields.io/badge/English-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="English README"></a>
 </p>
+
+<p align="center"><sub>공개 사이트: <a href="https://halo-sw.github.io/homeless-society-sim/">https://halo-sw.github.io/homeless-society-sim/</a> — 정적 빌드라 키 보호를 위해 Muse 대화와 VWorld 항공사진은 꺼져 있어요. 판단은 기록된 Muse 판단이나 규칙 판단으로 돌고, 그렇게 표시돼요.</sub></p>
 
 <p align="center">
   <a href="#이렇게-작동해요">작동 방식</a> ·
@@ -266,6 +270,7 @@ cd web && MODEL_API_KEY=... npm run dev
 | 19–19j | UI 전면 개편: 대화·지도 두 칸과 지도 위 실행 버튼 하나, 도로와 가격 말풍선이 있는 밝은 지도, 한눈에 보이는 후보 줄, A·B 표 결과 카드, 크기 고정 열차 표시, 나·배우자 이름, 세 단계를 보여 주는 첫 화면, 클릭을 막던 투명 창·순간 링크·소수 분 표시 수정 | [`19a`](briefs/19a-chat-layout.md) … [`19j`](briefs/19j-float-remain.md) |
 | 20a–20g | 사용자 피드백으로 3D 화면 다시 만들기: 카메라를 움직여도 우글거리지 않게(원래 해상도, 계단 없애기, 한 겹 도로), 건물·단지·생활 장소 이름표와 건축물대장 카드, 이 장면이 결과에 어떻게 들어가는지("오늘 출근 44분 = 걷기 14분 + 지하철 26분 + 기다림 4분"), 저장하지 않는 개발 서버 중계로 VWorld 항공사진을 땅과 지붕에 입히고 출처 표시, 따라가면서 확대·회전, 동네 전체·따라가기 버튼, 길과 목적지 표시, 지금 장면 먼저인 패널, 정수 분 | [`20a`](briefs/20a-no-shimmer.md) … [`20g`](briefs/20g-wheel-delta.md) |
 | 21a–21c | 처음 온 사용자가 자기 문장으로 끝까지 쓸 수 있게: 강남역으로 읽기(으로 먼저), 집 유형(오피스텔) 반영, 말한 건 다시 묻지 않고 한 번에 한 질문, 회사 위치 없이는 실행하지 않음(역 자동완성 또는 출근 안 해요), 틀린 "같아요" 제거, 보이는 숫자로 출퇴근 문장, 지번 이름 읽기 쉽게, 지도 말풍선 겹침 없음·역 이름·가까운 후보에 맞춘 확대 | [`21a`](briefs/21a-first-user-flow.md) … [`21c`](briefs/21c-map-fit.md) |
+| 22a–22c | GitHub Pages 공개 사이트: 공개 경로를 따르는 데이터 주소와 링크, /api 호출 없는 정적 모드(모델·VWorld 키는 브라우저에 가지 않음), 실행 데이터는 Release 파일로 배포(커밋 안 함), 배포용 빌드에서 채팅 계산 worker가 묶이지 않던 버그 수정 | [`22a`](briefs/22a-github-pages.md) … [`22c`](briefs/22c-chat-worker-build.md) |
 
 </details>
 

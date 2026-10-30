@@ -8,19 +8,23 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-1398_JS_·_244_Python-2f5d50?style=flat-square" alt="1398 JavaScript and 244 Python tests">
+  <img src="https://img.shields.io/badge/tests-1421_JS_·_244_Python-2f5d50?style=flat-square" alt="1421 JavaScript and 244 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
 </p>
 
 <p align="center">
+  <a href="https://halo-sw.github.io/homeless-society-sim/"><img src="https://img.shields.io/badge/Try_it-live-2f5d50?style=for-the-badge" alt="Try it live"></a>
+  &nbsp;
   <a href="#quick-start"><img src="https://img.shields.io/badge/Run_it-locally-2f5d50?style=for-the-badge" alt="Run it locally"></a>
   &nbsp;
   <a href="briefs/"><img src="https://img.shields.io/badge/Muse_Code-build_log-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Muse Code build log"></a>
   &nbsp;
   <a href="README.ko.md"><img src="https://img.shields.io/badge/한국어-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Korean README"></a>
 </p>
+
+<p align="center"><sub>Live site: <a href="https://halo-sw.github.io/homeless-society-sim/">https://halo-sw.github.io/homeless-society-sim/</a> — static build: Muse chat and the VWorld aerial photo are off there to keep keys private; runs use recorded Muse decisions or the rule judge, labelled as such.</sub></p>
 
 <p align="center">
   <a href="#how-it-works">How it works</a> ·
@@ -266,6 +270,7 @@ Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 an
 | 19–19j | UI overhaul: two-column chat with one run button over the map, a light basemap with roads and price pills, scannable candidate rows, the result as an A·B table, a constant-size train pin, people named 나 / 배우자, a landing that shows the three steps; fixes for an invisible dialog that ate clicks, moment links and fractional minutes | [`19a`](briefs/19a-chat-layout.md) … [`19j`](briefs/19j-float-remain.md) |
 | 20a–20g | The 3D view, rebuilt from user feedback: no crawling when the camera moves (full-res pass, MSAA/FXAA, gentle Kuwahara, one road layer); names on buildings, complexes and daily places with a 건축물대장 hover card; the hero says how this scene counts toward the result ("오늘 출근 44분 = 걷기 14분 + 지하철 26분 + 기다림 4분"); real VWorld aerial photos on the ground and roofs through a no-store dev proxy, credit on screen; follow mode you can zoom and orbit, 동네 전체 / 따라가기, the route and destination on the ground, now-first panel, whole numbers | [`20a`](briefs/20a-no-shimmer.md) … [`20g`](briefs/20g-wheel-delta.md) |
 | 21a–21c | A first-time user's own sentence works end to end: 강남역으로 parsed (으로 before 로), housing kind honoured (오피스텔), nothing asked twice and one question at a time, no run without a workplace (station autocomplete, or 출근 안 해요), no false "같아요", commute sentence from the shown numbers, lot-number names readable, map pills never stack, station names, the map fits close candidates | [`21a`](briefs/21a-first-user-flow.md) … [`21c`](briefs/21c-map-fit.md) |
+| 22a–22c | Public site on GitHub Pages: base-aware data URLs and links, a static mode with no /api calls (model and VWorld keys never reach the browser), runtime data shipped as a release asset (never committed), and a fix for the chat's run worker that was not bundled in production builds | [`22a`](briefs/22a-github-pages.md) … [`22c`](briefs/22c-chat-worker-build.md) |
 
 </details>
 
