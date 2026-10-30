@@ -1,9 +1,9 @@
 // Shareable result card (React, Astryx Dialog): one PNG (canvas, local
 // download) and a printable page. Header (persona or household, homes A
 // / B with area, 만든 날 vs 시뮬레이션 기간), the 내 기준 점수 first,
-// twelve A-vs-B rows in plain words — each number with source badges
-// and 가정값 marks, the lower side marked neutrally (낮음, never
-// 좋음/나쁨) — the customer's own priorities as small bars, and the
+// thirteen A-vs-B rows in plain words — the lower side marked
+// neutrally (낮음, never 좋음/나쁨) — one small 계산 방법 footnote in
+// plain words, the customer's own priorities as small bars, and the
 // disclaimer. No verdict; the file stays in the browser (no upload).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -17,7 +17,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { store, selectShareData, selectShareOpen } from "./store.js";
 import { PRIORITY_GROUPS } from "../priorities.js";
 import { resultCardData, renderShareCard, requestShareLoads,
-  shareLoadPlan, shareSourceKo } from "./share.js";
+  shareLoadPlan } from "./share.js";
 
 function todayISO() {
   try {
@@ -58,9 +58,6 @@ function CardPreview({ data }) {
           <div className="ui-share-row" role="row" key={r.id}>
             <span role="cell">
               <Text>{r.label}</Text>
-              <Text type="supporting">
-                {`출처: ${[...r.sources.map(shareSourceKo), ...(r.assumed ? ["가정값"] : [])].join(" · ")}`}
-              </Text>
               {r.note && <Text type="supporting">{r.note}</Text>}
             </span>
             <span role="cell">
@@ -72,6 +69,12 @@ function CardPreview({ data }) {
           </div>
         ))}
       </div>
+      <VStack gap={1}>
+        <Heading level={4}>계산 방법</Heading>
+        {(data.method || []).map((l, i) => (
+          <Text key={i} type="supporting">{l}</Text>
+        ))}
+      </VStack>
       <VStack gap={1}>
         <Heading level={4}>내가 정한 비중</Heading>
         {data.priorities.bars.length > 0 ? (
@@ -87,7 +90,6 @@ function CardPreview({ data }) {
         <Text type="supporting">{data.priorities.note}</Text>
       </VStack>
       <Text type="supporting">{data.disclaimer}</Text>
-      <Text type="supporting">{data.sources_note}</Text>
     </VStack>
   );
 }

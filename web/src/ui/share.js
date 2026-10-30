@@ -12,6 +12,7 @@
 // and downloads in the browser (no upload).
 
 import { fmtWon, fmtMinutes, fmtIndex } from "../money/format.js";
+import { monthlyHousingOf } from "../money/monthly.js";
 import { priorityValues, myScore } from "../priorities.js";
 import { congestionPeakLine } from "../engine/journey.js";
 import { monthlyHousingLabel, BURDEN_PLAIN_LABEL,
@@ -92,8 +93,7 @@ export function buildCompareRows({ money, compare = null, tenures = {}, days = 3
   const modeB = B ? commuteMode(B) : null;
   push({ id: "commute_mode", label: "출근 방법",
     a: modeA === null ? "–" : modeA, b: modeB === null ? "–" : modeB,
-    raw: null, sources: ["scenario"], assumed: true,
-    note: "차·지하철을 탄 시간이 0분이면 도보로 적어요" });
+    raw: null, sources: ["scenario"], assumed: true, note: "" });
 
   // 18d: one 출퇴근 편도 per home, the same C01 number as the result
   // card and the compare table. Older compares without runs keep the
@@ -181,6 +181,17 @@ export function buildCompareRows({ money, compare = null, tenures = {}, days = 3
     assumed: false,
     note: tenureA === tenureB ? "" : `B는 ${tenureB}로 계산했어요` });
 
+  // 18d: 월 주거비 — the same full-monthly number as the result
+  // card (주거비 + 관리비 + 교통비), via the shared helper.
+  const mhA = monthlyHousingOf(money, "A", simDays);
+  const mhB = monthlyHousingOf(money, "B", simDays);
+  push({ id: "monthly_housing", label: "한 달에 집에 드는 돈",
+    a: mhA.missing ? "–" : fmtWon(mhA.monthly, { monthly: true }),
+    b: mhB.missing ? "–" : fmtWon(mhB.monthly, { monthly: true }),
+    raw: { a: mhA.missing ? null : mhA.monthly,
+      b: mhB.missing ? null : mhB.monthly },
+    sources: ["rtms", "scenario"], assumed: true, note: "" });
+
   const burdenA = selA ? num(selA.burden_ratio) : null;
   const burdenB = selB ? num(selB.burden_ratio) : null;
   push({ id: "burden", label: BURDEN_PLAIN_LABEL,
@@ -245,8 +256,29 @@ export function buildCompareRows({ money, compare = null, tenures = {}, days = 3
 }
 
 export const SHARE_ROW_IDS = ["commute_mode", "commute_day", "ride_30d",
-  "walk_30d", "fatigue_arrival", "peak", "housing", "burden", "remaining",
-  "jeonse_ratio", "convenience", "evening_30d"];
+  "walk_30d", "fatigue_arrival", "peak", "housing", "monthly_housing",
+  "burden", "remaining", "jeonse_ratio", "convenience", "evening_30d"];
+
+// 18d: one small 계산 방법 footnote in plain customer Korean replaces
+// the per-row 출처 lines (which duplicated 가정값 and leaked internal
+// phrasing). (낮음) stays as a neutral lower-side mark.
+export function buildMethodNote({ money = null, compare = null } = {}) {
+  const lines = [
+    "출근 방법에 ‘도보’라고 적힌 집은 차·지하철을 탄 기록이 없어요.",
+  ];
+  if (compare && !compare.error) {
+    lines.push("출퇴근 편도와 차·지하철 탄 시간은 고른 두 집에서 같은 식구가 30일 산 결과예요. 걸은 시간은 도보 그래프로 잰 값이고, 차·지하철을 탄 시간과 횟수는 미리 정해 둔 값이에요.");
+  } else {
+    lines.push("아직 30일 살아 보기 전이라 하루 값으로 적었어요. 걸은 시간은 도보 그래프로 잰 값이고, 차·지하철을 탄 시간과 횟수는 미리 정해 둔 값이에요.");
+  }
+  if (money && !money.error) {
+    lines.push("돈은 국토교통부 실거래가 중간값과 고객님이 말한 상황으로 계산했어요.");
+  }
+  lines.push("치안·공공임대 내용은 경찰청·공공임대 공식 자료를 바탕으로 했어요.");
+  lines.push("붐빔에 실측 표시가 없으면 가정값이에요.");
+  lines.push("(낮음)은 금액·시간이 작은 쪽을 가리킬 뿐, 좋다는 뜻이 아니에요.");
+  return lines;
+}
 
 // Which share docs are still missing? Pure over the store state: the
 // dialog (and the tour's share step) shows a short loading state until
@@ -341,9 +373,9 @@ export function resultCardData({ money, compare = null, tenures = {},
     homes,
     score,
     rows: buildCompareRows({ money, compare, tenures, days }),
+    method: buildMethodNote({ money, compare }),
     priorities: { lines: priorityLines, note: priorityNote, bars },
     disclaimer: SHARE_DISCLAIMER,
-    sources_note: "출처: 국토교통부 실거래가·경찰청·공공임대 공식 자료와 걸어서 직접 잰 시간, 정해 둔 값.",
   };
 }
 
@@ -385,12 +417,10 @@ export function renderShareCard(canvas, data) {
     const markA = r.lowerSide === "A" ? " (낮음)" : "";
     const markB = r.lowerSide === "B" ? " (낮음)" : "";
     push(`A ${r.a}${markA} · B ${r.b}${markB}`, { size: 30, wrap: true });
-    const marks = [
-      ...r.sources.map(shareSourceKo),
-      ...(r.assumed ? ["가정값"] : []),
-    ].join(" · ");
-    push(`[${marks}]${r.note ? ` ${r.note}` : ""}`, { color: FAINT, size: 24 });
+    if (r.note) push(r.note, { color: FAINT, size: 24, wrap: true });
   }
+  push("계산 방법", { size: 30, bold: true, gapBefore: 12 });
+  for (const l of data.method || []) push(l, { color: FAINT, size: 24, wrap: true });
   push("내가 정한 비중", { size: 36, bold: true, gapBefore: 16 });
   for (const b of (data.priorities.bars || [])) {
     bars.push({ title: b.title, weight: b.weight });
@@ -401,7 +431,6 @@ export function renderShareCard(canvas, data) {
   }
   push(data.priorities.note, { color: FAINT, size: 24, gapAfter: 8 });
   push(data.disclaimer, { size: 28, wrap: true, gapBefore: 8 });
-  push(data.sources_note, { color: FAINT, size: 24, wrap: true });
 
   // Wrap pass.
   ctx.textBaseline = "top";

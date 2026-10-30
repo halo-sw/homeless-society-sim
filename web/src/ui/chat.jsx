@@ -60,6 +60,7 @@ import { defaultOverrides, setOverride, resetOverride,
 import { CompareCard, CompareTabBody } from "./app.jsx";
 import { HowCalculated, tenureOf } from "./money.jsx";
 import { fmtMinutes, fmtWon } from "../money/format.js";
+import { monthlyHousingOf } from "../money/monthly.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
 import { oneWayByLabel, oneWayDelta } from "../verify/numbers.js";
@@ -320,22 +321,9 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
 // its caption, (b) 월 주거비 with a 어떻게 계산했나요 link, (c) 하루
 // 출퇴근 편도 평균 per commuting member, (d) the pickMoments texts.
 // Pure parts are exported for tests. Never sorted, never crowned.
-export function monthlyHousingOf(doc, label, days = 30) {
-  const h = doc && doc.homes && doc.homes[label];
-  if (!h) return { label, missing: true };
-  const t = ((doc.default_tenure || {})[label])
-    || (h.by_tenure && Object.keys(h.by_tenure)[0]);
-  const sel = h.by_tenure && h.by_tenure[t];
-  if (!sel || !sel.housing) return { label, tenure: t || null, missing: true };
-  const span = Number(days) > 0 ? Number(days) : 30;
-  const totals = sel.totals_by_category || {};
-  const maintenance = Math.round(Math.abs(totals.maintenance || 0) * 30 / span);
-  const transit = Math.round(Math.abs(totals.transit || 0) * 30 / span);
-  const housing = Math.max(0, Math.round(Number(sel.housing.monthly_won) || 0));
-  return { label, tenure: t, monthly: housing + maintenance + transit,
-    parts: { housing, maintenance, transit }, housingDoc: sel.housing,
-    maintenanceWon: maintenance, transitWon: transit };
-}
+// 18d: monthlyHousingOf lives in money/monthly.js (shared with the
+// share card); re-exported here so existing imports keep working.
+export { monthlyHousingOf };
 
 export function commuteOneWayOf(compare) {
   const days = (compare && Number(compare.days) > 0) ? Number(compare.days) : 30;

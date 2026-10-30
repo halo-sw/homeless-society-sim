@@ -122,7 +122,8 @@ describe("share rows with the demo fixtures (stage 11b)", () => {
   const blank = (v) => v === "–" || v === "—";
 
   it("has A and B values wherever the data has a value", () => {
-    assert.equal(data.rows.length, 12);
+    // 18d item 7 added the 월 주거비 (monthly_housing) row: 12 -> 13.
+    assert.equal(data.rows.length, 13);
     for (const r of data.rows) {
       if (r.id === "peak") {
         // B never rides: only this cell is honestly blank.

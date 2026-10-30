@@ -755,11 +755,25 @@ export function CompareTabBody({ state }) {
       )}
       <MetadataList>
         {rows.map((m) => {
+          // 18d: label, then A | B in two columns, then the plain-words
+          // line below — the delta never runs together with the values.
           const plain = plainMetricLine(m, days);
+          const delta = (m.delta_b_minus_a === null || m.delta_b_minus_a === undefined)
+            ? null
+            : `Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`;
           return (
             <MetadataListItem key={m.key} label={m.label}>
-              <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)} · B ${fmtMetric(m.unit, m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`}</Text>
-              {plain && <Text type="supporting">{plain}</Text>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: "1 1 0" }}>
+                  <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)}`}</Text>
+                </div>
+                <div style={{ flex: "1 1 0" }}>
+                  <Text hasTabularNumbers>{`B ${fmtMetric(m.unit, m.b)}`}</Text>
+                </div>
+              </div>
+              {plain
+                ? <Text type="supporting">{plain}</Text>
+                : delta && <Text type="supporting">{delta}</Text>}
             </MetadataListItem>
           );
         })}

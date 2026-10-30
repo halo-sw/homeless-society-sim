@@ -109,7 +109,7 @@ describe("result card header", () => {
 });
 
 describe("result card comparison rows", () => {
-  it("contains all twelve rows with the demo numbers", () => {
+  it("contains all thirteen rows with the demo numbers", () => {
     const data = demoData();
     assert.deepEqual(data.rows.map((r) => r.id), SHARE_ROW_IDS);
     const eq = (id, a, b) => {
@@ -124,6 +124,7 @@ describe("result card comparison rows", () => {
     eq("fatigue_arrival", "25.3", "5.7");
     eq("peak", "2호선 잠실 혼잡도 93.2%, 서서 감 (실측)", "–");
     eq("housing", "월 260만 원", "월 250만 원");
+    eq("monthly_housing", "월 260만 원", "월 250만 원");
     eq("burden", "36%", "34.6%");
     eq("remaining", "월 334만 9,468 원", "월 406만 1,468 원");
     eq("jeonse_ratio", "37% (70% 미만 (참고선 아래))", "37.7% (70% 미만 (참고선 아래))");
@@ -136,8 +137,9 @@ describe("result card comparison rows", () => {
     const lower = Object.fromEntries(data.rows.map((r) => [r.id, r.lowerSide]));
     assert.deepEqual(lower, {
       commute_mode: null, commute_day: "B", ride_30d: "B", walk_30d: "A",
-      fatigue_arrival: "B", peak: null, housing: "B", burden: "B",
-      remaining: "A", jeonse_ratio: "A", convenience: "B", evening_30d: "A",
+      fatigue_arrival: "B", peak: null, housing: "B", monthly_housing: "B",
+      burden: "B", remaining: "A", jeonse_ratio: "A", convenience: "B",
+      evening_30d: "A",
     });
     const blob = JSON.stringify(data);
     for (const word of ["좋음", "나쁨", "좋아요", "나빠요", "추천", "우세",
@@ -172,7 +174,7 @@ describe("result card comparison rows", () => {
   it("degrades honestly without data or weights", () => {
     const data = resultCardData({ money: null, date: "2026-10-29" });
     assert.deepEqual(data.homes, []);
-    assert.equal(data.rows.length, 12);
+    assert.equal(data.rows.length, 13);
     for (const r of data.rows) {
       if (r.id === "jeonse_ratio") {
         assert.match(r.a, /계산하기 어려워요/, r.id);
@@ -198,6 +200,19 @@ describe("result card comparison rows", () => {
     assert.deepEqual(untouched.priorities.bars,
       [{ title: "돈", weight: 3 }, { title: "교육", weight: 3 }]);
     assert.match(untouched.priorities.note, /정하지 않았어요/);
+  });
+
+  it("explains the method once, in plain words, with 월 주거비", () => {
+    const data = demoData();
+    assert.ok(Array.isArray(data.method) && data.method.length >= 4, "footnote");
+    const all = data.method.join("\n");
+    assert.ok(all.includes("도보"), "walk fallback in plain words");
+    assert.ok(all.includes("(낮음)"), "neutral mark explained");
+    assert.ok(!all.includes("출처:"), "no source-code lines");
+    assert.ok(!/가정값 · 가정값/.test(all), "no doubled 가정값");
+    const mh = rowById(data, "monthly_housing");
+    assert.equal(mh.label, "한 달에 집에 드는 돈");
+    assert.ok(mh.a !== "–" && mh.b !== "–", "full monthly, both homes");
   });
 
   it("notes split tenures instead of mixing them silently", () => {
