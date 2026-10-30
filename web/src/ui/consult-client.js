@@ -61,6 +61,37 @@ export async function postConsult({ provider, messages, scenario, context = null
   return payload;
 }
 
+export async function postDiary({ provider, digests, byoKey = "" }) {
+  if (!LIVE_API) return { off: true };
+  const headers = { "Content-Type": "application/json" };
+  if (byoKey) headers["x-model-key"] = byoKey;
+  const started = (typeof performance !== "undefined" ? performance.now() : 0);
+  const r = await fetch(apiUrl("/api/consult"), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ task: "diary", provider, digests }),
+  });
+  const latencyMs = (typeof performance !== "undefined" ? performance.now() : 0) - started;
+  let payload = null;
+  try {
+    payload = await r.json();
+  } catch {
+    throw new Error(`상담 서버 응답 오류 (HTTP ${r.status})`);
+  }
+  if (!r.ok || !payload || payload.ok !== true) {
+    if (r.status === 429) {
+      const err = new Error("잠시 쉬었다가 다시 물어봐 주세요 (요청이 많아요)");
+      err.httpStatus = 429;
+      throw err;
+    }
+    const err = new Error((payload && payload.error) || `상담 서버 오류 (HTTP ${r.status})`);
+    err.httpStatus = r.status;
+    throw err;
+  }
+  payload.latencyMs = Math.round(latencyMs);
+  return payload;
+}
+
 // 27b2: streamed consult — same request plus `stream: true`; the server
 // replies NDJSON (`tool_start` / `tool_end` rows, last line
 // `{ type: "done", ...out }`). Emits live rows via onEvent and resolves

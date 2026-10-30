@@ -7,7 +7,8 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { providerConfig } from "../judge/providers.js";
+import { providerConfig, completeWithTools } from "../judge/providers.js";
+import { writeDiary } from "./diary.js";
 import { judgeHome } from "../judge/run.js";
 import { runTurn } from "./agent.js";
 import { BYOK_HEADER, resolveProxyKey, redactSecrets } from "./byok.js";
@@ -260,6 +261,24 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         const err = new Error(`${cfg.keyEnv} is not set on the dev server`);
         err.code = "missing_key";
         throw err;
+      }
+      if (body.task === "diary") {
+        if (!Array.isArray(body.digests) || body.digests.length < 1 || body.digests.length > 3) {
+          throw new Error("digests must be an array of 1–3");
+        }
+        for (const d of body.digests) {
+          if (!d || !Array.isArray(d.facts) || d.facts.length > 60) {
+            throw new Error("each digest must have at most 60 facts");
+          }
+        }
+        const out = await writeDiary({
+          complete: (args) => completeWithTools({ ...args, fetchImpl: fetchImpl || fetch, apiKey }),
+          provider,
+          digests: body.digests,
+        });
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(out));
+        return;
       }
       if (!body.scenario || typeof body.scenario !== "object") {
         throw new Error("scenario must be an object");

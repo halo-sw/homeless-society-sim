@@ -76,6 +76,7 @@ import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../h
 import { chipSourceIds } from "../sources.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
+import { runDigest } from "../diary/digest.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
   loadHomesIndex, loadNetwork, loadSchedule, loadPhotosManifest,
@@ -89,7 +90,7 @@ import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.j
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
-import { postConsultStream, loadScenario } from "./consult-client.js";
+import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { LIVE_API, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
@@ -384,6 +385,16 @@ export function resultScoreOf(moneyDoc, compare, weights, explicit) {
 // (short value, full value in title), 출퇴근 편도 (one_way, or one
 // row per member on older payloads). 살아 보니 and the single
 // 어떻게 계산했나요 disclosure live in the SimulationCard done branch.
+export function diaryCheckLine(check) {
+  const passed = (check && check.passed) || 0;
+  const retried = (check && check.retried) || 0;
+  const dropped = (check && check.dropped) || 0;
+  let line = `✓ 문장 ${passed}개 모두 기록과 대조`;
+  if (retried > 0) line += ` · ${retried}번 고쳐 씀`;
+  if (dropped > 0) line += ` · ${dropped}줄은 근거가 없어 뺐어요`;
+  return line;
+}
+
 export function ResultSummary({ data, onScene }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
@@ -397,7 +408,32 @@ export function ResultSummary({ data, onScene }) {
   const oneWay = oneWayDelta(data.compare && data.compare.one_way);
   const commutes = oneWay ? [] : commuteOneWayOf(data.compare);
   const showMoney = !!(data.moneyDoc || data.moneyMissing);
+  const diary = data.diary || null;
   return (
+    <>
+      {diary && diary.status === "writing" && (
+        <div className="ui-result-diary"><Text type="supporting">Muse가 기록을 읽고 일기를 쓰는 중…</Text></div>
+      )}
+      {diary && diary.status === "done" && (
+        <div className="ui-result-diary">
+          <p><span className="ui-result-muse">Muse</span> {diary.summary}</p>
+          <div className="ui-result-diary-lines">
+            <Text>살아 본 일기</Text>
+            {(diary.lines || []).map((line, i) => (
+              <div key={i} className="ui-result-moment">
+                <span className="ui-pick-disc" aria-hidden="true">{line.home}</span>
+                <span className="ui-result-when">{`${line.day + 1}일째 ${hhmm(line.minute)}`}</span>
+                <span className="ui-result-text">{line.text}</span>
+                <Button size="sm" variant="ghost" label="장면 보기"
+                  onClick={() => {
+                    if (onScene) onScene({ url: simMomentUrl({ custom: data.customId, home: line.home, day: line.day + 1, t: hhmm(line.minute), follow: 1, embed: true }), title: `${line.day + 1}일째 ${hhmm(line.minute)} · ${line.home}` });
+                  }} />
+              </div>
+            ))}
+          </div>
+          <Text type="supporting">{diaryCheckLine(diary.check)}</Text>
+        </div>
+      )}
     <div className="ui-result-grid">
       <span aria-hidden="true" />
       {labels.map((l) => (
@@ -475,6 +511,7 @@ export function ResultSummary({ data, onScene }) {
         </span>,
       ]}
     </div>
+    </>
   );
 }
 
@@ -1546,6 +1583,27 @@ export function ChatScreen() {
       // 18d: the finished result replaces the progress in the same
       // card — keep it in view.
       soon(() => scrollChatToSim(simId));
+      // 27d: the diary follows without blocking the result card.
+      if (LIVE_API) {
+        try {
+          const digests = labels.map((l) => runDigest(runs[l], l, { name: (payload.names || {})[l] || "" }));
+          setMessages((prev) => prev.map((m) => (m.id === simId
+            ? { ...m, data: { ...m.data, diary: { status: "writing" } } } : m)));
+          postDiary({ provider, digests }).then((result) => {
+            setMessages((prev) => prev.map((m) => (m.id === simId
+              ? { ...m, data: { ...m.data, diary: { status: "done", ...result } } } : m)));
+            pushMsg({ role: "assistant", kind: "text",
+              content: `다 살아 봤어요. ${result.summary}`,
+              suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
+          }).catch(() => {
+            setMessages((prev) => prev.map((m) => (m.id === simId
+              ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
+          });
+        } catch {
+          setMessages((prev) => prev.map((m) => (m.id === simId
+            ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
+        }
+      }
     } catch (err) {
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: { status: "error", error: String((err && err.message) || err) } } : m)));
