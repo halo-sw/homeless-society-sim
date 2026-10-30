@@ -10,6 +10,7 @@ import { buildingCard, labelItemsFor, placeLabels } from "./labels3d.js";
 import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
+import { drapeAerial } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { oneWayByLabel } from "./verify/numbers.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -429,6 +430,23 @@ function buildWorld(area, scene14, opts = {}) {
   trackRanges(roofMesh, built.detail.roofs);
   // "주거만 강조" dims the non-residential walls + podium.
   const dimMeshes = [wallMeshes.none, podiumMesh].filter(Boolean);
+
+  // 20d: real aerial photos on the ground and roofs (VWorld, live tiles
+  // via the dev-server proxy). Async: without a key, or with
+  // ?ground=paint, the painted ground stays as it is. Never logs URLs.
+  if (PARAMS.get("ground") !== "paint") {
+    drapeAerial({ THREE, renderer, scene, area, origin, terrainMesh,
+      groundMesh, roadMeshes: sceneRoadMeshes, roofMesh, look: LOOK, style: STYLE })
+      .then((r) => {
+        if (r && r.ok) {
+          console.log(`[aerial] ok ${r.tiles} tiles z${r.zoom}`);
+          store.set({ aerial: true });
+        } else {
+          console.log("[aerial] off (no key)");
+        }
+      })
+      .catch(() => console.log("[aerial] off (no key)"));
+  }
 
   // --- trees: OSM forest/park placements (scene) or decorative (flat) ---
   const treeMeshes = [];

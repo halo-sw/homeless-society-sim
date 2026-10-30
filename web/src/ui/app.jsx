@@ -38,6 +38,7 @@ import { criterionTitle } from "../engine/criteria.js";
 import { chipDisplay, tickerDisplay, FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
 import { ActivityIcon, ActivityLegend } from "./timeline.jsx";
+import { AERIAL_CREDIT } from "../aerial/drape.js";
 import { priorityValues, myScore } from "../priorities.js";
 
 function useStore() {
@@ -909,6 +910,7 @@ function LegendCard({ state, onClose }) {
             </VStack>
           )}
           <Text type="supporting">{legend.note}</Text>
+          {state.aerial && <Text type="supporting">{AERIAL_CREDIT}</Text>}
         </VStack>
       </Card>
     </div>
@@ -930,6 +932,7 @@ function AttrLine({ state }) {
           {jeonse && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 등기: GIS건물통합정보 · 체크리스트: 인터넷등기소·정부24·HUG/HF/SGI"}
           {safety && " · 치안: 경찰청 범죄 발생 지역별 통계 (2025년)"}
           {congestion && " · 혼잡도: 서울교통공사 지하철혼잡도정보(2026-09-30 기준, 공공누리 3유형)"}
+          {state.aerial && ` · ${AERIAL_CREDIT}`}
         </Text>
       </div>
     </div>
@@ -982,6 +985,7 @@ export function App() {
         {state.viewChip && (
           <div className="ui-viewchip overlay">{state.viewChip}</div>
         )}
+        <AttrLine state={state} />
       </>
     );
   }
@@ -1005,6 +1009,7 @@ export function App() {
       )}
       <ShareDialog />
       <DemoTour />
+      <AttrLine state={state} />
     </div>
   );
 }
