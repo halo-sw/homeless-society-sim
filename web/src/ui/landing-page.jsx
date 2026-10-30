@@ -1,12 +1,13 @@
 // 28d: the marketing landing at / (docs/design.md §4.1–4.2). A static
 // page — no 3D world, no area fetch. Every entry point leads to the chat.
+// 28f: band rhythm, hero proof facts, product window, dark closing.
 import { useState } from "react";
 import { ChatComposer } from "@astryxdesign/core/Chat";
 import { assetUrl } from "../paths.js";
 import { appEntryUrl, chatUrl } from "../chat/urls.js";
 import { COVERAGE_LINE, EXAMPLE_PROMPTS } from "./landing.jsx";
 import { LangToggle } from "./lang-toggle.jsx";
-import { PoweredByMuse } from "./powered-by-muse.jsx";
+import { PoweredByMuse, MUSE_LOGO_PATH } from "./powered-by-muse.jsx";
 
 const NOTICE = "지금은 서울 동남권과 분당·판교·수지 11곳에서 시작했어요";
 const HERO_PLACEHOLDER = "판교 출근인데 전세 2억 이하로 혼자 살 집 찾아 줘";
@@ -25,10 +26,17 @@ const SOURCES_DETAIL = [
   "미국 월세: Zillow Observed Rent Index (ZIP 단위 추정, 매물 가격 아님) · 지도·항공사진: USGS The National Map",
 ];
 
+// Proof facts from the real walkthrough shown under the hero chips.
+const PROOFS = [
+  { num: "14초", rest: "후보 6곳 찾기" },
+  { num: "85초", rest: "두 집 30일 살아 보기" },
+  { num: "8/8", rest: "일기 문장 기록과 대조" },
+];
+
 const COLUMNS = [
-  { t: "물어보면 Muse가 골라요", d: "기능은 모두 Muse의 도구예요" },
-  { t: "숫자는 세서 말해요", d: "시간·거리·돈은 엔진이 계산해요" },
-  { t: "고르는 건 고객님이에요", d: "비교만 보여주고 고르라 하지 않아요" },
+  { n: "01", t: "물어보면 Muse가 골라요", d: "기능은 모두 Muse의 도구예요" },
+  { n: "02", t: "숫자는 세서 말해요", d: "시간·거리·돈은 엔진이 계산해요" },
+  { n: "03", t: "고르는 건 고객님이에요", d: "비교만 보여주고 고르라 하지 않아요" },
 ];
 
 const TABLE_ROWS = [
@@ -107,12 +115,12 @@ function ExampleRow({ title, prompt }) {
         <p className="ds-lp-extitle">{title}</p>
         <p className="ds-lp-exprompt">{prompt}</p>
       </div>
-      <button type="button" className="ds-lp-chip" onClick={copy}>
+      <button type="button" className="ds-lp-btn ds-lp-btn--ghost ds-lp-btn--sm" onClick={copy}>
         {copied ? "복사했어요" : "복사"}
       </button>
       <button
         type="button"
-        className="ds-lp-chip"
+        className="ds-lp-btn ds-lp-btn--secondary ds-lp-btn--sm"
         onClick={() => { window.location.href = chatUrl(prompt); }}>
         물어보기
       </button>
@@ -148,6 +156,10 @@ export function LandingPage() {
       <div className="ds-lp-notice">{NOTICE}</div>
 
       <header className="ds-lp-hero">
+        <p className="ds-lp-heroeyebrow">
+          <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={16} height={16} />
+          Muse가 대신 확인하고 30일 살아 봐요
+        </p>
         <h1 className="ds-lp-title">어떤 집을 고민 중이세요?</h1>
         <p className="ds-lp-lede">Muse가 직접 확인하고, 대신 30일 살아 보고, 대화로 알려 줘요.</p>
         <div className="ds-lp-composer">
@@ -175,140 +187,210 @@ export function LandingPage() {
             예시로 써 보기
           </button>
         </div>
+        <div className="ds-lp-proof">
+          {PROOFS.map((p) => (
+            <span key={p.num} className="ds-lp-prooffact">
+              <b>{p.num}</b> · {p.rest}
+            </span>
+          ))}
+        </div>
         <PoweredByMuse size="md" />
         <p className="ds-lp-cover">{COVERAGE_LINE}</p>
       </header>
 
-      <section className="ds-lp-section" id="features">
-        <h2 className="ds-lp-h">Muse가 하는 일</h2>
-        <p className="ds-lp-sub">말하면 Muse가 도구를 골라 쓰고, 한 일은 모두 대화에 남아요.</p>
-        <Shot name="product" product />
-        <div className="ds-lp-cols3">
-          {COLUMNS.map((c) => (
-            <div key={c.t} className="ds-lp-col">
-              <h3>{c.t}</h3>
-              <p>{c.d}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="ds-lp-section" aria-label="비교">
-        <h2 className="ds-lp-h">직접 찾기·챗봇과 무엇이 다른가요</h2>
-        <table className="ds-lp-table">
-          <thead>
-            <tr>
-              <th scope="col"><span className="ds-lp-thhide">항목</span></th>
-              <th scope="col">직접 정리</th>
-              <th scope="col">일반 챗봇</th>
-              <th scope="col" className="ds-lp-col-ithaca">Ithaca</th>
-            </tr>
-          </thead>
-          <tbody>
-            {TABLE_ROWS.map((r) => (
-              <tr key={r.k}>
-                <th scope="row">{r.k}</th>
-                <td data-label="직접 정리">{r.a}</td>
-                <td data-label="일반 챗봇">{r.b}</td>
-                <td data-label="Ithaca" className="ds-lp-col-ithaca">{r.c}</td>
-              </tr>
+      <section className="ds-lp-band ds-lp-band--sunken" id="features">
+        <div className="ds-lp-section">
+          <p className="ds-lp-eyebrow">기능</p>
+          <h2 className="ds-lp-h">Muse가 하는 일</h2>
+          <p className="ds-lp-sub">말하면 Muse가 도구를 골라 쓰고, 한 일은 모두 대화에 남아요.</p>
+          <div className="ds-lp-window">
+            <div className="ds-lp-winbar" aria-hidden="true"><i /><i /><i /></div>
+            <Shot name="product" product />
+            <span className="ds-lp-callout ds-lp-callout--left">▸ 실거래 확인 · 출근 계산</span>
+            <span className="ds-lp-callout ds-lp-callout--right">✓ 문장 8개 모두 기록과 대조</span>
+          </div>
+          <div className="ds-lp-cols3">
+            {COLUMNS.map((c) => (
+              <div key={c.t} className="ds-lp-col">
+                <span className="ds-lp-colnum" aria-hidden="true">{c.n}</span>
+                <h3>{c.t}</h3>
+                <p>{c.d}</p>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="ds-lp-section">
-        <h2 className="ds-lp-h">집 고를 때 진짜 막막한 것들</h2>
-        <div className="ds-lp-numcards">
-          {NUMBERS.map((n) => (
-            <div key={n.big} className="ds-lp-numcard">
-              <p className="ds-lp-num">{n.big}</p>
-              <p>{n.small}</p>
-            </div>
-          ))}
+          </div>
         </div>
       </section>
 
-      <section className="ds-lp-section" id="living">
-        <h2 className="ds-lp-h">이럴 때 써요</h2>
-        <div className="ds-lp-grid2">
-          {USE_CASES.map((u) => (
-            <button
-              key={u.img}
-              type="button"
-              className="ds-lp-card"
-              onClick={() => { window.location.href = chatUrl(u.prompt); }}>
-              <Shot name={u.img} />
-              <span className="ds-lp-cardtitle">{u.title}</span>
-              <span className="ds-lp-cardline">{u.line}</span>
-            </button>
-          ))}
+      <section className="ds-lp-band" aria-label="비교">
+        <div className="ds-lp-section ds-lp-center">
+          <p className="ds-lp-eyebrow">비교</p>
+          <h2 className="ds-lp-h">직접 찾기·챗봇과 무엇이 다른가요</h2>
+          <p className="ds-lp-sub">기억이나 추측이 아니라 기록으로 견줘요.</p>
+          <div className="ds-lp-tablewrap">
+            <table className="ds-lp-table">
+              <thead>
+                <tr>
+                  <th scope="col"><span className="ds-lp-thhide">항목</span></th>
+                  <th scope="col">직접 정리</th>
+                  <th scope="col">일반 챗봇</th>
+                  <th scope="col" className="ds-lp-col-ithaca">
+                    <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={16} height={16} />
+                    Ithaca
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {TABLE_ROWS.map((r) => (
+                  <tr key={r.k}>
+                    <th scope="row">{r.k}</th>
+                    <td data-label="직접 정리">{r.a}</td>
+                    <td data-label="일반 챗봇">{r.b}</td>
+                    <td data-label="Ithaca" className="ds-lp-col-ithaca">{r.c}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
-      <section className="ds-lp-section" aria-label="동작 순서">
-        <h2 className="ds-lp-h">이렇게 움직여요</h2>
-        <ol className="ds-lp-steps">
-          {STEPS.map((s, i) => (
-            <li key={s.t} className="ds-lp-step">
-              <span className="ds-lp-stepnum" aria-hidden="true">{i + 1}</span>
-              <span>
-                <span className="ds-lp-steptitle">{s.t}</span>
-                <span className="ds-lp-stepline">{s.d}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
+      <section className="ds-lp-band ds-lp-band--surface">
+        <div className="ds-lp-section">
+          <p className="ds-lp-eyebrow">문제</p>
+          <h2 className="ds-lp-h">집 고를 때 진짜 막막한 것들</h2>
+          <p className="ds-lp-sub">살아 보기 전엔 알 수 없는 것, 발로 뛰어야 아는 것을 보여줘요.</p>
+          <div className="ds-lp-numcards">
+            {NUMBERS.map((n) => (
+              <div key={n.big} className="ds-lp-numcard">
+                <p className="ds-lp-num">{n.big}</p>
+                <p className="ds-lp-numsub">{n.small}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
-      <section className="ds-lp-section" aria-label="예시 프롬프트">
-        <h2 className="ds-lp-h">이렇게 물어보세요</h2>
-        <p className="ds-lp-sub">누르면 바로 대화가 시작돼요.</p>
-        <ul className="ds-lp-examples">
-          {EXAMPLE_PROMPTS.map((p) => (
-            <ExampleRow key={p.id} title={p.title} prompt={p.prompt} />
-          ))}
-        </ul>
+      <section className="ds-lp-band" id="living">
+        <div className="ds-lp-section">
+          <p className="ds-lp-eyebrow">쓰임</p>
+          <h2 className="ds-lp-h">이럴 때 써요</h2>
+          <p className="ds-lp-sub">고민에 맞는 말을 고르면 대화가 바로 시작돼요.</p>
+          <div className="ds-lp-grid2">
+            {USE_CASES.map((u) => (
+              <button
+                key={u.img}
+                type="button"
+                className="ds-lp-card"
+                onClick={() => { window.location.href = chatUrl(u.prompt); }}>
+                <span className="ds-lp-well">
+                  <Shot name={u.img} />
+                </span>
+                <span className="ds-lp-cardtitle">{u.title}</span>
+                <span className="ds-lp-cardline">{u.line}</span>
+                <span className="ds-lp-ask">물어보기 →</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
-      <section className="ds-lp-section ds-lp-faq" id="faq">
-        <h2 className="ds-lp-h">자주 묻는 질문</h2>
-        {FAQ.map((f) => (
-          <details key={f.q}>
-            <summary>{f.q}</summary>
-            <p>{f.a}</p>
-          </details>
-        ))}
+      <section className="ds-lp-band ds-lp-band--surface" aria-label="동작 순서">
+        <div className="ds-lp-section ds-lp-center">
+          <p className="ds-lp-eyebrow">순서</p>
+          <h2 className="ds-lp-h">이렇게 움직여요</h2>
+          <p className="ds-lp-sub">말 한마디면 Muse가 움직여요.</p>
+          <ol className="ds-lp-steps">
+            {STEPS.map((s, i) => (
+              <li key={s.t} className="ds-lp-step">
+                <span className="ds-lp-stepnum" aria-hidden="true">{i + 1}</span>
+                <span>
+                  <span className="ds-lp-steptitle">{s.t}</span>
+                  <span className="ds-lp-stepline">{s.d}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </section>
 
-      <section className="ds-lp-section" id="data">
-        <h2 className="ds-lp-h">쓰는 데이터</h2>
-        <p className="ds-lp-sub">숫자는 모두 공개 자료에서 세요. 출처와 기간을 화면에 함께 적어요.</p>
-        <ul className="ds-lp-datanames">
-          {DATA_NAMES.map((n) => (
-            <li key={n}>{n}</li>
-          ))}
-        </ul>
-        <details className="ds-lp-details">
-          <summary>자세히</summary>
-          <ul>
-            {SOURCES_DETAIL.map((s) => (
-              <li key={s}>{s}</li>
+      <section className="ds-lp-band" aria-label="예시 프롬프트">
+        <div className="ds-lp-section">
+          <p className="ds-lp-eyebrow">예시</p>
+          <h2 className="ds-lp-h">이렇게 물어보세요</h2>
+          <p className="ds-lp-sub">누르면 바로 대화가 시작돼요.</p>
+          <ul className="ds-lp-examples">
+            {EXAMPLE_PROMPTS.map((p) => (
+              <ExampleRow key={p.id} title={p.title} prompt={p.prompt} />
             ))}
           </ul>
-        </details>
+        </div>
       </section>
 
-      <section className="ds-lp-section ds-lp-cta">
-        <h2 className="ds-lp-ctatitle">먼저 한 문장만 물어보세요.</h2>
-        <a className="ds-lp-pill" href={appEntryUrl()}>대화로 시작하기</a>
+      <section className="ds-lp-band ds-lp-band--surface ds-lp-faq" id="faq">
+        <div className="ds-lp-section ds-lp-center">
+          <p className="ds-lp-eyebrow">질문</p>
+          <h2 className="ds-lp-h">자주 묻는 질문</h2>
+          <p className="ds-lp-sub">판정 대신 공개 자료로 답해요.</p>
+          <div className="ds-lp-faqcol">
+            {FAQ.map((f) => (
+              <details key={f.q}>
+                <summary>{f.q}</summary>
+                <p>{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="ds-lp-band" id="data">
+        <div className="ds-lp-section">
+          <p className="ds-lp-eyebrow">데이터</p>
+          <h2 className="ds-lp-h">쓰는 데이터</h2>
+          <p className="ds-lp-sub">숫자는 모두 공개 자료에서 세요. 출처와 기간을 화면에 함께 적어요.</p>
+          <ul className="ds-lp-datanames">
+            {DATA_NAMES.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+          <details className="ds-lp-details">
+            <summary>자세히</summary>
+            <ul>
+              {SOURCES_DETAIL.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section className="ds-lp-cta">
+        <div className="ds-lp-section ds-lp-center">
+          <p className="ds-lp-eyebrow ds-lp-eyebrow--dark">시작</p>
+          <h2 className="ds-lp-ctatitle">먼저 한 문장만 물어보세요.</h2>
+          <p className="ds-lp-ctaline">한 문장이면 Muse가 나머지를 확인해요.</p>
+          <a className="ds-lp-ctapill" href={appEntryUrl()}>대화로 시작하기</a>
+        </div>
       </section>
 
       <footer className="ds-lp-foot">
-        <span>Ithaca</span>
-        <PoweredByMuse size="sm" />
-        <span>MIT</span>
-        <a href="https://github.com/halo-sw/homeless-society-sim">GitHub</a>
+        <div className="ds-lp-foot-inner">
+          <div className="ds-lp-foot-brand">
+            <span>Ithaca</span>
+            <p>We walk the odyssey. You just come home.</p>
+          </div>
+          <nav className="ds-lp-foot-links" aria-label="랜딩 이동">
+            <a href="#features">기능</a>
+            <a href="#living">살아 보기</a>
+            <a href="#data">데이터</a>
+            <a href="#faq">질문</a>
+            <a href="https://github.com/halo-sw/homeless-society-sim">GitHub</a>
+          </nav>
+          <div className="ds-lp-foot-meta">
+            <PoweredByMuse size="sm" />
+            <span>MIT</span>
+            <span>© 2026</span>
+          </div>
+        </div>
       </footer>
     </div>
   );
