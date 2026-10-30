@@ -221,6 +221,26 @@ export const TOOL_DEFS = [
         follow: { type: "integer", description: "Followed member 1-based index (0 = free camera)." },
         mode: str('"sim" or "tour".'),
       } } } },
+  { type: "function", function: { name: "open_panel",
+    description: "고객이 요청한 것을 오른쪽 작업판에 연다.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        panel: str('One of: map, compare, tour, commute, result, money, jeonse, support, priorities.'),
+        home: str('Optional home label: A, B or C.'),
+        candidate_id: str("Optional candidate id to focus."),
+        day: { type: "integer", description: "Optional 1-based day number (1-30)." },
+        time: str('Optional "HH:MM", e.g. "08:18".'),
+      }, required: ["panel"] } } },
+  { type: "function", function: { name: "pick_homes",
+    description: "고객이 고른 후보 2–3곳을 찜한다.",
+    parameters: { type: "object", additionalProperties: false,
+      properties: {
+        candidate_ids: { type: "array", description: "Chosen candidate ids (1-3).",
+          items: { type: "string" } },
+      }, required: ["candidate_ids"] } } },
+  { type: "function", function: { name: "start_life_run",
+    description: "고객이 '살아 봐 줘'처럼 요청했을 때만, 찜한 집들로 30일 살아 보기를 시작한다.",
+    parameters: { type: "object", properties: {}, additionalProperties: false } } },
 ];
 
 for (const def of MONEY_TOOL_DEFS) TOOL_DEFS.push(def);
@@ -1184,9 +1204,52 @@ function define_term(session, args) {
   return { ok: true, term: hit.term, def: hit.def, source_url: hit.source_url };
 }
 
+const PANELS = ["map", "compare", "tour", "commute", "result",
+  "money", "jeonse", "support", "priorities"];
+const HOMES = ["A", "B", "C"];
+
+function open_panel(session, args) {
+  const a = args || {};
+  if (!PANELS.includes(a.panel)) {
+    return fail(`unknown panel ${JSON.stringify(a.panel)} (panels: ${PANELS.join(", ")})`);
+  }
+  if (a.home !== undefined && !HOMES.includes(a.home)) {
+    return fail(`unknown home ${JSON.stringify(a.home)} (homes: ${HOMES.join(", ")})`);
+  }
+  if (a.candidate_id !== undefined && typeof a.candidate_id !== "string") {
+    return fail("candidate_id must be a string");
+  }
+  if (a.day !== undefined && (!Number.isInteger(a.day) || a.day < 1 || a.day > 30)) {
+    return fail(`day must be an integer 1-30 (got ${JSON.stringify(a.day)})`);
+  }
+  if (a.time !== undefined && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(a.time)) {
+    return fail(`time must be "HH:MM" (got ${JSON.stringify(a.time)})`);
+  }
+  const ui = { action: "panel", panel: a.panel };
+  if (a.home !== undefined) ui.home = a.home;
+  if (a.candidate_id !== undefined) ui.candidate_id = a.candidate_id;
+  if (a.day !== undefined) ui.day = a.day;
+  if (a.time !== undefined) ui.time = a.time;
+  return { ok: true, ui };
+}
+
+function pick_homes(session, args) {
+  const ids = (args || {}).candidate_ids;
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > 3
+      || !ids.every((id) => typeof id === "string")) {
+    return fail("candidate_ids must be 1-3 candidate id strings");
+  }
+  return { ok: true, ui: { action: "pick", ids: [...ids] } };
+}
+
+function start_life_run(session, args) {
+  return { ok: true, ui: { action: "run" } };
+}
+
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
+  open_panel, pick_homes, start_life_run,
   list_criteria, explain_criterion, get_journey, get_fatigue,
   apply_persona, get_priorities, set_priorities, get_safety, get_education,
   define_term,

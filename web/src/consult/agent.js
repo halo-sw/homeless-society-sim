@@ -22,9 +22,12 @@ function lastUserText(messages) {
 
 export const SYSTEM_PROMPT = [
   "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 한국어로 짧게 답한다. 반말은 절대 쓰지 않는다.",
-  "역할: 고객의 상황을 프로필로 읽고(extract_profile), 실제 집 후보를 찾아(find_homes) 보여주고, 고른 2–3곳으로 시나리오를 만들어(build_scenario) 실행(run_simulation)한 뒤 결과를 쉽게 설명한다. '만약에' 질문에는 조건을 바꿔 다시 실행해 전/후를 비교한다.",
-  "첫 질문은 '어떤 상황이세요?'다: 고객의 말을 extract_profile로 읽고(글에 없는 값은 절대 채우지 않는다), 부족한 필수 조건은 한 번에 최대 2개까지 쉬운 말로 묻는다. 예시 프로필(라벨 예시)이 필요하면 예시임을 밝히고 쓴다. 그 다음 우선순위를 쉽게 묻는다: '아이 교육이 가장 중요하세요?'처럼 다섯 가지(교육·두 사람/나의 생활·치안·돈·생활 편의)를 0–5로 정하게 하고, 각 우선순위가 쓰는 지표(get_priorities)를 함께 밝힌 뒤 set_priorities로 기록한다. 상황 템플릿(apply_persona)은 고객이 고를 때만 쓴다.",
-  "그 뒤 find_homes로 3–6곳 후보를 보여준다(숫자·출처 표시와 함께, 순위를 매기지 않는다). 고객이 2곳(또는 3곳)을 고르면 build_scenario로 시나리오를 만들고 실행을 제안한다. 승차 시간은 앱이 알 수 없으니 고객이 말한 숫자를 그대로 쓰고 가정값이라 밝힌다.",
+  "너는 Ithaca의 Muse다. 고객의 집 고민을 대화로 돕는다. 앱의 기능은 모두 네 도구다: 찾기(find_homes), 매물 읽기(parse_listing·check_listing), 비교(compare), 30일 살아 보기(start_life_run), 생활비·전세·지원 제도·안전·교육·출근길 도구.",
+  "질문은 한 번에 하나만 짧게 한다. 설문처럼 여러 개를 묻지 않는다. 모르는 값은 기본값으로 두고 '가정'이라고 밝힌다. 출근지나 예산 중 하나라도 있으면 extract_profile 다음 바로 find_homes로 후보를 보여 준다. 우선순위는 고객이 말할 때만 set_priorities로 기록한다.",
+  "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support.",
+  "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다.",
+  "다루지 않는 지역이면 '아직 준비 중이에요'라고 말하고 가장 가까운 다루는 지역을 제안한다. 엉뚱한 질문에도 한 줄로 답하고 집 고민으로 돌아온다.",
+  "답은 3문장 이내. 마지막 줄에는 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
   "왜 그런지 물을 때(무엇을·왜)는 get_day의 cause와 list_criteria/explain_criterion을 근거로 답하고, 쓴 기준 id(C-로 시작)를 함께 밝힌다.",
   "숫자는 읽기 쉽게 쓴다: 거리는 165.4 km처럼 km 단위로, 시간 합계는 35시간 23분처럼, 돈은 2억 4,999만 원 / 월 300만 원처럼. 단위와 출처(그래프/실거래/공공임대/가정값/추정)를 항상 함께 밝힌다.",
@@ -81,6 +84,27 @@ function shortJson(value, max = 120) {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
+export const PANEL_KO = {
+  map: "지도", compare: "비교", tour: "동네", commute: "출근길",
+  result: "결과", money: "생활비", jeonse: "전세 점검",
+  support: "도움 제도", priorities: "내 기준",
+};
+
+// Split the trailing "[[다음: a | b]]" (or "[[Next: ...]]") suggestion
+// line off a reply. The marker line is never shown as answer text.
+export function splitSuggestions(reply) {
+  const text = String(reply || "");
+  const lines = text.split("\n");
+  let idx = lines.length - 1;
+  while (idx >= 0 && lines[idx].trim() === "") idx--;
+  if (idx < 0) return { text, suggestions: [] };
+  const m = lines[idx].match(/^\s*\[\[\s*(?:다음|Next)\s*:\s*(.+?)\s*\]\]\s*$/);
+  if (!m) return { text, suggestions: [] };
+  const suggestions = m[1].split("|").map((s) => s.trim())
+    .filter((s) => s !== "").slice(0, 3).map((s) => s.slice(0, 20));
+  return { text: lines.slice(0, idx).join("\n").trim(), suggestions };
+}
+
 export function summarizeToolCall(name, args, result, ms) {
   const r = result || {};
   if (!r.ok) return { summary: `실패: ${String(r.error || "error").slice(0, 80)}`, ok: false };
@@ -125,6 +149,12 @@ export function summarizeToolCall(name, args, result, ms) {
       return { summary: `${r.term || ""} 뜻풀이`, ok: true };
     case "set_view":
       return { summary: r.chip || "화면 이동", ok: true };
+    case "open_panel":
+      return { summary: `화면 열기: ${PANEL_KO[(args || {}).panel] || (args || {}).panel || ""}`, ok: true };
+    case "pick_homes":
+      return { summary: `찜 ${(((args || {}).candidate_ids) || []).length}곳`, ok: true };
+    case "start_life_run":
+      return { summary: "30일 살아 보기 맡김", ok: true };
     case "set_money":
       return { summary: "생활비 조건 갱신", ok: true };
     case "estimate_net_pay":
@@ -208,7 +238,7 @@ export async function runTurn(opts) {
     loadSafety = null, loadPersona = null, loadAssumption = null,
     loadHomes = null, loadPhotos = null, loadAreasIndex = null,
     loadStationBoxes = null, loadTransit = null,
-    fetchImpl = null, completeFn = null, apiKey = null,
+    fetchImpl = null, completeFn = null, apiKey = null, onEvent = null,
   } = opts;
   if (!scenario || typeof scenario !== "object") throw new Error("scenario is required");
   const cfg = providerConfig(provider);
@@ -232,6 +262,13 @@ export async function runTurn(opts) {
   const appended = []; // new messages for the browser to keep
   const toolCalls = []; // compact rows for the UI
   const toolResults = []; // parsed results, in order (guard scope)
+  const uiActions = []; // panel/pick/run actions for the UI, in order
+  const emit = (ev) => {
+    if (!onEvent) return;
+    try {
+      onEvent(ev);
+    } catch { /* a throwing listener must not break the turn */ }
+  };
   const usage = { prompt_tokens: 0, completion_tokens: 0, calls: 0 };
   let view = null;
   let rounds = 0;
@@ -248,10 +285,12 @@ export async function runTurn(opts) {
     const calls = (res.message && res.message.tool_calls) || [];
     if (calls.length === 0) {
       const reply = (res.message && res.message.content) || "";
-      appended.push({ role: "assistant", content: reply });
-      const checked = checkConsultReply(reply, toolResults);
+      const split = splitSuggestions(reply);
+      appended.push({ role: "assistant", content: split.text });
+      const checked = checkConsultReply(split.text, toolResults);
       if (checked.ok) {
-        return finish({ reply, guardRetries: 0, fallback: false });
+        return finish({ reply: split.text, suggestions: split.suggestions,
+          guardRetries: 0, fallback: false });
       }
       // Retry once with a correction note (text only), else numbers only.
       const retry = await complete({
@@ -265,11 +304,13 @@ export async function runTurn(opts) {
       usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
       usage.calls++;
       const reply2 = (retry.message && retry.message.content) || "";
-      const checked2 = checkConsultReply(reply2, toolResults);
+      const split2 = splitSuggestions(reply2);
+      const checked2 = checkConsultReply(split2.text, toolResults);
       if (checked2.ok) {
         appended.push({ role: "user", content: "(교정 후 재답변)" });
-        appended.push({ role: "assistant", content: reply2 });
-        return finish({ reply: reply2, guardRetries: 1, fallback: false });
+        appended.push({ role: "assistant", content: split2.text });
+        return finish({ reply: split2.text, suggestions: split2.suggestions,
+          guardRetries: 1, fallback: false });
       }
       const fallback = numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
       appended.push({ role: "assistant", content: fallback });
@@ -285,6 +326,7 @@ export async function runTurn(opts) {
     const outgoing = [];
     for (const c of calls) {
       const t0 = Date.now();
+      emit({ type: "tool_start", name: c.name, target: shortJson(c.args || {}, 80) });
       const result = c.args_parse_error
         ? { ok: false, error: "tool arguments are not valid JSON" }
         : await callTool(session, c.name, c.args || {});
@@ -293,6 +335,8 @@ export async function runTurn(opts) {
       const { summary, ok } = summarizeToolCall(c.name, (c.args || {}), result, ms);
       toolCalls.push({ name: c.name, ok, summary, ms,
         target: shortJson(c.args || {}, 80) });
+      emit({ type: "tool_end", name: c.name, ok, summary, ms });
+      if (result && result.ok && result.ui) uiActions.push(result.ui);
       if (c.name === "set_view" && result.ok) view = { ...result.view, chip: result.chip };
       outgoing.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
       history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
@@ -311,7 +355,8 @@ export async function runTurn(opts) {
   function finish(extra) {
     return {
       ok: true, ...extra,
-      messages: appended, toolCalls,
+      messages: appended, toolCalls, uiActions,
+      suggestions: (extra && extra.suggestions) || [],
       usage: { ...usage, est_usd: costUsd(provider, usage) },
       scenario: session.scenario,
       view, provider, model: cfg.model,
