@@ -103,7 +103,7 @@ Keep `fitMapView`. Raise `MAP_FIT_MARGIN` so pills never clip: the margin must l
   - 200,000,000 → "2억"
   - 월세 deposit 10,000,000 + monthly 600,000 → "월 60 / 1,000"
 - (b) `buildChatMap` with a tile carrying 2 roads returns `roads.length === 2` with `cls` kept, and picked pins carry letters "A", "B" in `picks` order.
-- (c) `renderToString(<ChatMap map=… />)` for the `single-firstjob`-shaped fixture used in `web/tests/chatmap*.test.js`:
+- (c) `renderToString(<ChatMap map=… />)` for the `single-firstjob`-shaped fixture used in `web/tests/chatmap-18.test.js`:
   - contains no `<rect` whose width/height equals a region bbox projection; simplest check: no element with `data-layer="region-box"`, and the region layer renders `<text` only;
   - contains "회사 · 판교";
   - contains "1억";
