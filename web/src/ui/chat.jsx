@@ -93,6 +93,7 @@ import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTrans
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { LIVE_API, appUrl } from "../paths.js";
+import { PoweredByMuse } from "./powered-by-muse.jsx";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, toolActionKo, viewSystemLine } from "./agent-float.js";
@@ -2394,6 +2395,7 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
       <ChatComposer onSubmit={(text) => onSend && onSend(text)}
         value={value} onChange={setValue}
         placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
+      <PoweredByMuse size="sm" live={LIVE_API} showStatus />
       <div className="ui-chat-empty-row">
         {EMPTY_STARTERS.map((s) => (
           <Button key={s.id} size="sm" variant="secondary" label={s.label}

@@ -24,6 +24,7 @@ import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
 import { newUsageLog } from "../models/catalog.js";
 import { LangToggle } from "./lang-toggle.jsx";
+import { PoweredByMuse } from "./powered-by-muse.jsx";
 
 const EMPTY_LOG = newUsageLog();
 
@@ -159,10 +160,7 @@ export function TopBar({ mode, summary, extra, settings }) {
       <div className="ui-bar-left">
         <span className="ui-bar-title">Ithaca</span>
         {mode === "chat" ? (
-          <>
-            <span className="ui-bar-muse">Muse</span>
-            <Badge variant="info" label={museStatusLabel(LIVE_API)} />
-          </>
+          <PoweredByMuse size="sm" live={LIVE_API} showStatus />
         ) : (
           <Button size="sm" variant="ghost" label="← 대화로"
             onClick={() => gotoMode("chat", mode)} />

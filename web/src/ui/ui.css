@@ -1087,4 +1087,18 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ui-moment > :last-child, .ui-result-moment > :last-child { margin-left: auto; }
   .ui-moment-text, .ui-result-text { flex-basis: 100%; order: 3; }
   #ui-root .ui-moment-text, #ui-root .ui-result-text { white-space: normal; }
+
+  /* 28b: top-bar credit keeps logo + name on phones (status hides). */
+  .ui-bar .ds-pbm-status { display: none; }
 }
+
+/* 28b PoweredByMuse */
+.ds-pbm { display: inline-flex; align-items: center; gap: 8px;
+  white-space: nowrap; color: var(--ui-ink2); font-size: 12px; }
+.ds-pbm[data-size="md"] { font-size: 14px; }
+.ds-pbm-logo { display: block; flex: none; }
+.ds-pbm-text b { font-weight: 600; color: var(--ui-ink); }
+.ds-pbm-status { display: inline-flex; gap: 4px; align-items: center; }
+.ds-pbm-status::before { content: "·"; margin-right: 4px; color: var(--ui-ink3); }
+.ds-pbm-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ui-ink3); }
+.ds-pbm-status[data-live="1"] .ds-pbm-dot { background: var(--ui-ok); }
