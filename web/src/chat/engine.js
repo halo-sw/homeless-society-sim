@@ -325,14 +325,17 @@ export function homeForScenario(candidate, resolvedName) {
 
 // Browser worker runner (progress posts per home). Guarded: no Worker
 // outside the browser (tests inject their own runWorker).
-export function createWorkerRunner(workerUrl, { timeoutMs = 180000 } = {}) {
-  if (typeof Worker === "undefined") {
+export function createWorkerRunner(makeWorkerOrUrl, { timeoutMs = 180000 } = {}) {
+  const makeWorker = typeof makeWorkerOrUrl === "function"
+    ? makeWorkerOrUrl
+    : () => new Worker(makeWorkerOrUrl, { type: "module" });
+  if (typeof makeWorkerOrUrl !== "function" && typeof Worker === "undefined") {
     throw new Error("sim worker needs a browser Worker");
   }
   return (scenarioInline, labels, onProgress = () => {}) => new Promise((resolve, reject) => {
     let worker;
     try {
-      worker = new Worker(workerUrl, { type: "module" });
+      worker = makeWorker();
     } catch (err) {
       reject(err);
       return;

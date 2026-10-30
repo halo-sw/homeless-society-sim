@@ -1256,7 +1256,7 @@ export function ChatScreen() {
       const buildId = addToolRow({ name: "build_scenario", ok: true,
         summary: picked.map((p) => p.name).join(" · "), ms: sc.ms });
       const labels = picked.map((_, i) => "ABC"[i]);
-      const runner = createWorkerRunner(new URL("../sim-worker.js", import.meta.url));
+      const runner = createWorkerRunner(() => new Worker(new URL("../sim-worker.js", import.meta.url), { type: "module" }));
       const { runs, compare, ms } = await runStep(
         (s, l, onP) => runner(s, l, (pg) => setProgress(
           { done: pg.done + 1, total: picked.length + 1, label: pg.label })),
