@@ -38,3 +38,23 @@ describe("27j Muse recovers after a slow turn", () => {
     assert.ok(!chat.includes("setMuseDown(true)"));
   });
 });
+
+describe("27j2 counts replies with a ref", () => {
+  let answeredSince;
+
+  before(async () => {
+    ({ answeredSince } = await import("../src/ui/chat.jsx"));
+  });
+
+  it("answeredSince compares reply counts", () => {
+    assert.equal(answeredSince(3, 2), true);
+    assert.equal(answeredSince(2, 2), false);
+  });
+
+  it("send uses the ref, not the lagging stateRef", () => {
+    const chat = readFileSync(new URL("../src/ui/chat.jsx", import.meta.url), "utf8");
+    assert.ok(!chat.includes("const before = stateRef.current.messages.length"));
+    assert.ok(chat.includes("replyCountRef.current += 1"));
+    assert.ok(chat.includes("answeredSince(replyCountRef.current, repliesBefore)"));
+  });
+});

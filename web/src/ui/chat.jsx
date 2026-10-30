@@ -903,6 +903,11 @@ export function routeTurn({ live, museFails = 0, museDown }) {
   return live && fails < 3 ? "agent" : "local";
 }
 
+// 27j2: count replies with a ref, not the lagging stateRef.
+export function answeredSince(countNow, countBefore) {
+  return countNow > countBefore;
+}
+
 // 27j: the rules path always answers — fallback line when nothing else replied.
 export function localNoAnswerLine(text) {
   const t = String(text || "");
@@ -1211,6 +1216,7 @@ export function ChatScreen() {
   }, [candidatesData]);
   const idRef = useRef(0);
   const busyRef = useRef(false);
+  const replyCountRef = useRef(0);
   const profileRef = useRef(null);
   useEffect(() => { profileRef.current = profile; }, [profile]);
   const dataRef = useRef(null); // {index, network, schedule, manifest, regionsKey}
@@ -1230,6 +1236,7 @@ export function ChatScreen() {
   // candidates / simulation always show the latest state).
   const pushMsg = (msg) => {
     const id = msg.id || nextId();
+    if (msg.role !== "user") replyCountRef.current += 1;
     setMessages((prev) => nextChatMessages(prev, msg, id));
     return id;
   };
@@ -1892,7 +1899,7 @@ export function ChatScreen() {
     pushMsg({ role: "user", kind: "text", content });
     setComposer("");
     // 27j: the rules path always answers — count replies added after this point.
-    const before = stateRef.current.messages.length;
+    const repliesBefore = replyCountRef.current;
     try {
       if (content === "매물 글 붙여 넣기") {
         pushMsg({ role: "assistant", kind: "listing", data: {} });
@@ -1939,11 +1946,7 @@ export function ChatScreen() {
       }
       // 27j: the rules path always answers — fallback line when nothing replied.
       if (routeTurn({ live: LIVE_API, museFails }) !== "agent") {
-        const msgs = stateRef.current.messages;
-        let answered = false;
-        for (let i = before; i < msgs.length; i++) {
-          if (msgs[i] && msgs[i].role !== "user") { answered = true; break; }
-        }
+        const answered = answeredSince(replyCountRef.current, repliesBefore);
         if (!answered) {
           pushMsg({ role: "assistant", kind: "text", content: localNoAnswerLine(content) });
         }
