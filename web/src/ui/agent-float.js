@@ -9,6 +9,7 @@
 // the message-level helpers carry over.
 
 // --- context payload ----------------------------------------------------------
+import { memberLabelFor } from "../profile.js";
 
 export const TAB_KO = {
   compare: "A·B 비교", priorities: "내 기준으로 보기", money: "생활비",
@@ -34,7 +35,7 @@ export function agentContext(state = {}) {
     day: (Number(clock.day) || 0) + 1,
     time: hhmm(clock.minute),
     follow,
-    followed_label: follow > 0 ? ((followOpt && followOpt.label) || `구성원 ${follow}`) : "자유 카메라",
+    followed_label: follow > 0 ? ((followOpt && followOpt.label) || memberLabelFor({ role: "adult" }, follow - 1)) : "자유 카메라",
     tenures: state.moneyTenure || {},
     criterion_focus: state.criteriaFocus || "",
     compare_open: state.compareOpen === true,

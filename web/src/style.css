@@ -44,6 +44,21 @@ html, body {
   font-size: 12px; font-weight: 600; white-space: nowrap;
   border-radius: 8px; padding: 2px 8px; margin-top: -6px;
 }
+.trainpin {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none; white-space: nowrap;
+}
+.trainpin-dot {
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  background: #888;
+}
+.trainpin-label {
+  background: #fff; color: #1d1b18;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  border-radius: 999px; padding: 2px 8px;
+}
 
 #loading {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
