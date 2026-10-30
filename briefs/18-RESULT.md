@@ -145,7 +145,7 @@ one justified pin update in `painted-17b.test.js`.
 
 ## End (18c)
 
-- `cd web && npm test`: **1251 tests, 1250 pass, 0 fail, 1 skipped**
+- `cd web && npm test`: **1240 tests, 1239 pass, 0 fail, 1 skipped**
   (skip pre-existing; +12 new). `npx vite build` hits the known sandbox
   EPERM (`node_modules/.vite-temp`, same as 14e/17/17b/17c/18);
   stand-in green: full esbuild bundle of `src/main.js` (5.4 MB, font
