@@ -110,13 +110,21 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
   const missing = new Set();
   const compiled = (patterns || []).map((p) => {
     const slots = [];
-    const src = String(p.ko).split(/\{(\d+)\}/g).map((part, i) => {
-      if (i % 2 === 1) {
-        slots.push(Number(part));
-        return "(.+?)";
-      }
-      return escapeRegExp(part);
-    }).join("");
+    // 29a2: a ":\d+" slot suffix marks a digits-only capture, so a
+    // pattern like "{0}까지 약 {1:\d+}분" never swallows a "· …" tail
+    // into {1}. Plain "{n}" slots still match anything.
+    const ko = String(p.ko);
+    let src = "";
+    let last = 0;
+    const slotRe = /\{(\d+)(:\\d\+)?\}/g;
+    let sm;
+    while ((sm = slotRe.exec(ko)) !== null) {
+      src += escapeRegExp(ko.slice(last, sm.index));
+      slots.push(Number(sm[1]));
+      src += sm[2] ? "(\\d[\\d,]*)" : "(.+?)";
+      last = sm.index + sm[0].length;
+    }
+    src += escapeRegExp(ko.slice(last));
     // 29a1: en may be a function of the translated captures (plurals).
     return { en: p.en, re: new RegExp("^" + src + "$"), slots };
   });

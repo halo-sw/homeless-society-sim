@@ -1321,7 +1321,7 @@ export const tablePatterns = [
   "en": "{0} about {1} min ({2} · subway {3} min) · estimate (before Live it)"
  },
  {
-  "ko": "{0}까지 약 {1}분",
+  "ko": "{0}까지 약 {1:\\d+}분",
   "en": "about {1} min to {0}"
  },
  {

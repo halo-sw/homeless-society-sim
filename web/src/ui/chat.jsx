@@ -360,8 +360,17 @@ export function runReadiness(picks, candidates) {
   return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
 }
 
+// 29a2: the profile budget (won) for the shown tenure, if set.
+export function budgetWonFor(profile, tenure) {
+  const v = tenure === "jeonse" ? profile?.depositMax?.value
+    : tenure === "wolse" ? profile?.monthlyMax?.value
+    : profile?.priceMax?.value;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, onTogglePick,
-    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
+    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId,
+    budgetWon = null, onAsk = null }) {
   const candidates = (data && data.candidates) || [];
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
@@ -370,6 +379,7 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>{`집 후보 ${candidates.length}곳`}</Heading>
+          <Text type="supporting">{`2곳 중 ${(picks || []).length}곳 담음`}</Text>
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           <span className="ui-panel-spacer" />
           <DropdownMenu
@@ -393,6 +403,11 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
         {candidates.length === 0 && data.emptyHint && (
           <Text type="supporting">{data.emptyHint}</Text>
         )}
+        {candidates.length > 0 && (
+          <Text type="supporting">
+            {`사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님) · ${aerialCreditFor(areaForList(candidates))}`}
+          </Text>
+        )}
         <div className="ui-cand-list">
           {withPhotos.map(({ candidate: c, photos }, i) => {
             const pickIdx = (picks || []).indexOf(c.id);
@@ -404,22 +419,24 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
                   variant="row" photos={photos} index={i} picked={pickIdx >= 0}
                   pickLetter={pickIdx >= 0 ? (PICK_LETTERS[pickIdx] || null) : null}
                   highlighted={highlightId === `home:${c.id}`}
-                  note={readinessNote(c)}
+                  note={readinessNote(c)} budgetWon={budgetWon}
                   onLive={() => onTogglePick(c)}
                   onJeonse={() => onJeonse(c)} onDetail={() => onDetail && onDetail(c)} />
               </div>
             );
           })}
         </div>
+        {data && data.total_matching > candidates.length && (
+          <Button size="sm" variant="ghost"
+            label={`다른 후보 ${data.total_matching - candidates.length}곳 더 보기`}
+            onClick={() => onAsk && onAsk("다른 후보 더 보여 줘")} />
+        )}
         {candidates.length > 0 && (
           <Text type="supporting">
             {picks.length < 2
               ? "마음에 드는 집을 2곳 담고 \"살아 봐 줘\"라고 말해 보세요"
               : "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요"}
           </Text>
-        )}
-        {candidates.length > 0 && (
-          <Text type="supporting">{aerialCreditFor(areaForList(candidates))}</Text>
         )}
       </VStack>
     </Card>
@@ -902,6 +919,8 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
             onRun={handlers.onRun} onDetail={handlers.onDetail}
             onHover={handlers.onHover} photoDeps={handlers.photoDeps}
             destName={handlers.destName} example={msg.example}
+            budgetWon={budgetWonFor(handlers.profile, data.tenure)}
+            onAsk={handlers.onAsk}
             highlightId={cardHi} />
         )}
         {msg.kind === "intake" && (

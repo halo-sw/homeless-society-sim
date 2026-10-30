@@ -81,14 +81,13 @@ export function commuteShortLine(candidate, destName) {
 }
 
 // 19c: the chat-list commute line — rounded minutes, no decimals.
-// { text, estimate } so the row renders "추정" as a chip.
+// 29a2: one shape, total minutes first, detail after. { text, estimate,
+// source } so the row renders its source tag (추정/공식/내가 말한 값)
+// the same way on every row.
 export function commuteRowLine(candidate, destName) {
   const c = candidate.commute;
-  if (!c) return { text: "출퇴근 정보를 확인 중이에요", estimate: false };
-  if (c.work) return { text: usWorkLine(c.work), estimate: true };
-  if (candidate.commute_ko && candidate.commute_ko.includes(SAME_STATION_KO)) {
-    return { text: SAME_STATION_KO, estimate: false };
-  }
+  if (!c) return { text: "출퇴근 정보를 확인 중이에요", estimate: false, source: "unknown" };
+  if (c.work) return { text: usWorkLine(c.work), estimate: true, source: "estimate" };
   const walkKnown = !!(c.walk && c.walk.known);
   const rideKnown = !!(c.ride && c.ride.known
     && Number.isFinite(c.ride.minutes) && c.ride.minutes > 0);
@@ -96,16 +95,17 @@ export function commuteRowLine(candidate, destName) {
     : c.ride && c.ride.derived && (c.ride.derived.methodsUsed || []).includes("estimate")
       && !(c.ride.derived.methodsUsed || []).includes("schedule") ? "estimate" : "official";
   const near = (m) => (m < 1 ? "1분 이내" : `${Math.round(m)}분`);
-  const where = destName ? `${destName}까지 ` : "";
-  if (rideKnown) {
-    const total = Math.round((walkKnown ? c.walk.minutes : 0) + c.ride.minutes);
-    const walkBit = walkKnown ? `${c.walk.station}역 걸어서 ${near(c.walk.minutes)}` : "도보 미확인";
-    return { text: `${where}약 ${total}분 · ${walkBit}`, estimate: src === "estimate" };
+  void destName;
+  if (rideKnown && walkKnown) {
+    const total = Math.round(c.walk.minutes + c.ride.minutes);
+    return { text: `총 ${total}분 · ${c.walk.station}역 걸어서 ${near(c.walk.minutes)} + 지하철 ${Math.round(c.ride.minutes)}분`,
+      estimate: src === "estimate", source: src };
   }
   if (walkKnown) {
-    return { text: `${c.walk.station}역 걸어서 ${near(c.walk.minutes)}`, estimate: false };
+    return { text: `총 ${near(c.walk.minutes)} · ${c.walk.station}역 걸어서`,
+      estimate: false, source: "official" };
   }
-  return { text: "도보 미확인", estimate: false };
+  return { text: "도보 미확인", estimate: false, source: "unknown" };
 }
 
 const SRC_KO = { official: "공식", estimate: "추정", said: "내가 말한 값", unknown: "미확인" };
@@ -136,7 +136,10 @@ export function SourceDot({ source }) {
 }
 
 // 19c: facts without any ✓ glyph — the budget fit is plain wording.
-function factsFor(candidate, price) {
+// 29a2: with a budget for the shown tenure and a median row price, the
+// budget fact names the difference (억/만 via fmtWon, no trailing 원);
+// without a budget it falls back to the fit wording.
+export function factsFor(candidate, price, budgetWon, tenure) {
   const first = candidate.tenures?.[0] || null;
   const center = first ? first.bucket_center_m2 : null;
   return [
@@ -144,8 +147,21 @@ function factsFor(candidate, price) {
     // 26c: sizeless buckets (US ZIP rents) show no size fact.
     candidate.sizeLabel || (center !== null && center !== undefined ? `${center}㎡` : null),
     candidate.build_year ? `${candidate.build_year}년` : null,
-    price.fit === "all" ? "예산 안" : price.fit === "partial" ? "예산 일부" : price.fit === "none" ? "예산 밖" : null,
+    budgetFactFor(candidate, price, budgetWon, tenure),
   ].filter(Boolean);
+}
+
+function budgetFactFor(candidate, price, budgetWon, tenure) {
+  const list = candidate.tenures || [];
+  const entry = (tenure && list.find((t) => t.tenure === tenure)) || list[0] || null;
+  const median = entry ? entry.median_won : null;
+  if (Number.isFinite(budgetWon) && budgetWon > 0 && Number.isFinite(median)) {
+    const diff = budgetWon - median;
+    if (diff > 0) return `예산보다 ${fmtWon(diff).replace(/ 원$/, "")} 적어요`;
+    if (diff < 0) return `예산보다 ${fmtWon(-diff).replace(/ 원$/, "")} 많아요`;
+  }
+  const fit = price ? price.fit : null;
+  return fit === "all" ? "예산 안" : fit === "partial" ? "예산 일부" : fit === "none" ? "예산 밖" : null;
 }
 
 // 26n: the thumbnail order is complex photo, live aerial crop, 3D,
@@ -197,7 +213,7 @@ function RowThumb({ candidate, hero }) {
   if (aerialLiveFor(candidate)) {
     return (
       <AerialThumb lon={candidate.lon} lat={candidate.lat} width={96} height={96}
-        fallback={sceneBranch} />
+        fallback={sceneBranch} name={candidate.name} />
     );
   }
   return sceneBranch;
@@ -223,13 +239,33 @@ export function rowClickHandler(onDetail, candidate) {
   };
 }
 
+// 29a2: the pick button names its home for screen readers.
+function pickAriaLabel(candidate) {
+  const name = displayNameFor(candidate);
+  if (LANG === "en") {
+    const gloss = /[가-힣]/.test(name) ? romanizeName(name) : "";
+    return `Pick ${gloss && gloss !== name ? gloss : name}`;
+  }
+  return `${name} 담기`;
+}
+
+// 29a2: the row source tag (추정/공식/내가 말한 값) renders on every
+// row the same way; unknown sources show no tag.
+function RowSourceTag({ row }) {
+  if (!row || !row.source || row.source === "unknown" || !SRC_KO[row.source]) return null;
+  return (
+    <span className="ui-cand-est">{SRC_KO[row.source]}</span>
+  );
+}
+
 export function CandidateCard({ candidate, tenure, destName, photos, index,
   onLive, onJeonse, onDetail, picked = false, variant = "row",
-  pickLetter = null, highlighted = false, note = "" }) {
+  pickLetter = null, highlighted = false, note = "", budgetWon = null }) {
   const [slide, setSlide] = useState(0);
   const price = tenurePriceLine(candidate, tenure);
   const row = commuteRowLine(candidate, destName);
-  const facts = factsFor(candidate, price);
+  const facts = factsFor(candidate, price, budgetWon, tenure);
+  const pickLabel = pickAriaLabel(candidate);
   // 26c: one ZIP rent, so the title names its source vintage.
   const rangeTitle = currencyOf(candidate) === "USD" ? usRangeTitle(candidate)
     : price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub;
@@ -242,7 +278,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   if (variant === "full") return (
     <FullCard candidate={candidate} price={price} facts={facts} row={row}
       hero={hero} rest={rest} slide={slide} setSlide={setSlide}
-      picked={picked} rangeTitle={rangeTitle}
+      picked={picked} rangeTitle={rangeTitle} pickLabel={pickLabel}
       onLive={onLive} onJeonse={onJeonse} />
   );
   const disc = picked ? (pickLetter || String((index ?? 0) + 1)) : String((index ?? 0) + 1);
@@ -263,14 +299,15 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         <div className="ui-cand-row-top">
           <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true">{disc}</span>
           <span className="ui-cand-row-name"><HomeName name={displayNameFor(candidate)} /></span>
-          <Button size="sm" variant={picked ? "secondary" : "primary"}
+          <Button size="sm" variant={picked ? "primary" : "secondary"}
             label={picked ? "담음 ✓" : "담기"}
+            aria-label={pickLabel}
             onClick={() => onLive && onLive(candidate)} />
         </div>
         <div className="ui-cand-row-price ui-num" title={rangeTitle}>{price.price}</div>
         <div className="ui-cand-row-facts ui-num">{facts.join(" · ")}</div>
         <div className="ui-cand-row-commute ui-num">
-          {row.text}{row.estimate ? " " : null}{row.estimate && <span className="ui-cand-est">추정</span>}
+          {row.text}{row.source && row.source !== "unknown" ? " " : null}<RowSourceTag row={row} />
         </div>
         {candidate.kind_mismatch && <Text type="supporting">{KIND_MISMATCH_KO}</Text>}
         {note && <Text type="supporting">{`살아 보기 불가 · ${note}`}</Text>}
@@ -290,10 +327,9 @@ function usRangeTitle(candidate) {
 }
 
 function FullCard({ candidate, price, facts, row, hero, rest,
-  slide, setSlide, picked, rangeTitle, onLive, onJeonse }) {
+  slide, setSlide, picked, rangeTitle, pickLabel, onLive, onJeonse }) {
   const shot = rest.length > 0 ? rest[slide % rest.length] : null;
   const hasCoords = Number.isFinite(candidate.lon) && Number.isFinite(candidate.lat);
-  const aerialLive = aerialLiveFor(candidate);
   const showHero = !!(hero || candidate.scene || hasCoords);
   const sceneFallback = candidate.scene ? (
     <SceneThumb boxId={candidate.scene}
@@ -313,7 +349,7 @@ function FullCard({ candidate, price, facts, row, hero, rest,
             </a>
           ) : hasCoords ? (
             <AerialThumb lon={candidate.lon} lat={candidate.lat} width={320} height={180}
-              fallback={sceneFallback} />
+              fallback={sceneFallback} name={candidate.name} />
           ) : (
             <SceneThumb boxId={candidate.scene}
               home={{ lon: candidate.lon, lat: candidate.lat }}
@@ -321,9 +357,6 @@ function FullCard({ candidate, price, facts, row, hero, rest,
           )}
           {hero && <span className="ui-cand-label">{hero.label}</span>}
         </div>
-      )}
-      {showHero && !hero && aerialLive && (
-        <Text type="supporting">{aerialCreditFor(areaForCandidate(candidate))}</Text>
       )}
       <div className="ui-cand-body">
         <div>
@@ -338,7 +371,7 @@ function FullCard({ candidate, price, facts, row, hero, rest,
         <div className="ui-cand-facts ui-num">{facts.join(" · ")}</div>
         <div>
           <div className="ui-commute ui-num">
-            {row.text}{row.estimate ? " " : null}{row.estimate && <span className="ui-cand-est">추정</span>}
+            {row.text}{row.source && row.source !== "unknown" ? " " : null}<RowSourceTag row={row} />
           </div>
           {detail && <Text type="supporting">{detail}</Text>}
         </div>
@@ -366,8 +399,9 @@ function FullCard({ candidate, price, facts, row, hero, rest,
           <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
         )}
         <div className="ui-cand-actions">
-          <Button size="sm" variant={picked ? "secondary" : "primary"}
+          <Button size="sm" variant={picked ? "primary" : "secondary"}
             label={picked ? "담음 ✓" : "담기"}
+            aria-label={pickLabel || "담기"}
             onClick={() => onLive && onLive(candidate)} />
           {currencyOf(candidate) !== "USD" && (
             <Button size="sm" variant="secondary" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />

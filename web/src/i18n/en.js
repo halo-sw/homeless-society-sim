@@ -15,7 +15,7 @@ const seedPhrases = {
   "1인 사회초년생": "First-jobber living alone",
   "판교로 출근하는 신입, 연봉 4천, 모은 돈 5천, 전세 2억 이하": "New hire commuting to Pangyo: salary 40M won, savings 50M won, jeonse under 200M won",
   "예비·신혼부부": "Engaged / newly-wed couple",
-  "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59m² or larger",
+  "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59㎡ or larger",
   "맞벌이 + 초등학생 자녀": "Dual-income + primary-school child",
   "맞벌이에 초등학생 아이 1명, 잠실 출근, 전세 6억 이하, 초등학교 도보 10분": "Dual-income with one primary-school child, working in Jamsil, jeonse under 600M won, primary school within a 10-min walk",
   "말로 조건 말하기": "Say what you need",
@@ -91,8 +91,8 @@ const seedPhrases = {
   "미국 북캘리포니아 추출본": "Northern California extract",
   // The landing prompt after money localizing (4억 → ₩400M) must not
   // fall into the generic "{0}, {1} 출근, …" table pattern.
-  "맞벌이 예비부부, 강남 출근, 전세 ₩400M 이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59m² or larger",
-  "맞벌이 예비부부, 강남 출근, 전세 ₩400M이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59m² or larger",
+  "맞벌이 예비부부, 강남 출근, 전세 ₩400M 이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59㎡ or larger",
+  "맞벌이 예비부부, 강남 출근, 전세 ₩400M이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59㎡ or larger",
   // landing-page.jsx (28d)
   "지금은 서울 동남권과 분당·판교·수지 11곳에서 시작했어요": "Starting with 11 areas in south-east Seoul, Bundang, Pangyo and Suji",
   "기능": "Features",
@@ -249,6 +249,13 @@ const seedPhrases = {
   "판교로 출근해요. 전세 ₩200M 이하로 혼자 살 집 찾아 줘": "I work in Pangyo. Find me a jeonse home under ₩200M to live alone",
   "마음에 드는 집을 2곳 담고 \"살아 봐 줘\"라고 말해 보세요": "Save 2 homes you like, then say \"Live in them\"",
   "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요": "Say \"Live in both homes\" and Muse lives 30 days in each",
+  // 29a2: rules-path system lines (27j) and local fallback answers.
+  "Muse 답이 늦어서 이번엔 규칙으로 답했어요. 다시 말하면 Muse가 이어받아요": "Muse was slow to answer, so the rules answered this time. Muse will take it from here.",
+  "Muse 연결이 계속 안 돼서 규칙으로 이어 갈게요": "Muse keeps failing to connect, so I'll continue with the rules.",
+  "찜은 후보 카드의 ‘담기’로 할 수 있어요.": "You can save a home with ‘Pick’ on its candidate card.",
+  "동네는 후보 카드의 3D 미리보기에서 볼 수 있어요.": "You can see the neighbourhood in the candidate card's 3D preview.",
+  "두 곳을 담고 \"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요.": "Save two homes, then say \"Live in both homes\" to preview 30 days in each.",
+  "이 요청은 Muse가 다시 연결되면 할 수 있어요. 잠시 뒤 다시 말씀해 주세요.": "I can do that once Muse reconnects. Please ask again in a moment.",
   "Muse 연결이 안 돼서 규칙으로 답했어요": "Couldn't reach Muse, so this answer came from rules",
   "상담 응답이 끊겼어요": "The reply was cut off",
   "상담 서버 오류": "Chat server error",
@@ -269,6 +276,16 @@ const seedPhrases = {
 
 const seedPatterns = [
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
+  // 29a2: candidate-list commute row (total first), budget difference,
+  // pick counter, more button, single photo notice.
+  { ko: "총 {0}분 · {1}역 걸어서 {2}분 + 지하철 {3}분", en: "Total {0} min · {1} Stn walk {2} min + subway {3} min" },
+  { ko: "총 {0}분 · {1}역 걸어서", en: "Total {0} min · {1} Stn, walk only" },
+  { ko: "예산보다 {0} 적어요", en: "{0} under budget" },
+  { ko: "예산보다 {0} 많아요", en: "{0} over budget" },
+  { ko: "2곳 중 {0}곳 담음", en: "{0} of 2 picked" },
+  { ko: "다른 후보 {0}곳 더 보기", en: "Show {0} more" },
+  { ko: "사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님)", en: "Photos are aerial and 3D previews (not actual listing photos)" },
+  { ko: "다른 후보 더 보여 줘", en: "Show me more candidates" },
   { ko: "다루는 지역 {0}곳: {1}", en: "Areas covered ({0}): {1}" },
   // Counts use the plural functions in the generated table ("1 thing checked").
   // chat-27 templates.

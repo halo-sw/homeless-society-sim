@@ -173,7 +173,9 @@ export function MiniMap({ lon, lat, name }) {
 // directly in the US. The browser fetches the tiles; nothing is
 // written anywhere. Any tile failure (or no relay on a static build)
 // falls back to the caller's fallback.
-export function AerialThumb({ lon, lat, width = 96, height = 96, fallback = null }) {
+// 29a2: no per-thumb label — the list carries one notice line. The live
+// crop keeps an accessible name with the home name only.
+export function AerialThumb({ lon, lat, width = 96, height = 96, fallback = null, name = null }) {
   const ref = useRef(null);
   const [measured, setMeasured] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -202,7 +204,7 @@ export function AerialThumb({ lon, lat, width = 96, height = 96, fallback = null
   if (failed || urls.some((u) => u == null)) return fallback;
   const credit = aerialCreditFor({ bbox: [x, y, x, y] });
   return (
-    <div ref={ref} title={credit}
+    <div ref={ref} title={credit} role={name ? "img" : undefined} aria-label={name || undefined}
       style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%" }}>
       {layout.tiles.map((t, i) => (
         <img key={`${t.z}/${t.y}/${t.x}`} src={urls[i]} alt=""
@@ -215,11 +217,6 @@ export function AerialThumb({ lon, lat, width = 96, height = 96, fallback = null
         width: 10, height: 10, borderRadius: "50%", transform: "translate(-50%, -50%)",
         background: "rgba(17,20,26,0.9)", border: "2px solid #fff",
         boxShadow: "0 1px 4px rgba(0,0,0,0.5), 0 0 0 1px #fff" }} />
-      <span className="ui-aerial-label" style={{ position: "absolute", left: 4, bottom: 4, fontSize: "var(--ui-t12)",
-        color: "#fff", background: "rgba(0,0,0,0.45)", borderRadius: 4, padding: "0 4px",
-        whiteSpace: "nowrap" }}>
-        항공사진
-      </span>
     </div>
   );
 }

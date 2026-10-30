@@ -144,12 +144,12 @@ describe("26n row SSR", () => {
         budget_fit: "all", bucket_center_m2: 30 }] };
   }
 
-  it("a row with lon/lat and no photos shows the aerial label", () => {
+  it("a row with lon/lat and no photos shows no per-thumb aerial label", () => {
     const html = renderToString(React.createElement(CandidateCard,
       { candidate: seoulCandidate("c1", "천사의도시II오피스텔"), tenure: "jeonse",
         destName: "판교", photos: null, index: 0, picked: false,
         onLive: noop, onJeonse: noop, onDetail: noop }));
-    assert.ok(html.includes("항공사진"), "aerial thumbnail label renders");
+    assert.ok(!html.includes("ui-aerial-label"), "per-thumb aerial label is gone");
   });
 
   it("the list carries the aerial credit next to the pick hint", () => {

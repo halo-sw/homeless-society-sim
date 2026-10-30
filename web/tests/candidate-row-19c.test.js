@@ -51,7 +51,7 @@ describe("19c candidate rows", () => {
 
   it("(b) commuteRowLine rounds walk 3.8 + ride 8.5", () => {
     const line = commuteRowLine(readyCandidate("c2", "시그마 3"), "판교");
-    assert.ok(line.text.includes("약 12분"), `total rounded: ${line.text}`);
+    assert.ok(line.text.includes("총 12분"), `total rounded: ${line.text}`);
     assert.ok(line.text.includes("걸어서 4분"), `walk rounded: ${line.text}`);
     assert.equal(line.estimate, true, "estimate ride flagged");
   });
