@@ -122,3 +122,77 @@ describe("english action 26x2", () => {
     assert.equal(out.guardCause, "english_retry_korean");
   });
 });
+
+describe("english guard-correction retry 26x3", () => {
+  // Number in no tool result: the first answer fails the guard, so the
+  // turn goes through the guard-correction retry (not the 26x2 branch).
+  const BAD = "Saved both homes for a deposit of ₩999,999,999 won";
+
+  function pickTurn(completeFn, lang) {
+    const turn = baseTurn(completeFn);
+    turn.context = { lang };
+    return turn;
+  }
+
+  it("a still-Korean correction retry on an action turn answers the translatable confirmation", async () => {
+    const complete = scripted([
+      toolReply([
+        { id: "c1", name: "find_homes", args: { profile: profile() } },
+        { id: "c2", name: "pick_homes", args: { candidate_ids: ["x1", "x2"] } },
+      ]),
+      textReply(BAD),
+      textReply(KO),
+    ]);
+    const out = await runTurn(pickTurn(complete, "en"));
+    assert.equal(out.ok, true);
+    assert.equal(complete.calls(), 3);
+    assert.ok(out.reply.includes("찜했어요"));
+    assert.ok(out.reply.includes("판교푸르지오"));
+    assert.ok(out.reply.includes("봇들마을"));
+    assert.equal(out.fallback, true);
+    assert.equal(out.guardCause, "english_retry_korean_action");
+  });
+
+  it("the English correction note asks for English, not Korean", async () => {
+    const seen = [];
+    let calls = 0;
+    const steps = [
+      toolReply([
+        { id: "c1", name: "find_homes", args: { profile: profile() } },
+        { id: "c2", name: "pick_homes", args: { candidate_ids: ["x1", "x2"] } },
+      ]),
+      textReply(BAD),
+      textReply(KO),
+    ];
+    const complete = async (args) => {
+      seen.push(args.messages);
+      return steps[Math.min(calls++, steps.length - 1)]();
+    };
+    await runTurn(pickTurn(complete, "en"));
+    assert.equal(seen.length, 3);
+    const note = seen[2][seen[2].length - 1];
+    assert.ok(note.content.includes("in English"));
+    assert.ok(!note.content.includes("한국어로"));
+  });
+
+  it("the Korean correction note is unchanged", async () => {
+    const seen = [];
+    let calls = 0;
+    const steps = [
+      toolReply([
+        { id: "c1", name: "find_homes", args: { profile: profile() } },
+      ]),
+      textReply("보증금은 999,999,999원입니다."),
+      textReply(KO),
+    ];
+    const complete = async (args) => {
+      seen.push(args.messages);
+      return steps[Math.min(calls++, steps.length - 1)]();
+    };
+    const out = await runTurn(pickTurn(complete, "ko"));
+    assert.equal(out.ok, true);
+    assert.equal(seen.length, 3);
+    const note = seen[2][seen[2].length - 1];
+    assert.ok(note.content.includes("한국어로"));
+  });
+});

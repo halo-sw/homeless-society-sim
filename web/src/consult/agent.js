@@ -20,6 +20,12 @@ const ENGLISH_NOTE =
 const ENGLISH_RETRY_NOTE =
   "Your last answer was in Korean. Rewrite it in plain English with the same facts and numbers.";
 
+// 26x3: shared "English but still Korean → action confirmation" choice,
+// used by both the 26x2 branch and the guard-correction retry branch.
+function englishActionFallback(toolResults, session) {
+  return actionConfirmation(toolResults, { names: session.lastCandidateNames });
+}
+
 function lastUserText(messages) {
   for (let i = (messages || []).length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -357,7 +363,7 @@ export async function runTurn(opts) {
             // 26x2: a completed action has a fixed translatable
             // confirmation — prefer it over free Korean model text,
             // which the phrase layer has no entry for.
-            const actionFallback = actionConfirmation(toolResults, { names: session.lastCandidateNames });
+            const actionFallback = englishActionFallback(toolResults, session);
             if (actionFallback) {
               appended.push({ role: "assistant", content: actionFallback });
               return finish({ reply: actionFallback, suggestions: split2.suggestions,
@@ -380,12 +386,15 @@ export async function runTurn(opts) {
           guardRetries: 0, fallback: false });
       }
       // Retry once with a correction note (text only), else numbers only.
+      // 26x3: in English mode the note asks for English.
+      const correctionNote = isEnglish
+        ? `Correction: your last answer failed the guard (${checked.cause}: ${checked.detail}). Use only the numbers from the tool results as-is, with no banned topics or real-world prediction language. Answer again in at most 3 lines, in English. Do not call tools.`
+        : `교정: 방금 답은 가드 실패(${checked.cause}: ${checked.detail}). 도구 결과의 수치만 그대로 쓰고, 금지 주제·현실예측 표현 없이 3줄 이내 한국어로 다시 답하라. 도구는 쓰지 마라.`;
       const retry = await complete({
         provider,
         messages: [...history,
           { role: "assistant", content: reply },
-          { role: "user",
-            content: `교정: 방금 답은 가드 실패(${checked.cause}: ${checked.detail}). 도구 결과의 수치만 그대로 쓰고, 금지 주제·현실예측 표현 없이 3줄 이내 한국어로 다시 답하라. 도구는 쓰지 마라.` }],
+          { role: "user", content: correctionNote }],
       });
       usage.prompt_tokens += (retry.usage && retry.usage.prompt_tokens) || 0;
       usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
@@ -394,6 +403,16 @@ export async function runTurn(opts) {
       const split2 = splitSuggestions(reply2);
       const checked2 = checkConsultReply(split2.text, toolResults);
       if (checked2.ok) {
+        // 26x3: English retry that is still Korean — prefer the
+        // translatable action confirmation, else today's behaviour.
+        if (isEnglish && isMostlyKorean(split2.text)) {
+          const actionFallback = englishActionFallback(toolResults, session);
+          if (actionFallback) {
+            appended.push({ role: "assistant", content: actionFallback });
+            return finish({ reply: actionFallback, suggestions: split2.suggestions,
+              guardRetries: 1, fallback: true, guardCause: "english_retry_korean_action" });
+          }
+        }
         appended.push({ role: "user", content: "(교정 후 재답변)" });
         appended.push({ role: "assistant", content: split2.text });
         return finish({ reply: split2.text, suggestions: split2.suggestions,
