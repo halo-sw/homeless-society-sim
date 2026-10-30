@@ -73,7 +73,7 @@ function translateSingle(t, translator, st) {
   if (typeof src !== "string" || !HANGUL.test(src)) return;
   const out = translator.translate(src);
   if (out !== src) {
-    t.nodeValue = out;
+    if (t.nodeValue !== out) t.nodeValue = out;
     st.written.set(t, out);
   }
 }
@@ -86,6 +86,8 @@ function translateLeaf(texts, translator, st) {
   if (!HANGUL.test(joined)) return;
   const out = translator.translate(joined);
   if (out === joined) return;
+  if (texts[0].nodeValue === out
+    && texts.slice(1).every((t) => t.nodeValue === "")) return;
   texts[0].nodeValue = out;
   st.written.set(texts[0], out);
   for (let i = 1; i < texts.length; i++) {
@@ -109,8 +111,8 @@ function translateAttrs(el, translator, st) {
       : cur;
     const out = translator.translate(src);
     if (out !== src) {
-      setAttr(el, attr, out);
-      setAttr(el, srcKey, src);
+      if (cur !== out) setAttr(el, attr, out);
+      if (stored !== src) setAttr(el, srcKey, src);
       const next = prevMap || {};
       next[attr] = out;
       st.attrWritten.set(el, next);
@@ -157,7 +159,7 @@ function translateTitle(doc, translator) {
     const t = doc.title;
     if (typeof t === "string" && HANGUL.test(t)) {
       const out = translator.translate(t);
-      if (out !== t) doc.title = out;
+      if (out !== t && doc.title !== out) doc.title = out;
     }
   } catch {
     /* ignore */
@@ -186,25 +188,56 @@ export function startDomTranslation(root, translator) {
     else translateTree(node, translator, st);
   };
   let obs = null;
+  // Safety net: never re-enter the callback, and skip a node written
+  // more than 3 times in one frame (same-value writes above already
+  // avoid the loop; this only caps a pathological one).
+  let busy = false;
+  let frameCounts = new WeakMap();
+  let frameScheduled = false;
+  const touch = (node) => {
+    const n = (node ? frameCounts.get(node) : 0) || 0;
+    const next = n + 1;
+    if (node) frameCounts.set(node, next);
+    if (!frameScheduled && typeof requestAnimationFrame !== "undefined") {
+      frameScheduled = true;
+      requestAnimationFrame(() => {
+        frameCounts = new WeakMap();
+        frameScheduled = false;
+      });
+    }
+    return next;
+  };
   try {
     obs = new MutationObserver((mutations) => {
-      for (const m of mutations || []) {
-        try {
-          if (!m) continue;
-          if (m.type === "characterData") retarget(m.target);
-          else if (m.type === "childList") {
-            const added = m.addedNodes ? Array.from(m.addedNodes) : [];
-            for (const n of added) translateTree(n, translator, st);
-          } else if (m.type === "attributes" && TRANS_ATTRS.includes(m.attributeName)) {
-            const el = m.target;
-            if (el && el.nodeType === ELEMENT_NODE
-              && !underNoI18n(el) && !skipSubtree(el)) {
-              translateAttrs(el, translator, st);
+      if (busy) return;
+      busy = true;
+      try {
+        for (const m of mutations || []) {
+          try {
+            if (!m) continue;
+            if (m.type === "characterData") {
+              if (touch(m.target) > 3) continue;
+              retarget(m.target);
+            } else if (m.type === "childList") {
+              const added = m.addedNodes ? Array.from(m.addedNodes) : [];
+              for (const n of added) {
+                if (touch(n) > 3) continue;
+                translateTree(n, translator, st);
+              }
+            } else if (m.type === "attributes" && TRANS_ATTRS.includes(m.attributeName)) {
+              const el = m.target;
+              if (touch(el) > 3) continue;
+              if (el && el.nodeType === ELEMENT_NODE
+                && !underNoI18n(el) && !skipSubtree(el)) {
+                translateAttrs(el, translator, st);
+              }
             }
+          } catch {
+            /* keep observing */
           }
-        } catch {
-          /* keep observing */
         }
+      } finally {
+        busy = false;
       }
     });
     obs.observe(root, {

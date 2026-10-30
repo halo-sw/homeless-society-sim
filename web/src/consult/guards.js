@@ -25,6 +25,7 @@ const INVEST_KO = [
 const INVEST_EN = [
   "invest", "investment", "investing", "roi", "appreciation", "capital gain",
   "bull market", "bear market", "price forecast", "forecast prices",
+  "good investment", "invest in",
 ];
 
 const INVEST_EN_RES = INVEST_EN.map((w) => ({
@@ -51,6 +52,8 @@ const PREDICTION_RES = [
   /100% (확실|장담|보장)/,
   /predict(s)? (real life|your future|the future)/i,
   /will (definitely|certainly) happen in real life/i,
+  /will (?:definitely|certainly) happen/i,
+  /this predicts/i,
 ];
 
 export function predictionClaim(text) {
@@ -199,6 +202,7 @@ const SCORE_EN_RES = [
   "safer neighborhood", "safety score", "safety rating", "crime rank",
   "school rank", "best home", "recommended home",
   "safe area", "safe neighborhood", "dangerous area", "dangerous neighborhood",
+  "I recommend", "best choice", "best option",
 ].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
 
 // "내 기준 점수" allowlist (stage 17): the customer's own subjective
@@ -247,6 +251,7 @@ const FORECAST_RES = [
   /(앞으로|향후|내년|내달).{0,12}(오르|상승|하락|떨어|전망)/,
   /will (rise|fall|increase|decrease|go up|go down)/i,
   /price (forecast|prediction|outlook).{0,20}(is|looks)/i,
+  /prices? will (?:rise|fall|go up|go down)/i,
 ];
 
 export function forecastClaim(text) {
@@ -284,6 +289,7 @@ const BUY_RES = [
   /(사세요|사실 것을|사실 것을 권|매수하시|매도하시)/,
   /(팔고|처분하고).{0,10}(사|이사|갈아타)/,
   /(지금이|지금이 바로).{0,8}(매수|매도|적기|기회)/,
+  /you should (?:buy|not buy)|(?:don't|do not) buy/i,
 ];
 
 export function buyVerdict(text) {
@@ -310,6 +316,10 @@ const SIGN_EN_RES = [
   "sign the contract", "sign the lease", "sign it", "go ahead and sign",
 ].map((w) => ({ w, re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i") }));
 
+const SIGN_EN_RE = [
+  /you should (?:sign|not sign)|(?:don't|do not) sign/i,
+];
+
 export function signVerdict(text) {
   const s = withoutRefusals(text);
   for (const re of SIGN_RES) {
@@ -318,6 +328,10 @@ export function signVerdict(text) {
   }
   for (const { w, re } of SIGN_EN_RES) {
     if (re.test(s)) return w;
+  }
+  for (const re of SIGN_EN_RE) {
+    const m = re.exec(s);
+    if (m) return m[0].slice(0, 60);
   }
   return null;
 }
@@ -424,7 +438,15 @@ export function toolResultNumbers(toolResults) {
 export function checkConsultReply(answer, toolResults) {
   const text = String(answer || "");
   const flat = text.replace(/(\d),(?=\d)/g, "$1").replace(/(\d+)개월/g, "$1회");
-  const badNums = findInventedNumbers(flat, "", toolResultNumbers(toolResults));
+  // English money reads as full won so the number check sees citations:
+  // ₩300M / 300M won / 1.2 billion won / ₩260,000,000.
+  const flatMoney = flat
+    .replace(/₩?\s*(\d+(?:\.\d+)?)\s*(M|million)\b/g,
+      (_, n) => String(Math.round(parseFloat(n) * 1e6)))
+    .replace(/₩?\s*(\d+(?:\.\d+)?)\s*(B|billion)\b/g,
+      (_, n) => String(Math.round(parseFloat(n) * 1e9)))
+    .replace(/₩(\d[\d,]*)/g, (_, d) => d.replace(/,/g, ""));
+  const badNums = findInventedNumbers(flatMoney, "", toolResultNumbers(toolResults));
   if (badNums.length > 0) {
     return { ok: false, cause: "invented_number",
       detail: `number ${badNums[0]} appears in no tool result of this conversation`,

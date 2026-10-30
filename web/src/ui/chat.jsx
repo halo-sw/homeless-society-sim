@@ -89,6 +89,7 @@ import { LIVE_API, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
+import { LANG } from "../i18n/lang.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const IS_DEV = ENV.DEV === true;
@@ -1371,7 +1372,7 @@ export function ChatScreen() {
         byoKey = loadByoKey(typeof sessionStorage !== "undefined" ? sessionStorage : null, provider);
       } catch { /* no storage — server key path */ }
       const out = await postConsult({ provider, messages: history, scenario: scen,
-        context: agentContext(store.getState()), byoKey });
+        context: { ...agentContext(store.getState()), lang: LANG }, byoKey });
       const rows = { ...stateRef.current.toolRows };
       const callIds = [];
       for (const m of out.messages) {

@@ -58,7 +58,7 @@ function nameFallback(core) {
   return romanizeName(core);
 }
 
-export function createTranslator({ phrases = {}, patterns = [] } = {}) {
+export function createTranslator({ phrases = {}, patterns = [], words = {} } = {}) {
   const cache = new Map();
   const missing = new Set();
   const compiled = (patterns || []).map((p) => {
@@ -78,6 +78,27 @@ export function createTranslator({ phrases = {}, patterns = [] } = {}) {
     return matchPatterns(s);
   }
 
+  // Common words first (glossary), then whole-string phrases, then a
+  // trailing particle stripped and looked up again; only names fall
+  // through to romanization. Never returns Hangul for a Hangul token.
+  function wordFallback(s) {
+    const tokens = String(localizeNumbers(s)).split(/([·(),:])/g)
+      .flatMap((p) => String(p).split(/ +/))
+      .filter((t) => t !== "");
+    const mapped = tokens.map((tok) => {
+      if (!HANGUL.test(tok)) return tok;
+      if (Object.hasOwn(words, tok)) return words[tok];
+      if (Object.hasOwn(phrases, tok)) return phrases[tok];
+      const bare = tok.replace(/(이|가|은|는|을|를|의|에|에서|으로|로|와|과|도|만)$/, "");
+      if (bare !== tok && bare !== "") {
+        if (Object.hasOwn(words, bare)) return words[bare];
+        if (Object.hasOwn(phrases, bare)) return phrases[bare];
+      }
+      return romanizeName(tok);
+    });
+    return mapped.join(" ").replace(/ ([,):])/g, "$1").replace(/\( /g, "(");
+  }
+
   function matchPatterns(s) {
     for (const p of compiled) {
       const m = s.match(p.re);
@@ -88,9 +109,9 @@ export function createTranslator({ phrases = {}, patterns = [] } = {}) {
         if (HANGUL.test(cap)) {
           if (cap !== s) {
             const t = translateCore(cap);
-            cap = HANGUL.test(t) ? romanizeName(t) : t;
+            cap = HANGUL.test(t) ? wordFallback(t) : t;
           } else {
-            cap = romanizeName(cap);
+            cap = wordFallback(cap);
           }
         }
         en = en.split("{" + n + "}").join(cap);
@@ -103,9 +124,21 @@ export function createTranslator({ phrases = {}, patterns = [] } = {}) {
   function translateCore(core) {
     const hit = cache.get(core);
     if (hit !== undefined) return hit;
-    let result = exactOrPattern(core);
+    let result;
     let cand = core;
-    if (result === undefined) {
+    // Money first when the core names eok/man: "전세 2억 6,000만 원"
+    // localizes to "전세 ₩260M" before any stale table pattern runs.
+    const numFirst = /억|만\s*원/.test(core);
+    if (numFirst) {
+      const loc = localizeNumbers(core);
+      if (loc !== core) {
+        cand = loc;
+        result = exactOrPattern(loc);
+        if (result === undefined && !HANGUL.test(loc)) result = loc;
+      }
+    }
+    if (result === undefined) result = exactOrPattern(core);
+    if (result === undefined && !numFirst) {
       const loc = localizeNumbers(core);
       if (loc !== core) {
         cand = loc;
@@ -114,7 +147,10 @@ export function createTranslator({ phrases = {}, patterns = [] } = {}) {
       }
     }
     if (result === undefined && HANGUL.test(cand)) {
-      result = nameFallback(cand);
+      const tokens = cand.split(/\s+/).filter(Boolean);
+      result = (tokens.length <= 8 && !/(요|다|까|죠|니다)[.?!]?$/.test(cand))
+        ? wordFallback(cand)
+        : nameFallback(cand);
     }
     if (result === undefined) {
       result = core;
