@@ -19,16 +19,14 @@
 // that exists in its run (a candidate without one is dropped).
 
 import { defaultFlat } from "./criteria.js";
+import { hhmm } from "../timeline.js";
 
 export const MOMENT_KINDS = ["crowded", "commute", "gap", "decision"];
 
 const ASSUMED_SOURCE = "가정값";
 
 const dayLabel = (day) => `${day + 1}일차`;
-const hhmm = (m) => {
-  const c = Math.max(0, Math.min(1439, Math.round(m)));
-  return `${String(Math.floor(c / 60)).padStart(2, "0")}:${String(c % 60).padStart(2, "0")}`;
-};
+// 18d: HH:MM comes from the one timeline formatter (float-safe).
 // 17b: the one-line text carries no leading day/time or home letter (the
 // drawer shows those in their own columns); when_ko keeps them instead.
 const whenKo = (day, minute) => `${dayLabel(day)} ${hhmm(minute)}`;

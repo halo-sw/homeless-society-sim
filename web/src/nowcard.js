@@ -10,6 +10,7 @@
 
 import { chosenLabel, DECISION_KIND_KO, purposeLabel } from "./sim.js";
 import { journeyBanner, legAt, rideStateFor } from "./journey.js";
+import { hhmm } from "./timeline.js";
 import { standShare } from "./engine/journey.js";
 import { fmtWon } from "./money/format.js";
 
@@ -37,7 +38,7 @@ export function tickerDisplay(events, open, limit = TICKER_VISIBLE) {
   return { visible: list.slice(-limit), hiddenCount: list.length - limit };
 }
 
-const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+// 18d: HH:MM comes from the one timeline formatter (float-safe).
 
 const PURPOSE_VERB = { commute: "출근", school: "등교", errand: "장보기", clinic: "병원", park: "산책" };
 const purposeVerb = (p) => PURPOSE_VERB[p] || purposeLabel(p);

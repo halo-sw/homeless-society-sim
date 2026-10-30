@@ -7,6 +7,7 @@
 // (labelled 가정값).
 
 import { dateOf, weekdayOf } from "./engine/scenario.js";
+import { hhmm } from "./timeline.js";
 
 export const KOR_WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
 export const SPEEDS = [1, 10, 60]; // sim-min per 0.1 s at 1×
@@ -18,9 +19,8 @@ export function formatClock(startDate, day, minute, days) {
   const mo = Number(iso.slice(5, 7));
   const d = Number(iso.slice(8, 10));
   const wd = KOR_WEEKDAYS[weekdayOf(startDate, day)];
-  const hh = String(Math.floor(minute / 60)).padStart(2, "0");
-  const mm = String(minute % 60).padStart(2, "0");
-  return `${mo}월 ${d}일(${wd}) ${hh}:${mm} · ${day + 1}일차/${days}`;
+  // 18d: the time half goes through the one timeline formatter.
+  return `${mo}월 ${d}일(${wd}) ${hhmm(minute)} · ${day + 1}일차/${days}`;
 }
 
 export function parseTParam(t) {

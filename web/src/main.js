@@ -32,7 +32,7 @@ import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // 12b: landing/chat routing, timeline builders + activity colours,
 // custom-run store (?custom=<id>).
 import { routeForSearch, chatUrl, chatReopenUrl } from "./chat/urls.js";
-import { ACTIVITIES, daySegments, monthStrip, outingStepsFor } from "./timeline.js";
+import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor } from "./timeline.js";
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
@@ -1676,7 +1676,6 @@ async function bootSim() {
   let playing = shouldAutoplay(PARAMS);
   let speed = 1;
   let follow = Math.min(household.length, Math.max(0, Number.parseInt(PARAMS.get("follow") || "0", 10) || 0));
-  const hhmmOf = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
   function paintClock() {
     store.set({ clock: {
@@ -1970,7 +1969,7 @@ async function bootSim() {
     store.set({ judge: {
       badgeText: badge.text,
       badgeCls: badge.cls,
-      text: `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
+      text: `${hhmm(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(v)}` +
         (v.reason_ko ? ` · “${v.reason_ko}”` : ""),
       canAsk: import.meta.env.DEV,
     } });
@@ -2032,7 +2031,7 @@ async function bootSim() {
         judge: {
           badgeText: badge.text,
           badgeCls: badge.cls,
-          text: `${hhmmOf(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
+          text: `${hhmm(v.minute)} ${DECISION_KIND_KO[v.kind] || v.kind} · ${optionsLine(v)} → ✓ ${chosenLabel(live)}` +
             (live.reason_ko ? ` · “${live.reason_ko}”` : "") +
             ` (${live.provider === "baseten" ? "Muse Spark Open" : "Muse Spark 1.3"})`,
           canAsk: true,
@@ -2052,7 +2051,7 @@ async function bootSim() {
       const badge = decisionBadge(v);
       return {
         id: v.id,
-        minute: hhmmOf(v.minute),
+        minute: hhmm(v.minute),
         agent: agentLabelOf(run, v.agent),
         kind: DECISION_KIND_KO[v.kind] || v.kind,
         choice: chosenLabel(v),
@@ -2902,7 +2901,7 @@ async function bootSim() {
     }
     paintClock();
     paintFollow(0.016, true);
-    store.set({ viewChip: `기준 ${id}: ${hit.day + 1}일차 ${hhmmOf(Math.floor(minute))}으로 이동` });
+    store.set({ viewChip: `기준 ${id}: ${hit.day + 1}일차 ${hhmm(Math.floor(minute))}으로 이동` });
   }
 
   store.registerActions({
