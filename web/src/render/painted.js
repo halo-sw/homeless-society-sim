@@ -4,9 +4,10 @@
 // The outline/AO pass renders its own packed-depth prepass (RGBADepthPacking
 // override, no MSAA — the ANGLE Metal black-frame rule), then darkens
 // silhouette/roof edges (35 %, never black) and occluded pixels (≤40 %).
-// Kuwahara flattens texture noise into brush-like patches; the pixel step
-// renders the main pass below full resolution and upscales with nearest
-// filtering (?px=1 disables). Photo style never touches this file.
+// Kuwahara (radius 1) flattens texture noise into brush-like patches;
+// the main pass renders at full resolution (20a) with linear filtering
+// unless ?px=2+ opts into a coarse pixel look. Photo style never touches
+// this file.
 
 import * as THREE from "three";
 import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
@@ -61,8 +62,10 @@ export function aoTap(c, d) {
   return Math.min(1, Math.max(0, (c - d - aoEps(c)) / aoScale(c)));
 }
 
-// Main-pass downscale on painted high (?px= overrides; ?px=1 disables).
-export const PAINTED_PIXEL_HIGH = 1.5;
+// Main-pass scale on painted high (?px= overrides). 20a: full resolution
+// by default (the 1/1.5 nearest upscale crawled whenever the camera
+// moved); ?px=2 etc. still opts back into a coarse pixel look.
+export const PAINTED_PIXEL_HIGH = 1;
 
 export function outlineStrengthFor(framedWidthM) {
   const w = Number(framedWidthM);
@@ -73,13 +76,23 @@ export function outlineStrengthFor(framedWidthM) {
 }
 
 // Kuwahara radius by quality (low has no composer; value unused there).
-export function kuwaharaRadiusFor(level) {
-  if (level === "high") return 3;
-  return 2;
+// 20a: radius 1 everywhere — the least-variance selector boils under
+// sub-pixel camera motion at larger radii. ?kuwa=0 removes the pass
+// (radius 0); the painted look is carried by the 1 px outline + grade.
+export function kuwaharaRadiusFor(level, kuwaParam = null) {
+  if (kuwaParam === "0" || kuwaParam === 0 || kuwaParam === false) return 0;
+  if (level === "high") return 1;
+  return 1;
 }
 
-// Main-pass pixel factor: explicit ?px= wins when finite and ≥ 1
-// (?px=1 is full resolution = disabled), else 1.5 on high, 1 below.
+// Motion-stable Kuwahara radius (20a): the value the chain actually uses.
+// Always ≤ 1 by default so the frame stays still when the camera moves.
+export function temporalStableKuwahara(level, kuwaParam = null) {
+  return kuwaharaRadiusFor(level, kuwaParam);
+}
+
+// Main-pass pixel factor: explicit ?px= wins when finite and ≥ 1,
+// else 1 on every level (20a: full-res default — see PAINTED_PIXEL_HIGH).
 export function paintedPixelFactor(level, pxParam = null) {
   const n = pxParam === null || pxParam === undefined || pxParam === ""
     ? NaN : Number(pxParam);
@@ -245,7 +258,8 @@ export const DebugEdgeShader = {
 
 // Small Kuwahara filter: each pixel takes the mean of the least-variance
 // of four overlapping (r+1)^2 quadrants — texture noise flattens into
-// brush-like patches. Radius is baked into the loop bounds (2/3).
+// brush-like patches. Radius is baked into the loop bounds (20a default
+// r=1; larger radii boil under camera motion).
 export function KuwaharaShader(radius) {
   const r = Math.max(1, Math.min(4, Math.round(radius) || 2));
   const n = ((r + 1) * (r + 1)).toFixed(1);

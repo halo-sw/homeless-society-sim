@@ -8,10 +8,12 @@ import { DebugDepthShader, DebugEdgeShader, KuwaharaShader, OutlineAOShader, Pai
   outlineEdge, outlineStrengthFor, paintedPixelFactor } from "../src/render/painted.js";
 
 describe("painted post chain (14e)", () => {
-  it("orders render → ao → kuwahara → outline → bloom → grade → output (14f)", () => {
+  it("orders render → ao → kuwahara → outline → bloom → grade → aa → output (14f, 20a)", () => {
     // 14f: AO before Kuwahara (low-frequency, survives it), 1 px edges
     // after (the least-variance selector would erase them before it).
-    const painted = ["render", "ao", "kuwahara", "outline", "bloom", "grade", "output"];
+    // 20a: the AA step (MSAA on WebGL2, FXAA just before output
+    // elsewhere) sits between grade and output.
+    const painted = ["render", "ao", "kuwahara", "outline", "bloom", "grade", "aa", "output"];
     assert.deepEqual(postChainSpec("high", { style: "painted" }), painted);
     assert.deepEqual(postChainSpec("medium", { style: "painted" }), painted);
     assert.deepEqual(postChainSpec("low", { style: "painted" }), ["render"]);
@@ -55,21 +57,26 @@ describe("painted debug routing (14f)", () => {
 });
 
 describe("painted post helpers (14e)", () => {
-  it("renders the main pass at 1/1.5 on high, full below (?px= wins)", () => {
-    assert.equal(paintedPixelFactor("high"), 1.5);
+  it("renders the main pass at full res everywhere (?px= wins)", () => {
+    // 20a: full-res default on high too (was 1/1.5); ?px= still overrides.
+    assert.equal(paintedPixelFactor("high"), 1);
     assert.equal(paintedPixelFactor("medium"), 1);
     assert.equal(paintedPixelFactor("low"), 1);
-    assert.equal(paintedPixelFactor("high", "1"), 1); // ?px=1 disables
+    assert.equal(paintedPixelFactor("high", "1"), 1);
     assert.equal(paintedPixelFactor("high", "2"), 2);
     assert.equal(paintedPixelFactor("medium", "2"), 2);
-    assert.equal(paintedPixelFactor("high", "nope"), 1.5);
-    assert.equal(paintedPixelFactor("high", null), 1.5);
+    assert.equal(paintedPixelFactor("high", "nope"), 1);
+    assert.equal(paintedPixelFactor("high", null), 1);
     assert.equal(paintedPixelFactor("high", "0"), 1);
   });
 
-  it("sizes the Kuwahara radius by quality (3 high, 2 medium)", () => {
-    assert.equal(kuwaharaRadiusFor("high"), 3);
-    assert.equal(kuwaharaRadiusFor("medium"), 2);
+  it("sizes the Kuwahara radius by quality (1 high, 1 medium; 0 with ?kuwa=0)", () => {
+    // 20a: radius 1 everywhere (was 3 high, 2 medium) — stable in motion.
+    assert.equal(kuwaharaRadiusFor("high"), 1);
+    assert.equal(kuwaharaRadiusFor("medium"), 1);
+    assert.equal(kuwaharaRadiusFor("high", "0"), 0);
+    assert.deepEqual(postChainSpec("high", { style: "painted", kuwa: "0" }),
+      ["render", "ao", "outline", "bloom", "grade", "aa", "output"]);
   });
 
   it("fades outlines out past a 5 km framed width (14f)", () => {

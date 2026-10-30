@@ -311,7 +311,8 @@ function buildWorld(area, scene14, opts = {}) {
     mask.anisotropy = maxAniso;
     terrainMesh = new THREE.Mesh(toIndexedGeometry(t),
       new THREE.MeshStandardMaterial({ map: mask, vertexColors: true,
-        roughness: 1, metalness: 0 }));
+        roughness: 1, metalness: 0, polygonOffset: true,
+        polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
     terrainMesh.receiveShadow = true;
     scene.add(terrainMesh);
   }
@@ -338,7 +339,9 @@ function buildWorld(area, scene14, opts = {}) {
   let sceneWaterMesh = null;
   if (scene14) {
     const { meshes } = buildRoadMeshes(scene14.roads, heightAt, LOOK);
-    const offsets = { road: 1, rail: 1, foot: 2, cycle: 2 };
+    // 20a: ribbons float further above the pushed-back terrain so the two
+    // road layers stop fighting (ragged grey patches when moving).
+    const offsets = { road: 2, rail: 2, foot: 3, cycle: 3 };
     for (const [cls, data] of Object.entries(meshes)) {
       if (data.triangles === 0) continue;
       const mesh = new THREE.Mesh(toIndexedGeometry(data),
@@ -362,6 +365,10 @@ function buildWorld(area, scene14, opts = {}) {
   // it, so it sits out in painted scene mode (flat mode keeps it).
   let sceneMarkingsMesh = null;
   if (scene14 && STYLE === "painted") {
+    // 20a: one road layer in painted scene mode — the old ground roads
+    // fought the terrain/ribbons at the same height (ragged grey patches
+    // that crawled with the camera), so roads draw as ribbons only.
+    groundMesh.visible = false;
     if (markMesh) markMesh.visible = false;
     const mk = buildRoadMarkings(scene14.roads, heightAt);
     if (mk.mesh.triangles > 0) {

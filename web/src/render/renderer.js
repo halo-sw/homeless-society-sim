@@ -40,6 +40,7 @@ export function createRenderer({ canvas, params }) {
   const style = resolveStyle(search); // ?style=painted (default) | photo
   const debug = resolvePostDebug(search, style); // ?debug= painted-only view
   const px = search.get("px"); // ?px= painted pixel-factor override
+  const kuwa = search.get("kuwa"); // ?kuwa=0 drops the Kuwahara pass
   const look = resolveLook(search); // ?look=key:value,… (stage 11)
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -75,7 +76,7 @@ export function createRenderer({ canvas, params }) {
       camera = nextCamera;
       container = nextContainer;
       post = createPost(renderer, scene, camera, { quality, tilt, grain, sao,
-        style, debug, px, bloomThreshold: look.bloomThreshold,
+        style, debug, px, kuwa, bloomThreshold: look.bloomThreshold,
         gradeSaturation: look.gradeSaturation });
       ctl.fitContainer();
     },
