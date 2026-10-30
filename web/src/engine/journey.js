@@ -47,17 +47,24 @@ export function slotIndexFor(minute, slots) {
 
 // Shortest path by line km + transfer penalty (same rule as the corridor
 // builder). Ties break on stop-id order, so all runtimes agree.
-export function findPath(network, fromName, toName, penaltyKm) {
+const pathGraphCache = new WeakMap();
+const pathResultCache = new WeakMap();
+
+export function buildPathGraph(network, penaltyKm) {
+  let byPenalty = pathGraphCache.get(network);
+  if (!byPenalty) {
+    byPenalty = new Map();
+    pathGraphCache.set(network, byPenalty);
+  }
+  const key = penaltyKm;
+  const hit = byPenalty.get(key);
+  if (hit) return hit;
   const stops = new Map();
   for (const line of network.lines || []) {
     for (const s of line.stops || []) {
       stops.set(s.id, { line: line.id, lineName: line.name, ...s });
     }
   }
-  const want = (n) => normalizeStation(n);
-  const starts = [...stops.keys()].filter((id) => want(stops.get(id).name) === want(fromName)).sort();
-  const goals = new Set([...stops.keys()].filter((id) => want(stops.get(id).name) === want(toName)));
-  if (starts.length === 0 || goals.size === 0) return null;
   const adj = new Map([...stops.keys()].map((id) => [id, []]));
   for (const line of network.lines || []) {
     for (const p of line.patterns || []) {
@@ -83,6 +90,28 @@ export function findPath(network, fromName, toName, penaltyKm) {
     }
   }
   for (const list of adj.values()) list.sort((x, y) => (x[0] < y[0] ? -1 : 1));
+  const graph = { stops, adj, byKey };
+  byPenalty.set(key, graph);
+  return graph;
+}
+
+export function findPath(network, fromName, toName, penaltyKm) {
+  const graph = buildPathGraph(network, penaltyKm);
+  const { stops, adj } = graph;
+  const cacheKey = `${normalizeStation(fromName)}>${normalizeStation(toName)}`;
+  let perGraph = pathResultCache.get(graph);
+  if (!perGraph) {
+    perGraph = new Map();
+    pathResultCache.set(graph, perGraph);
+  }
+  if (perGraph.has(cacheKey)) return perGraph.get(cacheKey);
+  const want = (n) => normalizeStation(n);
+  const starts = [...stops.keys()].filter((id) => want(stops.get(id).name) === want(fromName)).sort();
+  const goals = new Set([...stops.keys()].filter((id) => want(stops.get(id).name) === want(toName)));
+  if (starts.length === 0 || goals.size === 0) {
+    perGraph.set(cacheKey, null);
+    return null;
+  }
   let best = null;
   for (const start of starts) {
     const dist = new Map([[start, 0]]);
@@ -116,7 +145,10 @@ export function findPath(network, fromName, toName, penaltyKm) {
       best = [reached[0][0], start, chain, prev];
     }
   }
-  if (best === null) return null;
+  if (best === null) {
+    perGraph.set(cacheKey, null);
+    return null;
+  }
   const [, start, chain, prev] = best;
   const legs = [];
   let cur = [chain[0]];
@@ -151,8 +183,10 @@ export function findPath(network, fromName, toName, penaltyKm) {
       edgeKm,
     };
   });
-  return { from: fromName, to: toName, legs: outLegs,
+  const out = { from: fromName, to: toName, legs: outLegs,
     transfers, distanceKm: Math.round(totalKm * 1000) / 1000 };
+  perGraph.set(cacheKey, out);
+  return out;
 }
 
 // The directed pattern carrying a leg: the stop run must appear in
