@@ -18,6 +18,7 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { store } from "./store.js";
+import { appUrl } from "../paths.js";
 import { ModelPanel } from "./model-panel.jsx";
 import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
@@ -51,8 +52,8 @@ export function gotoMode(mode, current) {
     /* fall through to plain navigation */
   }
   const areaId = (store.getState().area && store.getState().area.id) || DEFAULT_AREA;
-  window.location.href = mode === "chat" ? "/?chat="
-    : mode === "sim" ? "/?mode=sim&home=A" : `/?area=${areaId}`;
+  window.location.href = mode === "chat" ? appUrl("chat=")
+    : mode === "sim" ? appUrl("mode=sim&home=A") : appUrl(`area=${areaId}`);
 }
 
 function IntroStatic() {

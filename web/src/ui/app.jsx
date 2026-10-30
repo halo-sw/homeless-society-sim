@@ -13,6 +13,7 @@ import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/Segme
 import { Text } from "@astryxdesign/core/Text";
 import { useState } from "react";
 import { store } from "./store.js";
+import { appUrl } from "../paths.js";
 import { TopBar, MapTools } from "./topbar.jsx";
 import { SourceBadge, GroupBadges } from "./source-badge.jsx";
 import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup } from "./compare-tabs.js";
@@ -990,7 +991,7 @@ function agentAsked() {
 }
 
 function restartToLanding() {
-  if (typeof window !== "undefined") window.location.href = "/";
+  if (typeof window !== "undefined") window.location.href = appUrl();
 }
 
 export function App() {

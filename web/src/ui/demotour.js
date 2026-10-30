@@ -11,6 +11,8 @@
 // 08:21→08:35 home→잠실, rides 08:35→09:05 (2호선 → 강남 환승 → 신분당선),
 // works from 09:05; B walks 08:21→08:37 home→판교역.
 
+import { appUrl, appUrlWith } from "../paths.js";
+
 export const DEMO_TOUR_STEPS = [
   { id: "persona", caption: "누구의 한 달인지 상담에서 고릅니다",
     secs: 8, params: { agent: "1" } },
@@ -52,6 +54,17 @@ export function tourStepFromSearch(search) {
 }
 
 // URL for step `index`, keeping scenario/mode and dropping stale tour keys.
+export function tourStepUrlWith(base, index, search) {
+  const q = search instanceof URLSearchParams
+    ? new URLSearchParams(search.toString()) : new URLSearchParams(search || "");
+  for (const k of TOUR_KEYS) q.delete(k);
+  q.set("tour", "demo");
+  q.set("step", String(index));
+  const step = DEMO_TOUR_STEPS[Math.min(DEMO_TOUR_STEPS.length - 1, Math.max(0, index))];
+  for (const [k, v] of Object.entries(step.params)) q.set(k, v);
+  return appUrlWith(base, q.toString());
+}
+
 export function tourStepUrl(index, search) {
   const q = search instanceof URLSearchParams
     ? new URLSearchParams(search.toString()) : new URLSearchParams(search || "");
@@ -60,16 +73,21 @@ export function tourStepUrl(index, search) {
   q.set("step", String(index));
   const step = DEMO_TOUR_STEPS[Math.min(DEMO_TOUR_STEPS.length - 1, Math.max(0, index))];
   for (const [k, v] of Object.entries(step.params)) q.set(k, v);
-  const s = q.toString();
-  return s ? `/?${s}` : "/";
+  return appUrl(q.toString());
+}
+
+export function tourSkipUrlWith(base, search) {
+  const q = search instanceof URLSearchParams
+    ? new URLSearchParams(search.toString()) : new URLSearchParams(search || "");
+  for (const k of TOUR_KEYS) q.delete(k);
+  return appUrlWith(base, q.toString());
 }
 
 export function tourSkipUrl(search) {
   const q = search instanceof URLSearchParams
     ? new URLSearchParams(search.toString()) : new URLSearchParams(search || "");
   for (const k of TOUR_KEYS) q.delete(k);
-  const s = q.toString();
-  return s ? `/?${s}` : "/";
+  return appUrl(q.toString());
 }
 
 // Recorded agent replies for the tour (no key present). Numbers are the

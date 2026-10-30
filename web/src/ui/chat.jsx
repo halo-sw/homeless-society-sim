@@ -85,7 +85,7 @@ import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { postConsult, loadScenario } from "./consult-client.js";
-import { STATIC_SITE } from "../paths.js";
+import { STATIC_SITE, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
@@ -1644,7 +1644,7 @@ export function ChatScreen() {
                 onSet: (id, v) => setOverrides((o) => setOverride(o, id, v)),
                 onReset: (id) => setOverrides((o) => resetOverride(o, id)) },
               onIntro: null,
-              onRestart: () => { clearTranscript(); window.location.href = "/"; },
+              onRestart: () => { clearTranscript(); window.location.href = appUrl(); },
             }} />
         )}>
         <div className="ui-chat-main"
