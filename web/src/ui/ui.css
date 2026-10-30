@@ -301,8 +301,10 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   border-right: 1px solid var(--ui-border);
 }
 /* 19a: chips stay above the composer on one scrollable row. */
+/* 26t: chips never shrink at any width — the row scrolls sideways. */
 .ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: nowrap;
   overflow-x: auto; padding: var(--ui-s8) var(--ui-s12); }
+.ui-chat-chips > * { flex: none; }
 .ui-chat-thread > p { padding: var(--ui-s4) var(--ui-s12) var(--ui-s8); }
 .ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   overflow: auto; padding: var(--ui-s12); pointer-events: none; }
@@ -957,7 +959,7 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ui-result-label { font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-result-value {
   font-size: var(--ui-t16); font-weight: var(--ui-w600); min-width: 0;
-  overflow-wrap: anywhere;
+  word-break: keep-all; overflow-wrap: normal;
 }
 .ui-result-span { grid-column: 1 / -1; font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-result-missing { font-size: var(--ui-t12); color: var(--ui-ink2); }
@@ -973,13 +975,15 @@ button.ui-tag:hover { color: var(--ui-ink); }
   border-radius: var(--ui-r-chip); padding: 2px var(--ui-s8); white-space: nowrap;
 }
 /* 살아 보니: one row per moment — when, letter disc, text, 3D link. */
+/* 26t: the 3D link keeps its full label at any width; the text takes the shrink. */
 .ui-result-moment { display: flex; align-items: center; gap: var(--ui-s8); }
 .ui-result-when {
   font-size: var(--ui-t12); color: var(--ui-ink2); flex: none;
   font-variant-numeric: tabular-nums;
 }
 .ui-result-moment .ui-pick-disc { width: 20px; height: 20px; font-size: 11px; }
-.ui-result-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ui-result-moment button { flex: none; }
+.ui-result-text { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 /* 24a: language toggle — a small text button, never truncated. */
 .ui-lang-toggle {
   font-size: 12px; color: var(--ui-ink2); white-space: nowrap;

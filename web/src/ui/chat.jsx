@@ -316,15 +316,30 @@ export function turnBubble(out) {
 }
 
 // 27f: diary failure fallback line — pure, tested.
-export function diaryFallbackLine(oneWay, names) {
+// 26t: deterministic in both languages (never marked data-no-i18n).
+// Korean is byte-identical to today; English is built directly.
+export function diaryFallbackLine(oneWay, names, lang = "ko") {
+  const nmA = (names && names.A) || "A";
+  const nmB = (names && names.B) || "B";
+  const hasC = names && names.C !== undefined && names.C !== null && names.C !== "";
+  if (lang === "en") {
+    const fmt = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v))
+      ? "–" : `${Math.round(Number(v))} min`);
+    const a = fmt(oneWay && oneWay.A);
+    const b = fmt(oneWay && oneWay.B);
+    let line = `Finished living there. A ${nmA}: average one-way commute ${a}; B ${nmB}: ${b}. Couldn't write the diary this time.`;
+    if (hasC) {
+      const c = fmt(oneWay && oneWay.C);
+      line = `Finished living there. A ${nmA}: average one-way commute ${a}; B ${nmB}: ${b}; C ${names.C}: ${c}. Couldn't write the diary this time.`;
+    }
+    return line;
+  }
   const fmt = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v))
     ? "—" : `${Math.round(Number(v))}분`);
   const a = fmt(oneWay && oneWay.A);
   const b = fmt(oneWay && oneWay.B);
-  const nmA = (names && names.A) || "A";
-  const nmB = (names && names.B) || "B";
   let line = `다 살아 봤어요. A ${nmA}는 출근 편도 평균 ${a}, B ${nmB}는 ${b}이었어요. 일기는 이번에 못 썼어요.`;
-  if (names && names.C !== undefined && names.C !== null && names.C !== "") {
+  if (hasC) {
     const c = fmt(oneWay && oneWay.C);
     line = `다 살아 봤어요. A ${nmA}는 출근 편도 평균 ${a}, B ${nmB}는 ${b}, C ${names.C}는 ${c}이었어요. 일기는 이번에 못 썼어요.`;
   }
@@ -1693,7 +1708,10 @@ export function ChatScreen() {
           postDiary({ provider, digests, lang: LANG }).then((result) => {
             setMessages((prev) => prev.map((m) => (m.id === simId
               ? { ...m, data: { ...m.data, diary: { status: "done", ...result } } } : m)));
-            pushMsg({ role: "assistant", kind: "text", fromModel: true,
+            // 26t: the prefix is deterministic; only a model-written
+            // summary counts as model text (fallback stays translatable).
+            pushMsg({ role: "assistant", kind: "text",
+              fromModel: !(result.check && result.check.summary_fallback),
               content: LANG === "en"
                 ? `Finished living there. ${result.summary}`
                 : `다 살아 봤어요. ${result.summary}`,
@@ -1702,14 +1720,14 @@ export function ChatScreen() {
             setMessages((prev) => prev.map((m) => (m.id === simId
               ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
             pushMsg({ role: "assistant", kind: "text",
-              content: diaryFallbackLine(compare.one_way, payload.names),
+              content: diaryFallbackLine(compare.one_way, payload.names, LANG),
               suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
           });
         } catch {
           setMessages((prev) => prev.map((m) => (m.id === simId
             ? { ...m, data: { ...m.data, diary: { status: "failed" } } } : m)));
           pushMsg({ role: "assistant", kind: "text",
-            content: diaryFallbackLine(compare.one_way, payload.names),
+            content: diaryFallbackLine(compare.one_way, payload.names, LANG),
             suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
         }
       }
@@ -1799,8 +1817,11 @@ export function ChatScreen() {
         }
       }
       const bubble = turnBubble(out);
+      // 26t: deterministic fallbacks (numbers-only, action confirmation)
+      // stay translatable — only model-written text is fromModel.
       pushMsg({ role: "assistant", kind: "text", content: bubble.content || "",
-        tool_calls: bubble.tool_calls, suggestions: [...suggestions], fromModel: true });
+        tool_calls: bubble.tool_calls, suggestions: [...suggestions],
+        fromModel: !out.fallback });
       appendToolCards(out.messages);
       // 27g: the Muse path never ran ensureData, so the map stayed on its
       // placeholder after Muse found homes. Fill it now (no await — the

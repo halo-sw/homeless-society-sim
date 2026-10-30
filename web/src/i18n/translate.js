@@ -2,6 +2,9 @@ import { romanizeName } from "./romanize.js";
 
 const HANGUL = /[가-힣]/;
 
+// 26t: placeholder shielding digit-group commas from the word splitter.
+const COMMA_GUARD = "\u0001";
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -55,6 +58,11 @@ export function localizeNumbers(s) {
     (_, a, b, man, sp, won) => formatM(100 * num(a) + num(b) / 100) + (won ? "" : sp));
   out = out.replace(/(\d[\d,]*)\s*억(\s*)(원)?/g,
     (_, a, sp, won) => formatM(100 * num(a)) + (won ? "" : sp));
+  // 26t: 만 plus a comma-grouped remainder is one amount ("83만 5,000원"
+  // → ₩835,000), like the 만/천 forms above. Runs after the 억 rules so
+  // "1억 8,500만 원" keeps its 억 reading.
+  out = out.replace(/(\d[\d,]*)\s*만\s*(\d[\d,]*)\s*원/g,
+    (_, b, c) => formatWon(10000 * num(b) + num(c)));
   out = out.replace(/(\d[\d,]*)\s*만(\s*)(원)?/g,
     (_, b, sp, won) => formatM(num(b) / 100) + (won ? "" : sp));
   // Counters and misc units before the generic 일/개 rules below, so that
@@ -120,14 +128,18 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
   // Common words first (glossary), then whole-string phrases, then a
   // trailing particle stripped and looked up again; only names fall
   // through to romanization. Never returns Hangul for a Hangul token.
+  // 26t: a comma inside digits (/\d,\d{3}/) is not a split point, so
+  // "₩835,000" never becomes "₩835, 000". The comma is guarded through
+  // the split and restored before the per-token pass.
   function wordFallback(s) {
-    const tokens = String(localizeNumbers(s)).split(/([·(),:])/g)
+    const guarded = String(localizeNumbers(s)).replace(/(\d),(\d)/g, `$1${COMMA_GUARD}$2`);
+    const tokens = guarded.split(/([·(),:])/g)
       .flatMap((p) => String(p).split(/ +/))
       .filter((t) => t !== "");
     const mapped = tokens.map((t0) => {
       // A token like 176시간 can survive the whole-string pass (digits
       // glued to the unit); localize it on its own before giving up.
-      const tok = localizeNumbers(t0);
+      const tok = localizeNumbers(t0.split(COMMA_GUARD).join(","));
       if (!HANGUL.test(tok)) return tok;
       if (Object.hasOwn(words, tok)) return words[tok];
       if (Object.hasOwn(phrases, tok)) return phrases[tok];

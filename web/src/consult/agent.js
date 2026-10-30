@@ -10,7 +10,7 @@ import { costUsd } from "../judge/run.js";
 import {
   TOOL_DEFS, MAX_TOOL_ROUNDS, createSession, callTool,
 } from "./tools.js";
-import { checkConsultReply, numbersOnlyAnswer } from "./guards.js";
+import { checkConsultReply, numbersOnlyAnswer, actionConfirmation } from "./guards.js";
 
 function lastUserText(messages) {
   for (let i = (messages || []).length - 1; i >= 0; i--) {
@@ -343,13 +343,18 @@ export async function runTurn(opts) {
         return finish({ reply: split2.text, suggestions: split2.suggestions,
           guardRetries: 1, fallback: false });
       }
-      const fallback = numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
+      // 26t: action-only turns confirm what was done instead of the
+      // numbers-only text (which would read "수치가 없어요").
+      const fallback = actionConfirmation(toolResults)
+        ?? numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) });
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 1, fallback: true,
         guardCause: checked2.cause });
     }
     if (rounds > MAX_TOOL_ROUNDS) {
-      const fallback = `도구 호출이 ${MAX_TOOL_ROUNDS}라운드를 넘었다.\n${numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) })}`;
+      const actionFallback = actionConfirmation(toolResults);
+      const fallback = actionFallback
+        ?? `도구 호출이 ${MAX_TOOL_ROUNDS}라운드를 넘었다.\n${numbersOnlyAnswer(toolResults, { userText: lastUserText(messages) })}`;
       appended.push({ role: "assistant", content: fallback });
       return finish({ reply: fallback, guardRetries: 0, fallback: true,
         guardCause: "too_many_rounds" });

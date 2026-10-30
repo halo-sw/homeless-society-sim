@@ -433,11 +433,34 @@ export function toolResultNumbers(toolResults) {
   return out;
 }
 
+// 26t: list indices the customer used or the candidate list shows
+// ("1번", "#1", "numbers 1 and 3", "1번이랑 3번") are allowed numbers when
+// the turn's tools include a pick/save or the candidate list. They name
+// positions, not measurements, so they are stripped before the
+// invented-number check (topic and verdict checks still see full text).
+function hasPickOrCandidates(toolResults) {
+  for (const r of toolResults || []) {
+    if (!r || typeof r !== "object") continue;
+    if (r.ui && (r.ui.action === "pick" || r.ui.action === "save")) return true;
+    if (Array.isArray(r.candidates)) return true;
+  }
+  return false;
+}
+
+function withoutListIndices(text) {
+  return String(text || "")
+    .replace(/#\d+/g, " ")
+    .replace(/\d+\s*번/g, " ")
+    .replace(/\bnumbers?\s+\d+(?:\s*(?:,|and|&|와|과)\s*\d+)*/gi, " ");
+}
+
 // Check one assistant answer against this conversation's tool results.
 // Returns {ok:true} or {ok:false, cause, detail, offending}.
-export function checkConsultReply(answer, toolResults) {
+export function checkConsultReply(answer, toolResults, opts = {}) {
   const text = String(answer || "");
-  const flat = text.replace(/(\d),(?=\d)/g, "$1").replace(/(\d+)개월/g, "$1회");
+  const allowIndices = opts.allowListIndices ?? hasPickOrCandidates(toolResults);
+  const numText = allowIndices ? withoutListIndices(text) : text;
+  const flat = numText.replace(/(\d),(?=\d)/g, "$1").replace(/(\d+)개월/g, "$1회");
   // English money reads as full won so the number check sees citations:
   // ₩300M / 300M won / 1.2 billion won / ₩260,000,000.
   const flatMoney = flat
@@ -484,6 +507,78 @@ export function checkConsultReply(answer, toolResults) {
       offending: [badClaim] };
   }
   return { ok: true };
+}
+
+// 26t: action-only turns (pick/save, open_panel, start_life_run) carry no
+// numbers, so the numbers-only fallback reads broken ("수치가 없어요").
+// Confirm what was done instead, built from this turn's tool results.
+// Deterministic Korean (stays translatable: never marked data-no-i18n).
+// Returns null unless the turn holds at least one action result and no
+// result carries report numbers (candidate lists are selection context and
+// double as the id→name map for the pick sentence).
+const ACTION_UI = new Set(["pick", "save", "panel", "run"]);
+
+const REPORT_DATA_KEYS = [
+  "compare", "trips", "places", "reference", "timeline", "monthly_net_won",
+  "groups", "access", "term", "totals", "rides", "summary_30d", "persona",
+  "weights", "household_monthly_net_preview", "listing_check", "ratio",
+  "path_ko", "run_ids", "programs", "metrics", "day_fatigue",
+];
+
+function hasReportData(r) {
+  return REPORT_DATA_KEYS.some((k) => r[k] !== undefined && r[k] !== null);
+}
+
+function eulReul(word) {
+  const last = String(word || "").slice(-1);
+  const code = last.charCodeAt(0);
+  if (/[0-9]/.test(last)) return "을";
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    return (code - 0xac00) % 28 === 0 ? "를" : "을";
+  }
+  return "를";
+}
+
+export function actionConfirmation(toolResults) {
+  const list = (toolResults || []).filter((r) => r && typeof r === "object");
+  if (list.length === 0) return null;
+  if (!list.some((r) => r.ui && ACTION_UI.has(r.ui.action))) return null;
+  if (list.some(hasReportData)) return null;
+  const namesById = new Map();
+  for (const r of list) {
+    for (const c of r.candidates || []) {
+      if (c && typeof c.id === "string" && typeof c.name === "string") {
+        namesById.set(c.id, c.name);
+      }
+    }
+  }
+  const picks = [];
+  for (const r of list) {
+    if (r.ui && (r.ui.action === "pick" || r.ui.action === "save") && Array.isArray(r.ui.ids)) {
+      for (const id of r.ui.ids) {
+        if (typeof id === "string" && !picks.includes(id)) picks.push(id);
+      }
+    }
+  }
+  const ran = list.some((r) => r.ui && r.ui.action === "run");
+  const parts = [];
+  if (picks.length > 0) {
+    const labels = "ABC";
+    const bits = picks.slice(0, 3).map((id, i) => {
+      const name = namesById.get(id);
+      return `${labels[i]}${name ? ` ${name}` : ""}`;
+    });
+    const joined = bits.join(", ");
+    parts.push(`${joined}${eulReul(joined)} 찜했어요.`);
+    if (!ran) {
+      parts.push(picks.length >= 2
+        ? `"두 집에서 살아 봐 줘"라고 말하면 30일을 살아 봐요.`
+        : `한 곳을 더 찜하면 두 집에서 30일씩 살아 봐요.`);
+    }
+  }
+  if (ran) parts.push(`30일 살아 보기를 시작했어요. 다 살면 일기로 알려 드릴게요.`);
+  if (parts.length === 0) parts.push(`화면을 열었어요.`);
+  return parts.join(" ");
 }
 
 // Last-resort answer when the guard rejects twice: tool numbers only, no

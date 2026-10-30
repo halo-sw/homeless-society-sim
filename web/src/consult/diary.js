@@ -115,8 +115,25 @@ export function checkDiary(parsed, digests) {
   return { failures, summaryOk };
 }
 
-function fallbackSummary(digests) {
-  const parts = (digests || []).map((d) => {
+// 26t: deterministic fallback summary. Korean byte-identical to today;
+// in English mode it is built in English directly (never marked
+// data-no-i18n, so it stays translatable either way).
+function fallbackSummary(digests, lang = "ko") {
+  const list = digests || [];
+  if (lang === "en") {
+    const parts = list.map((d, i) => {
+      const v = d && d.totals ? d.totals.one_way_min : null;
+      const vv = Number.isFinite(v) ? v : "–";
+      const name = (d && typeof d.name === "string" && d.name.trim() !== "")
+        ? ` ${d.name.trim()}` : "";
+      const head = `${d.label}${name}`;
+      return i === 0
+        ? `${head}: average one-way commute ${vv} min`
+        : `${head}: ${vv} min`;
+    });
+    return `${parts.join("; ")}.`;
+  }
+  const parts = list.map((d) => {
     const v = d && d.totals ? d.totals.one_way_min : null;
     return `${d.label}는 출근 편도 평균 ${Number.isFinite(v) ? v : "–"}분`;
   });
@@ -183,7 +200,7 @@ export async function writeDiary({ complete, provider, digests, lang = "ko" }) {
   let summary = typeof current.summary === "string" ? current.summary : "";
   let summary_fallback = false;
   if (!checked.summaryOk) {
-    summary = fallbackSummary(digests);
+    summary = fallbackSummary(digests, lang);
     summary_fallback = true;
   }
   const total = lines.length + dropped;
