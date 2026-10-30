@@ -1589,7 +1589,7 @@ export function ChatScreen() {
     const ctx = { ...agentContext(store.getState()), lang: LANG,
       candidates: liveCands,
       picks: st.picks.map((id, i) => ({ label: "ABC"[i], id })),
-      work_open: workOpen };
+      work_open: workOpen, profile: st.profile || null };
     try {
       let byoKey = "";
       try {

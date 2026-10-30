@@ -50,6 +50,45 @@ function profileFromArgs(args) {
   return out;
 }
 
+function fieldHasValue(field) {
+  if (!field || typeof field !== "object") return false;
+  const v = field.value;
+  if (v === null || v === undefined) return false;
+  if (Array.isArray(v) && v.length === 0) return false;
+  return true;
+}
+
+function workplacesResolved(field) {
+  if (!field || typeof field !== "object") return false;
+  if (Array.isArray(field.resolved) && field.resolved.length > 0) return true;
+  if (Array.isArray(field.value)) {
+    return field.value.some((e) => e && typeof e === "object" && e.resolved);
+  }
+  return false;
+}
+
+export function mergeProfiles(...profiles) {
+  const out = {};
+  for (const key of PROFILE_FIELDS) {
+    out[key] = { value: null, source: "customer", note: "" };
+  }
+  for (const p of profiles) {
+    if (!p || typeof p !== "object") continue;
+    for (const key of PROFILE_FIELDS) {
+      const f = p[key];
+      if (!fieldHasValue(f)) continue;
+      if (key === "workplaces" && workplacesResolved(out[key]) && !workplacesResolved(f)) continue;
+      out[key] = clone(f);
+    }
+  }
+  return out;
+}
+
+function mergedHasValue(profile) {
+  if (!profile || typeof profile !== "object") return false;
+  return PROFILE_FIELDS.some((key) => fieldHasValue(profile[key]));
+}
+
 async function needHomes(session) {
   if (!session.loadHomes) throw new Error("homes index is unavailable on this server");
   return session.loadHomes();
@@ -97,10 +136,13 @@ async function extract_profile(session, args) {
   const text = String(args.text || "");
   if (!text.trim()) return fail("text must be a non-empty string");
   const network = await needNetwork(session);
-  const current = profileFromArgs(args) || undefined;
+  const ctxProfile = session.context && session.context.profile;
+  const current = profileFromArgs(args)
+    || (ctxProfile && typeof ctxProfile === "object" ? ctxProfile : undefined);
   const r = extractProfileCore(text, current,
     { stations: stationNames(network) });
   if (!r.ok) return fail(`profile values must appear in the text: ${r.errors.join("; ")}`);
+  session.lastProfile = clone(r.profile);
   return {
     ok: true,
     profile: r.profile,
@@ -112,24 +154,29 @@ async function extract_profile(session, args) {
   };
 }
 
-async function boxesForHomes(session, homes) {
-  // Load box areas for candidates with scenes (bounded: ≤12 areas).
+export async function boxesForHomes(session, homes, max = 6) {
+  // Load box areas for candidates with scenes (bounded: ≤max areas).
   const boxes = new Map();
-  const ids = [...new Set(homes.map((h) => h.scene).filter(Boolean))].slice(0, 12);
-  for (const id of ids) {
+  const ids = [...new Set((homes || []).map((h) => h.scene).filter(Boolean))].slice(0, max);
+  const settled = await Promise.all(ids.map(async (id) => {
     try {
       const area = await session.loadArea(id);
-      boxes.set(id, { graph: area.graph || null, pois: area.pois || [] });
+      return [id, { graph: area.graph || null, pois: area.pois || [] }];
     } catch {
       // Unloadable box: must-have minutes stay null (honest unknown).
+      return null;
     }
+  }));
+  for (const entry of settled) {
+    if (entry) boxes.set(entry[0], entry[1]);
   }
   return boxes;
 }
 
 async function find_homes(session, args) {
-  const profile = profileFromArgs(args);
-  if (!profile) return fail("profile must be the extract_profile result object");
+  const profile = mergeProfiles(session.context && session.context.profile,
+    session.lastProfile, profileFromArgs(args));
+  if (!mergedHasValue(profile)) return fail("profile must be the extract_profile result object");
   const sort = args.sort || DEFAULT_HOME_SORT;
   if (!HOME_SORTS.includes(sort)) {
     return fail(`sort wants one of ${HOME_SORTS.join(", ")} (default ${DEFAULT_HOME_SORT})`);
@@ -149,12 +196,13 @@ async function find_homes(session, args) {
   const prelim = findHomesCore(profile, index, {
     sort, limit: 12, regions, kind, network, schedule, boxes: null, photos: manifest,
   });
-  const boxes = await boxesForHomes(session, prelim.candidates);
+  const boxes = await boxesForHomes(session, prelim.candidates.slice(0, limit), limit);
   const final = findHomesCore(profile, index, {
     sort, limit, regions, kind, network, schedule, boxes, photos: manifest,
   });
   return {
     ok: true,
+    profile_used: clone(profile),
     ...final,
     asked_for: { regions: regions || "all", kind: kind || "all" },
     next: final.candidates.length > 0
@@ -164,8 +212,9 @@ async function find_homes(session, args) {
 }
 
 async function find_public_rentals(session, args) {
-  const profile = profileFromArgs(args);
-  if (!profile) return fail("profile must be the extract_profile result object");
+  const profile = mergeProfiles(session.context && session.context.profile,
+    session.lastProfile, profileFromArgs(args));
+  if (!mergedHasValue(profile)) return fail("profile must be the extract_profile result object");
   if (!session.loadHousing) {
     return fail("public-rental data is unavailable on this server");
   }
@@ -190,8 +239,9 @@ async function find_public_rentals(session, args) {
 }
 
 async function build_scenario(session, args) {
-  const profile = profileFromArgs(args);
-  if (!profile) return fail("profile must be the extract_profile result object");
+  const profile = mergeProfiles(session.context && session.context.profile,
+    session.lastProfile, profileFromArgs(args));
+  if (!mergedHasValue(profile)) return fail("profile must be the extract_profile result object");
   const ids = args.home_ids;
   if (!Array.isArray(ids) || ids.length < 1 || ids.length > 3) {
     return fail("home_ids must be the 1–3 home ids the customer picked");
