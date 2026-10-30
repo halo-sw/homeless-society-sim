@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-1261_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 1261개, Python 테스트 244개">
+  <img src="https://img.shields.io/badge/tests-1314_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 1314개, Python 테스트 244개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
   <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
@@ -35,10 +35,10 @@
 </p>
 
 <p align="center">
-  <img src="briefs/img/10-commute-ab.png" width="760" alt="1일차 08:50, 두 집을 나란히 보여 주는 화면. 왼쪽 잠실 A집에서는 2호선(혼잡도 91%, 실측)을 타고 신분당선으로 가는 중이고, 오른쪽 판교 B집에서는 걸어서 출근하는 중이에요.">
+  <img src="briefs/img/19-chat.jpg" width="760" alt="대화 화면. 왼쪽은 대화와 후보 집 목록이에요. 줄마다 지도 번호, 이름, 실거래 전세 가격, 면적·연식, 예상 출퇴근 시간이 있고, 두 집이 A·B로 담겨 있어요. 오른쪽은 도로와 노선 색 지하철이 그려진 밝은 지도에 회사 · 판교 표시, 후보마다 가격 말풍선(A·B는 파란색), 출퇴근 분이 있어요. 지도 아래 줄에 담은 두 집과 버튼 하나, 이 집들로 30일 살아 보기가 있어요.">
 </p>
 
-<p align="center"><sub>1일차 08:50, 같은 가족이 두 집에서 사는 모습이에요. A집에서는 2호선(혼잡도 91%, 실측)을 타고 신분당선으로 가는 중이고, B집에서는 걸어서 출근해요. 실제 GPU 캡처, 2026-10-29.</sub></p>
+<p align="center"><sub>한 문장으로 시작해서, 지도 위 실제 후보 중 두 곳을 담고, 버튼 하나로 살아 봐요. 실제 GPU 캡처, 2026-10-30.</sub></p>
 
 ---
 
@@ -62,15 +62,15 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="briefs/img/18-chat-map.jpg" alt="판교로 출근하는 사회초년생의 대화 화면. 왼쪽은 실거래 전세 가격과 비교에 담기 버튼이 있는 후보 카드, 오른쪽은 노선 색으로 그린 지하철, 직장 핀, 가격표가 붙은 번호 핀, 고른 두 집의 출퇴근 선(10.4분·12.3분)이 있는 지도예요."></td>
-    <td width="50%"><img src="briefs/img/18-result.jpg" alt="고객이 고른 두 집의 30일 결과 카드. 집마다 내 기준 점수, 계산 방법이 달린 월 주거비, 문 앞에서 회사까지 편도 출퇴근(A 11분, B 14분), 30일 동안의 순간이 있어요."></td>
+    <td width="50%"><img src="briefs/img/19-landing.jpg" alt="3D 도시 위의 첫 화면. 제목 계약 전에, 그 집에서 30일 먼저 살아 봐요, 입력창 하나, 세 단계(말로 조건 말하기 › 지도에서 후보 2곳 담기 › 30일 살아 보고 비교), 가구 유형 예시 카드 셋과 매물 글 붙여 넣기 카드가 있어요."></td>
+    <td width="50%"><img src="briefs/img/19-result.jpg" alt="A | B 표로 정리한 30일 결과 카드. 내 기준 점수 48과 52(중립 막대), 월 주거비 월 66만 8천 원과 월 64만 2천 원, 출퇴근 편도 11분과 14분, 'B가 편도 평균 4분 더 걸려요', 그리고 3D로 보기가 붙은 30일 동안의 순간이 있어요."></td>
   </tr>
   <tr>
-    <td><sub><b>내 말로 시작하고, 후보는 지도에서.</b> 한 문장이 프로필이 되고, 실제 후보 집이 지하철 노선과 직장 옆에 번호 핀으로 떠요. 두 곳을 담으면 출퇴근 선이 그려져요.</sub></td>
-    <td><sub><b>답부터 보여 줘요.</b> 두 집에서 30일씩 산 뒤 내 기준 점수, 월 주거비, 문 앞→회사 출퇴근을 먼저 보여 주고, 근거가 달린 순간이 이어져요. 어느 집이 낫다고 정하지 않아요.</sub></td>
+    <td><sub><b>한 문장으로 시작해요.</b> 다음에 무슨 일이 일어나는지 첫 화면에서 알려 줘요. 조건을 말하고, 지도에서 후보 두 곳을 담고, 30일씩 살아 보고 비교해요.</sub></td>
+    <td><sub><b>답부터 보여 줘요.</b> 두 집에서 30일씩 산 뒤 내 기준 점수, 월 주거비, 문 앞→회사 출퇴근을 나란히 먼저 보여 주고, 근거가 달린 순간이 이어져요. 어느 집이 낫다고 정하지 않아요.</sub></td>
   </tr>
   <tr>
-    <td><img src="briefs/img/18-sim-custom.jpg" alt="고른 집 천사의도시Ⅱ오피스텔에서 미금역으로 가는 나를 3D 동네에서 따라가는 화면. 오른쪽에 내 기준 점수 A 44 · B 56, 근거가 달린 순간 2개, 4분 남음, 하루 이동 목록이 있어요."></td>
+    <td><img src="briefs/img/19-sim.jpg" alt="고른 집 천사의도시Ⅱ오피스텔에서 미금역으로 가는 나를 3D 동네에서 따라가는 화면. 오른쪽에 내 기준 점수 A 48 · B 52, 근거가 달린 순간 2개, 4분 남음, 하루 이동 목록이 있어요."></td>
     <td><img src="briefs/img/18-share.jpg" alt="고른 두 집의 결과 공유 카드. 집 이름과 면적, 내 기준 점수, 출근 방법, 출퇴근 편도 11분 대 14분, 지하철 탄 시간, 걸은 시간, 회사 도착할 때 피곤한 정도가 있어요."></td>
   </tr>
   <tr>
@@ -263,6 +263,7 @@ cd web && MODEL_API_KEY=... npm run dev
 | 16a–16b | 내장 검증: Python과 같은 체크리스트 채점, 문 앞→회사 엔진 값으로 숫자 검사, 재시도 루프 | [`16a-RESULT`](briefs/16a-RESULT.md) |
 | 17–17d | Ithaca 이름, 내 기준 점수 앞에, 순간 기록, 그림 같은 화면(따뜻한 빛·윤곽선·불 켜진 밤·시간대별 밝기) | [`17-RESULT`](briefs/17-RESULT.md) |
 | 18–18g | 고객이 고른 집 끝까지(자기 돈 계산·점수·공유 카드), 막히지 않는 흐름, 읽기 쉬운 결과, 하나로 통일한 출퇴근 숫자, 실제 선로가 그려진 후보 지도 | [`18-RESULT`](briefs/18-RESULT.md) |
+| 19–19j | UI 전면 개편: 대화·지도 두 칸과 지도 위 실행 버튼 하나, 도로와 가격 말풍선이 있는 밝은 지도, 한눈에 보이는 후보 줄, A·B 표 결과 카드, 크기 고정 열차 표시, 나·배우자 이름, 세 단계를 보여 주는 첫 화면, 클릭을 막던 투명 창·순간 링크·소수 분 표시 수정 | [`19a`](briefs/19a-chat-layout.md) … [`19j`](briefs/19j-float-remain.md) |
 
 </details>
 

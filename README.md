@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-1261_JS_·_244_Python-2f5d50?style=flat-square" alt="1261 JavaScript and 244 Python tests">
+  <img src="https://img.shields.io/badge/tests-1314_JS_·_244_Python-2f5d50?style=flat-square" alt="1314 JavaScript and 244 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -35,10 +35,10 @@
 </p>
 
 <p align="center">
-  <img src="briefs/img/10-commute-ab.png" width="760" alt="Two homes side by side at 08:50 on day 1. On the left, the person from home A in 잠실 rides 2호선 (91 % crowded, measured) towards 신분당선. On the right, the person from home B in 판교 walks to work.">
+  <img src="briefs/img/19-chat.jpg" width="760" alt="The chat screen. Left: the conversation and candidate homes as rows, each with its map number, name, real-transaction 전세 price, size, year and the estimated commute; two homes are picked as A and B. Right: a light map with roads, subway lines in their colours, the 회사 · 판교 pill, price pills for every candidate (A and B in blue) and the commute minutes. A tray under the map holds the two picked homes and the one button, 이 집들로 30일 살아 보기.">
 </p>
 
-<p align="center"><sub>08:50 on day 1, the same household in two homes. From home A they are on 2호선 (91 % crowded, measured) heading to 신분당선. From home B they walk to work. Real GPU capture, 2026-10-29.</sub></p>
+<p align="center"><sub>One sentence, real candidates on a map, two picks, one button. Real GPU capture, 2026-10-30.</sub></p>
 
 ---
 
@@ -62,15 +62,15 @@ So an AI household moves in first. Tell it about your life, pick candidate homes
 
 <table>
   <tr>
-    <td width="50%"><img src="briefs/img/18-chat-map.jpg" alt="The chat screen for a first-job worker commuting to 판교. Left: candidate cards with real-transaction 전세 prices and the 비교에 담기 button. Right: a map with the subway lines in their colours, the workplace pin, numbered candidate pins with price tags, and commute lines of 10.4 and 12.3 minutes for the two picked homes."></td>
-    <td width="50%"><img src="briefs/img/18-result.jpg" alt="The 30-day result card for the customer's two picked homes: 내 기준 점수 per home, monthly housing cost per home with how it was calculated, the door-to-door one-way commute (A 11 min, B 14 min) and moments from the 30 days."></td>
+    <td width="50%"><img src="briefs/img/19-landing.jpg" alt="The landing page over the painted 3D city: the heading 계약 전에, 그 집에서 30일 먼저 살아 봐요, one input, three steps (말로 조건 말하기 › 지도에서 후보 2곳 담기 › 30일 살아 보고 비교) and example cards for three household types plus listing paste."></td>
+    <td width="50%"><img src="briefs/img/19-result.jpg" alt="The 30-day result card as an A | B table: 내 기준 점수 48 and 52 with neutral bars, monthly housing cost 월 66만 8천 원 and 월 64만 2천 원, one-way commute 11 and 14 minutes with 'B가 편도 평균 4분 더 걸려요', then moments from the 30 days, each with a 3D로 보기 link."></td>
   </tr>
   <tr>
-    <td><sub><b>Your words, your candidates, on a map.</b> One sentence becomes a profile. Real candidate homes appear as numbered pins next to the subway lines and your workplace. Pick two and their commute lines are drawn.</sub></td>
-    <td><sub><b>The answer first.</b> After 30 days in each home: the customer's own subjective score, monthly housing cost and the door-to-door commute, then moments with evidence. No winner is named.</sub></td>
+    <td><sub><b>Start with a sentence.</b> The page says what happens next: tell it your conditions, pick two candidates on the map, live 30 days in each and compare.</sub></td>
+    <td><sub><b>The answer first.</b> After 30 days in each home: the customer's own subjective score, monthly housing cost and the door-to-door commute side by side, then moments with evidence. No winner is named.</sub></td>
   </tr>
   <tr>
-    <td><img src="briefs/img/18-sim-custom.jpg" alt="Following 나 from the picked home 천사의도시Ⅱ오피스텔 to 미금역 in the 3D neighbourhood. The drawer shows 내 기준 점수 A 44 · B 56, two moments with evidence, 4분 남음 and the day's trips."></td>
+    <td><img src="briefs/img/19-sim.jpg" alt="Following 나 from the picked home 천사의도시Ⅱ오피스텔 to 미금역 in the 3D neighbourhood. The drawer shows 내 기준 점수 A 48 · B 52, two moments with evidence, 4분 남음 and the day's trips."></td>
     <td><img src="briefs/img/18-share.jpg" alt="The share card for the two picked homes: names and sizes, 내 기준 점수, how they get to work, one-way commute 11 vs 14 minutes, time on trains, time walked and fatigue on arrival."></td>
   </tr>
   <tr>
@@ -263,6 +263,7 @@ Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 an
 | 16a–16b | Built-in verification: checklist scorer with Python parity, claim checks on door-to-door engine values, retry loop | [`16a-RESULT`](briefs/16a-RESULT.md) |
 | 17–17d | Ithaca name, 내 기준 점수 up front, moments, painted look (warm light, outlines, lit night, time-aware exposure) | [`17-RESULT`](briefs/17-RESULT.md) |
 | 18–18g | The customer's own homes end to end (own money doc, score and share card), no dead ends, readable results, one commute number, candidate map with subway tracks | [`18-RESULT`](briefs/18-RESULT.md) |
+| 19–19j | UI overhaul: two-column chat with one run button over the map, a light basemap with roads and price pills, scannable candidate rows, the result as an A·B table, a constant-size train pin, people named 나 / 배우자, a landing that shows the three steps; fixes for an invisible dialog that ate clicks, moment links and fractional minutes | [`19a`](briefs/19a-chat-layout.md) … [`19j`](briefs/19j-float-remain.md) |
 
 </details>
 
