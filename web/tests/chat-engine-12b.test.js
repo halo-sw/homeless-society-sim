@@ -56,7 +56,7 @@ describe("chat urls", () => {
     assert.equal(chatUrl("a", { example: "single-firstjob" }),
       "/?chat=a&example=single-firstjob");
     assert.deepEqual(parseChatSearch("?chat=a&area=b&ask=c"),
-      { message: "a", area: "b", ask: "c" });
+      { message: "a", area: "b", ask: "c", replay: "" });
     assert.equal(chatReopenUrl(), "/?chat=");
     assert.equal(landingUrl(), "/");
   });

@@ -91,6 +91,7 @@ import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.j
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
+import { recordingUrl, validateRecording, replaySchedule, RECORDINGS } from "../chat/recording.js";
 import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { LIVE_API, appUrl } from "../paths.js";
 import { PoweredByMuse } from "./powered-by-muse.jsx";
@@ -1317,6 +1318,12 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
+  // 29a6: recorded replay — keyless step-by-step playback, never the consult client.
+  const [replayId, setReplayId] = useState(null);
+  const [replayMeta, setReplayMeta] = useState(null);
+  const [replaying, setReplaying] = useState(false);
+  const replayTimers = useRef([]);
+  const replayDoc = useRef(null);
   // 29a4: suggestion chips fold while the customer reads up-thread.
   const [chipsNearBottom, setChipsNearBottom] = useState(true);
   // 27j: straight Muse failures (3 → rules answer); liveRows → the busy bubble rows.
@@ -2028,9 +2035,13 @@ export function ChatScreen() {
       // 27j: count straight failures; Muse gets another chance on the next turn.
       const fails = (typeof museFails === "number" ? museFails : 0) + 1;
       setMuseFails(fails);
-      pushMsg({ role: "system", kind: "system", content: fails >= 3
-        ? "Muse 연결이 계속 안 돼서 규칙으로 이어 갈게요"
-        : "Muse 답이 늦어서 이번엔 규칙으로 답했어요. 다시 말하면 Muse가 이어받아요" });
+      if (err && err.httpStatus === 429) {
+        pushMsg({ role: "system", kind: "system", content: "오늘 Muse 사용 한도에 닿았어요. 기록된 대화로 보시거나 내일 다시 와 주세요." });
+      } else {
+        pushMsg({ role: "system", kind: "system", content: fails >= 3
+          ? "Muse 연결이 계속 안 돼서 규칙으로 이어 갈게요"
+          : "Muse 답이 늦어서 이번엔 규칙으로 답했어요. 다시 말하면 Muse가 이어받아요" });
+      }
       await structuredFlow(text);
     }
   }
@@ -2071,6 +2082,8 @@ export function ChatScreen() {
   async function send(text) {
     const content = String(text || "").trim();
     if (!content || busyRef.current) return;
+    // 29a6: replay mode never calls the consult client — the composer is read-only while replaying.
+    if (replayId || replaying) return;
     busyRef.current = true;
     setBusy(true);
     setError("");
@@ -2161,6 +2174,52 @@ export function ChatScreen() {
     send(EXAMPLE_PROMPTS[0].prompt);
   }
 
+  // 29a6: replay helpers — skip reveals all now, exit keeps the language.
+  function replayIdForChat() {
+    return LANG === "en" ? "menlo-month" : "seoul-couple";
+  }
+  function skipReplay() {
+    const timers = replayTimers.current || [];
+    timers.forEach((t) => clearTimeout(t));
+    replayTimers.current = [];
+    const doc = replayDoc.current;
+    if (doc && Array.isArray(doc.messages)) {
+      const shown = new Set((stateRef.current.messages || []).map((m) => m.content));
+      doc.messages.forEach((m) => {
+        if (m && m.kind === "candidates" && doc.candidatesData) {
+          setCandidatesData(doc.candidatesData);
+          setWorkOpen(true);
+        }
+      });
+      setMessages((prev) => {
+        const rest = doc.messages.filter((m) => !shown.has(m.content)).map((m) => ({ ...m }));
+        if (rest.length === 0) return prev;
+        let id = idRef.current || prev.length + 10;
+        const stamped = rest.map((m) => ({ ...m, id: id++ }));
+        idRef.current = id;
+        return [...prev, ...stamped];
+      });
+    }
+    setReplaying(false);
+  }
+  function exitReplay() {
+    const timers = replayTimers.current || [];
+    timers.forEach((t) => clearTimeout(t));
+    replayTimers.current = [];
+    setReplayId(null);
+    setReplayMeta(null);
+    setReplaying(false);
+    setMessages([]);
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("replay");
+      window.history.replaceState(null, "", u.toString());
+    } catch { /* keep the thread as it is */ }
+  }
+  function openReplay() {
+    window.location.href = appUrl("?replay=" + replayIdForChat());
+  }
+
   // --- boot from URL / memory ---
   const booted = useRef(false);
   useEffect(() => {
@@ -2205,6 +2264,51 @@ export function ChatScreen() {
           content: exampleLine(initial.example) });
       }
       send(initial.message);
+      return;
+    }
+    // 29a6: ?replay=<id> — keyless recorded conversation, revealed step by step.
+    let replayParam = "";
+    try { replayParam = new URLSearchParams(window.location.search).get("replay") || ""; } catch { replayParam = ""; }
+    if (replayParam) {
+      setReplayId(replayParam);
+      setReplaying(true);
+      fetch(recordingUrl(replayParam))
+        .then((r) => (r.ok ? r.json() : null))
+        .then((doc) => {
+          const v = validateRecording(doc);
+          if (!v.ok || !doc) {
+            pushMsg({ role: "system", kind: "system", content: "기록을 불러오지 못했어요 · 직접 해 보기" });
+            setReplaying(false);
+            return;
+          }
+          replayDoc.current = doc;
+          setReplayMeta(doc.meta || null);
+          if (doc.toolRows) setToolRows(doc.toolRows);
+          if (doc.profile) { setProfile(doc.profile); store.set({ chatSummary: profileSummary(doc.profile) }); }
+          if (doc.household) setHousehold(doc.household);
+          if (doc.intake) setIntake(doc.intake);
+          if (doc.scenario) setScenario(doc.scenario);
+          if (Array.isArray(doc.picks)) setPicks(doc.picks);
+          const sched = replaySchedule(doc.messages);
+          let t = 0;
+          const timers = [];
+          doc.messages.forEach((m, i) => {
+            t += (sched[i] && sched[i].delayMs) || 1200;
+            timers.push(setTimeout(() => {
+              pushMsg({ ...m });
+              if (m && m.kind === "candidates" && doc.candidatesData) {
+                setCandidatesData(doc.candidatesData);
+                setWorkOpen(true);
+              }
+              if (i === doc.messages.length - 1) setReplaying(false);
+            }, t));
+          });
+          replayTimers.current = timers;
+        })
+        .catch(() => {
+          pushMsg({ role: "system", kind: "system", content: "기록을 불러오지 못했어요 · 직접 해 보기" });
+          setReplaying(false);
+        });
       return;
     }
     const mem = loadTranscript();
@@ -2397,6 +2501,13 @@ export function ChatScreen() {
           data-panel={chatMainPanelAttr(detail, compareOpen)}
           data-work={chatWorkAttr(workOpen)}>
           <section className="ui-chat-thread" aria-label="대화">
+            {replayId && (
+              <div className="ui-chat-replaybanner">
+                <Text type="supporting">기록된 대화 · {replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} {replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생</Text>
+                <Button size="sm" variant="ghost" label="건너뛰기" onClick={skipReplay} />
+                <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
+              </div>
+            )}
             {messages.length === 0 && !busy ? (
               <ChatEmpty onSend={(text) => send(text)}
                 onListing={() => chipAction("매물 글 붙여 넣기")}
@@ -2405,7 +2516,7 @@ export function ChatScreen() {
             <ChatLayout
               density="compact"
               composer={(
-                <ChatComposer onSubmit={send} isDisabled={busy}
+                <ChatComposer onSubmit={send} isDisabled={busy || !!replayId}
                   value={composer} onChange={setComposer}
                   placeholder={busy ? "Muse가 일하는 중…" : "이어서 말씀해 보세요…"} />
               )}>
@@ -2457,6 +2568,11 @@ export function ChatScreen() {
             {error && (
               <Banner status="error" title="요청 실패" description={error}
                 isDismissable onDismiss={() => setError("")} />
+            )}
+            {(museFails > 0 || messages.some((m) => m.content === STATIC_OFF_LINE)) && !replayId && (
+              <div className="ui-chat-fallback">
+                <Button size="sm" variant="secondary" label="기록된 대화 보기" onClick={openReplay} />
+              </div>
             )}
           </section>
           {workOpen && (
@@ -2541,12 +2657,16 @@ export function chatMainPanelAttr(detail, compareOpen) {
 // 27a: chat-first empty state (no greeting, no form). The composer
 // is the same ChatComposer; the starters fill it or send once.
 export const EMPTY_STARTERS = [
+  { id: "replay", label: "기록된 한 달 보기" },
+  { id: "metahq", label: "Meta 본사 출근으로 해 보기" },
+  { id: "seoul", label: "서울로 해 보기" },
   { id: "find", label: "출근지로 집 찾기" },
   { id: "listing", label: "본 매물 붙여 넣기" },
   { id: "example", label: "예시로 써 보기" },
 ];
 
 const EMPTY_FIND_TEXT = "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘";
+const META_HQ_TEXT = "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,000 a month.";
 
 export function ChatEmpty({ onSend, onListing, onExample }) {
   const [value, setValue] = useState("");
@@ -2554,6 +2674,11 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
     if (id === "find") setValue(EMPTY_FIND_TEXT);
     else if (id === "listing") { if (onListing) onListing(); }
     else if (id === "example") { if (onExample) onExample(); }
+    else if (id === "replay") {
+      try { window.location.href = appUrl("?replay=" + (LANG === "en" ? "menlo-month" : "seoul-couple")); } catch { /* keep the thread as it is */ }
+    }
+    else if (id === "metahq") { if (onSend) onSend(META_HQ_TEXT); }
+    else if (id === "seoul") { if (onExample) onExample(); }
   };
   return (
     <div className="ui-chat-empty">

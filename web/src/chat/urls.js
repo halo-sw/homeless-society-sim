@@ -13,7 +13,7 @@ export const CHAT_STORE_KEY = "sim.chat.v1";
 // Which search keys route to which screen.
 export function routeForSearch(search) {
   const q = search instanceof URLSearchParams ? search : new URLSearchParams(search || "");
-  if (q.has("chat") || q.has("app")) return "chat";
+  if (q.has("chat") || q.has("app") || q.has("replay")) return "chat";
   if (q.get("mode") === "sim") return "sim"; // ?tour=demo rides along (?mode=sim&tour=demo)
   if (q.has("mode") || q.has("tour")) return "tour";
   if (q.has("area") || q.has("time") || q.has("lens") || q.has("shot")) return "tour";
@@ -34,6 +34,7 @@ export function parseChatSearch(search) {
     message: q.get("chat") || "",
     area: q.get("area") || "",
     ask: q.get("ask") || "",
+    replay: q.get("replay") || "",
   };
 }
 

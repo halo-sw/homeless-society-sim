@@ -277,6 +277,19 @@ const seedPhrases = {
   "- 이번 대화의 도구 결과에 수치가 없어요. 조건을 정하면 상담이 다시 실행해 드려요.": "- No tool numbers in this conversation yet. Tell me your conditions and I'll run it again.",
   "- 값이 싼지 비싼지는 말하지 않아요. 계약 판단도 하지 않아요.": "- I don't say whether a price is cheap or expensive, and I don't make the contract call.",
   "  · 공고 원문에서 조건을 확인해 주세요.": "  · Please check the conditions in the original notice.",
+  // 29a6: judge path — recorded replay entries.
+  "기록된 한 달 보기": "Watch a recorded month",
+  "Meta 본사 출근으로 해 보기": "I work at Meta HQ",
+  "서울로 해 보기": "Try Seoul",
+  "기록 재생은 키 없이 돼요. 직접 해 보기는 Muse에 실시간으로 물어요(하루 한도 있음).": "Recorded replays play without a key. Trying it yourself asks Muse live (daily limit applies).",
+  "기록된 대화 · ": "Recorded conversation · ",
+  "실제 답변 · 키 없이 재생": "real answers · plays without a key",
+  "Recorded conversation · real {model} answers from {date} · plays without a key": "Recorded conversation · real {model} answers from {date} · plays without a key",
+  "건너뛰기": "Skip",
+  "직접 해 보기": "Try it yourself",
+  "기록된 대화 보기": "Watch the recorded conversation",
+  "기록을 불러오지 못했어요 · 직접 해 보기": "Couldn't load the recording · try it yourself",
+  "오늘 Muse 사용 한도에 닿았어요. 기록된 대화로 보시거나 내일 다시 와 주세요.": "You have reached today's Muse usage limit. Watch the recorded conversation or come back tomorrow.",
 };
 
 const seedPatterns = [

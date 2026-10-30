@@ -3,8 +3,9 @@
 // 28f: band rhythm, hero proof facts, product window, dark closing.
 import { useState } from "react";
 import { ChatComposer } from "@astryxdesign/core/Chat";
-import { assetUrl } from "../paths.js";
+import { assetUrl, appUrl } from "../paths.js";
 import { appEntryUrl, chatUrl } from "../chat/urls.js";
+import { currentLang } from "../i18n/lang.js";
 import { COVERAGE_LINE, EXAMPLE_PROMPTS } from "./landing.jsx";
 import { LangToggle } from "./lang-toggle.jsx";
 import { PoweredByMuse, MUSE_LOGO_PATH } from "./powered-by-muse.jsx";
@@ -14,6 +15,17 @@ const HERO_PLACEHOLDER = "판교 출근인데 전세 2억 이하로 혼자 살 �
 const COMPOSER_FILL = "판교로 출근해요. 전세로 혼자 살 집 찾아 줘";
 const NIGHT_PROMPT = "판교 출근 집 두 곳에서 30일 살아 보고 밤 10시 이후 귀가를 보여 줘";
 const HOOD_PROMPT = "미금역 근처 전세 찾아 주고 동네를 보여 줘";
+const META_HQ_PROMPT = "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,000 a month.";
+
+export function replayIdForLang(lang) {
+  return lang === "en" ? "menlo-month" : "seoul-couple";
+}
+
+export function replayEntryUrl(lang) {
+  const id = replayIdForLang(lang === "en" ? "en" : "ko");
+  const l = lang === "en" || lang === "ko" ? lang : "ko";
+  return appUrl("?replay=" + id + "&lang=" + l);
+}
 
 // Same lines as landing.jsx SOURCES (kept local; landing.jsx is untouched).
 const SOURCES_DETAIL = [
@@ -188,6 +200,12 @@ export function LandingPage() {
             예시로 써 보기
           </button>
         </div>
+        <div className="ds-lp-cta">
+          <a className="ds-lp-btn ds-lp-btn--primary" href={replayEntryUrl(currentLang())}>기록된 한 달 보기</a>
+          <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(META_HQ_PROMPT)}>Meta 본사 출근으로 해 보기</a>
+          <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(EXAMPLE_PROMPTS[0].prompt)}>서울로 해 보기</a>
+        </div>
+        <p className="ds-lp-replaynote" style={{ color: "var(--ds-ink-2)", fontSize: 13 }}>기록 재생은 키 없이 돼요. 직접 해 보기는 Muse에 실시간으로 물어요(하루 한도 있음).</p>
         <div className="ds-lp-proof">
           {PROOFS.map((p) => (
             <span key={p.num} className="ds-lp-prooffact">
