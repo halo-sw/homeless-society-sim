@@ -2206,7 +2206,7 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
       <Text type="supporting">말로 하면 Muse가 실거래와 출근길을 확인하고, 원하면 그 집에서 30일 살아 봐요.</Text>
       <ChatComposer onSubmit={(text) => onSend && onSend(text)}
         value={value} onChange={setValue}
-        placeholder="예: 판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘" />
+        placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
       <div className="ui-chat-empty-row">
         {EMPTY_STARTERS.map((s) => (
           <Button key={s.id} size="sm" variant="secondary" label={s.label}

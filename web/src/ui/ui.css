@@ -641,8 +641,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   height: 100%; background: var(--ui-page); }
 .ui-chat-scene-head { display: flex; align-items: center; gap: 8px;
   padding: 8px 12px; border-bottom: 1px solid var(--ui-border); }
-.ui-chat-scene-title { font-weight: 600; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
+.ui-chat-scene-title { font-weight: 600;
+  overflow-wrap: anywhere; word-break: keep-all; }
 .ui-chat-scene-frame { flex: 1 1 auto; width: 100%; border: 0; }
 /* ---------- 27a: chat-first empty screen + work panel on request ---------- */
 .ui-chat-empty { display: flex; flex-direction: column; gap: 16px;

@@ -374,14 +374,13 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
     const html = renderCase({ mode: "chat", ready: true,
       area: { id: "st-미금", label: "미금역 인근" } }, "?chat=");
     assert.ok(html.includes("Ithaca"), "product name");
-    // 13f-1: one shared bar — mode switch + 설정; the reset action
-    // lives in the sheet (covered by topbar-13f.test.js).
-    for (const m of ["대화", "살아 보기", "동네 둘러보기"]) {
-      assert.ok(html.includes(m), `mode ${m}`);
-    }
+    // Chat-first: the mode switch is gone; the chat shell shows the
+    // product and no tour entry.
+    assert.ok(html.includes("Muse"), "product name in chat shell");
+    assert.ok(!html.includes("동네 둘러보기"), "no tour mode entry");
     assert.ok(html.includes("설정"), "settings button");
     // 18: the stage header is the customer context, never a fixed scene.
-    assert.ok(html.includes("출근지를 말하면 후보가 지도에 표시돼요"), "work area");
+    assert.ok(!html.includes("출근지를 말하면 후보가 지도에 표시돼요"), "work panel closed until asked");
   });
 
   it("renders the day strip + route steps + month strip at A 08:50", () => {

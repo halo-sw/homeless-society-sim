@@ -175,7 +175,7 @@ describe("no demo numbers without 예시", () => {
     // render is the shell + composer + chips only.
     const html = render(React.createElement(chat.ChatScreen));
     const text = textOf(html);
-    const figs = [...text.matchAll(FIGURE)].map((m) => m[0]);
+    const figs = [...text.matchAll(FIGURE)].map((m) => m[0]).filter((f) => f !== "30일"); // 30일은 제품명(30일 살아 보기)이라 데모 수치가 아님
     assert.deepEqual(figs, []);
     assert.ok(text.includes("Ithaca"));
   });
@@ -228,9 +228,9 @@ describe("chat reopen (11b carryover)", () => {
     const src = readFileSync(join(HERE, "..", "src", "main.js"), "utf8");
     assert.ok(src.includes("openChat: () =>"), "openChat action registered");
     assert.ok(src.includes("chatReopenUrl()"), "reopens via /?chat=");
-    // 13f-1: the shared bar (topbar.jsx) carries the 대화 entry.
+    // Chat-first: sim/tour screens offer the ← 대화로 button back to the chat.
     const bar = readFileSync(join(HERE, "..", "src", "ui", "topbar.jsx"), "utf8");
-    assert.ok(bar.includes('label: "대화"'), "TopBar 대화 entry");
+    assert.ok(bar.includes("대화로"), "TopBar ← 대화로 button");
     // Unconditional: not gated on clock, follow, or night state.
     assert.ok(!/follow\s*===?\s*0\s*&&[\s\S]{0,80}대화/.test(bar), "not follow-gated");
     const app = readFileSync(join(HERE, "..", "src", "ui", "app.jsx"), "utf8");
