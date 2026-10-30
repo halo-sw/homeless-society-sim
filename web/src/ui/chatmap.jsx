@@ -55,15 +55,20 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
       focus.push({ lon: r.bbox[0], lat: r.bbox[1] }, { lon: r.bbox[2], lat: r.bbox[3] });
     }
   }
-  const { view, toXY } = fitMapView(focus, W, H, MAP_FIT_MARGIN);
-  const px = view[2] / W; // viewBox units per stage px
-  const fs = (n) => px * n; // n px at scale
+  // One projected space: fitMapView maps lon/lat into stage px via
+  // toXY, and the viewBox IS that stage (0 0 W H) — never the raw
+  // degree view. Every layer below draws through toXY, so pins, lines
+  // and labels always land inside the frame.
+  const { toXY } = fitMapView(focus, W, H, MAP_FIT_MARGIN);
+  // Constant screen sizes: one viewBox unit is one stage px at 1:1, so
+  // literal px values stay readable however the map is zoomed.
+  const fs = (n) => n;
   const green = m.green || {};
   return (
     <div ref={mountRef} className="ui-chatmap" style={{ width: "100%", height: "100%" }}>
-      <svg viewBox={view.join(" ")} width="100%" height="100%"
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%"
         role="img" aria-label="후보 지도: 출근지와 후보 집 위치" preserveAspectRatio="xMidYMid slice">
-        <rect x={view[0]} y={view[1]} width={view[2]} height={view[3]} fill={MAP_COLORS.ground} />
+        <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground} />
         {(green.parks || []).map((ring, i) => (
           <polygon key={`pk${i}`} points={ptsAttr(ring, toXY)} fill={MAP_COLORS.park} />
         ))}
@@ -163,16 +168,16 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
               onMouseLeave={() => onPinHover && onPinHover(null)}
               onClick={() => onPinClick && onPinClick(p.id)}
               style={{ cursor: onPinClick ? "pointer" : "default" }}>
-              {hi && <circle cx={x} cy={y} r={fs(14)} fill="none"
+              {hi && <circle cx={x} cy={y} r={fs(17)} fill="none"
                 stroke={MAP_COLORS.pinHi} strokeWidth={fs(2.5)} />}
-              {p.picked && <circle cx={x} cy={y} r={fs(11)} fill="none"
+              {p.picked && <circle cx={x} cy={y} r={fs(14)} fill="none"
                 stroke={MAP_COLORS.pickedRing} strokeWidth={fs(2)} />}
-              <circle cx={x} cy={y} r={fs(8.5)} fill={MAP_COLORS.pinFill} />
+              <circle cx={x} cy={y} r={fs(11)} fill={MAP_COLORS.pinFill} />
               <text x={x} y={y + fs(4.5)} fontSize={fs(11.5)} textAnchor="middle"
                 fill="#ffffff">{p.n}</text>
               <rect x={x - tagW / 2} y={y + fs(11)} width={tagW} height={fs(15)} rx={fs(4)}
                 fill="#ffffff" opacity={0.94} />
-              <text x={x} y={y + fs(22.5)} fontSize={fs(10.5)} textAnchor="middle"
+              <text x={x} y={y + fs(22.5)} fontSize={fs(11)} textAnchor="middle"
                 fill={MAP_COLORS.pinFill}>{tag}</text>
             </g>
           );
