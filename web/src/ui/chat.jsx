@@ -526,19 +526,21 @@ export function SimulationCard({ data, example, onRetry }) {
           <VStack gap={1}>
             <Text>살아 보니</Text>
             {texts.map((t, i) => {
-              const mo = moments.find((m) => m.label === t.home) || null;
+              // 19i: the row opens its own moment (day, time, person);
+              // only older recorded payloads (no day/minute) use the
+              // per-home first outing.
+              const url = momentRowUrl(t, { custom: data.customId,
+                scenario: data.scenario || null,
+                fallback: moments.find((m) => m.label === t.home) || null });
               return (
                 <div key={i} className="ui-result-moment">
                   <span className="ui-result-when">{t.when_ko}</span>
                   <span className="ui-pick-disc" aria-hidden="true">{t.home}</span>
                   <span className="ui-result-text">{t.text_ko}</span>
-                  {mo && (
+                  {url && (
                     <Button size="sm" variant="ghost" label="3D로 보기 →"
                       onClick={() => {
-                        window.location.href = simMomentUrl({
-                          custom: data.customId, scenario: data.scenario || null,
-                          home: mo.label, day: mo.day, t: mo.t, follow: mo.follow,
-                        });
+                        window.location.href = url;
                       }} />
                   )}
                 </div>
@@ -780,6 +782,31 @@ function firstMomentOfRun(run) {
   const outings = outingsFor({ run, agentKey: key, day: 0 });
   if (outings.length === 0) return { day: 1, t: "08:30", follow: 1 };
   return { day: 1, t: hhmm(outings[0].start), follow: 1 };
+}
+
+// 19i: a 살아-보니 row's own "3D로 보기" URL. Moments carry a 0-based
+// day, so the customer-facing day is t.day + 1 ("3일차" → day=3).
+// Older recorded payloads keep only { home, when_ko, text_ko }: those
+// fall back to the per-home first outing (fallback, else firstMomentOfRun
+// off runs), exactly the old link.
+function followOfRun(runs, t) {
+  const run = (runs && t && runs[t.home]) || null;
+  const keys = run ? (run.agents || []).filter((a) => a.household).map((a) => a.key) : [];
+  const i = t ? keys.indexOf(t.agent) : -1;
+  return i >= 0 ? i + 1 : 1;
+}
+
+export function momentRowUrl(t, { custom = null, scenario = null, runs = null, fallback = null } = {}) {
+  if (!t) return null;
+  if (Number.isFinite(t.day) && Number.isFinite(t.minute)) {
+    return simMomentUrl({ custom, scenario, home: t.home,
+      day: t.day + 1, t: hhmm(t.minute), follow: followOfRun(runs, t) });
+  }
+  const mo = fallback
+    || (runs && runs[t.home] ? { label: t.home, ...firstMomentOfRun(runs[t.home]) } : null);
+  if (!mo) return null;
+  return simMomentUrl({ custom, scenario, home: mo.label || t.home,
+    day: mo.day, t: mo.t, follow: mo.follow });
 }
 
 // --- the screen -------------------------------------------------------------------------------
@@ -1158,7 +1185,8 @@ export function ChatScreen() {
       try {
         if (labels.length >= 2 && runs[labels[0]] && runs[labels[1]]) {
           momentTexts = pickMoments(runs[labels[0]], runs[labels[1]], { max: 3 })
-            .map((m) => ({ home: m.home, when_ko: m.when_ko, text_ko: m.text_ko }));
+            .map((m) => ({ home: m.home, day: m.day, minute: m.minute,
+              agent: m.agent, when_ko: m.when_ko, text_ko: m.text_ko }));
         }
       } catch {
         momentTexts = [];
