@@ -842,19 +842,21 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat [class*="astryx-layout-content"] > .ui-chat-main { flex-direction: row; }
 .ui-chat-main { overflow: hidden; }
 .ui-chat-thread { overflow: hidden; }
-.ui-chat-thread > :first-child {
+.ui-chat-thread > .astryx-chat-layout {
   display: flex; flex-direction: column; flex: 1 1 auto;
   min-height: 0; min-width: 0; overflow: hidden;
 }
-.ui-chat-thread > :first-child > :first-child {
+.ui-chat-thread > .astryx-chat-layout > :first-child {
   flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto;
 }
+.ds-replay-bar { flex: none; flex-direction: row; }
+.ds-replay-bar > :first-child { flex: 1 1 auto; overflow: visible; }
 .ui-chat-thread [class*="message-list"],
 .ui-chat-thread [class*="messagelist"],
 .ui-chat-thread [class*="MessageList"] {
   flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto;
 }
-.ui-chat-thread > :first-child > :last-child { flex: none; }
+.ui-chat-thread > .astryx-chat-layout > :last-child { flex: none; }
 .ui-chat-thread [class*="composer"],
 .ui-chat-thread [class*="Composer"] { flex: none; }
 .ui-chat-thread > [class*="banner"],

@@ -101,3 +101,28 @@ describe("29a6c tray CTA", () => {
     assert.equal(RUN_BUTTON_LABEL, "30일 살아 보기");
   });
 });
+
+describe("29a6e replay bar is not the chat layout", () => {
+  it("ui.css targets the chat layout by class, never by bare first-child", () => {
+    const css = read("../src/ui/ui.css");
+    assert.ok(!css.includes(".ui-chat-thread > :first-child {"),
+      "no bare .ui-chat-thread > :first-child rule");
+    assert.ok(css.includes(".ui-chat-thread > .astryx-chat-layout {"),
+      "chat layout targeted by class");
+    const at = css.indexOf(".ds-replay-bar {");
+    assert.ok(at >= 0, "ds-replay-bar class exists");
+    const last = css.lastIndexOf(".ds-replay-bar {");
+    const block = css.slice(last, last + 300);
+    assert.ok(block.includes("flex: none"), "bar never grows");
+    assert.ok(block.includes("flex-direction: row"), "bar stays a row");
+  });
+  it("diary check line reads naturally in English", async () => {
+    const { createTranslator } = await import("../src/i18n/translate.js");
+    const { phrases, patterns } = await import("../src/i18n/en.js");
+    const { WORDS } = await import("../src/i18n/en-words.js");
+    const tr = createTranslator({ phrases, patterns, words: WORDS });
+    assert.equal(
+      tr.translate("✓ 문장 6개 모두 기록과 대조 · 1번 고쳐 씀 · 2줄은 근거가 없어 뺐어요"),
+      "✓ All 6 sentences checked against the record · rewritten 1× · 2 line(s) dropped for lack of evidence");
+  });
+});
