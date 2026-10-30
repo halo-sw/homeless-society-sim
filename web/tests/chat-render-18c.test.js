@@ -120,7 +120,8 @@ describe("18c chat message list renders without throwing", () => {
           example: "single-firstjob" },
         handlers: handlersFor(), toolRows: {} }));
     assert.ok(html.includes("30일 살아 보기 결과"), "done heading");
-    assert.ok(html.includes("하루 출퇴근"), "commute section");
+    // 19d: the A|B table fallback labels each member row 출퇴근 편도.
+    assert.ok(html.includes("출퇴근 편도"), "commute section");
   });
 
   it("listing paste check", async () => {

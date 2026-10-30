@@ -838,3 +838,45 @@ button.ui-tag:hover { color: var(--ui-ink); }
   display: flex; gap: var(--ui-s8); align-items: center; flex-wrap: wrap;
   border-top: 1px solid var(--ui-border); padding-top: var(--ui-s8);
 }
+
+/* ---------- 19d: the 30-day result as an A|B table ---------- */
+/* One grid: empty corner + a disc+name head per home, then one label
+   row per fact. Names wrap at spaces and never truncate. */
+.ui-result-grid {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) 1fr 1fr;
+  column-gap: 12px; row-gap: 10px; align-items: start;
+  font-variant-numeric: tabular-nums;
+}
+.ui-result-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ui-result-head .ui-pick-disc { width: 20px; height: 20px; font-size: 11px; }
+.ui-result-name {
+  font-size: 13px; font-weight: 600; min-width: 0;
+  word-break: keep-all; overflow-wrap: anywhere;
+}
+.ui-result-label { font-size: var(--ui-t12); color: var(--ui-ink2); }
+.ui-result-value {
+  font-size: var(--ui-t16); font-weight: var(--ui-w600); min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ui-result-span { grid-column: 1 / -1; font-size: var(--ui-t12); color: var(--ui-ink2); }
+.ui-result-missing { font-size: var(--ui-t12); color: var(--ui-ink2); }
+/* Score bar: neutral ink for both homes, never a winner colour. */
+.ui-result-bar {
+  display: block; width: 48px; height: 4px; margin-top: 4px;
+  background: var(--ui-sunken); border-radius: 2px;
+}
+.ui-result-fill { display: block; height: 100%; background: var(--ui-ink); border-radius: 2px; }
+/* Header chips: the 예시 mark and the recorded-answer note. */
+.ui-result-example {
+  font-size: 11px; color: var(--ui-ink2); background: var(--ui-sunken);
+  border-radius: var(--ui-r-chip); padding: 2px var(--ui-s8); white-space: nowrap;
+}
+/* 살아 보니: one row per moment — when, letter disc, text, 3D link. */
+.ui-result-moment { display: flex; align-items: center; gap: var(--ui-s8); }
+.ui-result-when {
+  font-size: var(--ui-t12); color: var(--ui-ink2); flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.ui-result-moment .ui-pick-disc { width: 20px; height: 20px; font-size: 11px; }
+.ui-result-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }

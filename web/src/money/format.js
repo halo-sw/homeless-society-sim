@@ -64,6 +64,29 @@ export function fmtWon(won, { monthly = false } = {}) {
   return `${neg ? "−" : ""}${monthly ? "월 " : ""}${body}`;
 }
 
+// 19d: short monthly form, rounded to thousands: 668200 -> "월 66만 8천 원".
+export function fmtWonShort(won) {
+  const v = Number(won);
+  if (!Number.isFinite(v)) return "–";
+  const neg = v < 0;
+  const rounded = Math.round(Math.abs(v) / 1000) * 1000;
+  if (rounded === 0) return "월 0 원";
+  const man = Math.trunc(rounded / 10000);
+  const rest = rounded % 10000;
+  const cheon = Math.trunc(rest / 1000);
+  let body;
+  if (man > 0) {
+    body = `${man.toLocaleString("ko-KR")}만`
+      + (cheon > 0 ? ` ${cheon}천` : "")
+      + " 원";
+  } else if (cheon > 0) {
+    body = `${cheon}천 원`;
+  } else {
+    body = `${rounded.toLocaleString("ko-KR")} 원`;
+  }
+  return `${neg ? "−" : ""}월 ${body}`;
+}
+
 export function fmtPct(ratio, digits = 1) {
   if (ratio === null || ratio === undefined) return "–";
   const v = Number(ratio);
