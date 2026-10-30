@@ -82,15 +82,25 @@ const seedPhrases = {
   "Meta HQ까지 가까운 순": "Closest to Meta HQ",
   "월세 낮은 순": "Lowest rent",
   "미국 1곳: Menlo Park · Meta HQ (자전거·도보, Zillow 월세 추정)": "US, 1 area: Menlo Park · Meta HQ (bike/walk, Zillow rent estimate)",
-  "미국 월세: Zillow Observed Rent Index (ZIP 단위 추정, 매물 가격 아님) · 지도 © OpenStreetMap © CARTO · 항공사진 USGS": "US rent: Zillow Observed Rent Index (ZIP-level estimate, not a listing price) · Map © OpenStreetMap © CARTO · Imagery USGS",
-  "월세: Zillow ZORI (ZIP 추정) · 지도 © OpenStreetMap © CARTO · 항공사진 USGS": "Rent: Zillow ZORI (ZIP estimate) · Map © OpenStreetMap © CARTO · Imagery USGS",
   "자전거 속도": "Bike speed",
   "자전거 통근 상한": "Bike commute limit",
+  // 26n-26p: aerial thumbnails, phone pane toggle, US source name.
+  "항공사진": "Aerial photo",
+  "지도·후보": "Map & homes",
+  "OpenStreetMap (미국 북캘리포니아 추출본, Geofabrik)": "OpenStreetMap (Northern California extract, Geofabrik)",
+  "미국 북캘리포니아 추출본": "Northern California extract",
+  // The landing prompt after money localizing (4억 → ₩400M) must not
+  // fall into the generic "{0}, {1} 출근, …" table pattern.
+  "맞벌이 예비부부, 강남 출근, 전세 ₩400M 이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59m² or larger",
+  "맞벌이 예비부부, 강남 출근, 전세 ₩400M이하, 59㎡ 이상": "Dual-income engaged couple, working in Gangnam, jeonse under 400M won, 59m² or larger",
 };
 
 const seedPatterns = [
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
   { ko: "다루는 지역 {0}곳: {1}", en: "Areas covered ({0}): {1}" },
+  // Counts without English plurals ("1 things checked").
+  { ko: "확인한 것 {0}가지", en: "Things checked: {0}" },
+  { ko: "모르는 값 {0}개 — 채우면 더 정확해요", en: "Unknown values: {0} — fill them in for better accuracy" },
 ];
 
 // The seed wins over the generated table (one-off fixes go above).
