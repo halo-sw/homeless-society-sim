@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-926_JS_·_244_Python-2f5d50?style=flat-square" alt="926 JavaScript and 244 Python tests">
+  <img src="https://img.shields.io/badge/tests-1261_JS_·_244_Python-2f5d50?style=flat-square" alt="1261 JavaScript and 244 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -53,29 +53,29 @@ So an AI household moves in first. Tell it about your life, pick candidate homes
 | | Step | What happens | Status |
 |---|---|---|---|
 | 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text) · voice input *coming soon* |
-| 2 | **Get real candidate homes** | Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi, with ride times from the operator's schedule and public rentals from the LH · 마이홈 API. | built |
+| 2 | **Get real candidate homes** | Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi, with ride times from the operator's schedule and public rentals from the LH · 마이홈 API. They appear on a map with the subway lines, the workplace and the commute minutes. | built |
 | 3 | **The household lives there for 30 days** | The household commutes, shops, walks in the park and visits clinics on the real walking graph, in both homes at once. Runs are paired over 10 seeds, so the gap between homes comes from the homes and not from chance. | built |
-| 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. | in progress (branch `verify-16a`) |
-| 5 | **Compare with evidence** | Time, fatigue, money for 매매 / 전세 / 월세 / public rental, 전세 warning signs, support programmes, official safety and education figures, all weighted by the customer's own priorities. Each home gets a 0–100 **내 기준 점수**: a subjective score from the customer's own weights, with the formula one tap away. | built · score up front *in progress* |
+| 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. | built (scorer, claim checks, retry loop) · on-screen view *in progress* |
+| 5 | **Compare with evidence** | Time, fatigue, money for 매매 / 전세 / 월세 / public rental, 전세 warning signs, support programmes, official safety and education figures, all weighted by the customer's own priorities. Each home gets a 0–100 **내 기준 점수**: a subjective score from the customer's own weights, with the formula one tap away. | built |
 
 ## Gallery
 
 <table>
   <tr>
-    <td width="50%"><img src="briefs/img/13e4-chat.png" alt="The chat screen. The customer typed a one-line request; the agent's profile card lists each value with a 내가 말한 값 or 물어볼 값 tag. On the right, a map of the 9 regions with candidate homes as dots."></td>
-    <td width="50%"><img src="briefs/img/13e-cards-mid.png" alt="Candidate home cards: 전세 price from the real-transaction median, type, size and year, walking time to the station, a nearby photo labelled as not a listing photo, and buttons 살아 보기, 전세 점검 and 자세히."></td>
+    <td width="50%"><img src="briefs/img/18-chat-map.jpg" alt="The chat screen for a first-job worker commuting to 판교. Left: candidate cards with real-transaction 전세 prices and the 비교에 담기 button. Right: a map with the subway lines in their colours, the workplace pin, numbered candidate pins with price tags, and commute lines of 10.4 and 12.3 minutes for the two picked homes."></td>
+    <td width="50%"><img src="briefs/img/18-result.jpg" alt="The 30-day result card for the customer's two picked homes: 내 기준 점수 per home, monthly housing cost per home with how it was calculated, the door-to-door one-way commute (A 11 min, B 14 min) and moments from the 30 days."></td>
   </tr>
   <tr>
-    <td><sub><b>Start from your own words.</b> The profile card separates what the customer said from what is still unknown, and the map shows where the candidates are.</sub></td>
-    <td><sub><b>Real candidate homes.</b> Prices are real-transaction medians with the number of deals. Photos are nearby street photos with their licence, never presented as the listing.</sub></td>
+    <td><sub><b>Your words, your candidates, on a map.</b> One sentence becomes a profile. Real candidate homes appear as numbered pins next to the subway lines and your workplace. Pick two and their commute lines are drawn.</sub></td>
+    <td><sub><b>The answer first.</b> After 30 days in each home: the customer's own subjective score, monthly housing cost and the door-to-door commute, then moments with evidence. No winner is named.</sub></td>
   </tr>
   <tr>
-    <td><img src="briefs/img/08c-follow.png" alt="Following one resident in the 3D neighbourhood. The Now card shows the current activity, why it happens, the criteria that applied and the fatigue level."></td>
-    <td><img src="briefs/img/11b-share-after.png" alt="The share card comparing home A and home B: how they get to work, daily commute 2 h 5 min vs 48 min, time on trains, time walked and fatigue on arrival, each with source tags."></td>
+    <td><img src="briefs/img/18-sim-custom.jpg" alt="Following 나 from the picked home 천사의도시Ⅱ오피스텔 to 미금역 in the 3D neighbourhood. The drawer shows 내 기준 점수 A 44 · B 56, two moments with evidence, 4분 남음 and the day's trips."></td>
+    <td><img src="briefs/img/18-share.jpg" alt="The share card for the two picked homes: names and sizes, 내 기준 점수, how they get to work, one-way commute 11 vs 14 minutes, time on trains, time walked and fatigue on arrival."></td>
   </tr>
   <tr>
     <td><sub><b>Follow one person.</b> The Now card says what they are doing, why (a routine rule, a Muse decision with its reason, or customer input), which criteria applied and how tired they are.</sub></td>
-    <td><sub><b>A result you can share.</b> A and B side by side in plain words, with 측정 / 가정값 tags on every row. The PNG is built in the browser and never uploaded.</sub></td>
+    <td><sub><b>A result you can share.</b> A and B side by side in plain words, the same numbers as the result card, with 측정 / 가정값 tags. The PNG is built in the browser and never uploaded.</sub></td>
   </tr>
 </table>
 
@@ -119,7 +119,7 @@ The agent's work is checked by code before the customer sees it.
 - **Honest gaps.** An item the engine cannot back yet is shown as 미지원 and never counted as a pass. Today two household types have full scenarios (dual-income family with a young child, newlywed couple). Remote worker, three-generation family and dog owner are scored for the checklist only.
 - **Field study** *(coming soon)*. Compare the simulator's findings with the real homes and real regrets of 10–20 residents and report the match rate.
 
-Status: the scorer, claim checks and retry loop are being built on branch `verify-16a`, against the ground-truth file and reference scorer written by the team.
+Status: the scorer, claim checks and retry loop are in `main` (stages 16a and 16b, 99 tests), checked against the ground-truth file and the reference scorer written by the team. On natural checklists the JS scorer gives the same pass and *must* coverage as the Python reference, and a report that quotes the true door-to-door commute passes while a wrong one fails. The on-screen view of the loop is in progress.
 
 ## Built by Muse
 
@@ -204,7 +204,8 @@ Deadline: 2026-11-05 11:00 KST.
 
 | Date | Plan |
 |---|---|
-| 10-30 → 11-02 | Built-in verification loop and its screen, 내 기준 점수 up front, painted map look, cleaner sim screen |
+| 10-30 ✓ | Verification loop (16), 내 기준 점수 up front, painted look, the customer's own homes end to end with a candidate map (17–18) |
+| 10-31 → 11-02 | Verification on screen, English UI and subtitles |
 | 11-03 | Polish, then feature freeze at night |
 | 11-04 | 3-minute video and final README |
 | 11-05 | Submit by 09:00 KST |
@@ -259,6 +260,9 @@ Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 an
 | 13d–13e | Layout without overlaps, guided intake, candidate cards, Seoul/Gyeonggi orb | [`13d`](briefs/13d-RESULT.md), [`13e`](briefs/13e-RESULT.md) |
 | 14–14b | Terrain (DEM), road ribbons, OSM trees for 60 station areas; procedural vehicles, pedestrians and trains | [`14`](briefs/14-RESULT.md), [`14b`](briefs/14b-RESULT.md) |
 | 15 | Engine integrity: paired runs over 10 seeds, household costs, walking commutes counted, distance fares, same-size comparison, loan cap | [`15 brief`](briefs/15-engine-integrity.md) |
+| 16a–16b | Built-in verification: checklist scorer with Python parity, claim checks on door-to-door engine values, retry loop | [`16a-RESULT`](briefs/16a-RESULT.md) |
+| 17–17d | Ithaca name, 내 기준 점수 up front, moments, painted look (warm light, outlines, lit night, time-aware exposure) | [`17-RESULT`](briefs/17-RESULT.md) |
+| 18–18g | The customer's own homes end to end (own money doc, score and share card), no dead ends, readable results, one commute number, candidate map with subway tracks | [`18-RESULT`](briefs/18-RESULT.md) |
 
 </details>
 
