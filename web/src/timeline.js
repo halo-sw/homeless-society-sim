@@ -18,6 +18,7 @@ export const DAY_STRIP_END = 24 * 60; // 24:00
 export const ACTIVITIES = {
   home: { label: "집", color: "#d9cfbb" },
   walk: { label: "걷기", color: "#2471a3" },
+  bike: { label: "자전거", color: "#1b8a7a" },
   subway: { label: "지하철", color: "#8e44ad" },
   work: { label: "직장", color: "#b25a33" },
   errand: { label: "장보기", color: "#d9a83c" },
@@ -26,6 +27,20 @@ export const ACTIVITIES = {
 };
 
 export const ACTIVITY_ORDER = ["home", "walk", "subway", "work", "errand", "park", "other"];
+
+// 26i: a trip with engine bike mode (26d) reads 자전거 everywhere a
+// walk trip reads 걷기. Trips without a mode key stay walk.
+export function activityOfTrip(trip) {
+  return trip && trip.mode === "bike" ? "bike" : "walk";
+}
+
+export function tripMoveWord(trip) {
+  return trip && trip.mode === "bike" ? "자전거로" : "걸어서";
+}
+
+export function runHasBikeTrip(run) {
+  return ((run && run.trips) || []).some((t) => t && t.mode === "bike");
+}
 
 const AWAY_ACTIVITY = {
   ride: "subway",
@@ -70,9 +85,9 @@ export function daySegments({ run, agentKey, day }) {
     const mins = Math.max(1, Math.round(t.arrive_min - t.depart_min));
     events.push({
       start: t.depart_min, end: t.arrive_min,
-      activity: "walk",
+      activity: activityOfTrip(t),
       label: `${(t.from && t.from.label) || "출발"} → ${(t.to && t.to.label) || "도착"}`,
-      detail: `걸어서 ${mins}분`,
+      detail: `${tripMoveWord(t)} ${mins}분`,
       minutes: mins,
       ref: { tripId: t.id, purpose: t.purpose || null },
     });
@@ -224,8 +239,9 @@ function stepsForOuting(outing) {
   for (const it of outing.items) {
     if (it.kind === "trip") {
       const mins = Math.max(1, Math.round(it.t.arrive_min - it.t.depart_min));
-      steps.push({ kind: "walk",
-        label: `${(it.t.to && it.t.to.label) || "도착"} (걸어서 ${mins}분)`,
+      const bike = it.t && it.t.mode === "bike";
+      steps.push({ kind: bike ? "bike" : "walk",
+        label: `${(it.t.to && it.t.to.label) || "도착"} (${bike ? "자전거로" : "걸어서"} ${mins}분)`,
         minute: it.t.depart_min, tripId: it.t.id, minutes: mins });
     } else {
       const a = it.a;

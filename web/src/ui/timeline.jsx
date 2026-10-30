@@ -29,6 +29,7 @@ const act = (name, ...args) => store.act(name, ...args);
 const ICON_PATHS = {
   home: "M2 7 L6 3 L10 7 V11 H2 Z",
   walk: "M6 2.2 a1.3 1.3 0 1 0 0.1 0 M5 5 L4 8 L6 8 L5.4 11 M6 8 L8 9 L8.6 11",
+  bike: "M2.5 8.5 a1.8 1.8 0 1 0 0.1 0 M9.5 8.5 a1.8 1.8 0 1 0 0.1 0 M2.5 8.5 L5 8.5 L6.5 4.5 L9 4.5 M5 8.5 L4.5 5.5 L6.5 4.5 M6 2.5 L6.5 4.5",
   subway: "M3 2 H9 V9 H3 Z M3 6 H9 M4.5 9 L4 11 M7.5 9 L8 11",
   work: "M2.5 4 H9.5 V10 H2.5 Z M4.5 4 V3 H7.5 V4 M6 4 V10",
   errand: "M2.5 5 H9.5 L8.5 10 H3.5 Z M4 5 a2 2 0 0 1 4 0",
@@ -167,10 +168,11 @@ export function DayStrip({ segments, ticks, minute, label, onJump, bare }) {
   );
 }
 
-export function ActivityLegend() {
+export function ActivityLegend({ hasBike = false }) {
+  const order = hasBike ? [...ACTIVITY_ORDER, "bike"] : ACTIVITY_ORDER;
   return (
     <HStack gap={2} vAlign="center" wrap="wrap">
-      {ACTIVITY_ORDER.map((a) => (
+      {order.map((a) => (
         <HStack key={a} gap={1} vAlign="center">
           <span className="ui-swatch" style={{ background: ACTIVITIES[a].color }} aria-hidden="true" />
           <ActivityIcon activity={a} />
@@ -307,7 +309,7 @@ export function TimelineBar({ state, compact = true, defaultMenuOpen = false }) 
               onClick={() => setMenuOpen(!menuOpen)} />
           </div>
           <div className="ui-strip-legend">
-            <ActivityLegend />
+            <ActivityLegend hasBike={!!(state.dayStrip && state.dayStrip.hasBike)} />
           </div>
           {menuOpen && (
             <div className="ui-bar13f2-menu">

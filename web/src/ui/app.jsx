@@ -283,7 +283,7 @@ function FatigueBlock({ fatigue, nowMin }) {
 // Replaces JourneyCard and the duplicated leg lines (NowCard, spark
 // caption). Step labels keep their engine text; only the trailing
 // source word moves into a badge at the end of the line.
-const STEP_ICON = { place: "home", walk: "walk", ride: "subway", transfer: "subway", stay: "other" };
+const STEP_ICON = { place: "home", walk: "walk", bike: "bike", ride: "subway", transfer: "subway", stay: "other" };
 
 function stepLabelShown(label) {
   return String(label || "").replace(/ (실측|가정)\)$/, ")");
@@ -951,7 +951,7 @@ function LegendCard({ state, onClose }) {
           {state.mode === "sim" && (
             <VStack gap={1}>
               <Text type="supporting">하루 색깔</Text>
-              <ActivityLegend />
+              <ActivityLegend hasBike={!!(state.dayStrip && state.dayStrip.hasBike)} />
             </VStack>
           )}
           <Text type="supporting">{legend.note}</Text>

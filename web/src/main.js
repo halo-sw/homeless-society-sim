@@ -41,7 +41,7 @@ import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // 12b: landing/chat routing, timeline builders + activity colours,
 // custom-run store (?custom=<id>).
 import { routeForSearch, chatUrl, chatReopenUrl } from "./chat/urls.js";
-import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor } from "./timeline.js";
+import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor, runHasBikeTrip } from "./timeline.js";
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
@@ -1748,8 +1748,10 @@ async function bootSim() {
       const camDist = camera.position.distanceTo(controls.target);
       const destLonLat = hiState.destNodeId ? nodeLonLat.get(hiState.destNodeId) : null;
       const tripNow = hiState.trip ? tripById.get(hiState.trip.id) : null;
+      const homeEntry = (homes || []).find((h) => h.label === homeLabel) || null;
       const items = labelItemsFor(area, {
         homeBuildingId: hiState.homeBuildingId || null,
+        homeName: (homeEntry && homeEntry.complex_name) || (run.meta && run.meta.complex) || null,
         destination: hiState.destLabel
           ? { label: hiState.destLabel, lonlat: destLonLat || undefined }
           : null,
@@ -3119,7 +3121,8 @@ async function bootSim() {
       store.set({ dayStrip: null, routeSteps: null, monthStrip: null });
     } else {
       store.set({
-        dayStrip: { segments: daySegments({ run, agentKey: key, day }) },
+        dayStrip: { segments: daySegments({ run, agentKey: key, day }),
+          hasBike: runHasBikeTrip(run) },
         routeSteps: { outings: outingStepsFor({ run, agentKey: key, day }) },
         monthStrip: monthStrip({ run, agentKey: key }),
       });
