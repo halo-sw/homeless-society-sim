@@ -17,3 +17,13 @@ Hard rules
 - VWorld geocoder results are used in real time only and never stored. No keys in code, logs or git.
 - Raw and built data (`data/raw`, `data/build`) are never committed; publish the scripts that regenerate them. Attribution for every source lives in `ATTRIBUTION.md` and on screen.
 - Python pipeline uses `.venv/bin/python`; tests run with `.venv/bin/pytest`.
+
+Usage budget (user decision 2026-10-30: treat the remaining Muse allowance as the last)
+Every Muse step re-sends the whole conversation (about 100k+ tokens by mid-run), so cost grows with steps × context. Muse spends its steps on writing code; the orchestrator does everything else.
+- One part per run. A brief holds one part (or a few small ones); when it is done, Muse stops. The next part starts as a fresh run. Runs are capped at 60 model steps (`work/run-muse.sh`).
+- Briefs are exact: `file:line → the change → the test that proves it`. The orchestrator finds causes and pastes the code excerpts Muse needs (with line numbers) into the brief, so Muse does not search or read whole large files (`main.js`, `chat.jsx`, `app.jsx`). Read a file only when the brief says so, and only the named line range.
+- Muse does not: run the full test suite or the build, run git, write result notes, keep a todo list, start sub-agents, or explore the repo. It runs only the test file for what it changed, with short output: `node --test web/tests/<file>.test.js 2>&1 | tail -15` or `.venv/bin/pytest -q tests/<file>.py 2>&1 | tail -15`.
+- Make all edits for a part in as few steps as possible: plan once, then edit; no re-reading a file you just edited.
+- If the named test still fails after 2 fix attempts, stop and write the failing output's last lines as the final message. The orchestrator diagnoses and sends a short follow-up brief; Muse never loops on a failure.
+- The orchestrator runs the full suite and the build, commits (`<stage>: …`, marked as Muse's work), writes the result note and keeps the checklist.
+- Leave compaction settings at their defaults (lower thresholds made Muse re-read files endlessly in 13c).
