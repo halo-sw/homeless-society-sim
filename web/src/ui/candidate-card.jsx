@@ -8,7 +8,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { TENURE_KO } from "../profile.js";
 import { fmtWon } from "../money/format.js";
-import { SAME_STATION_KO } from "../homes.js";
+import { SAME_STATION_KO, displayNameFor, KIND_MISMATCH_KO } from "../homes.js";
 import { simBadgeFor } from "../mapsim.js";
 import { SceneThumb, MiniMap } from "./preview.jsx";
 
@@ -178,7 +178,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
       <div className="ui-cand-row-main">
         <div className="ui-cand-row-top">
           <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true">{disc}</span>
-          <span className="ui-cand-row-name">{candidate.name}</span>
+          <span className="ui-cand-row-name">{displayNameFor(candidate)}</span>
           <Button size="sm" variant={picked ? "secondary" : "primary"}
             label={picked ? "담음 ✓" : "담기"}
             onClick={() => onLive && onLive(candidate)} />
@@ -188,6 +188,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         <div className="ui-cand-row-commute ui-num">
           {row.text}{row.estimate ? " " : null}{row.estimate && <span className="ui-cand-est">추정</span>}
         </div>
+        {candidate.kind_mismatch && <Text type="supporting">{KIND_MISMATCH_KO}</Text>}
         {note && <Text type="supporting">{`살아 보기 불가 · ${note}`}</Text>}
       </div>
     </article>
@@ -217,8 +218,9 @@ function FullCard({ candidate, price, facts, row, hero, rest,
       )}
       <div className="ui-cand-body">
         <div>
-          <div className="ui-cand-name">{candidate.name}</div>
+          <div className="ui-cand-name">{displayNameFor(candidate)}</div>
           {candidate.dong && <div className="ui-cand-place">{candidate.dong}</div>}
+          {candidate.kind_mismatch && <Text type="supporting">{KIND_MISMATCH_KO}</Text>}
         </div>
         <div>
           <div className="ui-cand-price ui-num" title={rangeTitle}>{price.price}</div>

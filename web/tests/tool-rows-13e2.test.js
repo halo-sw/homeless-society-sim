@@ -47,7 +47,7 @@ describe("13e2 tool rows", () => {
       "find_homes summary");
     assert.ok(src.includes("summary: picked.map((p) => p.name)"),
       "build_scenario summary");
-    assert.ok(src.includes("`30일 · ${labels.join"), "run summary");
+    assert.ok(src.includes('`${noCommute ? "출근 없이 · " : ""}30일 · ${labels.join'), "run summary");
     assert.ok(src.includes("${compare.metrics.length}개 지표"), "compare summary");
     assert.ok(!src.includes("집 후보 ${result.candidates.length}곳(정렬"),
       "no repeated label");

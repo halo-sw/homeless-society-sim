@@ -12,7 +12,7 @@
 // The live agent (dev key) posts the same flow to /api/consult; both
 // paths render the same chat cards.
 
-import { complexNameForHome, extract_profile, missingQuestions,
+import { complexNameForHome, extract_profile, missingQuestions, runGate,
   scenarioFromProfile, TENURE_KO } from "../profile.js";
 import { DEFAULT_HOME_SORT, find_homes } from "../homes.js";
 import { parseInterstationCsv } from "../transit/schedule.js";
@@ -411,6 +411,7 @@ export function fieldRows(profile) {
   push("workplaces", "출근", (v) => {
     if (!Array.isArray(v) || v.length === 0 || !v[0]) return "아직";
     const w = v[0];
+    if (w.noCommute) return "출근 안 해요";
     const where = (w.resolved && w.resolved.station) || w.text || "모름";
     return `${where}${w.resolved ? "" : " (모름)"}`;
   });
@@ -425,6 +426,8 @@ export function fieldRows(profile) {
   push("priceMax", "매매가 상한", won);
   push("sizeMin", "최소 크기", (v) => (v === null || v === undefined ? "아직" : `${v}㎡`));
   push("commuteMax", "출퇴근 상한", (v) => (v === null || v === undefined ? "아직" : `${v}분`));
+  push("home_kinds", "원하는 유형", (v) => (
+    !Array.isArray(v) || v.length === 0 ? "아직" : v.join("·")));
   return rows;
 }
 
@@ -433,8 +436,12 @@ export function profileSummary(profile) {
   const bits = [];
   const wps = profileValue(profile, "workplaces");
   if (Array.isArray(wps) && wps.length > 0 && wps[0]) {
-    const where = (wps[0].resolved && wps[0].resolved.station) || wps[0].text;
-    if (where) bits.push(`${where} 출근`);
+    if (wps[0].noCommute) {
+      bits.push("출근 없이");
+    } else {
+      const where = (wps[0].resolved && wps[0].resolved.station) || wps[0].text;
+      if (where) bits.push(`${where} 출근`);
+    }
   }
   const members = profileValue(profile, "members");
   if (Array.isArray(members) && members.length > 0) bits.push(`${members.length}인`);
@@ -453,4 +460,9 @@ export function missingChips(profile) {
   return missingQuestions(profile).map((q) => ({ field: q.field, ask: q.ask }));
 }
 
-export { regionsForNames, kindForName, missingQuestions };
+export { regionsForNames, kindForName, missingQuestions, runGate };
+
+export function profileHomeKinds(profile) {
+  const v = profile && profile.home_kinds ? profile.home_kinds.value : null;
+  return Array.isArray(v) ? v.filter(Boolean) : [];
+}

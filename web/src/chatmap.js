@@ -108,7 +108,10 @@ export function densifyPts(pts, maxKm = 2.5) {
 // `inset` ({top,right,bottom,left} px) fits the data into the inner
 // rectangle so pills and trays never clip; empty inset keeps 1:1.
 export const MAP_FIT_MARGIN = 0.08;
-const MIN_SPAN_DEG = 0.02;
+// Closest the map ever zooms: a ~1.2 km wide view keeps a few
+// streets and stations visible around tight candidate clusters.
+export const MAP_MIN_VIEW_KM = 1.2;
+const KM_PER_DEG = 111.32;
 
 export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) {
   const w = Math.max(1, Number(W) || 1);
@@ -134,8 +137,8 @@ export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) 
   const midLat = (lat0 + lat1) / 2;
   let [fx0] = flatXY(lon0, lat0, midLat);
   let [fx1] = flatXY(lon1, lat1, midLat);
-  let fw = Math.max(fx1 - fx0, MIN_SPAN_DEG);
-  let fh = Math.max(lat1 - lat0, MIN_SPAN_DEG);
+  let fw = Math.max(fx1 - fx0, 0);
+  let fh = Math.max(lat1 - lat0, 0);
   const cx = (fx0 + fx1) / 2;
   const cy = (lat0 + lat1) / 2;
   // Pad so the pins keep `margin` clear on every side (the padded
@@ -145,8 +148,20 @@ export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) 
   fw /= Math.max(1 - 2 * m, 0.2);
   fh /= Math.max(1 - 2 * m, 0.2);
   const want = iw / ih;
-  if (fw / fh < want) fw = fh * want;
-  else fh = fw / want;
+  if (!(fw > 0) && !(fh > 0)) {
+    fw = MAP_MIN_VIEW_KM / KM_PER_DEG;
+    fh = fw / want;
+  } else {
+    if (fw / fh < want) fw = fh * want;
+    else fh = fw / want;
+  }
+  // Close clusters zoom until the bbox fills the view, but never
+  // closer than ~1.2 km wide; wider bboxes keep the exact fit above.
+  const minW = MAP_MIN_VIEW_KM / KM_PER_DEG;
+  if (fw < minW) {
+    fh *= minW / fw;
+    fw = minW;
+  }
   const view = [cx - fw / 2, cy - fh / 2, fw, fh];
   const toXY = (lon, lat) => {
     const [fx] = flatXY(lon, lat, midLat);
@@ -496,4 +511,181 @@ export function layoutPinLabels(points, W, H) {
       tx: box.x + box.w / 2, ty: box.y + 11.5,
       pinLeader: d.pinLeader, tagLeader };
   });
+}
+
+// --- 21b: map pills with priority + clustering --------------------------------------
+//
+// Greedy like placeLabels in labels3d.js, but for price pills. Items:
+// [{ id, kind, x, y, w, h, rank }] — rank 0 is the 회사 pill, rank 1 is
+// a picked (A/B/C) pill, rank 2 is the rest. Rank order wins: a pill
+// that would overlap takes the next free slot with a short leader line
+// back to its anchor; a rank-2 pill with no free slot folds into a
+// "+N" cluster pill. Rank 0/1 pills are always placed.
+//
+// Returns [{ id, kind, x, y, w, h, box, leader, count, members }] in
+// placement order — members lists the folded pill ids of a cluster
+// (kind "cluster"), leader is the box landing point ([lx, ly]) when the
+// pill sits off its anchor, else null.
+const PILL_GAP = 12;
+const PILL_PAD = 2;
+
+const clampPill = (box, W, H) => ({
+  ...box,
+  x: Math.min(Math.max(box.x, PILL_PAD), Math.max(PILL_PAD, W - box.w - PILL_PAD)),
+  y: Math.min(Math.max(box.y, PILL_PAD), Math.max(PILL_PAD, H - box.h - PILL_PAD)),
+});
+
+function pillSlots(x, y, w, h) {
+  return [
+    { x: x - w / 2, y: y - 6 - h, w, h },
+    { x: x + PILL_GAP, y: y - h / 2, w, h },
+    { x: x - PILL_GAP - w, y: y - h / 2, w, h },
+    { x: x - w / 2, y: y + PILL_GAP, w, h },
+  ];
+}
+
+function spiralPill(x, y, w, h, taken, W, H) {
+  const angs = [Math.PI / 4, -Math.PI / 4, (3 * Math.PI) / 4,
+    (-3 * Math.PI) / 4, 0, Math.PI / 2, -Math.PI / 2, Math.PI];
+  for (let r = 26; r <= 170; r += 16) {
+    for (const a of angs) {
+      const b = clampPill({ x: x + r * Math.cos(a) - w / 2,
+        y: y + r * Math.sin(a) - h / 2, w, h }, W, H);
+      if (!taken.some((q) => boxHit(b, q))) return b;
+    }
+  }
+  return null;
+}
+
+export function clusterPillWidthPx(count) {
+  return pinPillWidthPx(`+${count}`);
+}
+
+export function layoutMapPills(items, W, H) {
+  const w = Math.max(1, Number(W) || 1);
+  const h = Math.max(1, Number(H) || 1);
+  const list = (items || []).map((p, i) => ({ ...p, _i: i }));
+  list.sort((a, b) => ((a.rank ?? 2) - (b.rank ?? 2)) || (a._i - b._i));
+  const taken = [];
+  const out = [];
+  const spill = [];
+  const placeOne = (p) => {
+    const tw = p.w;
+    const th = p.h;
+    let box = pillSlots(p.x, p.y, tw, th)
+      .map((b) => clampPill(b, w, h))
+      .find((b) => !taken.some((q) => boxHit(b, q))) || null;
+    if (!box) box = spiralPill(p.x, p.y, tw, th, taken, w, h);
+    if (!box) {
+      // Rank 0/1 always win: keep the default slot above the anchor.
+      if ((p.rank ?? 2) <= 1) box = clampPill({ ...pillSlots(p.x, p.y, tw, th)[0] }, w, h);
+      else return null;
+    }
+    taken.push(box);
+    // The default slot sits centred above the anchor with its tail
+    // bridging the gap, so it needs no leader — only a pill moved by
+    // collision avoidance (a later slot or the spiral fallback) does.
+    const home = clampPill({ ...pillSlots(p.x, p.y, tw, th)[0] }, w, h);
+    const moved = box.x !== home.x || box.y !== home.y
+      || box.w !== home.w || box.h !== home.h;
+    return { id: p.id, kind: p.kind || "pill", x: p.x, y: p.y,
+      w: tw, h: th, box, leader: moved ? nearestOnBox(box, p.x, p.y) : null,
+      count: 0, members: null };
+  };
+  for (const p of list) {
+    const laid = placeOne(p);
+    if (laid) out.push(laid);
+    else spill.push(p);
+  }
+  // Fold the spill into "+N" clusters by proximity (48 px components).
+  if (spill.length > 0) {
+    const comp = spill.map((_, i) => i);
+    const find = (i) => (comp[i] === i ? i : (comp[i] = find(comp[i])));
+    for (let i = 0; i < spill.length; i++) {
+      for (let j = i + 1; j < spill.length; j++) {
+        if (Math.hypot(spill[i].x - spill[j].x, spill[i].y - spill[j].y) < 48) {
+          const a = find(i);
+          const b = find(j);
+          if (a !== b) comp[b] = a;
+        }
+      }
+    }
+    const groups = new Map();
+    spill.forEach((p, i) => {
+      const r = find(i);
+      if (!groups.has(r)) groups.set(r, []);
+      groups.get(r).push(p);
+    });
+    let k = 0;
+    for (const members of groups.values()) {
+      k += 1;
+      const cx = members.reduce((s, p) => s + p.x, 0) / members.length;
+      const cy = members.reduce((s, p) => s + p.y, 0) / members.length;
+      const cw = clusterPillWidthPx(members.length);
+      const ch = members[0].h || TAG_H_PX;
+      const cluster = { id: `cluster:${k}`, kind: "cluster",
+        x: cx, y: cy, w: cw, h: ch, rank: 2 };
+      const laid = placeOne(cluster) || { id: cluster.id, kind: "cluster",
+        x: cx, y: cy, w: cw, h: ch,
+        box: clampPill({ x: cx - cw / 2, y: cy - 6 - ch, w: cw, h: ch }, w, h),
+        leader: null, count: 0, members: null };
+      laid.count = members.length;
+      laid.members = members.map((p) => ({ id: p.id, x: p.x, y: p.y }));
+      out.push(laid);
+    }
+  }
+  return out;
+}
+
+// 21b: station-name placement — names only for stations inside the
+// stage bbox, 11 px grey, the same greedy rule: the first free slot
+// wins, otherwise the name is skipped (the dot stays). stations carry
+// stage px ({ name, x, y }); boxes are already-placed pill boxes.
+export function stationNameWidthPx(name) {
+  let tw = 0;
+  for (const ch of String(name || "")) tw += ch.codePointAt(0) > 0xff ? 11 : 6.5;
+  return tw;
+}
+
+export function layoutStationLabels(stations, W, H, boxes = []) {
+  const w = Math.max(1, Number(W) || 1);
+  const h = Math.max(1, Number(H) || 1);
+  const taken = (boxes || []).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h }));
+  const out = [];
+  for (const s of stations || []) {
+    if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) continue;
+    if (s.x < 0 || s.x > w || s.y < 0 || s.y > h) continue;
+    const tw = stationNameWidthPx(s.name);
+    const th = 13;
+    const spots = [
+      { x: s.x + 7, y: s.y - 4, w: tw, h: th },
+      { x: s.x + 7, y: s.y - th - 6, w: tw, h: th },
+      { x: s.x - 7 - tw, y: s.y - 4, w: tw, h: th },
+      { x: s.x - 7 - tw, y: s.y - th - 6, w: tw, h: th },
+      { x: s.x + 7, y: s.y + 8, w: tw, h: th },
+    ].map((b) => clampPill(b, w, h));
+    const box = spots.find((b) => !taken.some((q) => boxHit(b, q))) || null;
+    if (!box) continue;
+    taken.push(box);
+    out.push({ name: s.name, x: box.x, y: box.y + 10 });
+  }
+  return out;
+}
+
+// 21b: at most 4 neighbourhood names for the candidates' 동 — one
+// centroid per dong, first-seen order. pins carry { lon, lat, dong }.
+export function pickDongLabels(pins) {
+  const seen = new Map();
+  for (const p of pins || []) {
+    const dong = (p && p.dong !== undefined && p.dong !== null
+      ? String(p.dong) : "").trim();
+    if (!dong) continue;
+    if (!seen.has(dong)) seen.set(dong, []);
+    seen.get(dong).push(p);
+  }
+  return [...seen.entries()].slice(0, 4).map(([text, pts]) => ({
+    text,
+    lon: pts.reduce((s, p) => s + p.lon, 0) / pts.length,
+    lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+  }));
 }

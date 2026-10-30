@@ -49,7 +49,8 @@ describe("extract_profile", () => {
     // Every filled field carries verbatim evidence from the text.
     for (const [key, f] of Object.entries(r.profile)) {
       if (!f || typeof f !== "object" || f.value === null) continue;
-      if (key === "mustHaves" && Array.isArray(f.value) && f.value.length === 0) continue;
+      if ((key === "mustHaves" || key === "home_kinds")
+        && Array.isArray(f.value) && f.value.length === 0) continue;
       assert.ok(typeof f.evidence === "string" && TEXT.includes(f.evidence),
         `${key} evidence ${JSON.stringify(f.evidence)}`);
     }

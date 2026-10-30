@@ -7,7 +7,8 @@
 // card back; clicking a pin scrolls to its card; clicking a region
 // still filters. SSR renders the container only.
 import { useEffect, useRef, useState } from "react";
-import { fitMapView, layoutPinLabels, haversineKm, shortPinPrice,
+import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
+  stationNameWidthPx, haversineKm, shortPinPrice,
   pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN } from "../chatmap.js";
 
 function ptsAttr(pts, toXY) {
@@ -34,6 +35,7 @@ function pillTextWidthPx(text, px) {
 export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const mountRef = useRef(null);
   const [size, setSize] = useState(null);
+  const [expanded, setExpanded] = useState(null);
   useEffect(() => {
     const el = mountRef.current;
     if (!el || typeof window === "undefined" || !window.ResizeObserver) return undefined;
@@ -69,15 +71,32 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   // literal px values stay readable however the map is zoomed.
   const fs = (n) => n;
   const green = m.green || {};
-  // Pill collision: the pill itself is the layout box; the anchor
-  // (true point) never moves, only the pill shifts.
-  const laid = layoutPinLabels(pins.map((p) => {
+  // 21b: one greedy pill space (like placeLabels): the 회사 pill
+  // (rank 0) and picked A/B pills (rank 1) always win; the rest shift
+  // with a short leader line or fold into a "+N" cluster pill that
+  // expands on click. Anchors never move, only pills do.
+  const pillItems = [];
+  if (m.workPin && Number.isFinite(m.workPin.lon) && Number.isFinite(m.workPin.lat)) {
+    const [x, y] = toXY(m.workPin.lon, m.workPin.lat);
+    const label = `회사 · ${m.workPin.name}`;
+    pillItems.push({ id: "work", kind: "work", x, y,
+      w: pillTextWidthPx(label, 12) + 24, h: 26, rank: 0 });
+  }
+  for (const p of pins) {
     const [x, y] = toXY(p.lon, p.lat);
     const short = shortPinPrice(p.candidate, m.tenure);
-    return { id: p.id, x, y, tag: short, w: pinPillWidthPx(short),
-      h: PILL_H, tail: PILL_TAIL };
-  }), W, H);
+    pillItems.push({ id: p.id, kind: "pill", x, y,
+      w: pinPillWidthPx(short), h: PILL_H, rank: p.picked ? 1 : 2 });
+  }
+  const laid = layoutMapPills(pillItems, W, H);
   const layById = new Map(laid.map((l) => [l.id, l]));
+  // Pills folded into a cluster render through the cluster instead —
+  // the open cluster fans its members out below.
+  const clustered = new Set();
+  for (const l of laid) {
+    if (l.kind !== "cluster" || !l.members) continue;
+    for (const mb of l.members) clustered.add(mb.id);
+  }
   const pinBoxes = laid.map((l) => l.box).filter(Boolean);
   const hitsPinBox = (x, y, pad = 4) => pinBoxes.some((b) =>
     x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad);
@@ -100,16 +119,35 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
     .sort((a, b) => a.d - b.d)
     .slice(0, 14)
     .map((e) => e.s);
-  // Label-worthy stations: each picked home's boarding stop. The
-  // workplace stop keeps its dot but no name label — the 회사 pill
-  // already names it.
-  const labelStops = new Set();
-  const workName = m.workPin && m.workPin.name ? noSpace(m.workPin.name) : null;
-  for (const p of pins) {
-    if (!p.picked) continue;
-    const w = p.candidate && p.candidate.commute && p.candidate.commute.walk;
-    if (w && w.known && w.station) labelStops.add(noSpace(w.station));
+  // 21b: station names for the stations within the view — 11 px
+  // grey, the same greedy rule (first free slot wins, otherwise the
+  // name is skipped). Dots stay for every nearby station.
+  const seenStation = new Set();
+  const stationPts = [];
+  // The 회사 pill already names the workplace station — labelling
+  // its dot too would print the name twice. The dot stays.
+  const workName = noSpace(m.workPin && m.workPin.name);
+  for (const s of nearStations) {
+    if (workName && noSpace(s.name) === workName) continue;
+    const key = noSpace(s.name);
+    if (seenStation.has(key)) continue;
+    seenStation.add(key);
+    const [x, y] = toXY(s.lon, s.lat);
+    stationPts.push({ name: s.name, x, y });
   }
+  const stationLabels = layoutStationLabels(stationPts, W, H, pinBoxes);
+  const stationLabelBoxes = stationLabels.map((l) => ({ x: l.x,
+    y: l.y - 10, w: stationNameWidthPx(l.name), h: 13 }));
+  // 21b: the candidates' 동 or neighbourhood names, at most 4 — quiet
+  // bearings that yield to pills and station names.
+  const dongPlaced = layoutStationLabels(
+    pickDongLabels(pins.map((p) => ({ lon: p.lon, lat: p.lat,
+      dong: p.candidate && p.candidate.dong })))
+      .map((d) => {
+        const [x, y] = toXY(d.lon, d.lat);
+        return { name: d.text, x, y };
+      }),
+    W, H, [...pinBoxes, ...stationLabelBoxes]);
   // The hovered pin renders last so it sits on top.
   const ordered = [...pins].sort((a, b) =>
     ((cardHi === `home:${a.id}`) ? 1 : 0) - ((cardHi === `home:${b.id}`) ? 1 : 0));
@@ -178,22 +216,25 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         ))}
         {nearStations.map((s, i) => {
           const [x, y] = toXY(s.lon, s.lat);
-          const lx = x + fs(7);
-          const ly = y + fs(4);
-          const showLabel = labelStops.has(noSpace(s.name))
-            && noSpace(s.name) !== workName && !hitsPinBox(lx + 24, ly);
           return (
             <g key={`${s.line}:${s.name}:${i}`}>
               <circle cx={x} cy={y} r={fs(3.5)}
                 fill={MAP_COLORS.stationDot} stroke={MAP_COLORS.stationRing} strokeWidth={fs(1.5)}>
                 <title>{s.name}</title>
               </circle>
-              {showLabel && (
-                <text x={lx} y={ly} fontSize={fs(11)} fill={MAP_COLORS.muted}>{s.name}</text>
-              )}
             </g>
           );
         })}
+        {stationLabels.map((l, i) => (
+          <text key={`stn${i}`} x={l.x} y={l.y} fontSize={fs(11)}
+            fill={MAP_COLORS.muted}>{l.name}</text>
+        ))}
+        {dongPlaced.map((l, i) => (
+          <text key={`dong${i}`} data-layer="dong-label"
+            x={l.x + stationNameWidthPx(l.name) / 2} y={l.y} fontSize={fs(12)}
+            fontWeight={500} textAnchor="middle"
+            fill={MAP_COLORS.regionLabel}>{l.name}</text>
+        ))}
         {(m.commutes || []).flatMap((c) => c.legs.flatMap((leg, i) => [
           <polyline key={`${c.pinId}c${i}`} points={ptsAttr(leg.pts, toXY)} fill="none"
             stroke="#ffffff" strokeWidth={fs(7)}
@@ -240,27 +281,34 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             </text>
           );
         })}
-        {m.workPin && (() => {
-          const [x, y] = toXY(m.workPin.lon, m.workPin.lat);
+        {(() => {
+          const l = layById.get("work");
+          if (!m.workPin || !l) return null;
+          const [px, py] = toXY(m.workPin.lon, m.workPin.lat);
+          const { box } = l;
           const label = `회사 · ${m.workPin.name}`;
-          const ww = pillTextWidthPx(label, 12) + 24;
-          const wh = 26;
-          const rx = x - ww / 2;
-          const ry = y - fs(6) - wh;
+          const cx = box.x + box.w / 2;
           return (
             <g key="work">
+              {l.leader && (
+                <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
+                  stroke={MAP_COLORS.workPin} strokeWidth={fs(1.5)} />
+              )}
               <g filter="url(#chat-pill-shadow)">
-                <rect x={rx} y={ry} width={ww} height={wh} rx={wh / 2}
+                <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={box.h / 2}
                   fill={MAP_COLORS.workPin} />
-                <text x={x} y={ry + fs(17)} fontSize={fs(12)} fontWeight={600}
+                <text x={cx} y={box.y + fs(17)} fontSize={fs(12)} fontWeight={600}
                   textAnchor="middle" fill="#ffffff">{label}</text>
               </g>
-              <polygon points={`${x - fs(5)},${y - fs(6)} ${x + fs(5)},${y - fs(6)} ${x},${y}`}
-                fill={MAP_COLORS.workPin} />
+              {!l.leader && (
+                <polygon points={`${cx - fs(5)},${box.y + box.h} ${cx + fs(5)},${box.y + box.h} ${px},${py}`}
+                  fill={MAP_COLORS.workPin} />
+              )}
             </g>
           );
         })()}
         {ordered.map((p) => {
+          if (clustered.has(p.id)) return null;
           const l = layById.get(p.id);
           const [px, py] = toXY(p.lon, p.lat);
           const short = shortPinPrice(p.candidate, m.tenure);
@@ -279,7 +327,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           const tailX = box.x + box.w / 2;
           const tailTipX = tailX;
           const tailTipY = box.y + PILL_H + PILL_TAIL;
-          const needLeader = Math.hypot(tailTipX - px, tailTipY - py) > 8;
+          const needLeader = !!(l && l.leader);
           const zoom = hi
             ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
           return (
@@ -288,8 +336,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
               onMouseLeave={() => onPinHover && onPinHover(null)}
               onClick={() => onPinClick && onPinClick(p.id)}
               style={{ cursor: onPinClick ? "pointer" : "default" }}>
-              {needLeader && (
-                <line x1={tailTipX} y1={tailTipY} x2={px} y2={py}
+              {needLeader && l.leader && (
+                <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
                   stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
               )}
               <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />
@@ -309,6 +357,59 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             </g>
           );
         })}
+        {laid.filter((l) => l.kind === "cluster").map((l) => {
+          const open = expanded === l.id;
+          const cx = l.box.x + l.box.w / 2;
+          return (
+            <g key={l.id} onClick={() => setExpanded(open ? null : l.id)}
+              style={{ cursor: "pointer" }}>
+              {l.leader && (
+                <line x1={l.leader[0]} y1={l.leader[1]} x2={l.x} y2={l.y}
+                  stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
+              )}
+              <g filter="url(#chat-pill-shadow)">
+                <rect x={l.box.x} y={l.box.y} width={l.box.w} height={fs(l.box.h)} rx={fs(999)}
+                  fill="#ffffff" stroke={MAP_COLORS.pinHi} strokeWidth={fs(1.5)} />
+                <text x={cx} y={l.box.y + fs(16)} fontSize={fs(12)} fontWeight={700}
+                  textAnchor="middle" fill={MAP_COLORS.pinHi}>{`+${l.count}`}</text>
+              </g>
+              <title>{`가까운 후보 ${l.count}곳 묶음 — 눌러서 펼치기`}</title>
+            </g>
+          );
+        })}
+        {((laid.find((l) => l.kind === "cluster" && l.id === expanded) || {}).members || [])
+          .map((mb, i, arr) => {
+            const pin = pins.find((p) => p.id === mb.id);
+            if (!pin) return null;
+            const cluster = laid.find((l) => l.id === expanded);
+            const short = shortPinPrice(pin.candidate, m.tenure);
+            const pw = pinPillWidthPx(short);
+            const R = Math.max(48, 18 * arr.length);
+            const ang = (-Math.PI / 2) + ((i + 0.5) * 2 * Math.PI) / arr.length;
+            const bx = cluster.box.x + cluster.box.w / 2 + R * Math.cos(ang) - pw / 2;
+            const by = cluster.box.y + cluster.box.h / 2 + R * Math.sin(ang) - PILL_H / 2;
+            const [px, py] = toXY(pin.lon, pin.lat);
+            return (
+              <g key={`open-${mb.id}`}
+                onMouseEnter={() => onPinHover && onPinHover(`home:${pin.id}`)}
+                onMouseLeave={() => onPinHover && onPinHover(null)}
+                onClick={() => onPinClick && onPinClick(pin.id)}
+                style={{ cursor: onPinClick ? "pointer" : "default" }}>
+                <line x1={bx + pw / 2} y1={by + PILL_H} x2={px} y2={py}
+                  stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
+                <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />
+                <g filter="url(#chat-pill-shadow)">
+                  <rect x={bx} y={by} width={pw} height={fs(PILL_H)} rx={fs(999)}
+                    fill={MAP_COLORS.pinFill} stroke="#e2ddd3" strokeWidth={fs(1)} />
+                  <circle cx={bx + fs(16)} cy={by + PILL_H / 2} r={fs(8)} fill={MAP_COLORS.pinText} />
+                  <text x={bx + fs(16)} y={by + PILL_H / 2 + fs(3.5)} fontSize={fs(10)}
+                    textAnchor="middle" fill="#ffffff">{pin.n}</text>
+                  <text x={bx + fs(30)} y={by + fs(16)} fontSize={fs(12)} fontWeight={600}
+                    fill={MAP_COLORS.pinText}>{short}</text>
+                </g>
+              </g>
+            );
+          })}
       </svg>
       <div style={{ position: "absolute", top: 12, right: 12, background: "#ffffff",
         borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a" }}>
