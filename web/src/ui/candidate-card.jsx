@@ -101,7 +101,9 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
               <img src={hero.thumb_url} alt={hero.title || "단지 사진"} loading="lazy" />
             </a>
           ) : (
-            <SceneThumb boxId={candidate.scene} />
+            <SceneThumb boxId={candidate.scene}
+              home={{ lon: candidate.lon, lat: candidate.lat }}
+              fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
           )}
           {hero && <span className="ui-cand-label">{hero.label}</span>}
         </div>

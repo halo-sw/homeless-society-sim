@@ -108,14 +108,19 @@ function defaultThumbDeps(boxId) {
   };
 }
 
-export function SceneThumb({ boxId, deps = null }) {
+export function SceneThumb({ boxId, deps = null, home = null, fallback = null }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
+  // 18d: the thumbnail frames the home's own building (home lon/lat);
+  // when the scene has no building for it, the caller-provided
+  // fallback (usually the MiniMap) shows instead of an empty frame.
+  const homeKey = home && Number.isFinite(home.lon) && Number.isFinite(home.lat)
+    ? `${home.lon},${home.lat}` : "";
   useEffect(() => {
     let cancelled = false;
     setUrl(null);
     setFailed(false);
-    sceneThumbnail(boxId, deps || defaultThumbDeps(boxId))
+    sceneThumbnail(boxId, deps || defaultThumbDeps(boxId), home)
       .then((u) => {
         if (cancelled) return;
         if (u) setUrl(u);
@@ -123,8 +128,8 @@ export function SceneThumb({ boxId, deps = null }) {
       })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
-  }, [boxId]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (failed) return null;
+  }, [boxId, homeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (failed) return fallback;
   if (!url) {
     return (
       <div className="ui-thumb-loading" role="img" aria-label="3D 미리보기 불러오는 중">
@@ -252,7 +257,10 @@ export function PreviewCard({ candidate, tenure, onPreview3D, onJeonse, onCompar
     <Card padding={3}>
       <VStack gap={2}>
         <PhotoStrip photos={c.photos} />
-        {c.scene ? <SceneThumb boxId={c.scene} /> : <MiniMap lon={c.lon} lat={c.lat} name={c.name} />}
+        {c.scene ? (
+          <SceneThumb boxId={c.scene} home={{ lon: c.lon, lat: c.lat }}
+            fallback={<MiniMap lon={c.lon} lat={c.lat} name={c.name} />} />
+        ) : <MiniMap lon={c.lon} lat={c.lat} name={c.name} />}
         <RoadviewSlot />
         <AerialSlot />
         <VStack gap={0}>
