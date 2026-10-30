@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-1421_JS_·_244_Python-2f5d50?style=flat-square" alt="JS 테스트 1421개, Python 테스트 244개">
+  <img src="https://img.shields.io/badge/tests-1743_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 1421개, Python 테스트 244개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
-  <a href="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/homeless-society-sim/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
 </p>
 
 <p align="center">
-  <a href="https://halo-sw.github.io/homeless-society-sim/"><img src="https://img.shields.io/badge/바로_써_보기-live-2f5d50?style=for-the-badge" alt="바로 써 보기"></a>
+  <a href="https://halo-sw.github.io/ithaca/"><img src="https://img.shields.io/badge/바로_써_보기-live-2f5d50?style=for-the-badge" alt="바로 써 보기"></a>
   &nbsp;
   <a href="#빠른-시작"><img src="https://img.shields.io/badge/직접_실행-빠른_시작-2f5d50?style=for-the-badge" alt="직접 실행하기"></a>
   &nbsp;
@@ -24,9 +24,10 @@
   <a href="README.md"><img src="https://img.shields.io/badge/English-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="English README"></a>
 </p>
 
-<p align="center"><sub>공개 사이트: <a href="https://halo-sw.github.io/homeless-society-sim/">https://halo-sw.github.io/homeless-society-sim/</a> — 정적 빌드라 키 보호를 위해 Muse 대화와 VWorld 항공사진은 꺼져 있어요. 판단은 기록된 Muse 판단이나 규칙 판단으로 돌고, 그렇게 표시돼요.</sub></p>
+<p align="center"><sub>공개 사이트: <a href="https://halo-sw.github.io/ithaca/">https://halo-sw.github.io/ithaca/</a> — Muse와 VWorld 지도는 키를 서버에만 두는 작은 중계 서버를 거쳐요. 중계 서버를 못 쓰면 대화는 규칙 모드로 답하고 그렇게 표시해요.</sub></p>
 
 <p align="center">
+  <a href="#2분-안에-심사하기">2분 심사</a> ·
   <a href="#이렇게-작동해요">작동 방식</a> ·
   <a href="#갤러리">갤러리</a> ·
   <a href="#하는-일">하는 일</a> ·
@@ -37,6 +38,21 @@
   <a href="#한계">한계</a> ·
   <a href="#앞으로">앞으로</a>
 </p>
+
+## 2분 안에 심사하기
+
+1. **공개 사이트 열기:** <https://halo-sw.github.io/ithaca/>. 브라우저 언어가 한국어가 아니면 영어로 시작해요(`?lang=ko`로 한국어).
+2. **Meta 본사 예시 눌러 보기.** **Meta HQ, Menlo Park (US)** 를 누르면 1 Hacker Way 근처 실제 아파트 6곳이 지도에 떠요. 집마다 실시간 항공사진, Zillow ZIP 월세 추정, 자전거·걷기 분이 붙어요. *"1번이랑 2번 찜해 줘"* → *"두 집에서 살아 봐 줘"* 라고 하면 Muse가 두 집에서 30일씩 살고 일기를 써요. 일기 문장은 보여 주기 전에 하나하나 기록과 대조해요.
+3. **키 없이 돼요.** 사이트는 중계 서버로 Muse를 불러서 키를 넣을 필요가 없어요. 중계 서버가 멈추거나 크레딧이 끝나면 대화는 규칙 모드로 바뀌고 그렇게 표시해요. 숫자는 그때도 결정적 엔진이 계산하고, 함께 든 시나리오는 기록된 Muse 판단으로 다시 돌릴 수 있어요. 키 없이 로컬에서도 돌아가요([빠른 시작](#빠른-시작)).
+4. **증거 확인.**
+
+| 주장 | 숫자 | 자세히 |
+|---|---|---|
+| 숫자는 모델이 만들지 않아요 | 모든 분·원은 결정적 엔진이 계산하고, 도구 결과에 없는 숫자를 쓴 답은 반려돼요 | [검증](#검증) |
+| 모델이 바뀌어도 판단이 같아요 | Spark 1.3과 Spark Open이 같은 판단 지점 **139곳 중 120곳(86 %)** 에서 같은 선택 | [Meta 모델](#meta-모델) |
+| 가드가 실제 실행에서 버텨요 | 모델마다 판단 **154개 모두** 답함, 가드 대체 **0건** | [Meta 모델](#meta-모델) |
+| 일기 문장을 검사해요 | 문장마다 실행 기록의 사실을 인용해야 하고, 기록에 없는 숫자는 돌려보내 다시 쓰게 해요. 2026-10-31 실제 실행에서 일기 8문장을 모두 기록과 대조 | [검증](#검증) |
+| 테스트 | JavaScript **1,743**개, Python **266**개, 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 <p align="center">
   <img src="briefs/img/19-chat.jpg" width="760" alt="대화 화면. 왼쪽은 대화와 후보 집 목록이에요. 줄마다 지도 번호, 이름, 실거래 전세 가격, 면적·연식, 예상 출퇴근 시간이 있고, 두 집이 A·B로 담겨 있어요. 오른쪽은 도로와 노선 색 지하철이 그려진 밝은 지도에 회사 · 판교 표시, 후보마다 가격 말풍선(A·B는 파란색), 출퇴근 분이 있어요. 지도 아래 줄에 담은 두 집과 버튼 하나, 이 집들로 30일 살아 보기가 있어요.">
@@ -50,7 +66,7 @@
 
 그래서 AI 가족이 먼저 들어가 살아요. 내 상황을 말하고, 실거래가에서 후보 집을 고르면, 가족이 실제 동네를 옮긴 3D 모형 위에서 A집과 B집에 각각 30일을 나란히 살아요. 일상의 선택은 Muse Spark가 하고 이유를 남겨요. 시간과 돈은 결정적 엔진이 1분, 1원까지 세요. 그다음 고객이 정한 우선순위로만 두 집을 비교하고, 모든 숫자에 출처나 "가정값" 표시를 붙여요. 앱은 보여 주고 설명할 뿐이고, 결정은 고객이 해요.
 
-> 상태(2026-10-30): 개발 중이에요. 해커톤 기간은 2026-10-27 → 11-05이고, 첫 커밋은 2026-10-28이에요. 해커톤 이전에 만든 코드는 없어요. *준비 중*이라고 적힌 항목은 아직 만들지 않았어요.
+> 상태(2026-10-31): 개발 중이에요. 해커톤 기간은 2026-10-27 → 11-05이고, 첫 커밋은 2026-10-28이에요. 해커톤 이전에 만든 코드는 없어요. *준비 중*이라고 적힌 항목은 아직 만들지 않았어요.
 
 ## 이렇게 작동해요
 
@@ -127,7 +143,7 @@
 
 ## Muse가 만들었어요
 
-이 레포의 제품 코드, 테스트, 파이프라인 스크립트는 한 줄도 빠짐없이 **Muse**(`muse-spark-1.3`, Muse Code 에이전트 모드)가 작성했어요. 사람과 조율 담당 어시스턴트는 단계별 지시서 작성, 데이터 내려받기, 테스트 실행, 실제 GPU 캡처, git 작업을 했어요. 단계마다 지시서와 결과 기록이 [`briefs/`](briefs/)에 있고, 규칙은 [`AGENTS.md`](AGENTS.md)에 있어요.
+이 레포의 제품 코드, 테스트, 파이프라인 스크립트는 한 줄도 빠짐없이 **Muse**(`muse-spark-1.3`, Muse Code 에이전트 모드)가 작성했어요. 사람과 조율 담당 어시스턴트는 단계별 지시서 작성, 데이터 내려받기, 테스트 실행, 실제 GPU 캡처, git 작업을 했어요. 단계마다 지시서와 결과 기록이 [`briefs/`](briefs/)에 있고, 규칙은 [`AGENTS.md`](AGENTS.md)에 있어요. Muse가 쓰지 않은 파일도 밝혀 둬요. 영어 문구표 `web/src/i18n/en.js`·`en-table.js`·`en-words.js`는 조율 담당 어시스턴트가 쓴 번역 내용이에요(번역 엔진 `translate.js`는 Muse 작성). 검증 정답 `scenarios/verify/ground_truth.json`과 기준 채점기 `tools/verify_checklist.py`는 팀이 Muse 채점기를 확인하려고 직접 만들었어요.
 
 | 층 | 위치 | 내용 |
 |---|---|---|

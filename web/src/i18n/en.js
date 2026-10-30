@@ -101,6 +101,7 @@ const seedPhrases = {
   "본 매물 붙여 넣기": "Paste a listing you saw",
   "예시로 써 보기": "Try an example",
   "연결됨 · Muse Spark 1.3": "Connected · Muse Spark 1.3",
+  "연결됨": "Connected",
   "규칙 모드": "Rule mode",
   "← 대화로": "← Back to chat",
   "Muse가 일하는 중…": "Muse is working…",
