@@ -32,6 +32,9 @@ export const EXAMPLE_PROMPTS = [
   { id: "dual-income-child",
     title: "맞벌이 + 초등학생 자녀",
     prompt: "맞벌이에 초등학생 아이 1명, 잠실 출근, 전세 6억 이하, 초등학교 도보 10분" },
+  { id: "us-meta",
+    title: "Meta HQ, Menlo Park (US)",
+    prompt: "I work at Meta HQ in Menlo Park, renting alone, up to $5,000 a month" },
 ];
 
 export const LANDING_STEPS = [
@@ -53,6 +56,7 @@ const SOURCES = [
   "붐비는 정도: 서울교통공사 지하철혼잡도정보 (실측 표시가 없을 땐 가정값)",
   "주변 사진: Wikimedia Commons (자유 라이선스, 매물 사진 아님)",
   "치안·학교: 경찰청·교육부 공식 통계만 (출처·기간·단위와 함께 표시)",
+  "미국 월세: Zillow Observed Rent Index (ZIP 단위 추정, 매물 가격 아님) · 지도·항공사진: USGS The National Map",
 ];
 
 function SourcesPopover() {
@@ -158,7 +162,7 @@ export function Landing() {
                     </button>
                   </div>
                   <div className="ui-landing-foot">
-                    <span>{COVERAGE_LINE}</span>
+                    <span>{COVERAGE_LINE}<br />미국 1곳: Menlo Park · Meta HQ (자전거·도보, Zillow 월세 추정)</span>
                     <span aria-hidden="true"> · </span>
                     <SourcesPopover />
                   </div>

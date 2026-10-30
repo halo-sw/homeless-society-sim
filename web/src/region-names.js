@@ -16,6 +16,9 @@ export const REGION_NAME_ALIASES = {
   pangyo: ["판교"],
   jeongja: ["정자"],
   migeum: ["미금"],
+  "us-menlo": ["menlo park", "멘로파크", "멘로 파크", "east palo alto",
+    "이스트 팔로알토", "palo alto", "팔로알토", "belle haven",
+    "meta", "메타", "facebook", "hacker way"],
 };
 
 const PLACE_TO_REGION = { pangyo: "bundang", jeongja: "bundang", migeum: "bundang" };
@@ -25,8 +28,13 @@ export function regionsForNames(names) {
   for (const raw of names || []) {
     const word = String(raw || "").trim();
     if (!word) continue;
+    // Latin words match case-insensitively ("Menlo Park" hits
+    // "menlo park"); Korean words compare exactly as before.
+    const want = word.toLowerCase();
     for (const [id, aliases] of Object.entries(REGION_NAME_ALIASES)) {
-      if (id === word || aliases.includes(word)) {
+      const hit = id.toLowerCase() === want
+        || (aliases || []).some((a) => String(a).toLowerCase() === want);
+      if (hit) {
         const region = PLACE_TO_REGION[id] || id;
         if (!out.includes(region)) out.push(region);
       }

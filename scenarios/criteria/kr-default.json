@@ -134,6 +134,30 @@
       "editable": true
     },
     {
+      "id": "C-bike-speed",
+      "group": "move",
+      "title": "자전거 속도",
+      "rule": "자전거 출퇴근은 자전거 길 그래프 거리를 이 속도로 나눠 시간을 잡는다 (신호·경사 미반영).",
+      "values": {
+        "kmh": { "value": 15, "unit": "km/h", "overridable": true }
+      },
+      "source": "가정값",
+      "affects": ["commute", "bike"],
+      "editable": true
+    },
+    {
+      "id": "C-bike-commute-max",
+      "group": "move",
+      "title": "자전거 통근 상한",
+      "rule": "걸어서 도보 통근 상한을 넘으면, 이 상한 이내일 때 자전거로 출근한다.",
+      "values": {
+        "max_min": { "value": 30, "unit": "분", "overridable": true }
+      },
+      "source": "가정값",
+      "affects": ["commute", "bike"],
+      "editable": true
+    },
+    {
       "id": "C-lunch",
       "group": "daily",
       "title": "점심",

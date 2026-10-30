@@ -10,8 +10,28 @@
 import { TILE_PX, MAX_MOSAIC_PX, tilesForBBox, uvForLonLat, pickZoom } from "./tiles.js";
 import { haversineM, xyToLonLat } from "../frame.js";
 import { LIVE_API, apiUrl } from "../paths.js";
+import { isUsLonLat } from "../basemap.js";
 
 export const AERIAL_CREDIT = "항공사진 © 국토교통부 공간정보 오픈플랫폼(VWorld)";
+export const USGS_CREDIT = "Imagery: USGS The National Map";
+
+// 26e: USGS The National Map tiles are addressed z/y/x and are
+// public domain; browsers fetch them directly, no relay, no key.
+export function usgsTileUrl(z, y, x) {
+  return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`;
+}
+
+// US when the area says so, else when its bbox centre is in US_BBOX.
+export function isUsArea(area) {
+  if (!area) return false;
+  if (area.country === "US") return true;
+  if (!Array.isArray(area.bbox) || area.bbox.length < 4) return false;
+  return isUsLonLat((area.bbox[0] + area.bbox[2]) / 2, (area.bbox[1] + area.bbox[3]) / 2);
+}
+
+export function aerialCreditFor(area) {
+  return isUsArea(area) ? USGS_CREDIT : AERIAL_CREDIT;
+}
 
 function hexCss(hex) {
   return `#${Number(hex).toString(16).padStart(6, "0")}`;
@@ -59,24 +79,31 @@ function pushMosaicUVs(geo, origin, range, zoom, onlyUpward = false) {
 export async function drapeAerial({ THREE, renderer, scene, area, origin,
   terrainMesh = null, groundMesh = null, roadMeshes = [], roofMesh = null,
   look = {}, style = "photo" }) {
-  // 23b: without a live API (no dev server, no relay) there is no
-  // /api/aerial — the ground stays painted.
-  if (!LIVE_API) return { ok: false, reason: "static" };
-  // 1. Key check: without a key the painted ground stays as it is.
-  let status = null;
-  try {
-    const r = await fetch(apiUrl("/api/aerial/status"));
-    if (!r.ok) return { ok: false, reason: "status" };
-    status = await r.json();
-  } catch {
-    return { ok: false, reason: "status" };
+  // 26e: US areas drape USGS tiles fetched directly (no relay, no
+  // key), so they work on a static build too. Korean areas keep the
+  // relay path below.
+  const usArea = isUsArea(area);
+  if (!usArea) {
+    // 23b: without a live API (no dev server, no relay) there is no
+    // /api/aerial — the ground stays painted.
+    if (!LIVE_API) return { ok: false, reason: "static" };
+    // 1. Key check: without a key the painted ground stays as it is.
+    let status = null;
+    try {
+      const r = await fetch(apiUrl("/api/aerial/status"));
+      if (!r.ok) return { ok: false, reason: "status" };
+      status = await r.json();
+    } catch {
+      return { ok: false, reason: "status" };
+    }
+    if (!status || status.hasKey !== true) return { ok: false, reason: "no-key" };
   }
-  if (!status || status.hasKey !== true) return { ok: false, reason: "no-key" };
 
   // 2. Zoom + tile range, capped at 4096 px per side.
   const midLat = (area.bbox[1] + area.bbox[3]) / 2;
   const widthM = haversineM(area.bbox[0], midLat, area.bbox[2], midLat);
   let zoom = pickZoom(widthM);
+  if (usArea) zoom = Math.min(zoom, 18);
   let range = tilesForBBox(area.bbox, zoom);
   while (zoom > 6
     && ((range.x1 - range.x0 + 1) * TILE_PX > MAX_MOSAIC_PX
@@ -103,7 +130,9 @@ export async function drapeAerial({ THREE, renderer, scene, area, origin,
     while (jobs.length > 0) {
       const [tx, ty] = jobs.pop();
       try {
-        const r = await fetch(apiUrl(`/api/aerial/${zoom}/${ty}/${tx}.jpeg`));
+        const url = usArea ? usgsTileUrl(zoom, ty, tx)
+          : apiUrl(`/api/aerial/${zoom}/${ty}/${tx}.jpeg`);
+        const r = await fetch(url);
         if (!r.ok) continue;
         const img = await loadBitmap(await r.blob());
         ctx.drawImage(img, (tx - range.x0) * TILE_PX, (ty - range.y0) * TILE_PX);

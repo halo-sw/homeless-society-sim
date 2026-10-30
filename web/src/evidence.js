@@ -103,15 +103,20 @@ function rideParts(away) {
 // One direction's door-to-door commute for this agent, day and am|pm
 // half: the walk trips plus the ride away(s). The total is defined as
 // the sum of the rounded parts, so the parts always add up.
-function commuteLines(run, agentKey, current, currentStart) {
+// 26i: a 26d bike trip reads 자전거 and the line is 가정값 (assumed
+// 15 km/h, C-bike-speed) — trips without a mode key stay 걷기/측정.
+export function commuteLines(run, agentKey, current, currentStart) {
   const day = current.day;
   const half = halfOf(currentStart);
   const trips = ((run && run.trips) || []).filter((t) => t && t.agent === agentKey
     && t.day === day && t.purpose === "commute" && halfOf(startOf(t)) === half);
   const rides = ((run && run.aways) || []).filter((a) => a && a.agent === agentKey
     && a.day === day && a.kind === "ride" && halfOf(awayStartOf(a)) === half);
-  const walk = Math.round(trips.reduce((n, t) =>
+  const sumMin = (list) => Math.round(list.reduce((n, t) =>
     n + (Number.isFinite(t.minutes) ? t.minutes : 0), 0));
+  const bikeTrips = trips.filter((t) => t && t.mode === "bike");
+  const walk = sumMin(trips.filter((t) => !t || t.mode !== "bike"));
+  const bike = sumMin(bikeTrips);
   let ride = 0;
   let wait = 0;
   const assumed = [];
@@ -123,12 +128,16 @@ function commuteLines(run, agentKey, current, currentStart) {
   }
   ride = Math.round(ride);
   wait = Math.round(wait);
-  const total = walk + ride + wait;
+  const total = walk + bike + ride + wait;
   const dir = half === "am" ? "출근" : "퇴근";
-  const parts = [`걷기 ${walk}분`];
+  const parts = bikeTrips.length === 0 ? [`걷기 ${walk}분`] : [
+    ...(walk > 0 ? [`걷기 ${walk}분`] : []),
+    `자전거 ${bike}분`,
+  ];
   if (ride > 0) parts.push(`지하철 ${ride}분`);
   if (wait > 0) parts.push(`기다림 ${wait}분`);
-  const lines = [{ text: `오늘 ${dir} ${total}분 = ${parts.join(" + ")}`, tag: "측정" }];
+  const tag = bikeTrips.length === 0 ? "측정" : "가정값";
+  const lines = [{ text: `오늘 ${dir} ${total}분 = ${parts.join(" + ")}`, tag }];
   const avg = commuteOneWayMinutes(run, agentKey);
   if (Number.isFinite(avg)) {
     const days = (run && run.meta && run.meta.days) || 30;
@@ -152,8 +161,9 @@ function errandLines(run, agentKey, trip) {
   const to = trip.to || {};
   const label = to.label || to.id || "알 수 없음";
   const walkMin = Math.round(Number.isFinite(trip.minutes) ? trip.minutes : 0);
+  const bike = trip && trip.mode === "bike";
   return [
     { text: `${days}일 중 ${idx + 1}번째 ${word} · 이 집에서 모두 ${mine.length}번`, tag: "측정" },
-    { text: `목적지 ${label} · 걸어서 ${walkMin}분`, tag: "측정" },
+    { text: `목적지 ${label} · ${bike ? "자전거로" : "걸어서"} ${walkMin}분`, tag: bike ? "가정값" : "측정" },
   ];
 }

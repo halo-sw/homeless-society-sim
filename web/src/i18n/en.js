@@ -72,6 +72,20 @@ const seedPhrases = {
   "범례": "Legend",
   "동네 전체": "Whole area",
   "따라가기": "Follow",
+  // US area (26c-26e)
+  "미국 자료는 월세만 있어요": "US data has rent only",
+  "한 달 월세는 얼마까지 생각하세요? (예: $4,000 이하)": "How much rent can you pay per month? (e.g. up to $4,000)",
+  "한 달 월세 상한(USD)": "Monthly rent limit (USD)",
+  "달러(USD) 기준": "in US dollars",
+  "가격 미정": "Price unknown",
+  "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.": "US data has no jeonse, public rental or support programme information.",
+  "Meta HQ까지 가까운 순": "Closest to Meta HQ",
+  "월세 낮은 순": "Lowest rent",
+  "미국 1곳: Menlo Park · Meta HQ (자전거·도보, Zillow 월세 추정)": "US, 1 area: Menlo Park · Meta HQ (bike/walk, Zillow rent estimate)",
+  "미국 월세: Zillow Observed Rent Index (ZIP 단위 추정, 매물 가격 아님) · 지도 © OpenStreetMap © CARTO · 항공사진 USGS": "US rent: Zillow Observed Rent Index (ZIP-level estimate, not a listing price) · Map © OpenStreetMap © CARTO · Imagery USGS",
+  "월세: Zillow ZORI (ZIP 추정) · 지도 © OpenStreetMap © CARTO · 항공사진 USGS": "Rent: Zillow ZORI (ZIP estimate) · Map © OpenStreetMap © CARTO · Imagery USGS",
+  "자전거 속도": "Bike speed",
+  "자전거 통근 상한": "Bike commute limit",
 };
 
 const seedPatterns = [
@@ -84,7 +98,28 @@ export const phrases = { ...tablePhrases, ...seedPhrases };
 
 // Specific patterns first; the generic splits go last so they never
 // pre-empt a longer pattern that contains the same separator.
-export const patterns = [
+// US area (26c-26e): dollar amounts and bike/walk lines.
+const usPatterns = [
+  // Day strip date: the weekday is fixed text, so 월 never reads as "monthly".
+  { ko: "{0}월 {1}일(월) {2} · {3}일차/{4}", en: "{0}/{1} (Mon) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(화) {2} · {3}일차/{4}", en: "{0}/{1} (Tue) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(수) {2} · {3}일차/{4}", en: "{0}/{1} (Wed) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(목) {2} · {3}일차/{4}", en: "{0}/{1} (Thu) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(금) {2} · {3}일차/{4}", en: "{0}/{1} (Fri) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(토) {2} · {3}일차/{4}", en: "{0}/{1} (Sat) {2} · Day {3}/{4}" },
+  { ko: "{0}월 {1}일(일) {2} · {3}일차/{4}", en: "{0}/{1} (Sun) {2} · Day {3}/{4}" },
+
+  { ko: "{0}까지 자전거 {1}분 · 걷기 {2}분 · 추정 (속도 가정)", en: "{0}: bike {1} min · walk {2} min · estimate (assumed speed)" },
+  { ko: "{0}까지 걷기 {1}분 · 자전거 {2}분 · 추정 (속도 가정)", en: "{0}: walk {1} min · bike {2} min · estimate (assumed speed)" },
+  { ko: "월세 월 ${0} · ZIP {1} 추정 (Zillow)", en: "Rent ${0}/mo · ZIP {1} estimate (Zillow)" },
+  { ko: "ZIP {0} 대표 월세 (Zillow ZORI, {1})", en: "Typical rent for ZIP {0} (Zillow ZORI, {1})" },
+  { ko: "월세 월 ${0} 이하", en: "rent up to ${0}/mo" },
+  { ko: "월세 ${0} 이하", en: "rent up to ${0}/mo" },
+  { ko: "월 ${0}", en: "${0}/mo" },
+  { ko: "직장: {0}", en: "Workplace: {0}" },
+  { ko: "{0}까지 자전거 {1}분({2}분 이내, 속도 가정 {3}km/h)", en: "bike to {0} {1} min (within {2} min, assumed {3} km/h)" },
+];
+export const patterns = [ ...usPatterns,
   ...seedPatterns,
   ...tablePatterns,
   { ko: "{0} · {1}", en: "{0} · {1}" },

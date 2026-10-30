@@ -59,6 +59,7 @@ import { defaultOverrides, setOverride, resetOverride,
 import { CompareCard, CompareTabBody } from "./app.jsx";
 import { HowCalculated, tenureOf } from "./money.jsx";
 import { fmtMinutes, fmtWon, fmtWonShort } from "../money/format.js";
+import { fmtMoney, currencyOf } from "../money/currency.js";
 import { monthlyHousingOf } from "../money/monthly.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
@@ -68,7 +69,8 @@ import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
-import { HOME_SORTS, HOME_SORT_KO, applyKindPreference } from "../homes.js";
+import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../homes.js";
+import { chipSourceIds } from "../sources.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
 import {
@@ -80,7 +82,7 @@ import {
   homeForScenario, complexNameForCandidate, stationNames,
   runGate, profileHomeKinds,
 } from "../chat/engine.js";
-import { buildCustomMoneyDoc } from "../chat/custom-money.js";
+import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
@@ -291,6 +293,9 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
         {candidates.length === 0 && (
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
         )}
+        {candidates.length === 0 && data.emptyHint && (
+          <Text type="supporting">{data.emptyHint}</Text>
+        )}
         <div className="ui-cand-list">
           {withPhotos.map(({ candidate: c, photos }, i) => {
             const pickIdx = (picks || []).indexOf(c.id);
@@ -415,6 +420,16 @@ export function ResultSummary({ data }) {
           if (mh.missing) {
             return <span key={`money-${l}`} className="ui-result-missing">계산 전</span>;
           }
+          // 26d: a USD doc shows the ZIP-estimate rent only — no
+          // Korean-only rows (실수령, 대출, 전세 점검).
+          if (data.moneyDoc && data.moneyDoc.currency === "USD") {
+            const text = `${fmtMoney(mh.monthly, "USD", { monthly: true })} (ZIP 추정)`;
+            return (
+              <span key={`money-${l}`} className="ui-result-value" title={text}>
+                {text}
+              </span>
+            );
+          }
           return (
             <span key={`money-${l}`} className="ui-result-value"
               title={fmtWon(mh.monthly, { monthly: true })}>
@@ -529,7 +544,9 @@ export function SimulationCard({ data, example, onRetry }) {
   const days = (data.compare && data.compare.days) || 30;
   // 19d: one 계산 disclosure for the card (the two HowCalculated
   // blocks, each headed by its letter disc).
-  const calcs = (data.moneyDoc ? labels : []).map((l) => ({
+  // 26d: a USD doc skips the Korean-only 어떻게 계산했나요 block
+  // (대출 rows) — the result row already shows the ZIP-estimate rent.
+  const calcs = (data.moneyDoc && data.moneyDoc.currency !== "USD" ? labels : []).map((l) => ({
     label: l, mh: monthlyHousingOf(data.moneyDoc, l, days),
   })).filter(({ mh }) => !mh.missing);
   const texts = data.momentTexts || [];
@@ -709,6 +726,14 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
   const { data } = msg;
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
+  // 26k: USD candidates or runs cite the US sources instead of the
+  // Korean tool citations (null = unchanged).
+  const cands = msg.kind === "candidates" && data && data.result
+    ? data.result.candidates : null;
+  const runCur = msg.kind === "simulation" && data && data.moneyDoc
+    ? data.moneyDoc.currency : null;
+  const chipIds = (msg.kind === "candidates" || msg.kind === "simulation")
+    ? chipSourceIds({ candidates: cands, currency: runCur }) : null;
   return (
     <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
       {msg.recorded && (
@@ -749,12 +774,22 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         )}
       </ChatMessageBubble>
       <ToolRows rows={rows} />
-      <CiteRows tools={tools} />
+      <CiteRows tools={tools} sourceIds={chipIds} />
     </ChatMessage>
   );
 }
 
 const CHAT_CHIPS = ["매물 글 붙여 넣기", "공공임대 찾기", "도움 제도 보여줘"];
+
+// 26e: USD customers get sort chips instead of the Korean-only ones.
+// They map to find_homes sorts (HOME_SORTS): commute / monthly.
+const CHAT_CHIPS_US = ["Meta HQ까지 가까운 순", "월세 낮은 순"];
+
+export function chatChipsFor(currency) {
+  return currency === "USD" ? CHAT_CHIPS_US : CHAT_CHIPS;
+}
+
+const US_NO_JEONSE_SUPPORT = "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.";
 
 const GREETING = [
   "안녕하세요! 집 찾기를 도와드려요.",
@@ -804,10 +839,18 @@ export function AgentTourCard() {
 
 export function regionWordsIn(text, aliases) {
   const src = String(text || "");
+  const lower = src.toLowerCase();
   const found = [];
   for (const words of Object.values(aliases || {})) {
     for (const w of words || []) {
-      if (w && src.includes(w)) found.push(w);
+      if (!w) continue;
+      // 26c: Latin words match case-insensitively ("Menlo Park"
+      // hits "menlo park"); Korean behaviour is unchanged.
+      if (/[a-zA-Z]/.test(w)) {
+        if (lower.includes(String(w).toLowerCase())) found.push(w);
+      } else if (src.includes(w)) {
+        found.push(w);
+      }
     }
   }
   return [...new Set(found)];
@@ -985,7 +1028,17 @@ export function ChatScreen() {
   // --- structured flow ---
   async function structuredFlow(text) {
     const words = regionWordsIn(text, REGION_NAME_ALIASES);
-    const named = words.length > 0 ? regionsForNames(words) : null;
+    let named = words.length > 0 ? regionsForNames(words) : null;
+    // 26c: a US search loads exactly us-menlo — never Korean regions.
+    // A pre-read of this turn decides it (the full extract follows once
+    // the data is in); a USD profile from an earlier turn counts too.
+    const pre = extractStep(text, stateRef.current.profile, []);
+    const preProfile = pre.value && pre.value.profile;
+    const preCurrency = preProfile && preProfile.currency
+      ? preProfile.currency.value : null;
+    if ((named && named.includes("us-menlo")) || preCurrency === "USD") {
+      named = ["us-menlo"];
+    }
     const data = await ensureData(named);
     // The evidence guard is per call (same as the server tool), so
     // every turn re-reads the accumulated customer words.
@@ -1010,6 +1063,16 @@ export function ChatScreen() {
         tool_calls: [{ id: exId, name: "extract_profile" }] });
       pushMsg({ role: "assistant", kind: "text",
         content: "어떤 상황인지 조금만 더 알려주세요. 예를 들어 어디로 출근하는지, 전세·월세 중 뭘 보는지, 예산은 얼마인지요." });
+      return;
+    }
+    // 26e: USD profiles skip the six-step intake and search directly
+    // with the same profile card the empty-profile path uses above; a
+    // missing budget is asked by the existing one-question-at-a-time path.
+    if (prof.currency && prof.currency.value === "USD") {
+      pushMsg({ role: "assistant", kind: "profile", replace: true,
+        data: { profile: prof }, example: stateRef.current.exampleId,
+        tool_calls: [{ id: exId, name: "extract_profile" }] });
+      await runSearch(prof, data, { sort: "commute" });
       return;
     }
     // 13: after the first message the guided intake pre-fills from the
@@ -1110,9 +1173,15 @@ export function ChatScreen() {
       summary: `${result.candidates.length}곳 · ${HOME_SORT_KO[sort]}`, ms });
     // A new search drops picks that are no longer listed.
     setPicks((prev) => prev.filter((id) => result.candidates.some((c) => c.id === id)));
+    // 26k: a USD search with no homes names the cheapest loaded ZIP
+    // rent (computed from the loaded homes, never hardcoded).
+    const profCur = prof.currency && prof.currency.value;
+    const budget = profCur === "USD" && prof.monthlyMax
+      ? Number(prof.monthlyMax.value) : null;
+    const emptyHint = usEmptyHint((data.index && data.index.homes) || [], budget);
     setCandidatesData({ result, tenure, sort });
     pushMsg({ role: "assistant", kind: "candidates", replace: true,
-      data: { result, tenure, sort }, example: stateRef.current.exampleId,
+      data: { result, tenure, sort, emptyHint }, example: stateRef.current.exampleId,
       tool_calls: [{ id: rowId, name: "find_homes" }] });
   }
 
@@ -1171,12 +1240,13 @@ export function ChatScreen() {
       const prof = ex.value.profile || {};
       const wps = prof.workplaces ? prof.workplaces.value : null;
       const w = Array.isArray(wps) && wps[0] ? wps[0] : null;
-      if (w && w.resolved && w.resolved.station) entry = w;
+      if (w && w.resolved && (w.resolved.station || w.resolved.place)) entry = w;
     }
     if (!entry) return false;
     const next = { ...(stateRef.current.profile || {}),
       workplaces: { value: [entry], source: "customer",
-        note: `직장 근처역: ${entry.resolved.station}` } };
+        note: entry.resolved.station ? `직장 근처역: ${entry.resolved.station}`
+          : `직장: ${entry.resolved.place.name}` } };
     profileRef.current = next;
     setProfile(next);
     store.set({ chatSummary: profileSummary(next) });
@@ -1273,16 +1343,27 @@ export function ChatScreen() {
       setProgress({ done: picked.length + 1, total: picked.length + 2, label: "돈 계산" });
       let moneyDoc = null;
       let moneyMissing = "";
+      // 26d: USD picks skip the Korean payroll table — the money doc
+      // is the ZIP-estimate rent per home.
+      const usPicks = picked.length > 0 && picked.every((p) => currencyOf(p) === "USD");
       try {
-        const payroll = await loadPayroll(fetchJson);
-        if (!payroll) throw new Error("급여 요율표를 불러오지 못했어요");
-        moneyDoc = buildCustomMoneyDoc({
-          scenario: scenValue, runs, profile: st.profile,
-          picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
-            complexName: homes[i].name, areaId: p.scene })),
-          payrollTable: payroll, areas,
-          network: data.network || null, fareSchedule: data.schedule || null,
-        });
+        if (usPicks) {
+          moneyDoc = buildUsRentMoneyDoc({
+            picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
+              complexName: homes[i].name, areaId: p.scene })),
+            labels,
+          });
+        } else {
+          const payroll = await loadPayroll(fetchJson);
+          if (!payroll) throw new Error("급여 요율표를 불러오지 못했어요");
+          moneyDoc = buildCustomMoneyDoc({
+            scenario: scenValue, runs, profile: st.profile,
+            picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
+              complexName: homes[i].name, areaId: p.scene })),
+            payrollTable: payroll, areas,
+            network: data.network || null, fareSchedule: data.schedule || null,
+          });
+        }
       } catch (err) {
         moneyMissing = String((err && err.message) || err);
       }
@@ -1465,17 +1546,38 @@ export function ChatScreen() {
           pushMsg({ role: "assistant", kind: "listing", data: {} });
         }
       } else if (/공공임대/.test(content)) {
-        if (IS_DEV) await askAgent(content);
+        // 26e: USD runs have no jeonse/public/support data — one line,
+        // never the tabs.
+        const usd = stateRef.current.profile
+          && stateRef.current.profile.currency
+          && stateRef.current.profile.currency.value === "USD";
+        if (usd) {
+          pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
+        } else if (IS_DEV) await askAgent(content);
         else pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
       } else if (/전세 점검/.test(content)) {
-        store.set({ compareOpen: true, compareTab: "jeonse" });
-        pushMsg({ role: "assistant", kind: "tab", data: { tab: "jeonse" } });
+        const usd = stateRef.current.profile
+          && stateRef.current.profile.currency
+          && stateRef.current.profile.currency.value === "USD";
+        if (usd) {
+          pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
+        } else {
+          store.set({ compareOpen: true, compareTab: "jeonse" });
+          pushMsg({ role: "assistant", kind: "tab", data: { tab: "jeonse" } });
+        }
       } else if (/살 만한/.test(content)) {
         store.set({ compareOpen: true, compareTab: "worthit" });
         pushMsg({ role: "assistant", kind: "tab", data: { tab: "worthit" } });
       } else if (/도움 제도|도움제도|지원 제도|정책 대출|혜택/.test(content)) {
-        store.set({ compareOpen: true, compareTab: "support" });
-        pushMsg({ role: "assistant", kind: "tab", data: { tab: "support" } });
+        const usd = stateRef.current.profile
+          && stateRef.current.profile.currency
+          && stateRef.current.profile.currency.value === "USD";
+        if (usd) {
+          pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
+        } else {
+          store.set({ compareOpen: true, compareTab: "support" });
+          pushMsg({ role: "assistant", kind: "tab", data: { tab: "support" } });
+        }
       } else {
         await structuredFlow(content);
       }
@@ -1495,6 +1597,11 @@ export function ChatScreen() {
       send("공공임대 찾기");
     } else if (chip === "도움 제도 보여줘") {
       send("도움 제도 보여줘");
+    } else if (chip === "Meta HQ까지 가까운 순") {
+      // 26e: USD sort chips re-run the search with find_homes sorts.
+      handleSort(null, "commute");
+    } else if (chip === "월세 낮은 순") {
+      handleSort(null, "monthly");
     }
   }
 
@@ -1581,9 +1688,15 @@ export function ChatScreen() {
   const [detail, setDetail] = useState(null);
   const compareOpen = useSyncExternalStore(store.subscribe,
     () => store.getState().compareOpen, () => store.getState().compareOpen);
-  const destName = (profile && profile.workplaces && profile.workplaces.value
-    && profile.workplaces.value[0] && profile.workplaces.value[0].resolved
-    && profile.workplaces.value[0].resolved.station) || "";
+  // 26c: a resolved place (Meta HQ) names the destination and pins
+  // the map's work pin at its lon/lat.
+  const wpResolved = (profile && profile.workplaces && profile.workplaces.value
+    && profile.workplaces.value[0] && profile.workplaces.value[0].resolved) || null;
+  const destName = (wpResolved
+    && (wpResolved.station || (wpResolved.place && wpResolved.place.name))) || "";
+  const workPlace = wpResolved && wpResolved.place
+    ? { name: wpResolved.place.name, lon: wpResolved.place.lon, lat: wpResolved.place.lat }
+    : null;
 
   const handlers = {
     picks,
@@ -1683,7 +1796,7 @@ export function ChatScreen() {
                 )}
               </ChatMessageList>
               <div className="ui-chat-chips" role="group" aria-label="추천 질문">
-                {CHAT_CHIPS.map((chip) => (
+                {chatChipsFor(profile && profile.currency && profile.currency.value).map((chip) => (
                   <Button key={chip} size="sm" variant="secondary" label={chip}
                     onClick={() => chipAction(chip)} />
                 ))}
@@ -1704,6 +1817,7 @@ export function ChatScreen() {
               candidates: candidatesData?.result?.candidates || [],
               picks,
               workplaceStation: destName || null,
+              workPlace: workPlace || null,
               tenure: candidatesData?.tenure || null,
             })}
             contextLine={stageContextLine(profile, candidatesData)}

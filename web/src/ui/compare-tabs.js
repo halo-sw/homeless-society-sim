@@ -55,3 +55,12 @@ export function resolveTabId(id) {
   if (LEGACY_TAB_ALIASES[key]) return LEGACY_TAB_ALIASES[key];
   return VALID_COMPARE_TABS.includes(key) ? key : "";
 }
+
+// 26e: USD runs hide the Korean-only tabs (전세 점검 · 지원 제도 ·
+// 치안·교육 · 공공 공고). Any other currency returns the input unchanged.
+const US_HIDDEN_TABS = new Set(["jeonse", "support", "safety", "listings-public"]);
+
+export function tabsForCurrency(tabs, currency) {
+  if (currency !== "USD") return tabs;
+  return (tabs || []).filter((t) => !US_HIDDEN_TABS.has(t));
+}

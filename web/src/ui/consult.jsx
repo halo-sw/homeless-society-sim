@@ -17,6 +17,7 @@ import {
 } from "@astryxdesign/core/Chat";
 import { store } from "./store.js";
 import { citationsFor, toolActionKo, toolDurationKo } from "./agent-float.js";
+import { sourceById } from "../sources.js";
 
 export const PROVIDER_BADGE = { meta: "Muse Spark 1.3", baseten: "Muse Spark Open" };
 
@@ -39,8 +40,13 @@ export function ToolRows({ rows }) {
   );
 }
 
-export function CiteRows({ tools }) {
-  const cites = citationsFor(tools || []);
+export function CiteRows({ tools, sourceIds = null }) {
+  // 26k: sourceIds overrides the tool citations (USD candidates/runs
+  // cite the US entries from sources.js); null keeps the old mapping.
+  const fromIds = (Array.isArray(sourceIds) ? sourceIds : [])
+    .map((id) => sourceById(id)).filter(Boolean)
+    .map((s) => ({ title: s.name, url: s.url }));
+  const cites = fromIds.length > 0 ? fromIds : citationsFor(tools || []);
   if (cites.length === 0) return null;
   return (
     <ChatMessageBubble variant="ghost" width="100%">

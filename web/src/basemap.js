@@ -19,7 +19,26 @@ export function basemapApiBase() {
   return API_BASE;
 }
 
-export function basemapTileUrl(apiBase, z, y, x) {
+// 26k: contiguous-US bbox (lon/lat). Inside it the chat map uses
+// USGS National Map topo tiles directly (no relay, no key); elsewhere
+// VWorld.
+export const US_BBOX = [-125, 24, -66, 50];
+
+export function isUsLonLat(lon, lat) {
+  const x = Number(lon);
+  const y = Number(lat);
+  return Number.isFinite(x) && Number.isFinite(y)
+    && x >= US_BBOX[0] && x <= US_BBOX[2] && y >= US_BBOX[1] && y <= US_BBOX[3];
+}
+
+export function basemapProvider(lon, lat) {
+  return isUsLonLat(lon, lat) ? "usgs" : "vworld";
+}
+
+export function basemapTileUrl(apiBase, z, y, x, { provider = "vworld" } = {}) {
+  if (provider === "usgs") {
+    return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/${z}/${y}/${x}`;
+  }
   return `${apiBase}/api/tiles/white/${z}/${y}/${x}.png`;
 }
 

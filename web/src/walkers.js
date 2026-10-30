@@ -9,6 +9,7 @@
 
 import { haversineM } from "./frame.js";
 import { WALK_MPS } from "./tour.js";
+import { nearestNodeIn } from "./walkgraph.js";
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -22,16 +23,10 @@ export function mulberry32(seed) {
 }
 
 export function nearestWalkNode(lon, lat, nodes) {
-  let best = null;
-  let bestD = Infinity;
-  for (const [id, pt] of Object.entries(nodes)) {
-    const d = haversineM(lon, lat, pt[0], pt[1]);
-    if (d < bestD) {
-      bestD = d;
-      best = id;
-    }
-  }
-  return { id: best, distM: bestD };
+  const id = nearestNodeIn(nodes, lon, lat);
+  if (id === null) return { id: null, distM: Infinity };
+  const pt = nodes[id];
+  return { id, distM: haversineM(lon, lat, pt[0], pt[1]) };
 }
 
 function buildingAnchor(building) {

@@ -114,6 +114,29 @@ function parseWork(raw, where) {
     if (raw.name === undefined) fail(`${where}.work needs a POI name`);
     return { type: "local_poi", name: raw.name };
   }
+  if (raw.type === "place") {
+    const place = parseWorkplace(raw.place, `${where}.work`);
+    if (!place || !Number.isFinite(place.lon) || !Number.isFinite(place.lat)) {
+      fail(`${where}.work.place needs lon/lat`);
+    }
+    let modes = ["walk", "bike"];
+    if (raw.modes !== undefined) {
+      if (!Array.isArray(raw.modes) || raw.modes.length === 0) {
+        fail(`${where}.work.modes wants a non-empty array of walk/bike`);
+      }
+      for (const m of raw.modes) {
+        if (m !== "walk" && m !== "bike") {
+          fail(`${where}.work.modes allows only walk and bike, not ${JSON.stringify(m)}`);
+        }
+      }
+      modes = [...raw.modes];
+    }
+    return {
+      type: "place",
+      place: { name: place.name, lon: place.lon, lat: place.lat },
+      modes,
+    };
+  }
   fail(`${where}.work has unknown type ${JSON.stringify(raw.type)}`);
 }
 
