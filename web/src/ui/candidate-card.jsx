@@ -9,7 +9,7 @@ import { TENURE_KO } from "../profile.js";
 import { fmtWon } from "../money/format.js";
 import { SAME_STATION_KO } from "../homes.js";
 import { simBadgeFor } from "../mapsim.js";
-import { fallbackLabelFor } from "../places/select-photos.js";
+import { SceneThumb, MiniMap } from "./preview.jsx";
 
 export function tenurePriceLine(candidate, tenure) {
   const t = (candidate.tenures || []).find((x) => x.tenure === tenure)
@@ -71,7 +71,6 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   const price = tenurePriceLine(candidate, tenure);
   const commute = commuteShortLine(candidate, destName);
   const slots = (photos && photos.slots) || [];
-  const fallback = photos && photos.fallback;
   const facts = [
     candidate.kind,
     candidate.sizeLabel || (candidate.tenures?.[0] ? `${candidate.tenures[0].bucket_center_m2}㎡` : null),
@@ -82,36 +81,49 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   if (price.thin) badges.push(price.thin);
   else if (price.deals > 0) badges.push(`실거래 ${price.deals}건`);
   if (candidate.match === "osm_name") badges.push("OSM 위치");
-  const photo = slots[slide] || null;
+  // 18: the hero is the complex photo when one exists, else the
+  // painted 3D thumbnail — never a station or street photo. Nearby
+  // photos stay visible as a small labelled strip with their licences.
+  // No empty grey box: without a hero the area is omitted entirely.
+  const hero = slots.find((s) => s.slot === "complex") || null;
+  const rest = slots.filter((s) => s !== hero);
+  const shot = rest.length > 0 ? rest[slide % rest.length] : null;
+  const showHero = !!(hero || candidate.scene);
   return (
     <article className="ui-cand ui-card-enter"
       style={index !== undefined ? { animationDelay: `${Math.min(index, 12) * 40}ms` } : undefined}>
-      <div className="ui-cand-photo">
-        {photo ? (
-          <a href={photo.page_url} target="_blank" rel="noreferrer" title={`${photo.credit} · 원본 보기`}>
-            <img src={photo.thumb_url} alt={photo.title || "후보 사진"} loading="lazy" />
+      {showHero && (
+        <div className="ui-cand-photo">
+          {hero ? (
+            <a href={hero.page_url} target="_blank" rel="noreferrer" title={`${hero.credit} · 원본 보기`}>
+              <img src={hero.thumb_url} alt={hero.title || "단지 사진"} loading="lazy" />
+            </a>
+          ) : (
+            <SceneThumb boxId={candidate.scene} />
+          )}
+          {hero && <span className="ui-cand-label">{hero.label}</span>}
+        </div>
+      )}
+      {shot && (
+        <div className="ui-cand-strip">
+          <a href={shot.page_url} target="_blank" rel="noreferrer" title={`${shot.credit} · 원본 보기`}>
+            <img src={shot.thumb_url} alt={shot.title || "주변 사진"} loading="lazy" />
           </a>
-        ) : (
-          <div style={{ width: "100%", height: "100%", display: "flex",
-            alignItems: "center", justifyContent: "center" }}>
-            <Text type="supporting">{fallbackLabelFor(fallback) || "사진 없음"}</Text>
+          <div className="ui-cand-strip-meta">
+            <Text type="supporting">{shot.label}</Text>
+            <Text type="supporting">{shot.credit}</Text>
           </div>
-        )}
-        {(photo || fallback) && (
-          <span className="ui-cand-label">{photo ? photo.label : fallbackLabelFor(fallback)}</span>
-        )}
-        {slots.length > 0 && (
-          <span className="ui-cand-count ui-num">{`${slide + 1}/${slots.length}`}</span>
-        )}
-        {slots.length > 1 && (
-          <span style={{ position: "absolute", right: 8, top: 8, display: "flex", gap: 4 }}>
-            <Button size="sm" variant="secondary" label="‹"
-              onClick={() => setSlide((slide + slots.length - 1) % slots.length)} />
-            <Button size="sm" variant="secondary" label="›"
-              onClick={() => setSlide((slide + 1) % slots.length)} />
-          </span>
-        )}
-      </div>
+          {rest.length > 1 && (
+            <span style={{ display: "flex", gap: 4 }}>
+              <Button size="sm" variant="secondary" label="‹"
+                onClick={() => setSlide((slide + rest.length - 1) % rest.length)} />
+              <Button size="sm" variant="secondary" label="›"
+                onClick={() => setSlide((slide + 1) % rest.length)} />
+              <Text type="supporting">{`${(slide % rest.length) + 1}/${rest.length}`}</Text>
+            </span>
+          )}
+        </div>
+      )}
       <div className="ui-cand-body">
         <div className="ui-cand-price ui-num" title={price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub}>
           {price.price} <small>{price.sub}</small>
@@ -129,7 +141,10 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
           {commute.text} <SourceDot source={commute.source} />
         </div>
         <div className="ui-cand-facts ui-num">{badges.join(" · ")}</div>
-        {photo && <div className="ui-cand-credit">{photo.credit}</div>}
+        {hero && <div className="ui-cand-credit">{hero.credit}</div>}
+        {!showHero && !shot && (
+          <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
+        )}
         <div className="ui-cand-actions">
           <Button size="sm" variant={picked ? "secondary" : "primary"}
             label={picked ? "담김 ✓ · 빼기" : "비교에 담기"}

@@ -35,7 +35,7 @@ import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent } from "../mone
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand, congestionPeakLine } from "../engine/journey.js";
 import { criterionTitle } from "../engine/criteria.js";
-import { chipDisplay, tickerDisplay } from "../nowcard.js";
+import { chipDisplay, tickerDisplay, FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
 import { ActivityIcon, ActivityLegend } from "./timeline.jsx";
 import { priorityValues, myScore } from "../priorities.js";
@@ -477,7 +477,7 @@ function RecordSection({ state }) {
 // 17-2: 내 기준 점수 — the answer first. One row per home in A/B
 // order above the hero; both bars use the neutral fill, never sorted,
 // never crowned. Tap opens the 내 기준 tab (group bars + formula).
-function MyScoreRow({ state }) {
+export function MyScoreRow({ state }) {
   const doc = state.money;
   if (state.moneyLoading || !doc || doc.error) return null;
   const labels = Object.keys(doc.homes || {});
@@ -640,6 +640,81 @@ const fmtMetric = (unit, v) => (
   unit === "minutes" ? fmtMinutes(v) : unit === "metres" ? fmtDistance(v)
     : unit === "index" ? fmtIndex(v) : unit === "percent" ? fmtPercent(v) : fmtCount(v));
 
+// 18: plain-words reading of one compare row (neutral, numbers kept).
+// Minutes totals read as 하루 평균 (delta/days); counts read as 30-day
+// totals; fatigue reads lower-is-better with both values; null reads
+// nothing, a zero delta reads 같아요.
+const PLAIN_MINUTES_VERB = {
+  walk_minutes: "걸어요",
+  commute_walk_minutes: "출퇴근길에 걸어요",
+  commute_ride_minutes: "차·지하철을 타요",
+  home_evening_minutes: "저녁에 집에 머물러요",
+  fatigue_crowded_min: "만원 지하철을 타요",
+};
+const PLAIN_COUNT_NOUN = {
+  errands_done: "장보기",
+  park_visits: "공원 산책",
+  trips: "걸어서 이동",
+};
+const PLAIN_FATIGUE_NOUN = {
+  fatigue_arrival_work_avg: "회사 도착할 때",
+  fatigue_after_home_avg: "퇴근해서 집에 왔을 때",
+  fatigue_avg_30d: "하루 평균 (쉬는 시간 포함)",
+};
+export function plainMetricLine(m, days = 30) {
+  if (!m) return null;
+  const d = m.delta_b_minus_a;
+  if (d === null || d === undefined || !Number.isFinite(m.a) || !Number.isFinite(m.b)) return null;
+  if (d === 0) return "A와 B가 같아요";
+  const span = Number(days) > 0 ? Number(days) : 30;
+  const win = d > 0 ? "B" : "A";
+  if (m.unit === "minutes" && PLAIN_MINUTES_VERB[m.key]) {
+    const perDay = Math.round((Math.abs(d) / span) * 10) / 10;
+    if (!(perDay >= 1)) {
+      return `${win}가 30일 동안 모두 ${fmtMinutes(Math.abs(d))} 더 ${PLAIN_MINUTES_VERB[m.key]}`;
+    }
+    return `${win}가 하루 평균 ${fmtMinutes(Math.round(perDay))} 더 ${PLAIN_MINUTES_VERB[m.key]}`;
+  }
+  if ((m.unit === "count" || m.unit === "metres") && PLAIN_COUNT_NOUN[m.key]) {
+    const n = m.unit === "metres" ? fmtDistance(Math.abs(d)) : fmtCount(Math.abs(d), "번");
+    return `${win}가 ${PLAIN_COUNT_NOUN[m.key]} ${n} 더`;
+  }
+  if (m.unit === "metres") {
+    return `${win}가 하루 평균 ${fmtDistance(Math.abs(d) / span)} 더 걸어요`;
+  }
+  if (m.unit === "index" && PLAIN_FATIGUE_NOUN[m.key]) {
+    const less = m.a <= m.b ? "A" : "B";
+    return `${less}가 ${PLAIN_FATIGUE_NOUN[m.key]} 덜 피곤해요 (A ${fmtIndex(m.a)} · B ${fmtIndex(m.b)})`;
+  }
+  if (m.unit === "percent" && m.key === "fatigue_peak_congestion_pct") {
+    return `${win}가 출근길 가장 붐비는 순간 ${Math.round(Math.abs(d) * 10) / 10}%포인트 더 붐벼요`;
+  }
+  return null;
+}
+
+// 18: the facts behind the removed internal lines, in plain language:
+// who chose (rules vs model), what is measured vs assumed, and the
+// coordinate anchor when the scene has no complex name.
+export function howCalculatedLines(cmp) {
+  const lines = [];
+  const j = (cmp && cmp.judgment) || {};
+  const modelN = (s) => (s && s.model) || 0;
+  const total = modelN(j.a) + modelN(j.b);
+  if (total === 0) {
+    lines.push(`이 ${cmp.days || 30}일은 정해 둔 생활 규칙으로 만들었어요. Muse 판단이 들어간 날: 0일`);
+  } else {
+    lines.push(`정해 둔 생활 규칙대로 만들었고, Muse가 정한 장면이 A ${modelN(j.a)}개 · B ${modelN(j.b)}개 있어요`);
+  }
+  lines.push("걸어서 직접 잰 시간은 도보 그래프로 잰 값이고, 차·지하철을 탄 시간과 횟수는 미리 정해 둔 값이에요");
+  lines.push(FATIGUE_MODEL_NOTE);
+  for (const a of (cmp && cmp.anchors) || []) {
+    if (a && a.method === "coordinate") {
+      lines.push(`${a.label}는 3D 장면에 단지 이름이 없어 집 위치에서 시작했어요`);
+    }
+  }
+  return lines;
+}
+
 export function CompareTabBody({ state }) {
   const cmp = state.compare;
   if (state.compareLoading) return <Text type="supporting">불러오는 중…</Text>;
@@ -649,23 +724,38 @@ export function CompareTabBody({ state }) {
     );
   }
   if (!cmp || !cmp.metrics) return null;
+  const days = Number(cmp.days) > 0 ? Number(cmp.days) : 30;
+  const how = howCalculatedLines(cmp);
   return (
     <>
       <HStack gap={1} vAlign="center">
         <Text type="supporting">출처</Text>
         <GroupBadges sources={cmp.metrics.map((m) => m.source)} />
       </HStack>
-      <MetadataList>
-        {cmp.metrics.map((m) => (
-          <MetadataListItem key={m.key} label={m.label}>
-            <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)} · B ${fmtMetric(m.unit, m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`}</Text>
-          </MetadataListItem>
-        ))}
-      </MetadataList>
-      {cmp.judgment && (
-        <Text type="supporting">{`고른 주체 — A: ${judgmentLine(cmp.judgment.a)} / B: ${judgmentLine(cmp.judgment.b)}`}</Text>
+      {cmp.metrics.some((m) => m.unit === "index") && (
+        <Text type="supporting">피곤한 정도 0–10, 높을수록 피곤해요</Text>
       )}
-      <Text type="supporting">그래프 = 걸어서 직접 잰 시간 · 가정값 = 미리 정해 둔 값</Text>
+      <MetadataList>
+        {cmp.metrics.map((m) => {
+          const plain = plainMetricLine(m, days);
+          return (
+            <MetadataListItem key={m.key} label={m.label}>
+              <Text hasTabularNumbers>{`A ${fmtMetric(m.unit, m.a)} · B ${fmtMetric(m.unit, m.b)} · Δ ${m.delta_b_minus_a > 0 ? "+" : ""}${fmtMetric(m.unit, m.delta_b_minus_a)}`}</Text>
+              {plain && <Text type="supporting">{plain}</Text>}
+            </MetadataListItem>
+          );
+        })}
+      </MetadataList>
+      <details className="ui-section">
+        <summary className="ui-section-head">어떻게 계산했나요</summary>
+        <div className="ui-section-body">
+          <VStack gap={1}>
+            {how.map((l, i) => (
+              <Text key={i} type="supporting">{l}</Text>
+            ))}
+          </VStack>
+        </div>
+      </details>
     </>
   );
 }
@@ -734,11 +824,8 @@ export function CompareCard({ state, bare }) {
   );
 }
 
-function judgmentLine(side) {
-  const s = side || {};
-  const other = (s.rule || 0) + (s.replay || 0) + (s.hook || 0);
-  return `Muse가 고름 ${s.model || 0} · 규칙이 대신 고름 ${s.rule_fallback || 0} · 평소대로 ${other}`;
-}
+// 18: removed — the judgment counts now read as plain language in
+// howCalculatedLines (no internal "고른 주체" line reaches customers).
 
 function LegendCard({ state, onClose }) {
   const legend = state.legend;

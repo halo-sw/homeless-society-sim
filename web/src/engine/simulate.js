@@ -218,7 +218,7 @@ export function compare(runA, runB) {
     { key: "trips", label: `${span} 걸어서 이동한 횟수`, unit: "count", source: "graph" },
     { key: "fatigue_arrival_work_avg", label: "회사 도착할 때 피곤한 정도", unit: "index", source: "scenario" },
     { key: "fatigue_after_home_avg", label: "퇴근해서 집에 왔을 때 피곤한 정도", unit: "index", source: "scenario" },
-    { key: "fatigue_avg_30d", label: `${runA.meta.days || 30}일 평균 피곤한 정도`, unit: "index", source: "scenario" },
+    { key: "fatigue_avg_30d", label: "하루 평균 피곤한 정도 (쉬는 시간 포함)", unit: "index", source: "scenario" },
     { key: "fatigue_crowded_min", label: "만원 지하철에 탄 시간", unit: "minutes", source: "scenario" },
     { key: "fatigue_peak_congestion_pct", label: "출근길 가장 붐비는 순간", unit: "percent", source: "scenario" },
   ].map((m) => ({ ...m, a: ha[m.key] ?? null, b: hb[m.key] ?? null,

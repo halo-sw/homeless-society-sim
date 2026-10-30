@@ -70,11 +70,16 @@ describe("17-1 Ithaca name", () => {
     assert.ok(index.includes("<title>Ithaca — 미니어처 3D</title>"));
   });
 
-  it("landing scrim is a bright warm-white veil", () => {
+  it("landing scrim is a bright warm-white veil (18: AA over the 3D)", () => {
+    // 18: the 65% veil left light-grey copy on a light 3D scene. The
+    // 88% warm-white veil + stronger blur keeps the headline, input and
+    // example chips at their solid-surface contrast (ink2 on page ≈ 6:1).
     const css = readFileSync(join(SRC, "ui", "ui.css"), "utf8");
     const scrim = css.match(/\.ui-landing-scrim \{[^}]*\}/)[0];
     assert.ok(!scrim.includes("12, 14, 18"), "no dark grey veil");
     assert.ok(scrim.includes("--ui-page"), "warm white token");
-    assert.ok(scrim.includes("65%"), "map visible at ~35%");
+    const pct = Number((scrim.match(/--ui-page\) (\d+)%/) || [])[1]);
+    assert.ok(pct >= 85, `veil ${pct}% keeps copy at AA`);
+    assert.ok(/blur\((1[2-9]|[2-9]\d)px\)/.test(scrim), "background blurred flat");
   });
 });

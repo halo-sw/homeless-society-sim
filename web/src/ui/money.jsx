@@ -57,8 +57,11 @@ function TenureSwitch({ label, options, value }) {
 
 // "어떻게 계산했나요?" — the ingredients behind 매달 집에 드는 돈,
 // from the tenure breakdown (same numbers, explained).
-function HowCalculated({ tenure, housing, maintenanceWon }) {
+export function HowCalculated({ tenure, housing, maintenanceWon, transitWon = null }) {
   const lines = [];
+  if (transitWon !== null && transitWon !== undefined) {
+    lines.push(`교통비 ${fmtWon(transitWon, { monthly: true })} (출퇴근 탄 횟수 × 요금)`);
+  }
   if (tenure === "전세") {
     lines.push(`전세 대출 이자 ${fmtWon(housing.monthly_won, { monthly: true })} + 관리비 ${fmtWon(maintenanceWon, { monthly: true })}`);
     lines.push(`보증금 ${fmtWon(housing.upfront_won)} 중 내 돈 ${fmtWon(housing.cash_used_won)}, 나머지 ${fmtWon(housing.loan_won)}는 빌리는 것으로 가정해요`);
@@ -331,7 +334,7 @@ function QolHome({ label, doc, tenure, active }) {
             <MetadataListItem label="퇴근해서 집에 왔을 때 피곤한 정도">
               <Text hasTabularNumbers>{fmtIndex(fat.after_home_avg)}</Text>
             </MetadataListItem>
-            <MetadataListItem label="30일 평균 피곤한 정도">
+            <MetadataListItem label="하루 평균 피곤한 정도 (쉬는 시간 포함)">
               <Text hasTabularNumbers>{fmtIndex(fat.avg_30d)}</Text>
             </MetadataListItem>
             <MetadataListItem label="만원 지하철에 탄 시간">
@@ -364,7 +367,7 @@ function QolHome({ label, doc, tenure, active }) {
           </HStack>
         </MetadataListItem>
       </MetadataList>
-      {fat && <Text type="supporting">{FATIGUE_MODEL_NOTE}</Text>}
+      {fat && <Text type="supporting">피곤한 정도 0–10, 높을수록 피곤해요. {FATIGUE_MODEL_NOTE}</Text>}
     </VStack>
   );
 }

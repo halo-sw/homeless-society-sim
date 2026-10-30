@@ -57,6 +57,10 @@ import { defaultOverrides, setOverride, resetOverride,
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
 // so module evaluation order is safe.
 import { CompareCard, CompareTabBody } from "./app.jsx";
+import { HowCalculated, tenureOf } from "./money.jsx";
+import { fmtMinutes, fmtWon } from "../money/format.js";
+import { myScore, priorityValues } from "../priorities.js";
+import { pickMoments } from "../engine/moments.js";
 import { ShareDialog } from "./share.jsx";
 import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
@@ -265,13 +269,127 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
 
 // --- SimulationCard ---------------------------------------------------------------------
 
-function AnchorNotes({ anchors }) {
-  const coord = (anchors || []).filter((a) => a && a.method === "coordinate");
-  if (coord.length === 0) return null;
+// 18: readable result summary, top to bottom: (a) 내 기준 점수 with
+// its caption, (b) 월 주거비 with a 어떻게 계산했나요 link, (c) 하루
+// 출퇴근 편도 평균 per commuting member, (d) the pickMoments texts.
+// Pure parts are exported for tests. Never sorted, never crowned.
+export function monthlyHousingOf(doc, label, days = 30) {
+  const h = doc && doc.homes && doc.homes[label];
+  if (!h) return { label, missing: true };
+  const t = ((doc.default_tenure || {})[label])
+    || (h.by_tenure && Object.keys(h.by_tenure)[0]);
+  const sel = h.by_tenure && h.by_tenure[t];
+  if (!sel || !sel.housing) return { label, tenure: t || null, missing: true };
+  const span = Number(days) > 0 ? Number(days) : 30;
+  const totals = sel.totals_by_category || {};
+  const maintenance = Math.round(Math.abs(totals.maintenance || 0) * 30 / span);
+  const transit = Math.round(Math.abs(totals.transit || 0) * 30 / span);
+  const housing = Math.max(0, Math.round(Number(sel.housing.monthly_won) || 0));
+  return { label, tenure: t, monthly: housing + maintenance + transit,
+    parts: { housing, maintenance, transit }, housingDoc: sel.housing,
+    maintenanceWon: maintenance, transitWon: transit };
+}
+
+export function commuteOneWayOf(compare) {
+  const days = (compare && Number(compare.days) > 0) ? Number(compare.days) : 30;
+  const out = [];
+  for (const m of (compare && compare.members) || []) {
+    const w = m.commute_walk_minutes || {};
+    const r = m.commute_ride_minutes || {};
+    const total = (Number(w.a) || 0) + (Number(w.b) || 0)
+      + (Number(r.a) || 0) + (Number(r.b) || 0);
+    if (!(total > 0)) continue;
+    const one = (x) => Math.round((((Number(x) || 0) / days / 2)) * 10) / 10;
+    const a = one((Number(w.a) || 0) + (Number(r.a) || 0));
+    const b = one((Number(w.b) || 0) + (Number(r.b) || 0));
+    const d = Math.round((b - a) * 10) / 10;
+    out.push({ member: m.member, label: m.label, a, b, delta_b_minus_a: d,
+      plain: d === 0 ? `${m.label}는 A와 B가 같아요`
+        : `${m.label} — ${d > 0 ? "B" : "A"}가 하루 편도 평균 ${Math.round(Math.abs(d) * 10) / 10}분 더 걸려요` });
+  }
+  return out;
+}
+
+export function resultScoreOf(moneyDoc, compare, weights, explicit) {
+  if (!moneyDoc || !moneyDoc.homes || !compare) return { ok: false };
+  const tenures = {};
+  for (const l of Object.keys(moneyDoc.homes)) {
+    tenures[l] = tenureOf({ moneyTenure: {} }, l, moneyDoc);
+  }
+  try {
+    return myScore(priorityValues(moneyDoc, compare, tenures),
+      weights || null, { explicit: !!explicit });
+  } catch {
+    return { ok: false };
+  }
+}
+
+function ResultSummary({ data }) {
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const labels = data.labels || [];
+  const names = data.names || {};
+  const pw = state.priorityWeights;
+  const scored = resultScoreOf(data.moneyDoc, data.compare,
+    pw && pw.weights, pw && pw.explicit);
+  const days = (data.compare && data.compare.days) || 30;
+  const commutes = commuteOneWayOf(data.compare);
+  const texts = data.momentTexts || [];
+  const showMoney = !!(data.moneyDoc || data.moneyMissing);
   return (
-    <Text type="supporting">
-      {`${coord.map((a) => a.label).join("·")} — 장면에 단지 이름이 없어 집 위치에서 시작했어요`}
-    </Text>
+    <VStack gap={2}>
+      {scored.ok && (
+        <VStack gap={1}>
+          <Text>내 기준 점수</Text>
+          {labels.map((l) => (
+            <Text key={l} hasTabularNumbers>
+              {`${l} ${(names[l] || "").trim()} ${scored.scores[l] === null || scored.scores[l] === undefined ? "–" : `${scored.scores[l]}점`}`.trim()}
+            </Text>
+          ))}
+          <Text type="supporting">{scored.caption}</Text>
+        </VStack>
+      )}
+      {showMoney && (
+        <VStack gap={1}>
+          <Text>월 주거비 (보증금 기회비용·관리비·교통비)</Text>
+          {labels.map((l) => {
+            const mh = monthlyHousingOf(data.moneyDoc, l, days);
+            if (mh.missing) {
+              return (
+                <Text key={l} type="supporting">
+                  {`${l} 월 주거비: 아직 계산하지 못했어요${data.moneyMissing ? ` · ${data.moneyMissing}` : ""}`}
+                </Text>
+              );
+            }
+            return (
+              <VStack gap={1} key={l}>
+                <Text hasTabularNumbers>{`${l} 월 주거비 ${fmtWon(mh.monthly, { monthly: true })} (${mh.tenure})`}</Text>
+                <HowCalculated tenure={mh.tenure} housing={mh.housingDoc}
+                  maintenanceWon={mh.maintenanceWon} transitWon={mh.transitWon} />
+              </VStack>
+            );
+          })}
+        </VStack>
+      )}
+      {commutes.length > 0 && (
+        <VStack gap={1}>
+          <Text>하루 출퇴근 (문 앞→회사 편도 평균)</Text>
+          {commutes.map((c) => (
+            <VStack gap={1} key={c.member}>
+              <Text hasTabularNumbers>{`${c.label} A ${fmtMinutes(c.a)} · B ${fmtMinutes(c.b)}`}</Text>
+              <Text type="supporting">{c.plain}</Text>
+            </VStack>
+          ))}
+        </VStack>
+      )}
+      {texts.length > 0 && (
+        <VStack gap={1}>
+          <Text>살아 보니</Text>
+          {texts.map((t, i) => (
+            <Text key={i} type="supporting">{`${t.when_ko} ${t.home} — ${t.text_ko}`}</Text>
+          ))}
+        </VStack>
+      )}
+    </VStack>
   );
 }
 
@@ -354,8 +472,13 @@ export function SimulationCard({ data, example, onRetry }) {
           {`${labels.map((l) => `${l} ${(data.names || {})[l] || ""}`.trim()).join(" · ")}`
             + " — 같은 식구가 30일 산 결과예요. 어느 쪽이 나은지는 고객님이 정하세요."}
         </Text>
-        <CompareTabBody state={{ compare: data.compare, compareLoading: false }} />
-        <AnchorNotes anchors={data.anchors} />
+        <ResultSummary data={data} />
+        <details className="ui-section">
+          <summary className="ui-section-head">자세히 보기</summary>
+          <div className="ui-section-body">
+            <CompareTabBody state={{ compare: data.compare, compareLoading: false }} />
+          </div>
+        </details>
         {data.extraLine && <Text type="supporting">{data.extraLine}</Text>}
         <HStack gap={2} vAlign="center" wrap="wrap">
           {(data.moments || []).map((mo) => (
@@ -880,17 +1003,29 @@ export function ChatScreen() {
       const moments = labels.map((l) => ({ label: l, ...firstMomentOfRun(runs[l]) }));
       const anchors = labels.map((l) => ({ label: l,
         method: (runs[l].meta.home_anchor || {}).method || "complex" }));
+      // 18: the 2–3 pickMoments texts read in the summary; the anchor
+      // facts moved into the full table's 어떻게 계산했나요.
+      let momentTexts = [];
+      try {
+        if (labels.length >= 2 && runs[labels[0]] && runs[labels[1]]) {
+          momentTexts = pickMoments(runs[labels[0]], runs[labels[1]], { max: 3 })
+            .map((m) => ({ home: m.home, when_ko: m.when_ko, text_ko: m.text_ko }));
+        }
+      } catch {
+        momentTexts = [];
+      }
+      compare.anchors = anchors;
       let extraLine = "";
       if (labels.length > 2) {
         const third = runs[labels[2]];
         const hh = third.household || {};
         extraLine = `${labels[2]} ${(third.meta || {}).complex || ""}: `
           + `30일 동안 ${Math.round(hh.walk_minutes || 0)}분 걷고, `
-          + `평균 피곤한 정도 ${Math.round((hh.fatigue_avg_30d || 0) * 10) / 10} — 3D에서 보기로 하루를 보세요.`;
+          + `하루 평균 피곤한 정도 ${Math.round((hh.fatigue_avg_30d || 0) * 10) / 10} — 3D에서 보기로 하루를 보세요.`;
       }
       const payload = { status: "done", compare, moments, labels, customId,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])),
-        moneyDoc, moneyMissing, anchors, extraLine };
+        moneyDoc, moneyMissing, anchors, momentTexts, extraLine };
       // The chat drawer tabs read the same custom docs as the sim.
       store.set({ compare });
       if (moneyDoc) {

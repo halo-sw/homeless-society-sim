@@ -532,7 +532,7 @@ export function numbersOnlyAnswer(toolResults, opts = {}) {
       }
     } else if (r.summary_30d) {
       const s = r.summary_30d;
-      lines.push(`- 피곤한 정도 30일: 회사 도착할 때 ${s.arrival_work_avg ?? "–"}, 퇴근해서 집에 왔을 때 ${s.after_home_avg ?? "–"}, 30일 평균 ${s.avg_30d ?? "–"}, 만원 지하철에 탄 시간 ${fmtMinutes(s.crowded_min)} (가정으로 계산한 값)`);
+      lines.push(`- 피곤한 정도 30일: 회사 도착할 때 ${s.arrival_work_avg ?? "–"}, 퇴근해서 집에 왔을 때 ${s.after_home_avg ?? "–"}, 하루 평균 (쉬는 시간 포함) ${s.avg_30d ?? "–"}, 만원 지하철에 탄 시간 ${fmtMinutes(s.crowded_min)} (가정으로 계산한 값)`);
       if (r.day_fatigue) {
         const d = r.day_fatigue;
         lines.push(`- ${r.day}일차: 시작 ${d.start} → 끝 ${d.end}, 최고 ${d.peak} (가정으로 계산한 값)`);
