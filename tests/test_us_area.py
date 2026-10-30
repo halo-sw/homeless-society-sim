@@ -13,6 +13,7 @@ import pipeline.areas as areas_mod
 import pipeline.extract as extract_mod
 from pipeline.area_build import assemble_area
 from pipeline.areas import is_us_area, resolve_area
+from pipeline.scene import terrain_step
 from pipeline.regions import run_us_regions
 from pipeline.validate import (
     US_HEIGHT_WARNING,
@@ -207,6 +208,23 @@ def test_validate_kr_high_inferred_still_fails(tmp_path: Path) -> None:
     result = validate_run_build(area_dir)
     assert result["failed"]
     assert result["warnings"] == []
+
+
+def test_terrain_step_small_boxes_keep_default_step() -> None:
+    assert terrain_step(600) == (2.5, 600.0)
+    assert terrain_step(1500) == (2.5, 1500.0)  # exactly 1200 cells
+    assert terrain_step(600.00001) == (2.5, 602.5)
+
+
+def test_terrain_step_big_box_coarsens() -> None:
+    step, half_m = terrain_step(3880)
+    assert step == 6.5
+    assert half_m == 3880.5
+    assert 2 * half_m / step <= 1200
+
+
+def test_terrain_step_just_over_limit() -> None:
+    assert terrain_step(1501)[0] == 3.0
 
 
 def test_assemble_area_carries_us_keys_only_when_present() -> None:

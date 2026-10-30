@@ -43,6 +43,7 @@ SCENE_CODE_VERSION = "14.1"
 SCENE_FILE = "scene.json"
 
 STEP_M = 2.5
+MAX_TERRAIN_CELLS = 1200
 ROUND_M = 0.1
 SIMPLIFY_M = 0.5
 
@@ -392,6 +393,25 @@ def leaf_species(leaf_type: str | None) -> int | None:
     return None
 
 
+def terrain_step(need_m: float) -> tuple[float, float]:
+    """Pick the terrain grid step for a half-cover need (pure).
+
+    Returns (step, half_m) with half_m = ceil(need_m / step) * step.
+    STEP_M is used whenever the grid fits in MAX_TERRAIN_CELLS per side;
+    otherwise the smallest multiple of 0.5 m that fits is used.
+    """
+    half = math.ceil(need_m / STEP_M) * STEP_M
+    if 2 * half / STEP_M <= MAX_TERRAIN_CELLS:
+        return STEP_M, half
+    k = 6  # 3.0 m; STEP_M (k=5) already failed above
+    while True:
+        step = k * 0.5
+        half = math.ceil(need_m / step) * step
+        if 2 * half / step <= MAX_TERRAIN_CELLS:
+            return step, half
+        k += 1
+
+
 # --- scene build -------------------------------------------------------------------
 
 def build_scene(area_id: str, area_def: dict, scan: dict,
@@ -411,9 +431,9 @@ def build_scene(area_id: str, area_def: dict, scan: dict,
                for lon in (bbox[0], bbox[2]) for lat in (bbox[1], bbox[3])]
     need = max(abs(x) for x, _z in corners + [(0, 0)])
     need = max(need, max(abs(z) for _x, z in corners))
-    half_m = math.ceil(need / STEP_M) * STEP_M
+    step, half_m = terrain_step(need)
     nx, nz, dm, dem_info = sample_grid(dem_source, lon0, lat0, half_m,
-                                       STEP_M, f"dem:{seed_text}")
+                                       step, f"dem:{seed_text}")
 
     roads: list[dict] = []
     lands: list[dict] = []
@@ -704,7 +724,7 @@ def build_scene(area_id: str, area_def: dict, scan: dict,
             },
             "code": SCENE_CODE_VERSION,
         },
-        "terrain": {"x0": -half_m, "z0": -half_m, "step": STEP_M,
+        "terrain": {"x0": -half_m, "z0": -half_m, "step": step,
                     "nx": nx, "nz": nz, "dm": dm},
         "roads": roads,
         "lands": lands,
