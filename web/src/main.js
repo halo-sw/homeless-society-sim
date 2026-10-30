@@ -14,7 +14,7 @@ import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, followZoomAfterWheel, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { assetUrl, STATIC_SITE, LIVE_API } from "./paths.js";
-import { drapeAerial } from "./aerial/drape.js";
+import { drapeAerial, isUsArea } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { oneWayByLabel } from "./verify/numbers.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -437,7 +437,9 @@ function buildWorld(area, scene14, opts = {}) {
   // 20d: real aerial photos on the ground and roofs (VWorld, live tiles
   // via the dev-server proxy or the relay). Async: without a key, or with
   // ?ground=paint, the painted ground stays as it is. Never logs URLs.
-  if (LIVE_API && PARAMS.get("ground") !== "paint") {
+  // 26e: US areas fetch USGS tiles directly, so they drape on a static
+  // build too.
+  if ((LIVE_API || isUsArea(area)) && PARAMS.get("ground") !== "paint") {
     drapeAerial({ THREE, renderer, scene, area, origin, terrainMesh,
       groundMesh, roadMeshes: sceneRoadMeshes, roofMesh, look: LOOK, style: STYLE })
       .then((r) => {

@@ -19,7 +19,26 @@ export function basemapApiBase() {
   return API_BASE;
 }
 
-export function basemapTileUrl(apiBase, z, y, x) {
+// 26e: contiguous-US bbox (lon/lat). Inside it the chat map uses
+// CARTO Positron directly (no relay, no key); elsewhere VWorld.
+export const US_BBOX = [-125, 24, -66, 50];
+
+export function isUsLonLat(lon, lat) {
+  const x = Number(lon);
+  const y = Number(lat);
+  return Number.isFinite(x) && Number.isFinite(y)
+    && x >= US_BBOX[0] && x <= US_BBOX[2] && y >= US_BBOX[1] && y <= US_BBOX[3];
+}
+
+export function basemapProvider(lon, lat) {
+  return isUsLonLat(lon, lat) ? "carto" : "vworld";
+}
+
+export function basemapTileUrl(apiBase, z, y, x, { provider = "vworld" } = {}) {
+  if (provider === "carto") {
+    const sub = "abcd"[(Number(x) + Number(y)) % 4];
+    return `https://${sub}.basemaps.cartocdn.com/light_all/${z}/${x}/${y}.png`;
+  }
   return `${apiBase}/api/tiles/white/${z}/${y}/${x}.png`;
 }
 

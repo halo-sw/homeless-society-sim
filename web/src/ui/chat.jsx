@@ -769,6 +769,16 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
 
 const CHAT_CHIPS = ["매물 글 붙여 넣기", "공공임대 찾기", "도움 제도 보여줘"];
 
+// 26e: USD customers get sort chips instead of the Korean-only ones.
+// They map to find_homes sorts (HOME_SORTS): commute / monthly.
+const CHAT_CHIPS_US = ["Meta HQ까지 가까운 순", "월세 낮은 순"];
+
+export function chatChipsFor(currency) {
+  return currency === "USD" ? CHAT_CHIPS_US : CHAT_CHIPS;
+}
+
+const US_NO_JEONSE_SUPPORT = "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.";
+
 const GREETING = [
   "안녕하세요! 집 찾기를 도와드려요.",
   "어디로 출근하고, 누구와 살고, 예산은 얼마인지 편하게 말씀해 주세요.",
@@ -1041,6 +1051,16 @@ export function ChatScreen() {
         tool_calls: [{ id: exId, name: "extract_profile" }] });
       pushMsg({ role: "assistant", kind: "text",
         content: "어떤 상황인지 조금만 더 알려주세요. 예를 들어 어디로 출근하는지, 전세·월세 중 뭘 보는지, 예산은 얼마인지요." });
+      return;
+    }
+    // 26e: USD profiles skip the six-step intake and search directly
+    // with the same profile card the empty-profile path uses above; a
+    // missing budget is asked by the existing one-question-at-a-time path.
+    if (prof.currency && prof.currency.value === "USD") {
+      pushMsg({ role: "assistant", kind: "profile", replace: true,
+        data: { profile: prof }, example: stateRef.current.exampleId,
+        tool_calls: [{ id: exId, name: "extract_profile" }] });
+      await runSearch(prof, data, { sort: "commute" });
       return;
     }
     // 13: after the first message the guided intake pre-fills from the
@@ -1508,17 +1528,38 @@ export function ChatScreen() {
           pushMsg({ role: "assistant", kind: "listing", data: {} });
         }
       } else if (/공공임대/.test(content)) {
-        if (IS_DEV) await askAgent(content);
+        // 26e: USD runs have no jeonse/public/support data — one line,
+        // never the tabs.
+        const usd = stateRef.current.profile
+          && stateRef.current.profile.currency
+          && stateRef.current.profile.currency.value === "USD";
+        if (usd) {
+          pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
+        } else if (IS_DEV) await askAgent(content);
         else pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
       } else if (/전세 점검/.test(content)) {
-        store.set({ compareOpen: true, compareTab: "jeonse" });
-        pushMsg({ role: "assistant", kind: "tab", data: { tab: "jeonse" } });
+        const usd = stateRef.current.profile
+          && stateRef.current.profile.currency
+          && stateRef.current.profile.currency.value === "USD";
+        if (usd) {
+          pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
+        } else {
+          store.set({ compareOpen: true, compareTab: "jeonse" });
+          pushMsg({ role: "assistant", kind: "tab", data: { tab: "jeonse" } });
+        }
       } else if (/살 만한/.test(content)) {
         store.set({ compareOpen: true, compareTab: "worthit" });
         pushMsg({ role: "assistant", kind: "tab", data: { tab: "worthit" } });
       } else if (/도움 제도|도움제도|지원 제도|정책 대출|혜택/.test(content)) {
-        store.set({ compareOpen: true, compareTab: "support" });
-        pushMsg({ role: "assistant", kind: "tab", data: { tab: "support" } });
+        const usd = stateRef.current.profile
+          && stateRef.current.profile.currency
+          && stateRef.current.profile.currency.value === "USD";
+        if (usd) {
+          pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
+        } else {
+          store.set({ compareOpen: true, compareTab: "support" });
+          pushMsg({ role: "assistant", kind: "tab", data: { tab: "support" } });
+        }
       } else {
         await structuredFlow(content);
       }
@@ -1538,6 +1579,11 @@ export function ChatScreen() {
       send("공공임대 찾기");
     } else if (chip === "도움 제도 보여줘") {
       send("도움 제도 보여줘");
+    } else if (chip === "Meta HQ까지 가까운 순") {
+      // 26e: USD sort chips re-run the search with find_homes sorts.
+      handleSort(null, "commute");
+    } else if (chip === "월세 낮은 순") {
+      handleSort(null, "monthly");
     }
   }
 
@@ -1732,7 +1778,7 @@ export function ChatScreen() {
                 )}
               </ChatMessageList>
               <div className="ui-chat-chips" role="group" aria-label="추천 질문">
-                {CHAT_CHIPS.map((chip) => (
+                {chatChipsFor(profile && profile.currency && profile.currency.value).map((chip) => (
                   <Button key={chip} size="sm" variant="secondary" label={chip}
                     onClick={() => chipAction(chip)} />
                 ))}

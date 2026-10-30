@@ -52,7 +52,7 @@ describe("landing", () => {
       assert.ok(text.includes(p.title), p.title);
       assert.ok(text.includes(p.prompt), p.prompt);
     }
-    assert.equal(landing.EXAMPLE_PROMPTS.length, 3);
+    assert.equal(landing.EXAMPLE_PROMPTS.length, 4);
     assert.ok(text.includes("매물 글 붙여 넣기"));
     assert.ok(text.includes("다루는 지역 11곳"));
     for (const area of landing.COVERAGE_AREAS) {

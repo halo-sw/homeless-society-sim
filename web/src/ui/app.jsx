@@ -16,7 +16,7 @@ import { store } from "./store.js";
 import { appUrl } from "../paths.js";
 import { TopBar, MapTools } from "./topbar.jsx";
 import { SourceBadge, GroupBadges } from "./source-badge.jsx";
-import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup } from "./compare-tabs.js";
+import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup, tabsForCurrency } from "./compare-tabs.js";
 import { Landing } from "./landing.jsx";
 // Cycle with chat.jsx (it reuses CompareCard): render-time use only,
 // so module evaluation order is safe.
@@ -39,7 +39,14 @@ import { criterionTitle } from "../engine/criteria.js";
 import { chipDisplay, tickerDisplay, FATIGUE_MODEL_NOTE, familyRowText } from "../nowcard.js";
 import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
 import { ActivityIcon, ActivityLegend } from "./timeline.jsx";
-import { AERIAL_CREDIT } from "../aerial/drape.js";
+import { aerialCreditFor } from "../aerial/drape.js";
+
+// 26e: the screens below carry no area bbox; a USD moneyDoc marks a US
+// run, so the aerial credit maps it to a country-only area (Korean
+// runs keep AERIAL_CREDIT).
+function areaForCredit(state) {
+  return state.money && state.money.currency === "USD" ? { country: "US" } : null;
+}
 import { priorityValues, myScore } from "../priorities.js";
 
 function useStore() {
@@ -857,9 +864,21 @@ export function CompareCard({ state, bare }) {
   // Two levels so every label fits: the group row (비교 · 돈 · 안심 ·
   // 매물) then the tabs inside the active group. Switching groups jumps
   // to the group's first tab.
-  const group = groupForTab(state.compareTab);
-  const groupItems = COMPARE_GROUPS.map((g) => ({ value: g.id, label: g.label }));
-  const tabItems = tabsInGroup(group).map((v) => ({ value: v, label: labelForTab(v) }));
+  // 26e: a USD run hides the Korean-only tabs. The run's currency is
+  // read from the custom run's moneyDoc (state.money.currency); a
+  // hidden active tab falls back to the first visible tab.
+  const cur = state.money && state.money.currency === "USD" ? "USD" : "KRW";
+  const visibleTabs = (tabs) => tabsForCurrency(tabs, cur);
+  let tab = state.compareTab;
+  let group = groupForTab(tab);
+  if (!visibleTabs(tabsInGroup(group)).includes(tab)) {
+    tab = COMPARE_GROUPS.flatMap((g) => visibleTabs(g.tabs)).find(Boolean) || "compare";
+    group = groupForTab(tab);
+  }
+  const groupItems = COMPARE_GROUPS
+    .filter((g) => visibleTabs(g.tabs).length > 0)
+    .map((g) => ({ value: g.id, label: g.label }));
+  const tabItems = visibleTabs(tabsInGroup(group)).map((v) => ({ value: v, label: labelForTab(v) }));
   const body = (
     <VStack gap={2}>
       <HStack gap={2} vAlign="center">
@@ -870,20 +889,20 @@ export function CompareCard({ state, bare }) {
         <Button size="sm" variant="ghost" label="닫기" onClick={() => act("toggleCompare")} />
       </HStack>
       <SegControl label="비교 묶음" value={group}
-        onChange={(g) => act("setCompareTab", tabsInGroup(g)[0])} items={groupItems} />
-      <SegControl label="비교 탭" value={state.compareTab}
+        onChange={(g) => act("setCompareTab", visibleTabs(tabsInGroup(g))[0])} items={groupItems} />
+      <SegControl label="비교 탭" value={tab}
         onChange={(v) => act("setCompareTab", v)} items={tabItems} />
-      {state.compareTab === "compare" && <CompareTabBody state={state} />}
-      {state.compareTab === "priorities" && <PrioritiesTab state={state} />}
-      {state.compareTab === "money" && <MoneyTab state={state} />}
-      {state.compareTab === "worthit" && <WorthItTab state={state} />}
-      {state.compareTab === "quality" && <QualityTab state={state} />}
-      {state.compareTab === "safety" && <SafetyEduTab state={state} />}
-      {state.compareTab === "jeonse" && <JeonseTab state={state} />}
-      {state.compareTab === "support" && <SupportTab state={state} />}
-      {state.compareTab === "listings" && <ListingsTab state={state} />}
-      {state.compareTab === "listings-public" && <ListingsTab state={state} sub="public" />}
-      {state.compareTab === "criteria" && <CriteriaTab state={state} />}
+      {tab === "compare" && <CompareTabBody state={state} />}
+      {tab === "priorities" && <PrioritiesTab state={state} />}
+      {tab === "money" && <MoneyTab state={state} />}
+      {tab === "worthit" && <WorthItTab state={state} />}
+      {tab === "quality" && <QualityTab state={state} />}
+      {tab === "safety" && <SafetyEduTab state={state} />}
+      {tab === "jeonse" && <JeonseTab state={state} />}
+      {tab === "support" && <SupportTab state={state} />}
+      {tab === "listings" && <ListingsTab state={state} />}
+      {tab === "listings-public" && <ListingsTab state={state} sub="public" />}
+      {tab === "criteria" && <CriteriaTab state={state} />}
     </VStack>
   );
   // 13f2: inside the drawer section the card chrome goes (no nested
@@ -937,7 +956,7 @@ function LegendCard({ state, onClose }) {
           )}
           <Text type="supporting">{legend.note}</Text>
           <Text type="supporting">출처: 서울교통공사 · 공공누리 제3유형(출처표시·변경금지)</Text>
-          {state.aerial && <Text type="supporting">{AERIAL_CREDIT}</Text>}
+          {state.aerial && <Text type="supporting">{aerialCreditFor(areaForCredit(state))}</Text>}
         </VStack>
       </Card>
     </div>
@@ -951,13 +970,16 @@ export function SimCredit({ state }) {
   return (
     <div className="ui-simcredit" data-testid="sim-credit">
       {state.aerial
-        ? "항공사진 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap"
+        ? `${aerialCreditFor(areaForCredit(state))} · © OpenStreetMap`
         : "© OpenStreetMap"}
     </div>
   );
 }
 
 function AttrLine({ state }) {
+  // 26e: a USD run (moneyDoc currency) hides the Korean source line and
+  // shows the US line instead.
+  const isUsd = state.money && state.money.currency === "USD";
   const money = state.compareTab === "money" || state.compareTab === "quality"
     || state.compareTab === "worthit" || state.compareTab === "support";
   const jeonse = state.compareTab === "jeonse";
@@ -967,12 +989,16 @@ function AttrLine({ state }) {
     <div className="ui-attr">
       <div className="overlay">
         <Text type="supporting">
-          © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) · GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시
-          {money && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 공공임대: LH·마이홈 (공공주택 데이터 API)"}
-          {jeonse && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 등기: GIS건물통합정보 · 체크리스트: 인터넷등기소·정부24·HUG/HF/SGI"}
-          {safety && " · 치안: 경찰청 범죄 발생 지역별 통계 (2025년)"}
-          {congestion && " · 혼잡도: 서울교통공사 지하철혼잡도정보(2026-09-30 기준, 공공누리 3유형)"}
-          {state.aerial && ` · ${AERIAL_CREDIT}`}
+          {isUsd
+            ? "월세: Zillow ZORI (ZIP 추정) · 지도 © OpenStreetMap © CARTO · 항공사진 USGS"
+            : (<>
+              © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (ODbL) · GIS건물통합정보 (국토교통부/VWorld) · 나무·인물은 장식용 모의 표시
+              {money && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 공공임대: LH·마이홈 (공공주택 데이터 API)"}
+              {jeonse && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 등기: GIS건물통합정보 · 체크리스트: 인터넷등기소·정부24·HUG/HF/SGI"}
+              {safety && " · 치안: 경찰청 범죄 발생 지역별 통계 (2025년)"}
+              {congestion && " · 혼잡도: 서울교통공사 지하철혼잡도정보(2026-09-30 기준, 공공누리 3유형)"}
+              {state.aerial && ` · ${aerialCreditFor(areaForCredit(state))}`}
+            </>)}
         </Text>
       </div>
     </div>

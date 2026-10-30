@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
   stationNameWidthPx, haversineKm, shortPinPrice,
   pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN } from "../chatmap.js";
-import { basemapApiBase, basemapTileUrl, basemapTiles,
+import { basemapApiBase, basemapTileUrl, basemapTiles, basemapProvider,
   viewTransform, zoomAt } from "../basemap.js";
 
 function ptsAttr(pts, toXYz) {
@@ -105,13 +105,18 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const T = viewTransform({ ...vt, cx: W / 2, cy: H / 2 });
   const toXYz = (lon, lat) => T.apply(fit.toXY(lon, lat));
   const toLonLatZ = (x, y) => fit.toLonLat(...T.invert([x, y]));
-  // 25a: light VWorld raster under the vector layers when the tile
-  // proxy is available (apiBase null on a static build: no basemap).
+  // 25a: light raster under the vector layers when the tile source
+  // is available. 26e: the provider follows the map centre — CARTO
+  // Positron in the US (direct, no relay, so apiBase may be null),
+  // VWorld through the proxy elsewhere (apiBase null: no basemap).
   const apiBase = basemapApiBase();
-  const tiles = apiBase === null ? []
+  const [centerLon, centerLat] = toLonLatZ(W / 2, H / 2);
+  const provider = basemapProvider(centerLon, centerLat);
+  const tiles = (provider === "vworld" && apiBase === null) ? []
     : basemapTiles({ toLonLat: toLonLatZ, W, H,
       lat: midLat, metersPerPx: fit.metersPerPx / vt.zoom });
-  const basemapOn = apiBase !== null && failCount * 2 < tiles.length;
+  const basemapOn = (provider === "carto" || apiBase !== null)
+    && failCount * 2 < tiles.length;
   // Constant screen sizes: one viewBox unit is one stage px at 1:1, so
   // literal px values stay readable however the map is zoomed.
   const fs = (n) => n;
@@ -254,7 +259,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
           const [x1, y1] = toXYz(t.se[0], t.se[1]);
           return (
-            <image key={t.key} href={basemapTileUrl(apiBase, t.z, t.y, t.x)}
+            <image key={t.key} href={basemapTileUrl(apiBase, t.z, t.y, t.x, { provider })}
               x={Math.min(x0, x1)} y={Math.min(y0, y1)}
               width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)}
               preserveAspectRatio="none" opacity={0.92} pointerEvents="none"
@@ -532,7 +537,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
       <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 10,
         color: MAP_COLORS.muted, background: "rgba(255,255,255,0.8)", padding: "2px 6px" }}>
         {basemapOn
-          ? "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors"
+          ? (provider === "carto"
+            ? "© OpenStreetMap contributors © CARTO"
+            : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
           : "© OpenStreetMap contributors"}
       </div>
     </div>
