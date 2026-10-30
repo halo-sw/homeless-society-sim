@@ -150,3 +150,67 @@ one justified pin update in `painted-17b.test.js`.
   EPERM (`node_modules/.vite-temp`, same as 14e/17/17b/17c/18);
   stand-in green: full esbuild bundle of `src/main.js` (5.4 MB, font
   externalized) in `/tmp/18c-bundle.js`.
+
+## 18d — walkthrough fixes (`briefs/18d-walkthrough-fixes.md`)
+
+Orchestrator walkthrough 2026-10-30 14:30, 1440×900, on branch
+`ithaca-17`. Eight items, one commit each (items 7–8 finished from the
+18e working tree, not restarted).
+
+- Item 1 `cd1d991` (chatmap.jsx + `chatmap-18.test.js`): the SVG
+  `viewBox` was in degrees while layers draw in projected metres, so the
+  map was blank beige. `fitMapView` and every layer now share one
+  projected space (`viewBox 0 0 W H`); labels 11–13 px and pins ~22 px,
+  constant on screen at any zoom. The test runs the full ChatMap data →
+  SVG path for the `single-firstjob` example: pins inside the viewBox,
+  matching units, readable sizes.
+- Item 2 `697253a` (intake.js + flow-18.test.js): the intake summary
+  printed "null㎡" / "null분" for missing fields. Fields without a value
+  are now left out of the sentence, with a test.
+- Item 3 `048563f` (numbers.js, moments.js, app.jsx, candidate-card.jsx,
+  chat.jsx, share.js + results-18.test.js): one customer-facing 출퇴근
+  편도 — door-to-door minutes per one-way commute, i.e. `engineValue`
+  ("C01") / N01 — in one shared helper used by the result card, the
+  share card, the compare table and the moments. The candidate card keeps
+  its pre-run estimate, labelled "추정 (살아 보기 전)". Test: result
+  card, share card and compare row agree per home and equal C01.
+- Item 4 `c7bf899` (chat.jsx + chat-render-18c.test.js): starting a run
+  gave no feedback — the progress/result card appeared far below the
+  viewport. The chat now scrolls to the simulation card as soon as it is
+  created; test asserts the scroll target is set.
+- Item 5 `a65c9a9` (moments.js, main.js, nowcard.js, sim.js, timeline.js,
+  assumptions.jsx + timeline-12b.test.js): the drawer 선택 기록 showed
+  raw float minutes ("17:40.200000000000045"). Every minute value on
+  screen now goes through one HH:MM formatter; grepped for other raw
+  floats reaching the UI.
+- Item 6 `5046017` (photos.js, candidate-card.jsx, preview.jsx +
+  photos.test.js): card thumbnails showed ground + one tree, no buildings.
+  The home's own building and neighbours are now framed from ~45° at
+  150–250 m view width in the painted palette with the home outlined;
+  `MiniMap` when no building matches. Test: the home footprint is centred
+  and fills 10–40 % of the frame.
+- Items 7–8 `77503b9` (monthly.js [new], app.jsx, chat.jsx, share.js,
+  share.jsx, share.test.js, share-load.test.js): the share card's internal
+  lines ("차·지하철을 탄 시간이 0분이면 도보로 적어요", per-row
+  "출처: … 가정값 · 가정값", card-level `sources_note`) are rewritten in
+  plain customer Korean inside one small 계산 방법 footnote (official
+  source names kept: 국토교통부 실거래가, 경찰청·공공임대 공식 자료);
+  per-row 출처 lines removed from both the dialog preview and the canvas
+  renderer. New rows for 월 주거비 (shared `monthlyHousingOf` helper also
+  used by the result card: 주거비 + 관리비 + 교통비) and the item-3 출퇴근
+  편도. No winner wording; (낮음) stays neutral with a footnote saying it
+  only marks the smaller side. The drawer compare table now lays each row
+  out as label, then A | B in two columns, then the plain-words line
+  (which already carries the delta: "B가 하루 평균 … 더 …") in supporting
+  text — no run-together text; the symbolic Δ shows only where no plain
+  line exists. The 18e run's only failure was the stage-11b pin in
+  `share-load.test.js` expecting the old 12-row card; updated to 13 with a
+  note (the new 월 주거비 row).
+
+## End (18d)
+
+- `cd web && npm test 2>&1 | tail -6`: **1251 pass, 0 fail, 1 skipped**
+  (skip pre-existing; +12 pass since 18c). `npx vite build 2>&1 | tail -2`
+  hits the same known sandbox EPERM (`node_modules/.vite-temp`);
+  stand-in green: full esbuild bundle of `src/main.js` (4.9 MB JS +
+  291 KB CSS, fonts externalized) in `/tmp/18d-bundle.js`.
