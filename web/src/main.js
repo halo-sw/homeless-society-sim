@@ -787,7 +787,7 @@ async function fetchScene(wantId) {
 function bootChat() {
   mountUI();
   registerCommonActions();
-  store.set({ mode: "chat", area: { id: areaId, label: areaId } });
+  store.set({ mode: "chat", area: { id: areaId, label: areaId }, ready: true });
   document.title = "Ithaca — 대화";
   registerChatActions();
   document.getElementById("loading").remove();

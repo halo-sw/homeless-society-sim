@@ -65,4 +65,13 @@ describe("27c1 scene panel (SSR, no DOM)", () => {
       { custom: "c1", embed: true });
     assert.ok(url.includes("embed=1"), "embed");
   });
+
+  it("bootChat sets ready so App renders (27e2)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+    const start = src.indexOf("function bootChat");
+    assert.ok(start >= 0, "bootChat found");
+    const body = src.slice(start, src.indexOf("\n}\n", start));
+    assert.ok(body.includes("ready: true"), "bootChat sets ready");
+  });
 });
