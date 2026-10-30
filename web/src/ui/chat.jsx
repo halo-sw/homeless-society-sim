@@ -2616,7 +2616,7 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
             </span>
           ))}
         </div>
-        <Button label={label} variant="primary"
+        <Button label={label} variant="primary" className="ui-picks-run"
           isDisabled={!needWorkplace && !canRun}
           onClick={() => {
             if (needWorkplace) {

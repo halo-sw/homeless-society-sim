@@ -731,7 +731,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-card); border-radius: var(--ui-r-sheet);
   box-shadow: var(--ui-shadow); padding: 12px 16px; }
 .ui-picks-tray-row { display: flex; align-items: center; gap: var(--ui-s12); }
-.ui-picks-tray-chips { display: flex; gap: var(--ui-s8); flex: 1 1 auto;
+.ui-picks-tray-chips { display: flex; gap: var(--ui-s8); flex: 1 1 0;
   min-width: 0; overflow-x: auto; }
 .ui-pick-chip { display: flex; align-items: center; gap: 6px; min-width: 0; flex: none; }
 .ui-pick-disc { width: 22px; height: 22px; border-radius: 50%; flex: none;
@@ -742,6 +742,14 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   word-break: keep-all; font-size: var(--ui-t14); }
 .ui-pick-x { background: none; border: none; cursor: pointer; padding: 2px 4px;
   color: var(--ui-ink2); font-size: 14px; line-height: 1; }
+/* 26z: the run button keeps its full label on one line at any width.
+   It never shrinks (flex: none, no width cap), so the design-system
+   label span never clips; overflow: visible on the button and its
+   inner spans leaves the full label painted. The A/B chips take the
+   shrink instead. */
+.ui-picks-tray .ui-picks-run { flex: none; max-width: none;
+  overflow: visible; white-space: nowrap; }
+.ui-picks-tray .ui-picks-run span { overflow: visible; }
 /* 19g: while the side panel is open, the tray clears its 380 px. */
 .ui-chat-main[data-panel="open"] .ui-picks-tray { right: calc(380px + 24px); }
 /* 19a: detail / compare open over the stage right edge only on demand. */
@@ -1008,6 +1016,10 @@ button.ui-tag:hover { color: var(--ui-ink); }
 }
 .ui-result-span { grid-column: 1 / -1; font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-result-missing { font-size: var(--ui-t12); color: var(--ui-ink2); }
+/* 26z: the money source note is its own small line under the amount
+   at every width (the 26m phone block already did this on phones). */
+.ui-result-note { display: block; font-size: var(--ui-t12);
+  font-weight: var(--ui-w400); word-break: keep-all; }
 /* Score bar: neutral ink for both homes, never a winner colour. */
 .ui-result-bar {
   display: block; width: 48px; height: 4px; margin-top: 4px;
@@ -1138,7 +1150,7 @@ button.ui-tag:hover { color: var(--ui-ink); }
   /* 26w3: the card title and prompt wrap again — the ID selector wins
      over the 26m "button *" nowrap; the 예시 chip stays on one line. */
   #ui-root .ui-landing-cardprompt, #ui-root .ui-landing-cardtitle { white-space: normal; }
-  /* 26w3: the status badge is never clipped on phones — no ellipsis. */
+  /* 26w3: the status badge is never cut off on phones. */
   #ui-root .ui-bar-status { max-width: none; overflow: visible; }
   .ui-chat-empty-cards { grid-template-columns: 1fr; }
   .ui-chat-empty-scrim {
