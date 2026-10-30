@@ -89,11 +89,11 @@ import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.j
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
-import { postConsult, loadScenario } from "./consult-client.js";
+import { postConsultStream, loadScenario } from "./consult-client.js";
 import { LIVE_API, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
-import { agentContext, stripToolLabel, viewSystemLine } from "./agent-float.js";
+import { agentContext, stripToolLabel, toolActionKo, viewSystemLine } from "./agent-float.js";
 import { LANG } from "../i18n/lang.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
@@ -795,6 +795,66 @@ export function chatChipsFor(currency) {
   return currency === "USD" ? CHAT_CHIPS_US : CHAT_CHIPS;
 }
 
+// 27b2: every message goes to Muse when live; the rule flow is the fallback.
+export function routeTurn({ live, museDown }) {
+  return live && !museDown ? "agent" : "local";
+}
+
+// 27b2: one live tool row as a busy-bubble line.
+export function liveRowLine(row) {
+  const label = toolActionKo(row.name);
+  if (row.pending) return `▸ ${label} 중…`;
+  const mark = row.ok === false ? "✕" : "✓";
+  const tail = stripToolLabel(row.name, row.summary);
+  return tail ? `${mark} ${label} · ${tail}` : `${mark} ${label}`;
+}
+
+const WORK_TABS_27B2 = new Set(["compare", "priorities", "money", "worthit", "jeonse", "support"]);
+const SCENE_PANELS_27B2 = new Set(["tour", "commute", "result"]);
+
+// 27b2: Muse's uiActions → concrete UI effects, in order.
+export function uiEffects(actions, { candidateIds = [], pickCount = 0 } = {}) {
+  const effs = [];
+  let n = pickCount || 0;
+  for (const a of actions || []) {
+    if (!a || typeof a.action !== "string") continue;
+    if (a.action === "panel") {
+      if (a.panel === "map") {
+        effs.push({ type: "work" });
+      } else if (WORK_TABS_27B2.has(a.panel)) {
+        effs.push({ type: "work" });
+        effs.push({ type: "tab", tab: a.panel });
+      } else if (SCENE_PANELS_27B2.has(a.panel)) {
+        effs.push({ type: "work" });
+        effs.push({ type: "scene", panel: a.panel,
+          home: a.home ?? a.candidate_id ?? null,
+          day: a.day ?? null, time: a.time ?? null });
+      }
+    } else if (a.action === "pick") {
+      const ids = (Array.isArray(a.ids) ? a.ids : [])
+        .filter((id) => candidateIds.includes(id)).slice(0, 3);
+      if (ids.length === 0) continue;
+      n = ids.length;
+      effs.push({ type: "pick", ids });
+    } else if (a.action === "run") {
+      effs.push(n >= 2 ? { type: "run" } : { type: "say", text: "먼저 두 곳을 찜해 주세요." });
+    }
+  }
+  return effs;
+}
+
+// 27b2: next-step chips — Muse's suggestions on the latest assistant
+// message win; otherwise the rule chips.
+export function chipsForLatest(messages, fallback) {
+  for (let i = (messages || []).length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m && m.role === "assistant") {
+      return Array.isArray(m.suggestions) && m.suggestions.length > 0 ? [...m.suggestions] : fallback;
+    }
+  }
+  return fallback;
+}
+
 const US_NO_JEONSE_SUPPORT = "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.";
 
 const GREETING = [
@@ -940,6 +1000,9 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
+  // 27b2: Muse down → rules answer; liveRows → the busy bubble rows.
+  const [museDown, setMuseDown] = useState(false);
+  const [liveRows, setLiveRows] = useState([]);
   const [error, setError] = useState("");
   // 13f: usage lives in the 설정 sheet's 모델 section (usage log).
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
@@ -1457,13 +1520,39 @@ export function ChatScreen() {
         .map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })),
       { role: "user", content: text },
     ];
+    // 27b2: the context Muse needs — live candidates (real ids for
+    // pick_homes), current picks, and whether the work panel is open.
+    const liveCands = ((st.candidatesData && st.candidatesData.result
+      && st.candidatesData.result.candidates) || []).slice(0, 6).map((c) => ({
+      id: c.id, name: c.name, price: c.price ?? null,
+      commute_min: c.commute_min ?? c.commute_minutes ?? null,
+    }));
+    const ctx = { ...agentContext(store.getState()), lang: LANG,
+      candidates: liveCands, picks: [...st.picks], work_open: workOpen };
     try {
       let byoKey = "";
       try {
         byoKey = loadByoKey(typeof sessionStorage !== "undefined" ? sessionStorage : null, provider);
       } catch { /* no storage — server key path */ }
-      const out = await postConsult({ provider, messages: history, scenario: scen,
-        context: { ...agentContext(store.getState()), lang: LANG }, byoKey });
+      setLiveRows([]);
+      const out = await postConsultStream({ provider, messages: history, scenario: scen,
+        context: ctx, byoKey }, (ev) => {
+        if (ev.type === "tool_start") {
+          setLiveRows((prev) => [...prev, { name: ev.name, pending: true }]);
+        } else if (ev.type === "tool_end") {
+          setLiveRows((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].pending && next[i].name === ev.name) {
+                next[i] = { name: ev.name, ok: ev.ok, summary: ev.summary, pending: false };
+                break;
+              }
+            }
+            return next;
+          });
+        }
+      });
+      setLiveRows([]);
       const rows = { ...stateRef.current.toolRows };
       const callIds = [];
       for (const m of out.messages) {
@@ -1475,17 +1564,40 @@ export function ChatScreen() {
       setToolRows(rows);
       const appended = [...out.messages];
       if (out.view) appended.push({ role: "system", content: viewSystemLine(out.view) });
+      const suggestions = Array.isArray(out.suggestions) ? out.suggestions : [];
       for (const m of appended) {
         if (m.role === "system") {
           pushMsg({ role: "system", kind: "system", content: m.content });
         } else if (m.role === "assistant") {
           pushMsg({ role: "assistant", kind: "text", content: m.content || "",
-            tool_calls: m.tool_calls || [] });
+            tool_calls: m.tool_calls || [], suggestions: [...suggestions] });
         }
       }
       appendToolCards(out.messages);
       mergeMoneyResults(out.messages);
       if (out.scenario) setScenario(out.scenario);
+      // 27b2: Muse opens panels and picks — same-turn candidates count,
+      // so a find + pick in one turn still lands.
+      let candidateIds = (((stateRef.current.candidatesData || {}).result || {}).candidates || [])
+        .map((c) => c.id);
+      for (const m of appended) {
+        if (m && m.role === "tool" && typeof m.content === "string") {
+          try {
+            const r = JSON.parse(m.content);
+            if (r && Array.isArray(r.candidates)) candidateIds = r.candidates.map((c) => c.id);
+          } catch { /* not JSON — ignore */ }
+        }
+      }
+      for (const eff of uiEffects(out.uiActions || [],
+        { candidateIds, pickCount: stateRef.current.picks.length })) {
+        if (eff.type === "work") setWorkOpen(true);
+        else if (eff.type === "tab") store.set({ compareOpen: true, compareTab: eff.tab });
+        else if (eff.type === "pick") setPicks(eff.ids);
+        else if (eff.type === "run") await handleRun();
+        else if (eff.type === "say") {
+          pushMsg({ role: "assistant", kind: "text", content: eff.text });
+        } else if (eff.type === "scene") store.set({ pendingScene: eff });
+      }
       // 13: per-turn usage into the 모델 panel log.
       setUsageLog((log) => recordTurn(log, {
         provider, model: provider,
@@ -1496,14 +1608,14 @@ export function ChatScreen() {
       }));
       setModelErrors((e) => ({ ...e, [provider]: null }));
     } catch (err) {
+      setLiveRows([]);
       setModelErrors((e) => ({ ...e, [provider]: {
         httpStatus: err.httpStatus || null, message: String(err.message || err).slice(0, 200),
       } }));
-      if (/is not set/.test(err.message)) {
-        pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
-      } else {
-        pushMsg({ role: "assistant", kind: "text", content: `상담 요청 실패: ${err.message}` });
-      }
+      // 27b2: Muse is down — one system line, then the rules answer.
+      setMuseDown(true);
+      pushMsg({ role: "system", kind: "system", content: "Muse 연결이 안 돼서 규칙으로 답했어요" });
+      await structuredFlow(text);
     }
   }
 
@@ -1549,13 +1661,14 @@ export function ChatScreen() {
     pushMsg({ role: "user", kind: "text", content });
     setComposer("");
     try {
-      if (/check_listing으로 확인해줘|add_listing_c로 C에 추가해줘|C로 추가해줘/.test(content)) {
-        if (IS_DEV) await askAgent(content);
-        else {
-          pushMsg({ role: "assistant", kind: "text",
-            content: "매물 확인은 개발 서버 + 키에서 실거래와 대조해요. 글 읽기는 ’매물 글 붙여 넣기’에서 바로 돼요." });
-          pushMsg({ role: "assistant", kind: "listing", data: {} });
-        }
+      if (content === "매물 글 붙여 넣기") {
+        pushMsg({ role: "assistant", kind: "listing", data: {} });
+      } else if (routeTurn({ live: LIVE_API, museDown }) === "agent") {
+        await askAgent(content);
+      } else if (/check_listing으로 확인해줘|add_listing_c로 C에 추가해줘|C로 추가해줘/.test(content)) {
+        pushMsg({ role: "assistant", kind: "text",
+          content: "매물 확인은 개발 서버 + 키에서 실거래와 대조해요. 글 읽기는 ’매물 글 붙여 넣기’에서 바로 돼요." });
+        pushMsg({ role: "assistant", kind: "listing", data: {} });
       } else if (/공공임대/.test(content)) {
         // 26e: USD runs have no jeonse/public/support data — one line,
         // never the tabs.
@@ -1564,8 +1677,7 @@ export function ChatScreen() {
           && stateRef.current.profile.currency.value === "USD";
         if (usd) {
           pushMsg({ role: "assistant", kind: "text", content: US_NO_JEONSE_SUPPORT });
-        } else if (IS_DEV) await askAgent(content);
-        else pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
+        } else pushMsg({ role: "assistant", kind: "text", content: NO_KEY_NOTICE });
       } else if (/전세 점검/.test(content)) {
         const usd = stateRef.current.profile
           && stateRef.current.profile.currency
@@ -1795,7 +1907,7 @@ export function ChatScreen() {
               composer={(
                 <ChatComposer onSubmit={send} isDisabled={busy}
                   value={composer} onChange={setComposer}
-                  placeholder={busy ? "찾는 중…" : "이어서 말씀해 보세요…"} />
+                  placeholder={busy ? "Muse가 일하는 중…" : "이어서 말씀해 보세요…"} />
               )}>
               <ChatMessageList density="compact">
                 {messages.map((m) => (
@@ -1816,19 +1928,30 @@ export function ChatScreen() {
                 {busy && (
                   <ChatMessage sender="assistant">
                     <ChatMessageBubble variant="ghost">
-                      <Text type="supporting">찾는 중…</Text>
+                      {liveRows.length === 0 ? (
+                        <Text type="supporting">Muse가 생각하는 중…</Text>
+                      ) : (
+                        liveRows.map((row, i) => (
+                          <Text key={`${row.name}-${i}`} type="supporting">{liveRowLine(row)}</Text>
+                        ))
+                      )}
                     </ChatMessageBubble>
                   </ChatMessage>
                 )}
               </ChatMessageList>
-              {messages.length > 0 && (
+              {messages.length > 0 && (() => {
+                const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
+                const chips = chipsForLatest(messages, fallback);
+                const live = chips !== fallback;
+                return (
               <div className="ui-chat-chips" role="group" aria-label="추천 질문">
-                {chatChipsFor(profile && profile.currency && profile.currency.value).map((chip) => (
+                {chips.map((chip) => (
                   <Button key={chip} size="sm" variant="secondary" label={chip}
-                    onClick={() => chipAction(chip)} />
+                    onClick={() => (live ? send(chip) : chipAction(chip))} />
                 ))}
               </div>
-              )}
+                );
+              })()}
             </ChatLayout>
             )}
             {error && (

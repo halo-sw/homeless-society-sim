@@ -89,6 +89,8 @@ export const TOOL_ACTION_KO = {
   check_listing: "매물 확인", add_listing_c: "매물 C로 추가",
   extract_profile: "상황 읽기", find_homes: "집 후보 찾기",
   find_public_rentals: "공공임대 찾기", build_scenario: "시나리오 만들기",
+  open_panel: "화면 열기", pick_homes: "찜하기",
+  start_life_run: "30일 살아 보기 맡기기",
 };
 
 export function toolActionKo(name) {

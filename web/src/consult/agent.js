@@ -226,7 +226,21 @@ export function formatAgentContext(ctx) {
   if (tenureBits) bits.push(`고른 것: ${tenureBits}`);
   if (ctx.criterion_focus) bits.push(`기준 ${ctx.criterion_focus}`);
   const where = bits.length > 0 ? bits.join(" · ") : "첫 화면";
-  return `현재 화면: ${where}. 고객이 '이거'/'여기'라고 하면 이 화면의 것을 가리킨다.`;
+  let line = `현재 화면: ${where}. 고객이 '이거'/'여기'라고 하면 이 화면의 것을 가리킨다.`;
+  // 27b2: live candidates (real ids for pick_homes) and current picks.
+  if (Array.isArray(ctx.candidates) && ctx.candidates.length > 0) {
+    const items = ctx.candidates.slice(0, 6).map((c) => {
+      const extra = [];
+      if (c.price !== null && c.price !== undefined && typeof c.price !== "object") extra.push(String(c.price));
+      if (c.commute_min !== null && c.commute_min !== undefined) extra.push(`${c.commute_min}분`);
+      return [`${c.id} ${c.name || ""}`.trim(), ...extra].join(" ").trim();
+    });
+    line += ` 후보: ${items.join("; ")}.`;
+  }
+  if (Array.isArray(ctx.picks) && ctx.picks.length > 0) {
+    line += ` 찜: ${ctx.picks.join(", ")}.`;
+  }
+  return line;
 }
 
 export async function runTurn(opts) {
