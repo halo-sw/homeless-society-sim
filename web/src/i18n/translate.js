@@ -24,10 +24,32 @@ function plural(d, one, many) {
   return n === "1" ? `1 ${one}` : `${n} ${many}`;
 }
 
+function formatWon(won) {
+  // One ₩ amount from a 천-bearing figure: ₩1.07M style at or above a
+  // million (up to 2 decimals, trailing zeros trimmed), grouped won below.
+  if (won >= 1000000) {
+    const m = Math.round(won / 10000) / 100;
+    return "₩" + String(m) + "M";
+  }
+  return "₩" + Math.round(won).toLocaleString("en-US");
+}
+
+const WEEKDAY = { 월: "Mon", 화: "Tue", 수: "Wed", 목: "Thu", 금: "Fri", 토: "Sat", 일: "Sun" };
+
 // Korean number + unit → compact English. Only digit-prefixed units are
 // touched; all other Hangul passes through.
 export function localizeNumbers(s) {
   let out = String(s);
+  // 천 amounts first: their 만/원 pieces would otherwise match the 억/만
+  // rules below only partly ("100만 7천 원" → "₩1M" plus leftover).
+  out = out.replace(/(\d+)\s*억\s*(\d[\d,]*)\s*만\s*(\d+)\s*천\s*원?/g,
+    (_, a, b, c) => formatWon(100000000 * num(a) + 10000 * num(b) + 1000 * num(c)));
+  out = out.replace(/(\d[\d,]*)\s*만\s*(\d+)\s*천\s*원?/g,
+    (_, b, c) => formatWon(10000 * num(b) + 1000 * num(c)));
+  out = out.replace(/(\d+)\s*천\s*만\s*원?/g,
+    (_, a) => formatWon(10000000 * num(a)));
+  out = out.replace(/(\d+)\s*천\s*원/g,
+    (_, a) => formatWon(1000 * num(a)));
   // 억 is 100M; a number after 억, with or without 만, is ten-thousands.
   out = out.replace(/(\d[\d,]*)\s*억\s*(\d[\d,]*)\s*만?\s*원?/g,
     (_, a, b) => formatM(100 * num(a) + num(b) / 100));
@@ -35,6 +57,23 @@ export function localizeNumbers(s) {
     (_, a) => formatM(100 * num(a)));
   out = out.replace(/(\d[\d,]*)\s*만\s*원?/g,
     (_, b) => formatM(num(b) / 100));
+  // Counters and misc units before the generic 일/개 rules below, so that
+  // 일차 wins over 일 and 가지 is not split by 개.
+  out = out.replace(/(\d+)일차/g, "Day $1");
+  out = out.replace(/(\d+(?:\.\d+)?)\s*시간/g, "$1 h");
+  out = out.replace(/(\d+)점(?![가-힣])/g, "$1 pts");
+  out = out.replace(/(\d{4})년/g, "$1");
+  out = out.replace(/(\d+)년/g, "$1 yr");
+  out = out.replace(/(\d+)위/g, "#$1");
+  out = out.replace(/(\d+)곳/g, "$1 places");
+  out = out.replace(/(\d+)층/g, "floor $1");
+  out = out.replace(/(\d+)호/g, "No. $1");
+  out = out.replace(/(\d+)동(?![가-힣])/g, "Bldg $1");
+  out = out.replace(/(\d+)회/g, "$1 times");
+  out = out.replace(/(\d+)세(?![가-힣])/g, "age $1");
+  out = out.replace(/(\d+)가지/g, "$1");
+  out = out.replace(/(\d+)대(?![가-힣])/g, "$1s");
+  out = out.replace(/\((월|화|수|목|금|토|일)\)/g, (_, w) => "(" + WEEKDAY[w] + ")");
   out = out.replace(/(\d[\d,]*)\s*분/g, "$1 min");
   out = out.replace(/(\d[\d,]*)\s*일/g, (_, d) => plural(d, "day", "days"));
   out = out.replace(/(\d[\d,]*)\s*개월/g, (_, d) => plural(d, "month", "months"));
@@ -85,7 +124,10 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
     const tokens = String(localizeNumbers(s)).split(/([·(),:])/g)
       .flatMap((p) => String(p).split(/ +/))
       .filter((t) => t !== "");
-    const mapped = tokens.map((tok) => {
+    const mapped = tokens.map((t0) => {
+      // A token like 176시간 can survive the whole-string pass (digits
+      // glued to the unit); localize it on its own before giving up.
+      const tok = localizeNumbers(t0);
       if (!HANGUL.test(tok)) return tok;
       if (Object.hasOwn(words, tok)) return words[tok];
       if (Object.hasOwn(phrases, tok)) return phrases[tok];
@@ -148,7 +190,11 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
     }
     if (result === undefined && HANGUL.test(cand)) {
       const tokens = cand.split(/\s+/).filter(Boolean);
-      result = (tokens.length <= 8 && !/(요|다|까|죠|니다)[.?!]?$/.test(cand))
+      // A localized string (cand !== core) is data, not prose: keep the
+      // localized numbers via wordFallback even when long, instead of
+      // dropping them by returning the Korean core.
+      const localized = cand !== core;
+      result = ((tokens.length <= 8 || localized) && !/(요|다|까|죠|니다)[.?!]?$/.test(cand))
         ? wordFallback(cand)
         : nameFallback(cand);
     }

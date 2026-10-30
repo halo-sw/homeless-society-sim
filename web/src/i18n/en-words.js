@@ -46,4 +46,12 @@ export const WORDS = {
   "피곤한": "tired", "정도": "level", "안": "within", "밖": "outside",
   "기록": "recorded", "판단": "decision", "규칙": "rule",
   "예시": "example",
+  // seen in the English walk-through (24d)
+  "인근": "nearby", "근무": "work", "예:": "e.g.", "예": "e.g.", "정렬:": "Sort:", "정렬": "sort",
+  "가장": "most", "오래": "long", "걸린": "taken", "날": "day", "저녁에": "in the evening",
+  "아침에": "in the morning", "집에": "at home", "회사에": "at work", "가정": "assumed",
+  "모두": "all", "각": "each", "총": "total", "차이": "difference",
+  "동안": "during", "이번": "this", "다음날": "next day", "시": "o'clock",
+  "걸려요": "takes", "빨라요": "faster", "느려요": "slower",
+  "많아요": "more", "적어요": "fewer", "가까워요": "closer", "멀어요": "farther",
 };
