@@ -664,8 +664,10 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
         <ProfileCard profile={profile} example={handlers.exampleId}
           onChip={handlers.onChip} />
       )}
-      <Button size="sm" label="후보 찾기"
-        onClick={() => handlers.onFindHomes && handlers.onFindHomes()} />
+      {profile && (
+        <Button size="sm" label="후보 찾기"
+          onClick={() => handlers.onFindHomes && handlers.onFindHomes()} />
+      )}
     </VStack>
   );
 }
@@ -845,6 +847,35 @@ export function momentRowUrl(t, { custom = null, scenario = null, runs = null, f
     day: mo.day, t: mo.t, follow: mo.follow });
 }
 
+// 21b: the pure thread update behind pushMsg — append, or replace
+// the latest card of a state kind. The intake card always shows the
+// latest 고객님 상황, so pushing it drops any standalone profile
+// card, and a standalone profile card never joins an intake card:
+// the 상황 card renders once (the latest).
+export function nextChatMessages(prev, msg, id) {
+  const list = Array.isArray(prev) ? prev : [];
+  // 13: a stable id renders once — the greeting can never double.
+  if (msg.id && list.some((m) => m.id === msg.id)) return list;
+  let next = list;
+  if (msg.kind === "intake" && msg.replace) {
+    const filtered = list.filter((m) => !(m.kind === "profile" && m.role === "assistant"));
+    if (filtered.length !== list.length) next = filtered;
+  }
+  if (msg.kind === "profile" && msg.replace
+    && next.some((m) => m.kind === "intake" && m.role === "assistant")) {
+    return next;
+  }
+  if (msg.replace && ["profile", "candidates", "simulation", "intake"].includes(msg.kind)) {
+    const at = next.findIndex((m) => m.kind === msg.kind && m.role === "assistant");
+    if (at >= 0) {
+      const upd = [...next];
+      upd[at] = { ...msg, id };
+      return upd;
+    }
+  }
+  return [...next, { ...msg, id }];
+}
+
 // --- the screen -------------------------------------------------------------------------------
 
 export function ChatScreen() {
@@ -910,19 +941,7 @@ export function ChatScreen() {
   // candidates / simulation always show the latest state).
   const pushMsg = (msg) => {
     const id = msg.id || nextId();
-    setMessages((prev) => {
-      // 13: a stable id renders once — the greeting can never double.
-      if (msg.id && prev.some((m) => m.id === msg.id)) return prev;
-      if (msg.replace && ["profile", "candidates", "simulation", "intake"].includes(msg.kind)) {
-        const at = prev.findIndex((m) => m.kind === msg.kind && m.role === "assistant");
-        if (at >= 0) {
-          const next = [...prev];
-          next[at] = { ...msg, id };
-          return next;
-        }
-      }
-      return [...prev, { ...msg, id }];
-    });
+    setMessages((prev) => nextChatMessages(prev, msg, id));
     return id;
   };
 
@@ -982,18 +1001,21 @@ export function ChatScreen() {
     const prof = ex.value.profile;
     setProfile(prof);
     store.set({ chatSummary: profileSummary(prof) });
-    pushMsg({ role: "assistant", kind: "profile", replace: true,
-      data: { profile: prof }, example: stateRef.current.exampleId,
-      tool_calls: [{ id: exId, name: "extract_profile" }] });
     if (!profileHasValues(prof)) {
+      pushMsg({ role: "assistant", kind: "profile", replace: true,
+        data: { profile: prof }, example: stateRef.current.exampleId,
+        tool_calls: [{ id: exId, name: "extract_profile" }] });
       pushMsg({ role: "assistant", kind: "text",
         content: "어떤 상황인지 조금만 더 알려주세요. 예를 들어 어디로 출근하는지, 전세·월세 중 뭘 보는지, 예산은 얼마인지요." });
       return;
     }
     // 13: after the first message the guided intake pre-fills from the
     // extract and walks the six steps as inline answer cards.
+    // 21b: one 상황 card — the intake card already shows the latest
+    // profile, so no standalone profile card joins it.
     setIntake(prefillFromExtract(intake, { profile: prof }));
-    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
+    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {},
+      tool_calls: [{ id: exId, name: "extract_profile" }] });
     await runSearch(prof, data, { sort: "commute" });
   }
 

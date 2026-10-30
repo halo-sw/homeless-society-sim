@@ -229,8 +229,10 @@ export function oneWaySentence(oneWay, fmt = (n) => `${n}분`) {
   if (!Number.isFinite(a) || !Number.isFinite(b) || (a <= 0 && b <= 0)) {
     return NO_WORKPLACE_COMMUTE_KO;
   }
-  const d = Math.round((b - a) * 10) / 10;
-  if (d === 0) return `A와 B가 같아요 (편도 평균 ${fmt(a)})`;
+  const da = Math.round(a);
+  const db = Math.round(b);
+  const d = db - da;
+  if (d === 0) return "A와 B가 거의 같아요 (차이 1분 미만)";
   return `${d > 0 ? "B" : "A"}가 편도 평균 ${fmt(Math.abs(d))} 더 걸려요`;
 }
 
