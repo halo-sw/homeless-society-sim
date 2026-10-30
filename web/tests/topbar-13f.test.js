@@ -42,7 +42,8 @@ describe("13f-1 shared top bar (SSR, no DOM)", () => {
     const html = render(React.createElement(TopBar,
       { mode: "chat", summary: "판교 출근 · 1인", settings: { mode: "chat" } }));
     assert.ok(html.includes("Ithaca"), "product name");
-    for (const m of MODES) assert.ok(html.includes(m), `mode ${m}`);
+    assert.ok(html.includes("Muse"), "muse in header");
+    for (const m of MODES.slice(1)) assert.ok(!html.includes(m), `no mode tab ${m}`);
     assert.ok(html.includes("설정"), "settings button");
     assert.ok(html.includes("판교 출근 · 1인"), "profile summary chip");
     assert.ok(!html.includes("미니어처"), "no miniature badge");
@@ -58,7 +59,7 @@ describe("13f-1 shared top bar (SSR, no DOM)", () => {
     for (const mode of ["sim", "tour"]) {
       const html = render(React.createElement(TopBar, { mode, settings: { mode } }));
       assert.ok(html.includes("Ithaca"), `product name (${mode})`);
-      for (const m of MODES) assert.ok(html.includes(m), `mode ${m} (${mode})`);
+      assert.ok(html.includes("대화로"), `back to chat (${mode})`);
       assert.ok(html.includes("설정"), `settings button (${mode})`);
       assert.ok(!html.includes("상황을 알려주세요"), `no chat centre (${mode})`);
     }

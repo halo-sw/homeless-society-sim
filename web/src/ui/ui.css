@@ -636,6 +636,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-page);
 }
 .ui-chat-stage-body { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
+/* ---------- 27a: chat-first empty screen + work panel on request ---------- */
+.ui-chat-empty { display: flex; flex-direction: column; gap: 16px;
+  max-width: 720px; margin: 12vh auto 0; padding: 0 16px; }
+.ui-chat-empty-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-chat-main[data-work="closed"] .ui-chat-thread { width: 100%;
+  max-width: 760px; margin: 0 auto; border-right: none; }
 .ui-chatmap { position: absolute; inset: 0; }
 .ui-chatmap svg { display: block; touch-action: none; }
 /* 25a: zoom buttons over the map, above the credit and clear of the tray. */

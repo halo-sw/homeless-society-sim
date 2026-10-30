@@ -21,6 +21,8 @@ import { Component, useEffect, useRef, useState, useSyncExternalStore } from "re
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { Card } from "@astryxdesign/core/Card";
 import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -40,6 +42,7 @@ import { IntakeCard, HouseholdCard } from "./intake.jsx";
 import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
 import { exampleLine } from "./copy.js";
 import { TopBar } from "./topbar.jsx";
+import { EXAMPLE_PROMPTS, COVERAGE_AREAS } from "./landing.jsx";
 // 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
@@ -265,7 +268,7 @@ export function runReadiness(picks, candidates) {
   return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
 }
 
-export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
+export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, onTogglePick,
     onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
   const candidates = (data && data.candidates) || [];
   // 13: one photo per card at most — dedup across the whole list.
@@ -284,6 +287,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
               label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
               onClick: () => onSort && onSort(s),
             }))} />
+          <Button size="sm" variant="ghost" label="지도에서 보기"
+            onClick={() => onOpenWork && onOpenWork()} />
         </HStack>
         {data && (
           <Text type="supporting">
@@ -749,6 +754,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         {msg.kind === "candidates" && (
           <CandidatesCard data={data.result} tenure={data.tenure} sort={data.sort}
             onSort={(s) => handlers.onSort(msg.id, s)}
+            onOpenWork={handlers.onOpenWork}
             picks={handlers.picks} onTogglePick={handlers.onTogglePick}
             onPreview3D={handlers.onPreview3D} onJeonse={handlers.onJeonse}
             onRun={handlers.onRun} onDetail={handlers.onDetail}
@@ -939,6 +945,7 @@ export function ChatScreen() {
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
+  const [workOpen, setWorkOpen] = useState(false);
   const [serverKeys, setServerKeys] = useState({});
   const [modelErrors, setModelErrors] = useState({});
   const [intake, setIntake] = useState(() => intakeState0());
@@ -1080,7 +1087,8 @@ export function ChatScreen() {
     // 21b: one 상황 card — the intake card already shows the latest
     // profile, so no standalone profile card joins it.
     setIntake(prefillFromExtract(intake, { profile: prof }));
-    pushMsg({ role: "assistant", kind: "intake", replace: true, data: {},
+    pushMsg({ role: "assistant", kind: "profile", replace: true,
+      data: { profile: prof }, example: stateRef.current.exampleId,
       tool_calls: [{ id: exId, name: "extract_profile" }] });
     await runSearch(prof, data, { sort: "commute" });
   }
@@ -1180,6 +1188,7 @@ export function ChatScreen() {
       ? Number(prof.monthlyMax.value) : null;
     const emptyHint = usEmptyHint((data.index && data.index.homes) || [], budget);
     setCandidatesData({ result, tenure, sort });
+    setWorkOpen(true);
     pushMsg({ role: "assistant", kind: "candidates", replace: true,
       data: { result, tenure, sort, emptyHint }, example: stateRef.current.exampleId,
       tool_calls: [{ id: rowId, name: "find_homes" }] });
@@ -1265,6 +1274,7 @@ export function ChatScreen() {
   }
 
   async function handleRun() {
+    setWorkOpen(true);
     const st = stateRef.current;
     const picked = ((st.candidatesData && st.candidatesData.result.candidates) || [])
       .filter((c) => st.picks.includes(c.id));
@@ -1515,6 +1525,7 @@ export function ChatScreen() {
           data: { profile: r.profile }, example: stateRef.current.exampleId });
       } else if (Array.isArray(r.candidates)) {
         setCandidatesData({ result: r, tenure: r.tenure || "undecided", sort: r.sort || "commute" });
+        setWorkOpen(true);
         pushMsg({ role: "assistant", kind: "candidates", replace: true,
           data: { result: r, tenure: r.tenure || "undecided", sort: r.sort || "commute" },
           example: stateRef.current.exampleId });
@@ -1605,6 +1616,13 @@ export function ChatScreen() {
     }
   }
 
+  function handleExample() {
+    setExampleId("single-firstjob");
+    pushMsg({ role: "system", kind: "system",
+      content: exampleLine("single-firstjob") });
+    send(EXAMPLE_PROMPTS[0].prompt);
+  }
+
   // --- boot from URL / memory ---
   const booted = useRef(false);
   useEffect(() => {
@@ -1639,7 +1657,6 @@ export function ChatScreen() {
       }
     }
     if (initial.listing === "1") {
-      pushMsg({ id: "greeting", role: "assistant", kind: "text", content: GREETING });
       pushMsg({ role: "assistant", kind: "listing", data: {} });
       return;
     }
@@ -1661,7 +1678,10 @@ export function ChatScreen() {
         setProfile(mem.profile);
         store.set({ chatSummary: profileSummary(mem.profile) });
       }
-      if (mem.candidatesData) setCandidatesData(mem.candidatesData);
+      if (mem.candidatesData) {
+        setCandidatesData(mem.candidatesData);
+        setWorkOpen(true);
+      }
       if (Array.isArray(mem.picks)) setPicks(mem.picks);
       if (mem.exampleId) setExampleId(mem.exampleId);
       if (mem.scenario) setScenario(mem.scenario);
@@ -1672,8 +1692,6 @@ export function ChatScreen() {
       if (mem.compare) store.set({ compare: mem.compare });
       return;
     }
-    pushMsg({ id: "greeting", role: "assistant", kind: "text", content: GREETING });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist (runs stay in IndexedDB under the simulation card's customId).
@@ -1688,6 +1706,7 @@ export function ChatScreen() {
   const [detail, setDetail] = useState(null);
   const compareOpen = useSyncExternalStore(store.subscribe,
     () => store.getState().compareOpen, () => store.getState().compareOpen);
+  useEffect(() => { if (compareOpen) setWorkOpen(true); }, [compareOpen]);
   // 26c: a resolved place (Meta HQ) names the destination and pins
   // the map's work pin at its lon/lat.
   const wpResolved = (profile && profile.workplaces && profile.workplaces.value
@@ -1702,6 +1721,7 @@ export function ChatScreen() {
     picks,
     intake, household, profile, exampleId,
     onChip: (field, starter) => setComposer(starter),
+    onOpenWork: () => setWorkOpen(true),
     onSort: handleSort,
     onTogglePick: handleTogglePick,
     onPreview3D: handlePreview3D,
@@ -1732,7 +1752,7 @@ export function ChatScreen() {
         contentPadding={0}
         topNav={(
           <TopBar mode="chat" summary={summary}
-            extra={(
+            extra={workOpen ? (
               <div className="ui-chat-narrowtabs">
                 <SegmentedControl label="화면 선택" value={view}
                   onChange={setView} size="sm">
@@ -1740,7 +1760,7 @@ export function ChatScreen() {
                   <SegmentedControlItem value="work" label="화면" />
                 </SegmentedControl>
               </div>
-            )}
+            ) : null}
             settings={{
               mode: "chat",
               model: { usageLog, serverKeys, errors: modelErrors },
@@ -1762,8 +1782,14 @@ export function ChatScreen() {
             }} />
         )}>
         <div className="ui-chat-main"
-          data-panel={chatMainPanelAttr(detail, compareOpen)}>
+          data-panel={chatMainPanelAttr(detail, compareOpen)}
+          data-work={chatWorkAttr(workOpen)}>
           <section className="ui-chat-thread" aria-label="대화">
+            {messages.length === 0 && !busy ? (
+              <ChatEmpty onSend={(text) => send(text)}
+                onListing={() => chipAction("매물 글 붙여 넣기")}
+                onExample={handleExample} />
+            ) : (
             <ChatLayout
               density="compact"
               composer={(
@@ -1795,20 +1821,25 @@ export function ChatScreen() {
                   </ChatMessage>
                 )}
               </ChatMessageList>
+              {messages.length > 0 && (
               <div className="ui-chat-chips" role="group" aria-label="추천 질문">
                 {chatChipsFor(profile && profile.currency && profile.currency.value).map((chip) => (
                   <Button key={chip} size="sm" variant="secondary" label={chip}
                     onClick={() => chipAction(chip)} />
                 ))}
               </div>
+              )}
             </ChatLayout>
+            )}
             {error && (
               <Banner status="error" title="요청 실패" description={error}
                 isDismissable onDismiss={() => setError("")} />
             )}
           </section>
+          {workOpen && (
           <MsgBoundary>
           <StageArea
+            onClose={() => { setWorkOpen(false); setView("chat"); }}
             map={buildChatMap({
               regions: regionsForCurrency(dataRef.current?.regionsDoc
                 || { regions: [] }, currencyOf(profile)),
@@ -1842,6 +1873,8 @@ export function ChatScreen() {
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
           </MsgBoundary>
+          )}
+          {workOpen && (<>
           <PicksTray picks={picks}
             candidates={(candidatesData && candidatesData.result.candidates) || []}
             gate={runGate(profile)}
@@ -1854,6 +1887,7 @@ export function ChatScreen() {
             photoDeps={handlers.photoDeps} destName={destName}
             tenure={candidatesData?.tenure || "undecided"}
             onTogglePick={handleTogglePick} onJeonse={handleJeonse} />
+          </>)}
         </div>
         {viewChip && (
           <div className="ui-viewchip overlay">{viewChip}</div>
@@ -1871,6 +1905,46 @@ export function ChatScreen() {
 // .ui-chat-main with a CSS rule.
 export function chatMainPanelAttr(detail, compareOpen) {
   return detail || compareOpen ? "open" : undefined;
+}
+
+// 27a: chat-first empty state (no greeting, no form). The composer
+// is the same ChatComposer; the starters fill it or send once.
+export const EMPTY_STARTERS = [
+  { id: "find", label: "출근지로 집 찾기" },
+  { id: "listing", label: "본 매물 붙여 넣기" },
+  { id: "example", label: "예시로 써 보기" },
+];
+
+const EMPTY_FIND_TEXT = "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘";
+
+export function ChatEmpty({ onSend, onListing, onExample }) {
+  const [value, setValue] = useState("");
+  const starterAction = (id) => {
+    if (id === "find") setValue(EMPTY_FIND_TEXT);
+    else if (id === "listing") { if (onListing) onListing(); }
+    else if (id === "example") { if (onExample) onExample(); }
+  };
+  return (
+    <div className="ui-chat-empty">
+      <Heading level={2}>어떤 집을 고민 중이세요?</Heading>
+      <Text type="supporting">말로 하면 Muse가 실거래와 출근길을 확인하고, 원하면 그 집에서 30일 살아 봐요.</Text>
+      <ChatComposer onSubmit={(text) => onSend && onSend(text)}
+        value={value} onChange={setValue}
+        placeholder="예: 판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘" />
+      <div className="ui-chat-empty-row">
+        {EMPTY_STARTERS.map((s) => (
+          <Button key={s.id} size="sm" variant="secondary" label={s.label}
+            onClick={() => starterAction(s.id)} />
+        ))}
+      </div>
+      <Text type="supporting">{`다루는 지역: ${COVERAGE_AREAS.join(" · ")}`}</Text>
+    </div>
+  );
+}
+
+// 27a: the work panel (map / tray / side panel) opens on request.
+export function chatWorkAttr(workOpen) {
+  return workOpen ? "open" : "closed";
 }
 
 // 18: the stage header is the customer's context ("판교 출근 · 후보
@@ -1902,7 +1976,7 @@ export function mergeGreenBoxes(cache) {
   return { water, parks };
 }
 
-export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine }) {
+export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine, onClose }) {
   const regions = (map && map.regions) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">
@@ -1910,6 +1984,10 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, co
         <div className="ui-stage-pill" role="status">
           {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
         </div>
+        <span style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}>
+          <IconButton label="작업판 닫기" variant="ghost" size="sm"
+            icon={<Icon icon="close" />} onClick={() => onClose && onClose()} />
+        </span>
         {regions.length > 0 ? (
           <ChatMap map={map} cardHi={cardHi}
             onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />

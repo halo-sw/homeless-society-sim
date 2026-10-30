@@ -18,7 +18,7 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { store } from "./store.js";
-import { appUrl } from "../paths.js";
+import { LIVE_API, appUrl } from "../paths.js";
 import { ModelPanel } from "./model-panel.jsx";
 import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
@@ -27,11 +27,9 @@ import { LangToggle } from "./lang-toggle.jsx";
 
 const EMPTY_LOG = newUsageLog();
 
-const MODES = [
-  { value: "chat", label: "대화" },
-  { value: "sim", label: "살아 보기" },
-  { value: "tour", label: "동네 둘러보기" },
-];
+export function museStatusLabel(live) {
+  return live ? "연결됨 · Muse Spark 1.3" : "규칙 모드";
+}
 
 const DEFAULT_AREA = "songpa-jamsil";
 
@@ -131,12 +129,15 @@ export function TopBar({ mode, summary, extra, settings }) {
     <header className="ui-bar overlay">
       <div className="ui-bar-left">
         <span className="ui-bar-title">Ithaca</span>
-        <SegmentedControl label="화면 선택" value={mode}
-          onChange={(v) => gotoMode(v, mode)} size="sm">
-          {MODES.map((m) => (
-            <SegmentedControlItem key={m.value} value={m.value} label={m.label} />
-          ))}
-        </SegmentedControl>
+        {mode === "chat" ? (
+          <>
+            <span className="ui-bar-muse">Muse</span>
+            <Badge variant="info" label={museStatusLabel(LIVE_API)} />
+          </>
+        ) : (
+          <Button size="sm" variant="ghost" label="← 대화로"
+            onClick={() => gotoMode("chat", mode)} />
+        )}
       </div>
       <div className="ui-bar-center">
         {mode === "chat" && (summary

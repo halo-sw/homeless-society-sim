@@ -17,7 +17,7 @@ export function routeForSearch(search) {
   if (q.get("mode") === "sim") return "sim"; // ?tour=demo rides along (?mode=sim&tour=demo)
   if (q.has("mode") || q.has("tour")) return "tour";
   if (q.has("area") || q.has("time") || q.has("lens") || q.has("shot")) return "tour";
-  return "landing";
+  return "chat";
 }
 
 export function parseChatSearch(search) {
