@@ -124,7 +124,11 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   // name is skipped). Dots stay for every nearby station.
   const seenStation = new Set();
   const stationPts = [];
+  // The 회사 pill already names the workplace station — labelling
+  // its dot too would print the name twice. The dot stays.
+  const workName = noSpace(m.workPin && m.workPin.name);
   for (const s of nearStations) {
+    if (workName && noSpace(s.name) === workName) continue;
     const key = noSpace(s.name);
     if (seenStation.has(key)) continue;
     seenStation.add(key);
@@ -323,7 +327,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           const tailX = box.x + box.w / 2;
           const tailTipX = tailX;
           const tailTipY = box.y + PILL_H + PILL_TAIL;
-          const needLeader = Math.hypot(tailTipX - px, tailTipY - py) > 8;
+          const needLeader = !!(l && l.leader);
           const zoom = hi
             ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
           return (
@@ -332,8 +336,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
               onMouseLeave={() => onPinHover && onPinHover(null)}
               onClick={() => onPinClick && onPinClick(p.id)}
               style={{ cursor: onPinClick ? "pointer" : "default" }}>
-              {needLeader && (
-                <line x1={tailTipX} y1={tailTipY} x2={px} y2={py}
+              {needLeader && l.leader && (
+                <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
                   stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
               )}
               <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />

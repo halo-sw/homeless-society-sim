@@ -179,6 +179,41 @@ describe("21b one 상황 card after intake", () => {
     assert.equal(n, 1, "고객님 상황 renders once");
     assert.ok(html.includes("후보 찾기"), "intake keeps 후보 찾기 with a profile");
   });
+describe("21c fitMapView zooms into close clusters", () => {
+  it("a 400 m bbox gives a view width between 1.0 and 1.6 km", () => {
+    const inset = { top: 56, right: 24, bottom: 96, left: 24 };
+    const focus = [
+      { lon: 127.0276, lat: 37.4979 },
+      { lon: 127.0290, lat: 37.4985 },
+      { lon: 127.0260, lat: 37.4970 },
+      { lon: 127.0300, lat: 37.4995 },
+      { lon: 127.0255, lat: 37.4965 },
+      { lon: 127.0285, lat: 37.5000 },
+      { lon: 127.0270, lat: 37.4975 },
+    ];
+    const { view, toXY } = fitMapView(focus, 640, 420, MAP_FIT_MARGIN, inset);
+    const widthKm = view[2] * 111.32;
+    assert.ok(widthKm >= 1.0 && widthKm <= 1.6, `view width ${widthKm} km`);
+    for (const p of focus) {
+      const [x, y] = toXY(p.lon, p.lat);
+      assert.ok(x >= inset.left && x <= 640 - inset.right, `x ${x}`);
+      assert.ok(y >= inset.top && y <= 420 - inset.bottom, `y ${y}`);
+    }
+  });
+  it("a 6 km bbox stays fully inside the view", () => {
+    const focus = [
+      { lon: 127.00, lat: 37.47 },
+      { lon: 127.06, lat: 37.52 },
+    ];
+    const { toXY } = fitMapView(focus, 640, 420, MAP_FIT_MARGIN, null);
+    for (const p of focus) {
+      const [x, y] = toXY(p.lon, p.lat);
+      assert.ok(x >= 0 && x <= 640, `x ${x}`);
+      assert.ok(y >= 0 && y <= 420, `y ${y}`);
+    }
+  });
+});
+
   it("no bare 후보 찾기 card without content", async () => {
     const { intakeState0, household0 } = await import("../src/intake.js");
     const html = renderToString(React.createElement(IntakeFlowCard,

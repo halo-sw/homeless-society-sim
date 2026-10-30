@@ -108,7 +108,10 @@ export function densifyPts(pts, maxKm = 2.5) {
 // `inset` ({top,right,bottom,left} px) fits the data into the inner
 // rectangle so pills and trays never clip; empty inset keeps 1:1.
 export const MAP_FIT_MARGIN = 0.08;
-const MIN_SPAN_DEG = 0.02;
+// Closest the map ever zooms: a ~1.2 km wide view keeps a few
+// streets and stations visible around tight candidate clusters.
+export const MAP_MIN_VIEW_KM = 1.2;
+const KM_PER_DEG = 111.32;
 
 export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) {
   const w = Math.max(1, Number(W) || 1);
@@ -134,8 +137,8 @@ export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) 
   const midLat = (lat0 + lat1) / 2;
   let [fx0] = flatXY(lon0, lat0, midLat);
   let [fx1] = flatXY(lon1, lat1, midLat);
-  let fw = Math.max(fx1 - fx0, MIN_SPAN_DEG);
-  let fh = Math.max(lat1 - lat0, MIN_SPAN_DEG);
+  let fw = Math.max(fx1 - fx0, 0);
+  let fh = Math.max(lat1 - lat0, 0);
   const cx = (fx0 + fx1) / 2;
   const cy = (lat0 + lat1) / 2;
   // Pad so the pins keep `margin` clear on every side (the padded
@@ -145,8 +148,20 @@ export function fitMapView(points, W, H, margin = MAP_FIT_MARGIN, inset = null) 
   fw /= Math.max(1 - 2 * m, 0.2);
   fh /= Math.max(1 - 2 * m, 0.2);
   const want = iw / ih;
-  if (fw / fh < want) fw = fh * want;
-  else fh = fw / want;
+  if (!(fw > 0) && !(fh > 0)) {
+    fw = MAP_MIN_VIEW_KM / KM_PER_DEG;
+    fh = fw / want;
+  } else {
+    if (fw / fh < want) fw = fh * want;
+    else fh = fw / want;
+  }
+  // Close clusters zoom until the bbox fills the view, but never
+  // closer than ~1.2 km wide; wider bboxes keep the exact fit above.
+  const minW = MAP_MIN_VIEW_KM / KM_PER_DEG;
+  if (fw < minW) {
+    fh *= minW / fw;
+    fw = minW;
+  }
   const view = [cx - fw / 2, cy - fh / 2, fw, fh];
   const toXY = (lon, lat) => {
     const [fx] = flatXY(lon, lat, midLat);
@@ -567,10 +582,14 @@ export function layoutMapPills(items, W, H) {
       else return null;
     }
     taken.push(box);
-    const offAnchor = p.x < box.x || p.x > box.x + box.w
-      || p.y < box.y || p.y > box.y + box.h;
+    // The default slot sits centred above the anchor with its tail
+    // bridging the gap, so it needs no leader — only a pill moved by
+    // collision avoidance (a later slot or the spiral fallback) does.
+    const home = clampPill({ ...pillSlots(p.x, p.y, tw, th)[0] }, w, h);
+    const moved = box.x !== home.x || box.y !== home.y
+      || box.w !== home.w || box.h !== home.h;
     return { id: p.id, kind: p.kind || "pill", x: p.x, y: p.y,
-      w: tw, h: th, box, leader: offAnchor ? nearestOnBox(box, p.x, p.y) : null,
+      w: tw, h: th, box, leader: moved ? nearestOnBox(box, p.x, p.y) : null,
       count: 0, members: null };
   };
   for (const p of list) {
