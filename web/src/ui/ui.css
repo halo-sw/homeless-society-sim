@@ -750,6 +750,22 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-picks-tray .ui-picks-run { flex: none; max-width: none;
   overflow: visible; white-space: nowrap; }
 .ui-picks-tray .ui-picks-run span { overflow: visible; }
+/* 26z2: compact in-flow run row above the phone chips (normal flow,
+   so the chips and the composer move up instead of under it).
+   Hidden on desktop, where the full tray stays as today. Names wrap
+   at spaces; the run button keeps its full label like the tray. */
+.ui-picks-compact { display: flex; align-items: center; gap: var(--ui-s8);
+  padding: var(--ui-s8) var(--ui-s12);
+  border-top: 1px solid var(--ui-border); background: var(--ui-card); }
+.ui-picks-compact-names { flex: 1 1 auto; min-width: 0;
+  overflow-wrap: anywhere; word-break: keep-all; font-size: var(--ui-t14); }
+.ui-picks-compact-sep { flex: none; color: var(--ui-ink2); }
+.ui-picks-compact .ui-picks-run { flex: none; max-width: none;
+  overflow: visible; white-space: nowrap; }
+.ui-picks-compact .ui-picks-run span { overflow: visible; }
+@media (min-width: 1100px) {
+  .ui-picks-compact { display: none; }
+}
 /* 19g: while the side panel is open, the tray clears its 380 px. */
 .ui-chat-main[data-panel="open"] .ui-picks-tray { right: calc(380px + 24px); }
 /* 19a: detail / compare open over the stage right edge only on demand. */
@@ -766,6 +782,10 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   .ui-chat-narrow-work .ui-chat-scene { display: flex; }
   .ui-picks-tray { left: 0; right: 0; bottom: 0; max-width: none;
     border-radius: var(--ui-r-sheet) var(--ui-r-sheet) 0 0; }
+  /* 26z2: at phone/tablet widths the tray would cover the chat pane's
+     chips and composer — it shows only over the map, i.e. while the
+     narrow pane is Map & homes (.ui-chat-narrow-work). */
+  .ui-chat:not(.ui-chat-narrow-work) .ui-picks-tray { display: none; }
   .ui-side-panel { left: 0; right: 0; top: auto; height: 70%; width: auto; overflow-y: auto; }
 }
 

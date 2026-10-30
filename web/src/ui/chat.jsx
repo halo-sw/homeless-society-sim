@@ -2271,6 +2271,14 @@ export function ChatScreen() {
                   </ChatMessage>
                 )}
               </ChatMessageList>
+              {/* 26z2: phone chat pane keeps the run action in flow
+                  above the chips (the full tray is hidden there). */}
+              {view !== "work" && (
+              <PicksTray compact picks={picks}
+                candidates={(candidatesData && candidatesData.result.candidates) || []}
+                gate={runGate(profile)}
+                onRun={handleRun} onRemove={handleTogglePick} />
+              )}
               {messages.length > 0 && (() => {
                 const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
                 const chips = chipsForLatest(messages, fallback);
@@ -2580,7 +2588,7 @@ const PICK_LETTERS = ["A", "B", "C"];
 export const WORKPLACE_ASK_LABEL = "회사 위치를 알려 주세요";
 
 export function PicksTray({ picks, candidates, onRun, onRemove,
-  gate, stations, onWorkplaceText, onNoCommute }) {
+  gate, stations, onWorkplaceText, onNoCommute, compact }) {
   const { picked, canRun, hint } = runReadiness(picks, candidates);
   const [workText, setWorkText] = useState("");
   const [workError, setWorkError] = useState("");
@@ -2588,6 +2596,23 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
   if (picked.length === 0) return null;
   const needWorkplace = !!(gate && !gate.ok);
   const label = needWorkplace ? WORKPLACE_ASK_LABEL : RUN_BUTTON_LABEL;
+  // 26z2: compact in-flow run row for the phone chat pane (the full
+  // tray is hidden there by CSS). Same label, same onRun, same
+  // workplace gate as the tray; without its input the button funnels
+  // through onRun, which explains the missing workplace.
+  if (compact) {
+    return (
+      <div className="ui-picks-compact" role="group" aria-label="고른 집">
+        <span className="ui-picks-compact-names">
+          {picked.map((c, i) => `${PICK_LETTERS[i] || "·"} ${c.name}`).join(" · ")}
+        </span>
+        <span className="ui-picks-compact-sep" aria-hidden="true">—</span>
+        <Button label={label} variant="primary" className="ui-picks-run"
+          isDisabled={!needWorkplace && !canRun}
+          onClick={() => { if (onRun) onRun(); }} />
+      </div>
+    );
+  }
   const trayHint = picked.length === 1
     ? "한 곳 더 담으면 비교할 수 있어요"
     : hint;
