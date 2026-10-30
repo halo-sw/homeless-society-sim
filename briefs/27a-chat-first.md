@@ -38,7 +38,7 @@ Last line → `return "chat";`. Deep links (`?mode=sim…`, `?area=…`) keep wo
 - New state next to `view` (`chat.jsx:941`): `const [workOpen, setWorkOpen] = useState(false);`
 - Open it (`setWorkOpen(true)`) when: the candidates card is pushed (`chat.jsx:1183` and `chat.jsx:1518`), `handleRun` starts (`chat.jsx:1267`), `compareOpen` becomes true (small `useEffect` on `compareOpen`), and on restore when `mem.candidatesData` exists (`chat.jsx:1664`).
 - Render `<StageArea …>`, `<PicksTray …>` and `<SidePanel …>` (`chat.jsx:1810-1858`) only when `workOpen`.
-- `StageArea` (`chat.jsx:1905`): new prop `onClose`; inside `.ui-chat-stage-body` add an `IconButton` (label `작업판 닫기`, icon close, top-right, absolute) that calls it. Pass `onClose={() => setWorkOpen(false)}`.
+- `StageArea` (`chat.jsx:1905`): new prop `onClose`; inside `.ui-chat-stage-body` add an `IconButton` (label `작업판 닫기`, icon close, top-right, absolute) that calls it. `chat.jsx` does not import it yet: `import { IconButton } from "@astryxdesign/core/IconButton";` (same props as in `topbar.jsx`). Pass `onClose={() => setWorkOpen(false)}`.
 - The candidates card gets one more button `지도에서 보기` that calls `handlers.onOpenWork` → `setWorkOpen(true)` (add `onOpenWork` to `handlers`, `chat.jsx:1700`; the button goes in `CandidatesCard`, `chat.jsx:268`, next to the sort control).
 - Export `chatWorkAttr(workOpen)` → `"open" | "closed"`, put it on `.ui-chat-main` as `data-work`. CSS: `.ui-chat-main[data-work="closed"] .ui-chat-thread { width: 100%; max-width: 760px; margin: 0 auto; border-right: none; }`.
 - Narrow screens: render the 대화 / 화면 `SegmentedControl` (`chat.jsx:1735-1741`) only when `workOpen`; when the panel closes, `setView("chat")`.
