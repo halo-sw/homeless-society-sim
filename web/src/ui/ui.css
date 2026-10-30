@@ -252,23 +252,21 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 }
 
 /* ---------- 12b: chat shell ---------- */
-.ui-chat { position: absolute; inset: 0; display: flex; }
+.ui-chat { position: absolute; inset: 0; display: flex;
+  --ui-thread-w: clamp(400px, 34vw, 520px); }
 .ui-chat > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 .ui-chat main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; }
-.ui-chat-main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; }
+.ui-chat-main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%;
+  position: relative; }
 .ui-chat-thread {
-  flex: none; width: 440px; min-height: 0; height: 100%;
+  flex: none; width: var(--ui-thread-w); min-height: 0; height: 100%;
   display: flex; flex-direction: column;
   background: var(--ui-card);
   border-right: 1px solid var(--ui-border);
 }
-.ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: wrap; padding: var(--ui-s8) var(--ui-s12) 0; }
-/* 18: the run button sticks to the bottom of the chat column once 2+
-   homes are picked — the run is always one tap away. */
-.ui-chat-sticky-run { position: sticky; bottom: 0; z-index: 5;
-  display: flex; flex-direction: column; gap: var(--ui-s4);
-  padding: var(--ui-s8) var(--ui-s12) var(--ui-s12);
-  background: var(--ui-card); border-top: 1px solid var(--ui-border); }
+/* 19a: chips stay above the composer on one scrollable row. */
+.ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: nowrap;
+  overflow-x: auto; padding: var(--ui-s8) var(--ui-s12); }
 .ui-chat-thread > p { padding: var(--ui-s4) var(--ui-s12) var(--ui-s8); }
 .ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   overflow: auto; padding: var(--ui-s12); pointer-events: none; }
@@ -561,7 +559,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   white-space: nowrap; font-size: var(--ui-t12); padding-bottom: 2px;
 }
 
-/* ---------- 13d: chat 3-column shell (thread 440 / stage / drawer 0-360) ---------- */
+/* ---------- 19a: chat 2-column shell (thread / stage + tray + on-demand panel) ---------- */
 .ui-chat-stage {
   flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   display: flex; flex-direction: column; overflow: hidden;
@@ -570,26 +568,42 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-stage-body { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
 .ui-chatmap { position: absolute; inset: 0; }
 .ui-chatmap svg { display: block; }
-.ui-chat-drawer {
-  flex: none; width: 360px; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden;
-  background: var(--ui-card);
-  border-left: 1px solid var(--ui-border);
-  padding: var(--ui-s12);
-}
-.ui-chat-drawer[data-open="false"] {
-  width: 0; min-width: 0; padding: 0; border-left: none; overflow: hidden;
-}
-.ui-chat-drawer-inner { display: flex; flex-direction: column; gap: var(--ui-s12); min-width: 300px; }
+/* 19a: the context line floats over the map instead of a header strip. */
+.ui-stage-pill { position: absolute; top: 12px; left: 12px; z-index: 5;
+  background: var(--ui-card); border-radius: 999px; box-shadow: var(--ui-shadow);
+  padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--ui-ink); }
+/* 19a: the only run button lives in this tray over the stage bottom. */
+.ui-picks-tray { position: absolute; bottom: 16px; z-index: 5;
+  left: calc(var(--ui-thread-w) + 16px); right: 16px;
+  max-width: 680px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: var(--ui-s8);
+  background: var(--ui-card); border-radius: var(--ui-r-sheet);
+  box-shadow: var(--ui-shadow); padding: 12px 16px; }
+.ui-picks-tray-row { display: flex; align-items: center; gap: var(--ui-s12); }
+.ui-picks-tray-chips { display: flex; gap: var(--ui-s8); flex: 1 1 auto;
+  min-width: 0; overflow-x: auto; }
+.ui-pick-chip { display: flex; align-items: center; gap: 6px; min-width: 0; flex: none; }
+.ui-pick-disc { width: 22px; height: 22px; border-radius: 50%; flex: none;
+  background: var(--ui-ink); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; }
+.ui-pick-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: var(--ui-t14); }
+.ui-pick-x { background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--ui-ink2); font-size: 14px; line-height: 1; }
+/* 19a: detail / compare open over the stage right edge only on demand. */
+.ui-side-panel { position: absolute; top: 12px; right: 12px; bottom: 12px;
+  width: 380px; z-index: 6;
+  display: flex; flex-direction: column; gap: var(--ui-s12);
+  background: var(--ui-card); border-radius: var(--ui-r-sheet);
+  box-shadow: var(--ui-shadow); padding: var(--ui-s12); overflow-y: auto; }
 .ui-token { font-size: var(--ui-t12); white-space: nowrap; color: var(--ui-ink2); }
 @media (max-width: 1099px) {
   .ui-chat-stage { display: none; }
   .ui-chat-narrow-work .ui-chat-stage { display: flex; }
-  .ui-chat-drawer { display: none; }
-  .ui-chat-drawer[data-open="true"] {
-    display: block; position: absolute; z-index: 40; left: 0; right: 0; bottom: 0;
-    width: auto; max-height: 52%; border-left: none;
-    border-top: 1px solid var(--ui-border); border-radius: var(--ui-r-sheet) var(--ui-r-sheet) 0 0;
-  }
+  .ui-picks-tray { left: 0; right: 0; bottom: 0; max-width: none;
+    border-radius: var(--ui-r-sheet) var(--ui-r-sheet) 0 0; }
+  .ui-side-panel { left: 0; right: 0; top: auto; height: 70%; width: auto; }
 }
 
 /* ---------- 13d: sim grid (stage + drawer, timeline docked, no overlap) ---------- */
@@ -673,7 +687,6 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-thread > p { flex: none; }
 .ui-chat-stage { overflow: hidden; }
 .ui-chat-stage-body { overflow: hidden; }
-.ui-chat-drawer { overflow-y: auto; }
 
 /* ---------- 13e2-2: orb fills the stage, region labels ---------- */
 .ui-orb-labels { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
