@@ -17,7 +17,7 @@
 // live agent (dev key) answers free questions; its recognised tool
 // results render as the same cards. No-key recorded replies
 // (?ask=…) carry over with the 기록된 답변 badge.
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Component, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -559,7 +559,36 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
 
 // --- message rendering -------------------------------------------------------------------
 
-function CardMsg({ msg, handlers, toolRows }) {
+// 18c: a failing card never takes down the chat — the message list
+// and the stage map each render inside this boundary. The fallback
+// names the card and carries the technical message in small text.
+export class MsgBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    const { error } = this.state;
+    if (error) {
+      return (
+        <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
+          <ChatMessageBubble variant="ghost" width="100%">
+            <VStack gap={1}>
+              <Text>이 카드를 그리지 못했어요 · 다시 시도</Text>
+              <Text type="supporting">{String((error && error.message) || error).slice(0, 300)}</Text>
+            </VStack>
+          </ChatMessageBubble>
+        </ChatMessage>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function CardMsg({ msg, handlers, toolRows, cardHi }) {
   const { data } = msg;
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
@@ -1392,17 +1421,21 @@ export function ChatScreen() {
                   placeholder={busy ? "찾는 중…" : "이어서 말씀해 보세요…"} />
               )}>
               <ChatMessageList density="compact">
-                {messages.map((m) => (m.role === "user" ? (
-                  <ChatMessage key={m.id} sender="user">
-                    <ChatMessageBubble>{m.content}</ChatMessageBubble>
-                  </ChatMessage>
-                ) : m.role === "system" ? (
-                  <ChatSystemMessage key={m.id}>{m.content}</ChatSystemMessage>
-                ) : m.kind === "text" ? (
-                  <AssistantMsg key={m.id} msg={m} toolRows={toolRows} />
-                ) : (
-                  <CardMsg key={m.id} msg={m} handlers={handlers} toolRows={toolRows} />
-                )))}
+                {messages.map((m) => (
+                  <MsgBoundary key={m.id}>
+                    {m.role === "user" ? (
+                      <ChatMessage sender="user">
+                        <ChatMessageBubble>{m.content}</ChatMessageBubble>
+                      </ChatMessage>
+                    ) : m.role === "system" ? (
+                      <ChatSystemMessage>{m.content}</ChatSystemMessage>
+                    ) : m.kind === "text" ? (
+                      <AssistantMsg msg={m} toolRows={toolRows} />
+                    ) : (
+                      <CardMsg msg={m} handlers={handlers} toolRows={toolRows} cardHi={cardHi} />
+                    )}
+                  </MsgBoundary>
+                ))}
                 {busy && (
                   <ChatMessage sender="assistant">
                     <ChatMessageBubble variant="ghost">
@@ -1437,6 +1470,7 @@ export function ChatScreen() {
               ) : null;
             })()}
           </section>
+          <MsgBoundary>
           <StageArea
             map={buildChatMap({
               regions: dataRef.current?.regionsDoc || { regions: [] },
@@ -1468,6 +1502,7 @@ export function ChatScreen() {
               setOrbFilter(regionId);
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
             }} />
+          </MsgBoundary>
           <DrawerArea picks={picks} candidatesData={candidatesData} onRun={handleRun}
             detail={detail} onCloseDetail={() => setDetail(null)}
             photoDeps={handlers.photoDeps} destName={destName}
@@ -1514,7 +1549,7 @@ export function mergeGreenBoxes(cache) {
   return { water, parks };
 }
 
-function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine }) {
+export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine }) {
   const regions = (map && map.regions) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">

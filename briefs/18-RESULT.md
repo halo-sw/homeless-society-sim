@@ -123,3 +123,30 @@ one justified pin update in `painted-17b.test.js`.
   before candidates = same chat URL with regions framed +
   "출근지를 말하면 후보가 지도에 표시돼요", after = with `?chat=…`
   once candidates arrive (pins 1…6 + 직장 pin + commute lines).
+
+## 18c — chat renders again (cardHi) + error boundaries + render smoke test
+
+- Crash: `CardMsg` read `cardHi` (highlight state living in `ChatScreen`)
+  without receiving it, so any candidates message unmounted the whole
+  chat (`ReferenceError: cardHi is not defined`). Fix: `CardMsg` takes
+  `cardHi` as a prop, `ChatScreen` passes it. Grepped the 18 diffs
+  (`5fd1ee1 984eefd 16b8b31 1c7fb4f`) for other moved names — `cardHi`
+  was the only identifier used outside its scope.
+- New `MsgBoundary` (exported from `web/src/ui/chat.jsx`): wraps every
+  chat message and the stage map. A failing card shows "이 카드를 그리지
+  못했어요 · 다시 시도" + the error message in small text; the rest of
+  the chat keeps working. `StageArea` is now exported for tests.
+- New `web/tests/chat-render-18c.test.js` (12 tests): renders every chat
+  message kind via `CardMsg` with realistic `single-firstjob` data —
+  profile (from the example sentence), intake, candidates (6 cards,
+  2 picked, `home:c2` highlighted — the exact crash), done-state
+  simulation, listing, all three tabs, text + system, tour — plus the
+  stage map in the boundary. Asserts no throw.
+
+## End (18c)
+
+- `cd web && npm test`: **1251 tests, 1250 pass, 0 fail, 1 skipped**
+  (skip pre-existing; +12 new). `npx vite build` hits the known sandbox
+  EPERM (`node_modules/.vite-temp`, same as 14e/17/17b/17c/18);
+  stand-in green: full esbuild bundle of `src/main.js` (5.4 MB, font
+  externalized) in `/tmp/18c-bundle.js`.
