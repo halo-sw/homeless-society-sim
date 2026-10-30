@@ -37,9 +37,10 @@ import {
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
-import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
+import { CandidateCard, CandidateSkeleton, areaForList } from "./candidate-card.jsx";
+import { aerialCreditFor } from "../aerial/drape.js";
 import { exampleLine } from "./copy.js";
-import { TopBar } from "./topbar.jsx";
+import { TopBar, usePhoneMedia } from "./topbar.jsx";
 // 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
@@ -331,6 +332,9 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
               ? "마음에 드는 집을 2곳 담으면 지도 아래에서 30일 살아 보기를 시작할 수 있어요"
               : "지도 아래 ‘이 집들로 30일 살아 보기’를 눌러 주세요"}
           </Text>
+        )}
+        {candidates.length > 0 && (
+          <Text type="supporting">{aerialCreditFor(areaForList(candidates))}</Text>
         )}
       </VStack>
     </Card>
@@ -952,6 +956,10 @@ export function ChatScreen() {
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
+  // 26p: phones show the pane toggle (대화 / 지도·후보) on its own row
+  // under the top bar; wider screens keep it inside the bar (extra).
+  // SSR-safe (false on the server), so SSR keeps the in-bar toggle.
+  const phone = usePhoneMedia();
   const [serverKeys, setServerKeys] = useState({});
   const [modelErrors, setModelErrors] = useState({});
   const [intake, setIntake] = useState(() => intakeState0());
@@ -1737,6 +1745,16 @@ export function ChatScreen() {
   };
 
   const summary = profile ? profileSummary(profile) : "";
+  // 26p: one toggle instance — its mount point moves with the viewport.
+  const narrowTabs = (
+    <div className="ui-chat-narrowtabs">
+      <SegmentedControl label="화면 선택" value={view}
+        onChange={setView} size="sm" layout="fill">
+        <SegmentedControlItem value="chat" label="대화" />
+        <SegmentedControlItem value="work" label="지도·후보" />
+      </SegmentedControl>
+    </div>
+  );
 
   return (
     <div className={`ui-chat overlay${view === "work" ? " ui-chat-narrow-work" : ""}`}>
@@ -1744,16 +1762,9 @@ export function ChatScreen() {
         variant="surface"
         contentPadding={0}
         topNav={(
+          <>
           <TopBar mode="chat" summary={summary}
-            extra={(
-              <div className="ui-chat-narrowtabs">
-                <SegmentedControl label="화면 선택" value={view}
-                  onChange={setView} size="sm">
-                  <SegmentedControlItem value="chat" label="대화" />
-                  <SegmentedControlItem value="work" label="화면" />
-                </SegmentedControl>
-              </div>
-            )}
+            extra={phone ? null : narrowTabs}
             settings={{
               mode: "chat",
               model: { usageLog, serverKeys, errors: modelErrors },
@@ -1773,6 +1784,8 @@ export function ChatScreen() {
               onIntro: null,
               onRestart: () => { clearTranscript(); window.location.href = appUrl(); },
             }} />
+          {phone ? narrowTabs : null}
+          </>
         )}>
         <div className="ui-chat-main"
           data-panel={chatMainPanelAttr(detail, compareOpen)}>

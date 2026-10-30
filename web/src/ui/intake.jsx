@@ -69,7 +69,7 @@ function IncomeStep({ value, onChange }) {
 function TextStep({ value, placeholder, onChange }) {
   const [text, setText] = useState(value || "");
   return (
-    <HStack gap={1}>
+    <HStack gap={1} className="ui-textstep">
       <input className="ui-keyinput" value={text} placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => { if (text.trim()) onChange(text.trim()); }}

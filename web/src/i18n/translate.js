@@ -51,12 +51,12 @@ export function localizeNumbers(s) {
   out = out.replace(/(\d+)\s*천\s*원/g,
     (_, a) => formatWon(1000 * num(a)));
   // 억 is 100M; a number after 억, with or without 만, is ten-thousands.
-  out = out.replace(/(\d[\d,]*)\s*억\s*(\d[\d,]*)\s*만?\s*원?/g,
-    (_, a, b) => formatM(100 * num(a) + num(b) / 100));
-  out = out.replace(/(\d[\d,]*)\s*억\s*원?/g,
-    (_, a) => formatM(100 * num(a)));
-  out = out.replace(/(\d[\d,]*)\s*만\s*원?/g,
-    (_, b) => formatM(num(b) / 100));
+  out = out.replace(/(\d[\d,]*)\s*억\s*(\d[\d,]*)\s*(만)?(\s*)(원)?/g,
+    (_, a, b, man, sp, won) => formatM(100 * num(a) + num(b) / 100) + (won ? "" : sp));
+  out = out.replace(/(\d[\d,]*)\s*억(\s*)(원)?/g,
+    (_, a, sp, won) => formatM(100 * num(a)) + (won ? "" : sp));
+  out = out.replace(/(\d[\d,]*)\s*만(\s*)(원)?/g,
+    (_, b, sp, won) => formatM(num(b) / 100) + (won ? "" : sp));
   // Counters and misc units before the generic 일/개 rules below, so that
   // 일차 wins over 일 and 가지 is not split by 개.
   out = out.replace(/(\d+)일차/g, "Day $1");

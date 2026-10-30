@@ -31,6 +31,11 @@ export const MAP_COLORS = {
   muted: "#8f897f",
 };
 
+// 26o: the raster basemap (VWorld / USGS) is muted through an SVG
+// filter so our own layers read on top. Slope lightens toward
+// white; saturate near zero drops the tile colours.
+export const BASEMAP_MUTE = { saturate: 0.12, slope: 0.72 };
+
 // Official Seoul metropolitan subway colours, by network line id. The
 // map reads line.color from the network doc first — this table only
 // fills lines that carry none.

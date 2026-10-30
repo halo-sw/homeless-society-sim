@@ -553,14 +553,18 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   font-size: var(--ui-t12); font-weight: var(--ui-w600); }
 .ui-cand-disc.is-pick { background: var(--ui-accent); color: #fff; }
 .ui-cand-row-name { font-size: 15px; font-weight: var(--ui-w600);
-  flex: 1 1 auto; min-width: 0;
+  flex: 1 1 0; min-width: 0;
   word-break: keep-all; overflow-wrap: anywhere; }
 .ui-cand-row-btn { flex: none; }
+/* 26p: the Pick button never shrinks (its label must never clip to
+   "P..."); the name takes the free width and may break a single long
+   word only when it is wider than its column. */
+.ui-cand-row-top > button { flex: none; }
 .ui-cand-row-price { font-size: 15px; font-weight: var(--ui-w600); }
 .ui-cand-row-facts { font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-cand-row-commute { font-size: var(--ui-t12); }
 .ui-cand-est { font-size: 11px; color: var(--ui-ink2); background: var(--ui-sunken);
-  border-radius: 6px; padding: 1px 6px; }
+  border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
 /* 19c: the full card in the side panel — wide photo, name then price. */
 .ui-cand-full .ui-cand-photo { aspect-ratio: 16 / 9; }
 .ui-cand-full .ui-cand-name { font-size: 18px; }
@@ -603,6 +607,10 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-modelrow > :first-child { flex: 1 1 auto; min-width: 0; }
 .ui-keyinput { width: 100%; box-sizing: border-box; font: inherit; padding: var(--ui-s8);
   border: 1px solid var(--ui-border); border-radius: var(--ui-r-chip); background: var(--ui-card); }
+/* 26p: the intake text step — the input takes the free width, the 입력
+   button never shrinks, at every viewport width. */
+.ui-textstep > .ui-keyinput { flex: 1 1 auto; min-width: 0; }
+.ui-textstep button { flex: none; }
 .ui-src-row { padding: 10px 0; border-top: 1px solid var(--ui-border); }
 .ui-src-row > * + * { margin-top: 2px; }
 
@@ -983,11 +991,14 @@ button.ui-tag:hover { color: var(--ui-ink); }
     white-space: nowrap; word-break: keep-all; overflow-wrap: break-word;
   }
 
-  /* 3. Candidate card: smaller thumb, Pick keeps its label (wrapping to
-     its own line when tight), names break at spaces only. */
+  /* 3. Candidate card: smaller thumb, the Pick button stays at the
+     right (never wraps, never shrinks); names break at spaces, and a
+     single long word only when it is wider than its column. */
   .ui-cand-thumb { width: 64px; height: 64px; }
-  .ui-cand-row-top { flex-wrap: wrap; }
-  .ui-cand-row-name { word-break: keep-all; overflow-wrap: break-word; }
+  .ui-cand-row-top { flex-wrap: nowrap; }
+  .ui-cand-row-top > button { flex: none; }
+  .ui-cand-row-name { flex: 1 1 0; min-width: 0;
+    word-break: keep-all; overflow-wrap: anywhere; }
 
   /* 4. Chips: one scrollable row, chips never shrink, the page never
      scrolls sideways. */
@@ -1009,10 +1020,15 @@ button.ui-tag:hover { color: var(--ui-ink); }
   }
   .ui-picks-tray-row > :last-child { align-self: stretch; }
 
-  /* 6. Result card: names break at spaces only; the money note sits on
-     its own small second line. */
-  .ui-result-name { word-break: keep-all; overflow-wrap: break-word; }
-  .ui-result-main { white-space: nowrap; }
+  /* 6. Result card: narrower label column; each header is a block
+     (disc on top, name under it, breaking at spaces only); the money
+     amount wraps instead of overflowing its column. */
+  .ui-result-grid { grid-template-columns: minmax(64px, 0.7fr) 1fr 1fr; }
+  .ui-result-label { word-break: keep-all; }
+  .ui-result-head { display: block; min-width: 0; }
+  .ui-result-head .ui-pick-disc { margin-bottom: 4px; }
+  .ui-result-name { display: block; word-break: keep-all; overflow-wrap: anywhere; }
+  .ui-result-main { font-size: var(--ui-t16); overflow-wrap: anywhere; }
   .ui-result-note {
     display: block; font-size: var(--ui-t12); font-weight: var(--ui-w400);
     word-break: keep-all;
@@ -1029,4 +1045,20 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ui-bar13f2-row > p { font-size: var(--ui-t12); white-space: nowrap; }
   .ui-strip-legend { display: none; }
   .ui-sim13-stage { min-height: 55vh; }
+
+  /* 8. 26p header: the chat pane toggle (대화 / 지도·후보) gets its own
+     full-width row directly under the top bar — still inside the sticky
+     AppShell header — with 8 px side padding. layout="fill" gives each
+     item half the row, so the short mode tabs fit the bar row. */
+  .ui-chat-narrowtabs { padding: 4px var(--ui-s8) var(--ui-s8);
+    background: var(--ui-card); border-bottom: 1px solid var(--ui-border); }
+  .ui-chat-narrowtabs > * { width: 100%; }
+
+  /* 9. 26p moments: two lines — time, disc and the right-aligned link
+     on line 1, the text at full width on line 2. The ID selector wins
+     over the 26m "button *" nowrap so the text may wrap again. */
+  .ui-moment, .ui-result-moment { flex-wrap: wrap; }
+  .ui-moment > :last-child, .ui-result-moment > :last-child { margin-left: auto; }
+  .ui-moment-text, .ui-result-text { flex-basis: 100%; order: 3; }
+  #ui-root .ui-moment-text, #ui-root .ui-result-text { white-space: normal; }
 }

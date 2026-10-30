@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
   stationNameWidthPx, haversineKm, shortPinPrice,
-  pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN } from "../chatmap.js";
+  pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
 import { basemapApiBase, basemapTileUrl, basemapTiles, basemapProvider,
   viewTransform, zoomAt } from "../basemap.js";
 
@@ -253,8 +253,17 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             <feDropShadow dx={0} dy={1} stdDeviation={2}
               floodColor="#000000" floodOpacity={0.25} />
           </filter>
+          <filter id="basemap-mute">
+            <feColorMatrix type="saturate" values={BASEMAP_MUTE.saturate} />
+            <feComponentTransfer>
+              <feFuncR type="linear" slope={BASEMAP_MUTE.slope} intercept={1 - BASEMAP_MUTE.slope} />
+              <feFuncG type="linear" slope={BASEMAP_MUTE.slope} intercept={1 - BASEMAP_MUTE.slope} />
+              <feFuncB type="linear" slope={BASEMAP_MUTE.slope} intercept={1 - BASEMAP_MUTE.slope} />
+            </feComponentTransfer>
+          </filter>
         </defs>
         <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground} />
+        <g filter="url(#basemap-mute)">
         {tiles.filter((t) => !failedRef.current.has(t.key)).map((t) => {
           const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
           const [x1, y1] = toXYz(t.se[0], t.se[1]);
@@ -262,7 +271,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             <image key={t.key} href={basemapTileUrl(apiBase, t.z, t.y, t.x, { provider })}
               x={Math.min(x0, x1)} y={Math.min(y0, y1)}
               width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)}
-              preserveAspectRatio="none" opacity={0.92} pointerEvents="none"
+              preserveAspectRatio="none" pointerEvents="none"
               onError={() => {
                 if (!failedRef.current.has(t.key)) {
                   failedRef.current.add(t.key);
@@ -271,6 +280,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
               }} />
           );
         })}
+        </g>
         {!basemapOn && (<>
         {(green.parks || []).map((ring, i) => (
           <polygon key={`pk${i}`} points={ptsAttr(ring, toXYz)} fill={MAP_COLORS.park} />
@@ -313,14 +323,14 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         </>)}
         {(m.lines || []).map((l, i) => (
           <polyline key={`casing:${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXYz)} fill="none"
-            stroke="#ffffff" strokeWidth={fs(5)}
+            stroke="#ffffff" strokeWidth={fs(4.5)}
             strokeLinejoin="round" strokeLinecap="round">
             <title>{l.name}</title>
           </polyline>
         ))}
         {(m.lines || []).map((l, i) => (
           <polyline key={`${l.id}:${l.direction || ""}:${i}`} points={ptsAttr(l.pts, toXYz)} fill="none"
-            stroke={l.color} strokeWidth={fs(3)}
+            stroke={l.color} strokeWidth={fs(2.5)}
             strokeLinejoin="round" strokeLinecap="round" opacity={1}>
             <title>{l.name}</title>
           </polyline>

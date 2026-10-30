@@ -9,7 +9,7 @@
 // configured (VITE_KAKAO_JS_KEY / VITE_VWORLD_KEY, domain-restricted,
 // never committed). No listing-portal or social scraping anywhere —
 // their terms forbid it.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Carousel } from "@astryxdesign/core/Carousel";
@@ -20,6 +20,9 @@ import { Text } from "@astryxdesign/core/Text";
 import { PHOTOS_DISCLAIMER, sceneThumbnail,
   createWebGLThumbnailRenderer } from "../places/photos.js";
 import { assetUrl } from "../paths.js";
+import { aerialThumbTiles, aerialThumbUrl, aerialThumbZoom } from "../aerial/thumb.js";
+import { aerialCreditFor } from "../aerial/drape.js";
+import { basemapApiBase } from "../basemap.js";
 import { SOURCE_BADGES } from "../homes.js";
 import { JEONSE_MIN_TRADES, JEONSE_REF_NOTE, JEONSE_SPARSE_NOTE,
   JEONSE_CAUTION_ID, JEONSE_WARNING_ID } from "../money/jeonse.js";
@@ -160,6 +163,63 @@ export function MiniMap({ lon, lat, name }) {
         <Text type="supporting">{`${name || "이 집"} 위치 OpenStreetMap에서 보기`}</Text>
       </a>
     </HStack>
+  );
+}
+
+// --- live aerial thumbnail ----------------------------------------------------------
+// 26n: every candidate shows the real place — a live aerial photo crop
+// centred on the home, with a pin. Tiles come from the relay
+// (/api/tiles/Satellite, key server-side) in Korea and from USGS
+// directly in the US. The browser fetches the tiles; nothing is
+// written anywhere. Any tile failure (or no relay on a static build)
+// falls back to the caller's fallback.
+export function AerialThumb({ lon, lat, width = 96, height = 96, fallback = null }) {
+  const ref = useRef(null);
+  const [measured, setMeasured] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) setMeasured({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const x = Number(lon);
+  const y = Number(lat);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return fallback;
+  const winW = Math.max(1, Math.round((measured && measured.w) || width || 96));
+  const winH = Math.max(1, Math.round((measured && measured.h) || height || 96));
+  const zoom = aerialThumbZoom(x, y);
+  const layout = aerialThumbTiles({ lon: x, lat: y, z: zoom.z,
+    widthPx: winW, heightPx: winH, tilePx: zoom.tilePx });
+  const apiBase = basemapApiBase();
+  const urls = layout.tiles.map((t) => aerialThumbUrl(apiBase, x, y, t));
+  if (failed || urls.some((u) => u == null)) return fallback;
+  const credit = aerialCreditFor({ bbox: [x, y, x, y] });
+  return (
+    <div ref={ref} title={credit}
+      style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%" }}>
+      {layout.tiles.map((t, i) => (
+        <img key={`${t.z}/${t.y}/${t.x}`} src={urls[i]} alt=""
+          loading="lazy" decoding="async" draggable={false}
+          onError={() => setFailed(true)}
+          style={{ position: "absolute", left: t.left, top: t.top,
+            width: layout.size, height: layout.size, maxWidth: "none" }} />
+      ))}
+      <span aria-hidden="true" style={{ position: "absolute", left: "50%", top: "50%",
+        width: 10, height: 10, borderRadius: "50%", transform: "translate(-50%, -50%)",
+        background: "rgba(17,20,26,0.9)", border: "2px solid #fff",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.5), 0 0 0 1px #fff" }} />
+      <span style={{ position: "absolute", left: 4, bottom: 4, fontSize: "var(--ui-t12)",
+        color: "#fff", background: "rgba(0,0,0,0.45)", borderRadius: 4, padding: "0 4px" }}>
+        항공사진
+      </span>
+    </div>
   );
 }
 

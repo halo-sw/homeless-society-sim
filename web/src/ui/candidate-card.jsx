@@ -11,7 +11,9 @@ import { fmtWon } from "../money/format.js";
 import { fmtMoney, currencyOf } from "../money/currency.js";
 import { SAME_STATION_KO, displayNameFor, KIND_MISMATCH_KO } from "../homes.js";
 import { simBadgeFor } from "../mapsim.js";
-import { SceneThumb, MiniMap } from "./preview.jsx";
+import { aerialCreditFor } from "../aerial/drape.js";
+import { basemapApiBase, isUsLonLat } from "../basemap.js";
+import { SceneThumb, MiniMap, AerialThumb } from "./preview.jsx";
 
 export function tenurePriceLine(candidate, tenure) {
   const t = (candidate.tenures || []).find((x) => x.tenure === tenure)
@@ -130,6 +132,38 @@ function factsFor(candidate, price) {
   ].filter(Boolean);
 }
 
+// 26n: the thumbnail order is complex photo, live aerial crop, 3D,
+// MiniMap. The aerial thumb is live only in the US (USGS, no relay)
+// or when the tile relay answers; otherwise the 3D branch shows.
+export function aerialLiveFor(candidate) {
+  if (!candidate || !Number.isFinite(candidate.lon) || !Number.isFinite(candidate.lat)) {
+    return false;
+  }
+  return isUsLonLat(candidate.lon, candidate.lat) || basemapApiBase() !== null;
+}
+
+// Area shapes for aerialCreditFor: the list's country (plus its bbox
+// so lon/lat-only candidates still resolve), or one candidate.
+export function areaForList(candidates) {
+  const list = (candidates || []).filter((c) => c
+    && Number.isFinite(c.lon) && Number.isFinite(c.lat));
+  const first = (candidates || [])[0] || {};
+  if (list.length === 0) return { country: first.country };
+  const lons = list.map((c) => c.lon);
+  const lats = list.map((c) => c.lat);
+  return { country: first.country,
+    bbox: [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)] };
+}
+
+export function areaForCandidate(candidate) {
+  if (!candidate) return {};
+  if (Number.isFinite(candidate.lon) && Number.isFinite(candidate.lat)) {
+    return { country: candidate.country,
+      bbox: [candidate.lon, candidate.lat, candidate.lon, candidate.lat] };
+  }
+  return { country: candidate.country };
+}
+
 function RowThumb({ candidate, hero }) {
   if (hero) {
     return (
@@ -137,14 +171,20 @@ function RowThumb({ candidate, hero }) {
         title={`${hero.credit} · 원본 보기`} />
     );
   }
-  if (candidate.scene) {
+  const sceneBranch = candidate.scene ? (
+    <SceneThumb boxId={candidate.scene}
+      home={{ lon: candidate.lon, lat: candidate.lat }}
+      fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+  ) : (
+    <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
+  );
+  if (aerialLiveFor(candidate)) {
     return (
-      <SceneThumb boxId={candidate.scene}
-        home={{ lon: candidate.lon, lat: candidate.lat }}
-        fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+      <AerialThumb lon={candidate.lon} lat={candidate.lat} width={96} height={96}
+        fallback={sceneBranch} />
     );
   }
-  return <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />;
+  return sceneBranch;
 }
 
 // 19c: the supporting walk/ride breakdown for the full card.
@@ -236,7 +276,16 @@ function usRangeTitle(candidate) {
 function FullCard({ candidate, price, facts, row, hero, rest,
   slide, setSlide, picked, rangeTitle, onLive, onJeonse }) {
   const shot = rest.length > 0 ? rest[slide % rest.length] : null;
-  const showHero = !!(hero || candidate.scene);
+  const hasCoords = Number.isFinite(candidate.lon) && Number.isFinite(candidate.lat);
+  const aerialLive = aerialLiveFor(candidate);
+  const showHero = !!(hero || candidate.scene || hasCoords);
+  const sceneFallback = candidate.scene ? (
+    <SceneThumb boxId={candidate.scene}
+      home={{ lon: candidate.lon, lat: candidate.lat }}
+      fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+  ) : (
+    <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
+  );
   const detail = commuteDetailLine(candidate);
   return (
     <article className="ui-cand ui-cand-full ui-card-enter">
@@ -246,6 +295,9 @@ function FullCard({ candidate, price, facts, row, hero, rest,
             <a href={hero.page_url} target="_blank" rel="noreferrer" title={`${hero.credit} · 원본 보기`}>
               <img src={hero.thumb_url} alt={hero.title || "단지 사진"} loading="lazy" />
             </a>
+          ) : hasCoords ? (
+            <AerialThumb lon={candidate.lon} lat={candidate.lat} width={320} height={180}
+              fallback={sceneFallback} />
           ) : (
             <SceneThumb boxId={candidate.scene}
               home={{ lon: candidate.lon, lat: candidate.lat }}
@@ -253,6 +305,9 @@ function FullCard({ candidate, price, facts, row, hero, rest,
           )}
           {hero && <span className="ui-cand-label">{hero.label}</span>}
         </div>
+      )}
+      {showHero && !hero && aerialLive && (
+        <Text type="supporting">{aerialCreditFor(areaForCandidate(candidate))}</Text>
       )}
       <div className="ui-cand-body">
         <div>
