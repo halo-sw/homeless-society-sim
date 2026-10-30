@@ -10,6 +10,7 @@
 // (1.3 m/s). main.js only plays back the returned plan.
 
 import { haversineM } from "./frame.js";
+import { nearestNodeIn } from "./walkgraph.js";
 
 export const WALK_MPS = 1.3;
 export const MIN_STOPS = 4;
@@ -60,16 +61,10 @@ export const DAILY_CATEGORIES = [
 ];
 
 export function nearestNode(lon, lat, nodes) {
-  let best = null;
-  let bestD = Infinity;
-  for (const [id, pt] of Object.entries(nodes)) {
-    const d = haversineM(lon, lat, pt[0], pt[1]);
-    if (d < bestD) {
-      bestD = d;
-      best = id;
-    }
-  }
-  return { id: best, distM: bestD };
+  const id = nearestNodeIn(nodes, lon, lat);
+  if (id === null) return { id: null, distM: Infinity };
+  const pt = nodes[id];
+  return { id, distM: haversineM(lon, lat, pt[0], pt[1]) };
 }
 
 export function dijkstra(nodes, walkEdges, startId) {

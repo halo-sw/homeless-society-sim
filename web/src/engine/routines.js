@@ -177,9 +177,12 @@ export function planAgent(agent, day, ctx) {
     homeGapTo(depart); // at-home recovery since the last activity
     fatPoint(depart, labels.depart || null);
     const distance_m = round2(route.lengthM);
-    const minutes = round1(route.lengthM / speed / 60);
+    const spd = labels.speedMps || speed;
+    const minutes = round1(route.lengthM / spd / 60);
     const arrive = depart + Math.max(1, Math.round(minutes));
-    const fatigueDelta = round1(walkFatigue(minutes, F));
+    const fatigueDelta = labels.mode === "bike"
+      ? round1(walkFatigue(minutes, F) * 0.6)
+      : round1(walkFatigue(minutes, F));
     fatLoad(fatigueDelta);
     fatPoint(arrive, labels.arrive || null);
     const trip = {
@@ -190,6 +193,7 @@ export function planAgent(agent, day, ctx) {
       fatigue_delta: fatigueDelta,
       cause,
     };
+    if (labels.mode) trip.mode = labels.mode;
     trips.push(trip);
     collect.trips.push(trip);
     clock = arrive;
@@ -593,12 +597,99 @@ export function planAgent(agent, day, ctx) {
     fatAfterHome = fat;
   }
 
+  // Place-based commute without a station (stage 26d, US homes): the
+  // workplace is lon/lat. Walk when the place is in the home bbox and
+  // the walk round trip is within C-walk-commute-max (exactly the walk
+  // branch of commutePlace); else bike when allowed and the bike round
+  // trip is within C-bike-commute-max; else an unavailable record.
+  function commuteToPlace(work, depart) {
+    const wp = resolveWorkplace(work.place, { places, network: region && region.network });
+    const modes = Array.isArray(work.modes) ? work.modes : ["walk", "bike"];
+    const name = (wp && wp.name) || (work.place && work.place.name) || "직장";
+    if (!wp) {
+      unavailable("commute", "bike", `${name}까지 걷기·자전거 상한을 넘어요`);
+      return;
+    }
+    const wpId = `workplace:${agent.key}`;
+    const inBbox = !homeBbox || bboxContains(homeBbox, wp.lon, wp.lat);
+    let walkCand = null;
+    let walkMin = null;
+    if (inBbox && modes.includes("walk")) {
+      const anchor = router.nearestNode(wp.lon, wp.lat);
+      if (anchor.id !== null && anchor.distM <= MAX_ANCHOR_M) {
+        const cands = nearestRoundTrip(router, agent.home_node,
+          [{ id: wpId, name: wp.name, lon: wp.lon, lat: wp.lat, nodeId: anchor.id }], 1);
+        if (cands.length > 0) {
+          walkCand = cands[0];
+          walkMin = cands[0].lengthM / speed / 60;
+        }
+      }
+    }
+    if (walkCand && walkMin <= F.walk_commute_max_min) {
+      const cause = makeCause("routine",
+        ["C-commute-depart", "C-walk-speed", "C-walk-route", "C-work-days",
+          "C-walk-commute-max", "C-fatigue-load", "C-fatigue-recovery"],
+        `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)} · ` +
+        `${wp.name}까지 도보 ${round1(walkMin)}분(${F.walk_commute_max_min}분 이내)`);
+      const end = { kind: "poi", id: walkCand.place.id, label: wp.name };
+      const out = addTrip(depart, walkCand.route, homeEnd(), end, "commute", cause);
+      fatArrivalWork = fat;
+      const awayEnd = out.arrive_min + F.workday_minutes;
+      addAway(out.arrive_min, awayEnd, "work", `${wp.name} 근무`, {
+        workday_minutes: F.workday_minutes, seated_minutes: F.workday_minutes,
+        workplace: { name: wp.name, lon: wp.lon, lat: wp.lat },
+        commute: "walk",
+      }, cause);
+      addTrip(awayEnd, walkCand.back, end, homeEnd(), "commute", cause,
+        { arrive: "귀가" });
+      fatAfterHome = fat;
+      return;
+    }
+    const bikeRouter = (ctx && ctx.bikeRouter) || null;
+    if (modes.includes("bike") && bikeRouter) {
+      const anchor = bikeRouter.nearestNode(wp.lon, wp.lat);
+      if (anchor.id !== null && anchor.distM <= MAX_ANCHOR_M) {
+        const cands = nearestRoundTrip(bikeRouter, agent.home_node,
+          [{ id: wpId, name: wp.name, lon: wp.lon, lat: wp.lat, nodeId: anchor.id }], 1);
+        if (cands.length > 0) {
+          const bikeMin = cands[0].lengthM / F.bike_mps / 60;
+          if (bikeMin <= F.bike_commute_max_min) {
+            const kmh = F.bike_kmh || round1(F.bike_mps * 3.6);
+            const cause = makeCause("routine",
+              ["C-commute-depart", "C-bike-speed", "C-bike-commute-max", "C-work-days",
+                "C-fatigue-load", "C-fatigue-recovery"],
+              `${wk} 근무일 · ${anchorText(F.morning_anchor_min, depart)} · ` +
+              `${wp.name}까지 자전거 ${round1(bikeMin)}분` +
+              `(${F.bike_commute_max_min}분 이내, 속도 가정 ${kmh}km/h)`);
+            const end = { kind: "poi", id: cands[0].place.id, label: wp.name };
+            const out = addTrip(depart, cands[0].route, homeEnd(), end, "commute", cause,
+              { speedMps: F.bike_mps, mode: "bike" });
+            fatArrivalWork = fat;
+            const awayEnd = out.arrive_min + F.workday_minutes;
+            addAway(out.arrive_min, awayEnd, "work", `${wp.name} 근무`, {
+              workday_minutes: F.workday_minutes, seated_minutes: F.workday_minutes,
+              workplace: { name: wp.name, lon: wp.lon, lat: wp.lat },
+              commute: "bike",
+            }, cause);
+            addTrip(awayEnd, cands[0].back, end, homeEnd(), "commute", cause,
+              { arrive: "귀가", speedMps: F.bike_mps, mode: "bike" });
+            fatAfterHome = fat;
+            return;
+          }
+        }
+      }
+    }
+    unavailable("commute", "bike", `${name}까지 걷기·자전거 상한을 넘어요`);
+  }
+
   const work = agent.work;
   if (agent.workdays.includes(weekday) && work.type !== "none") {
     const depart = F.morning_anchor_min + schedule.departJitter[day];
     if (work.type === "station_ride") {
       if (work.place) commutePlace(work, depart);
       else commuteLegacy(work, depart, false);
+    } else if (work.type === "place") {
+      commuteToPlace(work, depart);
     } else if (work.type === "local_poi") {
       const name = nameForHome(work.name, homeLabel);
       const pois = poisByName(places, name);

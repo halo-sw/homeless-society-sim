@@ -40,6 +40,12 @@ INFERRED_MAX_SHARE = 0.30
 WALK_LCC_MIN_SHARE = 0.95
 POIS_MIN_SCENE = 50
 
+# Stage 26a: the US has no national building register and OSM heights
+# are sparse, so the inferred-height share gate is a warning for US
+# areas, not a failure.
+US_HEIGHT_WARNING = ("US area: no building register; heights are OSM "
+                     "or inferred (warning only)")
+
 AREA_FILE = "area.json"
 REPORT_FILE = "report.json"
 
@@ -176,6 +182,7 @@ def validate_area(area_dir: str | Path) -> list[str]:
         return errors
 
     if area_def.get("kind") == "bbox":
+        is_us = area_def.get("country") == "US"
         n_pois = len(pois) if isinstance(pois, list) else 0
         if n_pois < POIS_MIN_SCENE:
             errors.append(
@@ -191,7 +198,7 @@ def validate_area(area_dir: str | Path) -> list[str]:
                 res_inferred = sum(1 for b in homes
                                    if b.get("height_source") == "inferred")
                 share = round(res_inferred / len(homes), 4)
-                if share > INFERRED_MAX_SHARE:
+                if share > INFERRED_MAX_SHARE and not is_us:
                     errors.append(
                         f"{area_id}: residential inferred-height share "
                         f"{share:.1%} ({res_inferred}/{len(homes)}) exceeds "
@@ -250,10 +257,19 @@ def run_build(area_dir: str | Path) -> dict:
         report = json.loads((area_dir / REPORT_FILE).read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         report = {}
+    try:
+        area_def = json.loads(
+            (area_dir / "area_def.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        area_def = {}
+    warnings = ([US_HEIGHT_WARNING]
+                if isinstance(area_def, dict)
+                and area_def.get("country") == "US" else [])
     counts = report.get("counts", {}) if isinstance(report, dict) else {}
     return {
         "failed": bool(errors),
         "errors": errors,
+        "warnings": warnings,
         "checks": {
             "buildings": counts.get("buildings", 0),
             "roads": counts.get("roads", 0),

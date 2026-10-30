@@ -33,6 +33,8 @@ from pathlib import Path
 
 import osmium
 
+from .areas import US_RAW_PBF
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RAW_PBF = REPO_ROOT / "data" / "raw" / "south-korea-latest.osm.pbf"
 DEFAULT_BUILD_DIR = REPO_ROOT / "data" / "build"
@@ -395,3 +397,67 @@ def run_build(raw_pbf: str | Path = DEFAULT_RAW_PBF,
     out = write_regions(to_doc(resolved), build_dir / REGIONS_FILE)
     return {"file": str(out), "regions": list(resolved),
             "wirye_relations": len(resolved["wirye"].relations)}
+
+
+# Stage 26a US region: Menlo Park around Meta HQ (same box as us-menlo).
+US_REGION_SPECS = (
+    {"id": "us-menlo", "label": "Menlo Park · East Palo Alto",
+     "bbox": (-122.190, 37.450, -122.125, 37.492),
+     "country": "US", "currency": "USD"},
+)
+
+US_REGION_IDS = tuple(spec["id"] for spec in US_REGION_SPECS)
+
+
+def _us_region_entry(spec: dict) -> dict:
+    """One US region entry: every KR key present so readers don't crash."""
+    return {
+        "id": spec["id"],
+        "label": spec["label"],
+        "bbox": list(spec["bbox"]),
+        "country": spec["country"],
+        "currency": spec["currency"],
+        "boundary_names": [],
+        "sigungu": [],
+        "rtms_districts": [],
+        "rtms_files": [],
+        "safety": [],
+        "relations": [],
+    }
+
+
+def run_us_regions(raw_pbf: str | Path = US_RAW_PBF,
+                   build_dir: str | Path = DEFAULT_BUILD_DIR,
+                   osmium_bin: str = "osmium",
+                   refresh: bool = False) -> dict:
+    """CLI entry (``regions --us``): clip US bboxes, merge regions.json."""
+    from .extract import clip_bbox, find_osmium
+
+    raw_pbf = Path(raw_pbf)
+    build_dir = Path(build_dir)
+    if not raw_pbf.exists():
+        raise FileNotFoundError(f"US extract not found: {raw_pbf}")
+    binary = find_osmium(osmium_bin)
+    cache_dir = build_dir / "_cache" / "regions"
+    for spec in US_REGION_SPECS:
+        out = cache_dir / f"{spec['id']}.osm.pbf"
+        if refresh or not out.exists():
+            clip_bbox(binary, raw_pbf, tuple(spec["bbox"]), out)
+    regions_path = build_dir / REGIONS_FILE
+    if regions_path.exists():
+        doc = json.loads(regions_path.read_text(encoding="utf-8"))
+    else:
+        doc = {"regions": [], "places": [dict(p) for p in PLACES],
+               "wirye_note": WIRYE_NOTE, "rtms_suffix": RTMS_SUFFIX}
+    regions = list(doc.get("regions", []))
+    positions = {r["id"]: i for i, r in enumerate(regions)}
+    for spec in US_REGION_SPECS:
+        entry = _us_region_entry(spec)
+        if spec["id"] in positions:
+            regions[positions[spec["id"]]] = entry
+        else:
+            regions.append(entry)
+    doc["regions"] = regions
+    out = write_regions(doc, regions_path)
+    return {"file": str(out),
+            "regions": [spec["id"] for spec in US_REGION_SPECS]}

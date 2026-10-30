@@ -17,6 +17,7 @@ import { glossaryTerms } from "./glossary.js";
 import { monthlyHousingLabel, BURDEN_PLAIN_LABEL, BURDEN_PLAIN_NOTE,
   REMAINING_PLAIN_LABEL, HOW_CALCULATED } from "./copy.js";
 import { fmtWon, fmtPct, fmtMinutes, fmtMinutesTable, fmtCount, fmtIndex } from "../money/format.js";
+import { fmtMoney } from "../money/currency.js";
 import { FATIGUE_MODEL_NOTE } from "../nowcard.js";
 import { congestionPeakLine } from "../engine/journey.js";
 import { MONEY_CATEGORY_KO } from "../money/timeline.js";
@@ -169,6 +170,32 @@ export function MoneyTab({ state }) {
     );
   }
   const labels = Object.keys(doc.homes || {});
+  // 26d: a USD rent doc shows the ZIP-estimate rent per home only —
+  // no 실수령, no loan, no jeonse rows.
+  if (doc.currency === "USD") {
+    return (
+      <VStack gap={2}>
+        {labels.map((label) => {
+          const h = doc.homes[label];
+          return (
+            <VStack gap={1} key={label}>
+              <HStack gap={2} vAlign="center" wrap="wrap">
+                <Heading level={4}>{`홈 ${label} · ${h.complex_name || ""}`}</Heading>
+              </HStack>
+              {Number.isFinite(h.rent_usd_month) ? (
+                <Text hasTabularNumbers>
+                  {`월 주거비 ${fmtMoney(h.rent_usd_month, "USD", { monthly: true })} (ZIP 추정)`}
+                </Text>
+              ) : (
+                <Text type="supporting">계산 전</Text>
+              )}
+              <Text type="supporting">{h.source || ""}</Text>
+            </VStack>
+          );
+        })}
+      </VStack>
+    );
+  }
   const net = doc.household_monthly_net_won || 0;
   const series = [];
   for (const label of labels) {

@@ -147,11 +147,22 @@ function clean(parts) {
   return parts.filter((p) => p !== undefined && p !== null && String(p).trim() !== "");
 }
 
+// 26i: US complexes can carry an OSM id as their name (e.g.
+// "w112348084"). Then the pill shows the run's home name instead
+// ("10 Coleman Place"); Korean names are never replaced.
+const OSM_ID_RE = /^[wnr]\d+$/;
+
+export function homeDisplayName(name, runHomeName) {
+  const n = name === undefined || name === null ? "" : String(name);
+  if (runHomeName && OSM_ID_RE.test(n.trim())) return String(runHomeName);
+  return n;
+}
+
 // Items: { id, level, title, sub, glyph, accent, lon, lat }.
 // Order: home pill first, then destination, then complexes / POIs / dongs.
 export function labelItemsFor(area, opts = {}) {
   const { homeBuildingId = null, destination = null, destinationSuffix = "",
-    cameraDistM = 600 } = opts;
+    cameraDistM = 600, homeName = null } = opts;
   const items = [];
   const buildings = area?.buildings || [];
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -159,7 +170,8 @@ export function labelItemsFor(area, opts = {}) {
   if (homeBuildingId !== null && homeBuildingId !== undefined) {
     const b = byId.get(homeBuildingId);
     const complex = complexOfBuilding(area, homeBuildingId);
-    const name = (b && buildingNameOf(b, complex)) || String(homeBuildingId);
+    const raw = (b && buildingNameOf(b, complex)) || String(homeBuildingId);
+    const name = homeDisplayName(raw, homeName) || raw;
     const anchor = (b && anchorOf(b)) || (complex && anchorOf(complex)) || null;
     items.push({
       id: `home:${String(homeBuildingId)}`,

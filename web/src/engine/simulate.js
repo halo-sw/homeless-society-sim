@@ -27,6 +27,12 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
   const agents = buildAgents(area, scenario, resolved, resolved.nodeId, router, crit.flat);
   const decider = makeDecider(opts);
   const region = opts.region && typeof opts.region === "object" ? opts.region : null;
+  // Bike graph for place commutes (stage 26d): one Router per run over
+  // the shared nodes dict, or null when the area has no bike edges.
+  const bikeEdges = area.graph && area.graph.edges && area.graph.edges.bike;
+  const bikeRouter = Array.isArray(bikeEdges) && bikeEdges.length > 0
+    ? new Router(area.graph, { mode: "bike" })
+    : null;
   // Destination-area graph for place commutes (stage 9c): only built when
   // a household member names a workplace and the caller passed the area.
   // Same-area destinations reuse the home router/places.
@@ -53,7 +59,7 @@ export function simulate(area, scenarioJson, homeLabel, opts = {}) {
     const schedule = planSchedule(agent, scenario, crit.flat);
     const ctx = { scenario, homeLabel, home: resolved, router, places, decider, schedule, collect,
       crit: crit.flat, region, dest, destAreaId: dest ? dest.area.area : null,
-      homeAreaId: area.area || null, homeBbox: area.bbox || null };
+      homeAreaId: area.area || null, homeBbox: area.bbox || null, bikeRouter };
     const perDay = [];
     for (let day = 0; day < scenario.days; day++) {
       const summary = planAgent(agent, day, ctx);

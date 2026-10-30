@@ -112,6 +112,8 @@ const FLAT_MAP = {
   "C-journey-path": { transfer_penalty_km: "journey_transfer_penalty_km" },
   "C-ride-split": { transfer_walk_min: "ride_transfer_min" },
   "C-walk-commute-max": { max_min: "walk_commute_max_min" },
+  "C-bike-speed": { kmh: "bike_kmh" },
+  "C-bike-commute-max": { max_min: "bike_commute_max_min" },
   "C-congestion": { fallback_pct: "congestion_fallback_pct" },
   "C-fatigue-load": {
     walk_per_min: "fatigue_walk_per_min",
@@ -205,6 +207,7 @@ export function defaultFlat() {
   for (const [id, keys] of Object.entries(FLAT_MAP)) {
     for (const [key, name] of Object.entries(keys)) flat[name] = defaultValue(id, key);
   }
+  flat.bike_mps = flat.bike_kmh / 3.6;
   return flat;
 }
 
@@ -309,6 +312,7 @@ export function resolveCriteria(scenario) {
     }
     overridden.add(id);
   }
+  flat.bike_mps = flat.bike_kmh / 3.6;
   const nativeExplicit = nativeExplicitIds(sc);
   const sources = {};
   const byId = {};

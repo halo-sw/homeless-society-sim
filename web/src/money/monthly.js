@@ -7,6 +7,15 @@
 export function monthlyHousingOf(doc, label, days = 30) {
   const h = doc && doc.homes && doc.homes[label];
   if (!h) return { label, missing: true };
+  // 26d: a USD rent doc carries one ZIP-estimate rent per home — no
+  // tenure breakdown, no maintenance or transit add-ons.
+  if (doc.currency === "USD") {
+    if (!Number.isFinite(h.rent_usd_month)) return { label, tenure: "월세", missing: true };
+    return { label, tenure: "월세", monthly: Math.round(h.rent_usd_month),
+      parts: { housing: Math.round(h.rent_usd_month), maintenance: 0, transit: 0 },
+      housingDoc: null, maintenanceWon: 0, transitWon: 0,
+      source: h.source || null, estimate: true };
+  }
   const t = ((doc.default_tenure || {})[label])
     || (h.by_tenure && Object.keys(h.by_tenure)[0]);
   const sel = h.by_tenure && h.by_tenure[t];

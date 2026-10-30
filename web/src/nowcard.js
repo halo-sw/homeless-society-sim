@@ -136,9 +136,10 @@ export function nowCardFor({ run, indexed, agentKey, day, minute }) {
   if (kind === "trip") {
     const remain = Math.ceil(Math.max(0, trip.arrive_min - Math.floor(minute)));
     const dur = Math.max(1, trip.arrive_min - trip.depart_min);
+    const moveWord = trip && trip.mode === "bike" ? "자전거로" : "걸어서";
     const now = remain <= 0
       ? `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (곧 도착)`
-      : `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (걸어서 ${remain}분 남음)`;
+      : `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (${moveWord} ${remain}분 남음)`;
     const progress = Math.min(1, Math.max(0, (minute - trip.depart_min) / dur));
     if (!trip.cause) {
       return { ...base, state: "trip", now, why: OLD_RUN_WHY, whyKind: "none",
@@ -245,7 +246,7 @@ export function fatigueFor({ run, agentKey, day, minute }) {
     && m >= t.depart_min && m < t.arrive_min);
   if (trip) {
     out.delta = trip.fatigue_delta ?? null;
-    out.note = `걸어서 ${Math.round(trip.minutes)}분 이동`;
+    out.note = `${trip && trip.mode === "bike" ? "자전거로" : "걸어서"} ${Math.round(trip.minutes)}분 이동`;
     out.criterionIds = ["C-fatigue-load"];
     return out;
   }

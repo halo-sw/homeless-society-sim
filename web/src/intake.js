@@ -3,6 +3,7 @@
 // sliders and a place picker. Pure state machine; the JSX lives in
 // ui/intake.jsx. Tested in intake-13.test.js.
 import { fmtWon } from "./money/format.js";
+import { fmtMoney, currencyOf } from "./money/currency.js";
 import { TENURE_KO } from "./profile.js";
 
 export const INTAKE_STEPS = [
@@ -208,15 +209,18 @@ export function intakeTookLine(profile) {
   if (takehome !== null && salary === null) {
     bits.push(`월 실수령 ${fmtWon(takehome)}`);
   }
+  // 26k: amounts print in the profile currency (USD customers read
+  // dollars); 연봉/실수령 stay KRW-only (never filled for USD).
+  const cur = currencyOf(profile);
   const cash = numVal(v("cash"));
-  if (cash !== null && cash > 0) bits.push(`모은 돈 ${fmtWon(cash)}`);
+  if (cash !== null && cash > 0) bits.push(`모은 돈 ${fmtMoney(cash, cur)}`);
   const tenure = v("tenure");
   if (tenure && TENURE_KO[tenure]) {
     const budget = tenure === "jeonse" ? v("depositMax")
       : tenure === "wolse" ? v("monthlyMax")
         : tenure === "trade" ? v("priceMax") : null;
     bits.push(budget !== null && budget !== undefined
-      ? `${TENURE_KO[tenure]} ${fmtWon(budget)} 이하` : TENURE_KO[tenure]);
+      ? `${TENURE_KO[tenure]} ${fmtMoney(budget, cur)} 이하` : TENURE_KO[tenure]);
   }
   const size = numVal(v("sizeMin"));
   if (size !== null) bits.push(`${size}㎡ 이상`);

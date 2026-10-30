@@ -23,6 +23,7 @@ import { findPath } from "./engine/journey.js";
 import { rideMinutes } from "./transit/schedule.js";
 import { photosNear, PHOTOS_DISCLAIMER } from "./places/photos.js";
 import { nearestStationByWalk } from "./walkgraph.js";
+import { fmtMoney } from "./money/currency.js";
 
 export const HOME_SORTS = ["commute", "monthly", "deals", "priority"];
 export const DEFAULT_HOME_SORT = "commute";
@@ -42,6 +43,31 @@ export const SOURCE_BADGES = {
   photos: "주변 사진",
   public: "공공임대(LH·마이홈)",
 };
+
+// 26k: USD empty state. When no home matches but loaded US homes exist
+// above the budget, name the cheapest loaded ZIP rent (computed, never
+// hardcoded) so the customer sees how far the budget falls short.
+export function usMonthlyMedian(home) {
+  let min = null;
+  for (const b of (home && home.buckets) || []) {
+    const med = b && b.wolse && b.wolse.monthly && b.wolse.monthly.median_won;
+    if (Number.isFinite(med) && med > 0 && (min === null || med < min)) min = med;
+  }
+  return min;
+}
+
+export function usEmptyHint(homes, budget) {
+  const b = Number(budget);
+  if (!Number.isFinite(b) || b <= 0) return "";
+  let min = null;
+  for (const h of homes || []) {
+    if (!h || (h.currency !== "USD" && h.country !== "US")) continue;
+    const med = usMonthlyMedian(h);
+    if (med !== null && med > b && (min === null || med < min)) min = med;
+  }
+  if (min === null) return "";
+  return `이 지역 ZIP 대표 월세는 ${fmtMoney(min, "USD")}부터예요 (Zillow 추정).`;
+}
 
 const TENURE_BUCKET = { jeonse: "jeonse", wolse: "wolse", trade: "trade" };
 
@@ -105,11 +131,14 @@ export function pickBucket(buckets, tenureKey, sizeMin) {
       const cx = x.b[TENURE_BUCKET[tenureKey]].count || 0;
       const cy = y.b[TENURE_BUCKET[tenureKey]].count || 0;
       if (cy !== cx) return cy - cx;
-      return x.b.center_m2 - y.b.center_m2;
+      return (x.b.center_m2 ?? 0) - (y.b.center_m2 ?? 0);
     });
     return cands[0].b;
   }
-  const fits = cands.filter(({ b }) => b.center_m2 + 5 >= sizeMin);
+  // 26c: a bucket with no size (center_m2 null, e.g. US ZIP rents)
+  // is always eligible, ignoring sizeMin.
+  const fits = cands.filter(({ b }) => b.center_m2 === null
+    || b.center_m2 === undefined || b.center_m2 + 5 >= sizeMin);
   if (fits.length === 0) return null;
   fits.sort((x, y) => x.b.center_m2 - y.b.center_m2);
   return fits[0].b;
@@ -156,7 +185,12 @@ function profileValue(profile, key) {
 
 export const SAME_STATION_KO = "직장역과 같은 역 · 지하철 안 타요";
 
-function commuteSummary(home, workplace, network, schedule = null, walkgraphs = null, walkMps = null) {
+// 26c: when the workplace resolves to a place (Meta HQ) and the home
+// carries work_targets for it, the commute is the assumed-speed
+// walk/bike estimate: walk when walk_minutes <= 25 (C-walk-commute-max),
+// else bike. `walk` keeps the station walk as today; `ride` stays
+// unknown. Exported for tests.
+export function commuteSummary(home, workplace, network, schedule = null, walkgraphs = null, walkMps = null) {
   let walk = home.station && Number.isFinite(home.station.walk_minutes)
     ? { minutes: home.station.walk_minutes, station: home.station.station, known: true }
     : { minutes: null, station: null, known: false };
@@ -218,6 +252,24 @@ function commuteSummary(home, workplace, network, schedule = null, walkgraphs = 
       note: SAME_STATION_KO, sameStation: true,
       lines: [], transfers: [], distanceKm: 0,
     };
+  }
+  // 26c: a resolved place (not a station) commutes by assumed walk/bike
+  // speed from the home's work_targets. No target for that place means
+  // work: null. Korean summaries keep their shape (no work key).
+  const place = workplace && workplace.resolved && workplace.resolved.place;
+  if (place && place.id) {
+    const wt = home.work_targets && home.work_targets[place.id];
+    let work = null;
+    if (wt && Number.isFinite(wt.walk_minutes) && Number.isFinite(wt.bike_minutes)) {
+      const mode = wt.walk_minutes <= 25 ? "walk" : "bike";
+      work = {
+        target: place.id, name: place.name,
+        walk_minutes: wt.walk_minutes, bike_minutes: wt.bike_minutes,
+        mode, minutes: mode === "walk" ? wt.walk_minutes : wt.bike_minutes,
+        source: "assumed_speed",
+      };
+    }
+    return { walk, ride, destStation, sameStation, work };
   }
   return { walk, ride, destStation, sameStation };
 }
@@ -395,6 +447,11 @@ function sortResults(rows, sort, profile, boxes) {
     return commuteKey(r);
   };
   const commuteKey = (r) => {
+    // 26c: a work estimate sorts by its minutes (known before unknown).
+    if (r.commute && r.commute.work) {
+      const m = r.commute.work.minutes;
+      return Number.isFinite(m) ? m : Infinity;
+    }
     // Known walk first, then known ride minutes, then the shortest
     // walk+ride total; fewer transfers and shorter line km break ties.
     // Unknown walk sorts after known.
@@ -505,8 +562,10 @@ export function find_homes(profile, index, opts = {}) {
     if (kind && home.kind !== kind) continue;
     if (isPublicRentalHome(home) !== publicOnly) continue;
     const commute = commuteSummary(home, workplace, network, schedule, walkgraphs, walkMps);
-    if (commuteMax !== null && commute.walk.known
-        && commute.walk.minutes > commuteMax) continue;
+    // 26c: with a work estimate the commuteMax filter compares its minutes.
+    const commuteMins = commute.work ? commute.work.minutes
+      : (commute.walk.known ? commute.walk.minutes : null);
+    if (commuteMax !== null && Number.isFinite(commuteMins) && commuteMins > commuteMax) continue;
     // Tenure buckets: median within budget (or no budget set).
     const shown = [];
     for (const key of tenureKeys) {
@@ -570,6 +629,9 @@ export function find_homes(profile, index, opts = {}) {
       pnu: home.pnu || null,
       osm_name: home.osm_name || (home.osm && home.osm.name) || null,
       tenures: shown,
+      // 26c: a USD home carries its currency and ZIP price through.
+      ...(home.currency ? { currency: home.currency } : {}),
+      ...(home.price ? { price: home.price } : {}),
       thin_deal: thinRow,
       deals_in_bucket: dealCount,
       monthly_cost_won: monthly.length > 0 ? Math.min(...monthly) : null,

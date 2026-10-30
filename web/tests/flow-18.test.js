@@ -97,12 +97,16 @@ const { EXAMPLE_PROMPTS, exampleChatUrl } =
 
 describe("18-2 example chips send immediately", () => {
   it("each example prompt maps to a chat URL carrying the id", async () => {
-    assert.equal(EXAMPLE_PROMPTS.length, 3);
+    assert.equal(EXAMPLE_PROMPTS.length, 4);
     for (const p of EXAMPLE_PROMPTS) {
       const url = exampleChatUrl(p.prompt);
       assert.match(url, /\?chat=/);
       assert.ok(url.includes(`example=${p.id}`), p.id);
-      assert.ok(url.includes(encodeURIComponent(p.prompt).slice(0, 12)));
+      // URLSearchParams writes spaces as + (%20 from encodeURIComponent
+      // never appears), so compare the decoded param (covers the ASCII
+      // us-meta prompt as well as the Korean ones).
+      const query = new URLSearchParams(url.slice(url.indexOf("?")));
+      assert.equal(query.get("chat"), p.prompt);
     }
   });
 });

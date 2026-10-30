@@ -143,6 +143,11 @@ def assemble_area(area_def: dict, osm: dict, buildings: dict,
             "complexes": len(sections["complexes"]),
         },
     }
+    # Stage 26a: carry country/currency/workplaces when the area_def has
+    # them (US areas). Absent keys stay absent, so KR areas are unchanged.
+    for _key in ("country", "currency", "workplaces"):
+        if _key in area_def:
+            area[_key] = area_def[_key]
     return area, sections
 
 

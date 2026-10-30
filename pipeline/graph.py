@@ -368,9 +368,15 @@ def run_build(area_dir: str | Path) -> dict:
     area_def = json.loads(
         (area_dir / "area_def.json").read_text(encoding="utf-8"))
     if area_def.get("kind") == "bbox" and area_def.get("bbox"):
+        from .areas import US_RAW_PBF
         bbox = tuple(area_def["bbox"])
-        buf = extract_mod.ensure_buffered_extract(area_dir.name,
-                                                  build_dir=area_dir.parent)
+        if area_def.get("country") == "US":
+            buf = extract_mod.ensure_buffered_extract(
+                area_dir.name, raw_pbf=US_RAW_PBF,
+                build_dir=area_dir.parent)
+        else:
+            buf = extract_mod.ensure_buffered_extract(area_dir.name,
+                                                      build_dir=area_dir.parent)
         if not buf.get("buffered"):
             raise RuntimeError(f"{area_dir.name}: buffered extract unavailable")
         buffered_osm = osm_parse.parse_pbf(buf["extract"])

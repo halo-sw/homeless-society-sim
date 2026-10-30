@@ -55,7 +55,7 @@ describe("landing 19f", () => {
     }
     assert.ok(text.includes("매물 글 붙여 넣기"));
     const chips = text.match(/예시/g) || [];
-    assert.equal(chips.length, 3, `예시 chips: ${chips.length}`);
+    assert.equal(chips.length, 4, `예시 chips: ${chips.length}`);
   });
 
   it("leaves the city visible: scrim has no backdrop-filter", () => {

@@ -9,6 +9,7 @@
 // lines along the subway for picked homes.
 
 import { findPath, normalizeStation } from "./engine/journey.js";
+import { fmtMoney } from "./money/currency.js";
 
 export const MAP_COLORS = {
   ground: "#f3f1ec",
@@ -259,7 +260,7 @@ export function commutePathFor(network, boardStation, workStation) {
   return { legs, transfers: path.transfers || [] };
 }
 
-export function buildChatMap({ regions, network, tiles, green, candidates, picks, workplaceStation, tenure }) {
+export function buildChatMap({ regions, network, tiles, green, candidates, picks, workplaceStation, workPlace, tenure }) {
   const regionList = (regions && regions.regions) || regions || [];
   const regionBoxes = (Array.isArray(regionList) ? regionList : []).map((r) => ({
     id: r.id, label: r.label || r.id, bbox: r.bbox || null,
@@ -332,7 +333,11 @@ export function buildChatMap({ regions, network, tiles, green, candidates, picks
     candidate: c,
   })).filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat));
   const workStop = findStop(network, workplaceStation);
-  const workPin = workStop ? { ...workStop } : null;
+  // 26c: an explicit place pin (Meta HQ lon/lat) wins over the
+  // stop-based pin; the 회사 pill labels it as is.
+  const workPin = workPlace && Number.isFinite(workPlace.lon) && Number.isFinite(workPlace.lat)
+    ? { name: workPlace.name, lon: workPlace.lon, lat: workPlace.lat }
+    : workStop ? { ...workStop } : null;
   const commutes = [];
   for (const p of pins) {
     if (!p.picked) continue;
@@ -385,6 +390,12 @@ export function shortPinPrice(candidate, tenure) {
   const t = (c.tenures || []).find((x) => x.tenure === tenure)
     || (c.tenures || [])[0] || null;
   if (!t || t.median_won === null || t.median_won === undefined) return "가격 미정";
+  // 26c: a USD row pins its dollar rent.
+  if ((c.currency || t.currency) === "USD") {
+    const v = Number(t.median_won);
+    if (!Number.isFinite(v)) return "가격 미정";
+    return fmtMoney(v, "USD");
+  }
   if (t.tenure === "wolse") {
     const dep = Number(t.deposit_median_won);
     const mon = Number(t.median_won);

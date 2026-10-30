@@ -8,6 +8,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { TENURE_KO } from "../profile.js";
 import { fmtWon } from "../money/format.js";
+import { fmtMoney, currencyOf } from "../money/currency.js";
 import { SAME_STATION_KO, displayNameFor, KIND_MISMATCH_KO } from "../homes.js";
 import { simBadgeFor } from "../mapsim.js";
 import { SceneThumb, MiniMap } from "./preview.jsx";
@@ -17,6 +18,16 @@ export function tenurePriceLine(candidate, tenure) {
     || candidate.tenures?.[0] || null;
   if (!t || t.median_won === null || t.median_won === undefined) {
     return { price: "가격 미정", sub: "실거래 없음", deals: 0, fit: "unknown" };
+  }
+  // 26c: a USD row shows its dollar rent with the ZIP estimate source
+  // ("월세 월 $4,261 · ZIP 94025 추정 (Zillow)"); no deal counts.
+  if (currencyOf(candidate) === "USD" || currencyOf(t) === "USD") {
+    const label = TENURE_KO[t.tenure] || t.tenure;
+    const zip = candidate.price && candidate.price.zip;
+    return { price: `${label} ${fmtMoney(t.median_won, "USD", { monthly: t.tenure === "wolse" })}`
+        + (zip ? ` · ZIP ${zip} 추정 (Zillow)` : ""),
+      sub: "", deals: 0, fit: t.budget_fit, thin: t.thin_deal || null,
+      range: [t.min_won, t.max_won], usd: true };
   }
   const label = TENURE_KO[t.tenure] || t.tenure;
   const deals = t.deals || 0;
@@ -30,9 +41,20 @@ export function tenurePriceLine(candidate, tenure) {
     fit: t.budget_fit, thin: t.thin_deal || null, range: [t.min_won, t.max_won] };
 }
 
+// 26c: a work estimate (Meta HQ) reads "…까지 자전거 12분 · 걷기 37분
+// · 추정 (속도 가정)" with the used mode first.
+function usWorkLine(work) {
+  const bike = Math.round(work.bike_minutes);
+  const walk = Math.round(work.walk_minutes);
+  const first = work.mode === "walk" ? `걷기 ${walk}분` : `자전거 ${bike}분`;
+  const second = work.mode === "walk" ? `자전거 ${bike}분` : `걷기 ${walk}분`;
+  return `${work.name}까지 ${first} · ${second} · 추정 (속도 가정)`;
+}
+
 export function commuteShortLine(candidate, destName) {
   const c = candidate.commute;
   if (!c) return { text: "출퇴근 정보를 확인 중이에요", source: "unknown" };
+  if (c.work) return { text: usWorkLine(c.work), source: "estimate" };
   if (candidate.commute_ko && candidate.commute_ko.includes(SAME_STATION_KO)) {
     return { text: SAME_STATION_KO, source: "official" };
   }
@@ -59,6 +81,7 @@ export function commuteShortLine(candidate, destName) {
 export function commuteRowLine(candidate, destName) {
   const c = candidate.commute;
   if (!c) return { text: "출퇴근 정보를 확인 중이에요", estimate: false };
+  if (c.work) return { text: usWorkLine(c.work), estimate: true };
   if (candidate.commute_ko && candidate.commute_ko.includes(SAME_STATION_KO)) {
     return { text: SAME_STATION_KO, estimate: false };
   }
@@ -96,9 +119,12 @@ export function SourceDot({ source }) {
 
 // 19c: facts without any ✓ glyph — the budget fit is plain wording.
 function factsFor(candidate, price) {
+  const first = candidate.tenures?.[0] || null;
+  const center = first ? first.bucket_center_m2 : null;
   return [
     candidate.kind,
-    candidate.sizeLabel || (candidate.tenures?.[0] ? `${candidate.tenures[0].bucket_center_m2}㎡` : null),
+    // 26c: sizeless buckets (US ZIP rents) show no size fact.
+    candidate.sizeLabel || (center !== null && center !== undefined ? `${center}㎡` : null),
     candidate.build_year ? `${candidate.build_year}년` : null,
     price.fit === "all" ? "예산 안" : price.fit === "partial" ? "예산 일부" : price.fit === "none" ? "예산 밖" : null,
   ].filter(Boolean);
@@ -148,7 +174,9 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   const price = tenurePriceLine(candidate, tenure);
   const row = commuteRowLine(candidate, destName);
   const facts = factsFor(candidate, price);
-  const rangeTitle = price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub;
+  // 26c: one ZIP rent, so the title names its source vintage.
+  const rangeTitle = currencyOf(candidate) === "USD" ? usRangeTitle(candidate)
+    : price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub;
   // 18: the hero is the complex photo when one exists, else the
   // painted 3D thumbnail — never a station or street photo. Nearby
   // photos stay visible as a small labelled strip with their licences.
@@ -193,6 +221,16 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
       </div>
     </article>
   );
+}
+
+// 26c: the range title for one ZIP rent:
+// "ZIP 94025 대표 월세 (Zillow ZORI, 2026-09)".
+function usRangeTitle(candidate) {
+  const p = (candidate && candidate.price) || {};
+  const zip = p.zip ? `ZIP ${p.zip} ` : "";
+  const src = p.source === "zillow_zori_zip" ? "Zillow ZORI" : (p.source || "Zillow");
+  const month = p.month ? `, ${p.month}` : "";
+  return `${zip}대표 월세 (${src}${month})`;
 }
 
 function FullCard({ candidate, price, facts, row, hero, rest,
@@ -260,7 +298,9 @@ function FullCard({ candidate, price, facts, row, hero, rest,
           <Button size="sm" variant={picked ? "secondary" : "primary"}
             label={picked ? "담음 ✓" : "담기"}
             onClick={() => onLive && onLive(candidate)} />
-          <Button size="sm" variant="secondary" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />
+          {currencyOf(candidate) !== "USD" && (
+            <Button size="sm" variant="secondary" label="전세 점검" onClick={() => onJeonse && onJeonse(candidate)} />
+          )}
         </div>
         <details className="ui-section">
           <summary className="ui-section-head">어떻게 계산했나요</summary>

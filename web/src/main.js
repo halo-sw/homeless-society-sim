@@ -14,7 +14,7 @@ import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, followZoomAfterWheel, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
 import { assetUrl, STATIC_SITE, LIVE_API } from "./paths.js";
-import { drapeAerial } from "./aerial/drape.js";
+import { drapeAerial, isUsArea } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { oneWayByLabel } from "./verify/numbers.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -41,7 +41,7 @@ import { VALID_COMPARE_TABS, resolveTabId } from "./ui/compare-tabs.js";
 // 12b: landing/chat routing, timeline builders + activity colours,
 // custom-run store (?custom=<id>).
 import { routeForSearch, chatUrl, chatReopenUrl } from "./chat/urls.js";
-import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor } from "./timeline.js";
+import { ACTIVITIES, daySegments, hhmm, monthStrip, outingStepsFor, runHasBikeTrip } from "./timeline.js";
 import { customRunId, loadCustomRun } from "./chat/idb.js";
 // Stage 5b realistic rendering seam: createRenderer / renderFrame plus
 // the rig/material builders (night emissive via aLit, not glow quads).
@@ -437,7 +437,9 @@ function buildWorld(area, scene14, opts = {}) {
   // 20d: real aerial photos on the ground and roofs (VWorld, live tiles
   // via the dev-server proxy or the relay). Async: without a key, or with
   // ?ground=paint, the painted ground stays as it is. Never logs URLs.
-  if (LIVE_API && PARAMS.get("ground") !== "paint") {
+  // 26e: US areas fetch USGS tiles directly, so they drape on a static
+  // build too.
+  if ((LIVE_API || isUsArea(area)) && PARAMS.get("ground") !== "paint") {
     drapeAerial({ THREE, renderer, scene, area, origin, terrainMesh,
       groundMesh, roadMeshes: sceneRoadMeshes, roofMesh, look: LOOK, style: STYLE })
       .then((r) => {
@@ -1746,8 +1748,10 @@ async function bootSim() {
       const camDist = camera.position.distanceTo(controls.target);
       const destLonLat = hiState.destNodeId ? nodeLonLat.get(hiState.destNodeId) : null;
       const tripNow = hiState.trip ? tripById.get(hiState.trip.id) : null;
+      const homeEntry = (homes || []).find((h) => h.label === homeLabel) || null;
       const items = labelItemsFor(area, {
         homeBuildingId: hiState.homeBuildingId || null,
+        homeName: (homeEntry && homeEntry.complex_name) || (run.meta && run.meta.complex) || null,
         destination: hiState.destLabel
           ? { label: hiState.destLabel, lonlat: destLonLat || undefined }
           : null,
@@ -3117,7 +3121,8 @@ async function bootSim() {
       store.set({ dayStrip: null, routeSteps: null, monthStrip: null });
     } else {
       store.set({
-        dayStrip: { segments: daySegments({ run, agentKey: key, day }) },
+        dayStrip: { segments: daySegments({ run, agentKey: key, day }),
+          hasBike: runHasBikeTrip(run) },
         routeSteps: { outings: outingStepsFor({ run, agentKey: key, day }) },
         monthStrip: monthStrip({ run, agentKey: key }),
       });

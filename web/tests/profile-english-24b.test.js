@@ -7,6 +7,9 @@ const STATIONS = ["강남", "잠실", "판교", "선릉", "역삼", "정자"];
 function assertVerbatim(text, r) {
   for (const [key, f] of Object.entries(r.profile)) {
     if (!f || typeof f !== "object" || f.value === null) continue;
+    // Engine defaults (e.g. currency KRW) are labelled constants,
+    // not customer claims — they need no verbatim evidence.
+    if (f.source === "default") continue;
     if ((key === "mustHaves" || key === "home_kinds")
       && Array.isArray(f.value) && f.value.length === 0) continue;
     const parts = f.evidence.includes("·") ? f.evidence.split("·") : [f.evidence];

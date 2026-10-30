@@ -193,6 +193,37 @@ INFER_FLOORS: dict[str, tuple[int, int]] = {
 DEFAULT_INFER_FLOORS = (1, 4)
 AREA_BUMP = ((2000.0, 5, 25), (500.0, 2, 15))  # (area_m2, extra, cap)
 
+# assumed; US has no national building register
+US_INFER_FLOORS: dict[str, tuple[int, int]] = {
+    "house": (1, 2),
+    "detached": (1, 2),
+    "semidetached_house": (1, 2),
+    "bungalow": (1, 2),
+    "residential": (1, 2),
+    "terrace": (1, 2),
+    "apartments": (2, 3),
+    "commercial": (1, 2),
+    "retail": (1, 2),
+    "industrial": (1, 2),
+    "warehouse": (1, 2),
+    "church": (1, 2),
+    "school": (1, 2),
+    "office": (2, 3),
+    "garage": (1, 1),
+    "garages": (1, 1),
+    "carport": (1, 1),
+    "shed": (1, 1),
+    "roof": (1, 1),
+    "hut": (1, 1),
+}
+# assumed; US has no national building register
+US_DEFAULT_INFER_FLOORS = (1, 2)
+# assumed; US has no national building register
+US_AREA_BUMP = ((5000.0, 1, 4),)  # (area_m2, extra, cap)
+# Accessory structures stay single-storey at 3.0 m.
+US_ACCESSORY_TYPES = frozenset(
+    {"garage", "garages", "carport", "shed", "roof", "hut"})
+
 
 def discover_register_files(
     register_dir: str | Path = DEFAULT_REGISTER_DIR,
@@ -480,8 +511,25 @@ def _valid_floors(value: int | None) -> int | None:
 
 
 def infer_height(building_type: str | None, area_m2: float,
-                 area_id: str, building_id: str) -> tuple[float, int]:
+                 area_id: str, building_id: str,
+                 country: str = "KR") -> tuple[float, int]:
     """Seeded inferred (height_m, floors) from type + footprint area."""
+    if country == "US":
+        if (building_type or "") in US_ACCESSORY_TYPES:
+            return (3.0, 1)
+        lo, hi = US_INFER_FLOORS.get(building_type or "",
+                                     US_DEFAULT_INFER_FLOORS)
+        seed = int.from_bytes(
+            hashlib.sha256(
+                f"{INFER_SEED_TAG}:{area_id}:{building_id}".encode()
+            ).digest()[:8], "big")
+        rng = random.Random(seed)
+        floors = rng.randint(lo, hi)
+        for threshold, extra, cap in US_AREA_BUMP:
+            if area_m2 > threshold:
+                floors = min(floors + extra, cap)
+                break
+        return (round(floors * FLOOR_HEIGHT_M, 2), floors)
     lo, hi = INFER_FLOORS.get(building_type or "", DEFAULT_INFER_FLOORS)
     seed = int.from_bytes(
         hashlib.sha256(
@@ -575,7 +623,8 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             source, levels = "register_floors", reg_lv
         else:
             height, floors = infer_height(osm_b.get("building"), area_m2,
-                                          area_id, osm_b["id"])
+                                          area_id, osm_b["id"],
+                                          country=area_def.get("country", "KR"))
             source, levels = "inferred", floors
         bname = osm_b.get("name") or (reg["name"] if reg else None)
         residential, residential_source = classify_residential(
@@ -616,7 +665,8 @@ def join_area(area_id: str, area_def: dict, osm: dict,
             height = round(reg_lv * FLOOR_HEIGHT_M, 2)
             source, levels = "register_floors", reg_lv
         else:
-            height, floors = infer_height(btype, area_m2, area_id, reg["id"])
+            height, floors = infer_height(btype, area_m2, area_id, reg["id"],
+                                          country=area_def.get("country", "KR"))
             source, levels = "inferred", floors
         name = reg["name"]
         if name and reg["sub_name"]:
