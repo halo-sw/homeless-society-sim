@@ -134,7 +134,7 @@ export function nowCardFor({ run, indexed, agentKey, day, minute }) {
     fatigue: fatigueFor({ run, agentKey, day, minute }) };
 
   if (kind === "trip") {
-    const remain = Math.max(0, trip.arrive_min - Math.floor(minute));
+    const remain = Math.ceil(Math.max(0, trip.arrive_min - Math.floor(minute)));
     const dur = Math.max(1, trip.arrive_min - trip.depart_min);
     const now = remain <= 0
       ? `${purposeVerb(trip.purpose)} 중 · ${trip.from.label} → ${trip.to.label} (곧 도착)`
@@ -152,7 +152,7 @@ export function nowCardFor({ run, indexed, agentKey, day, minute }) {
   }
   if (kind === "away") {
     if (away.kind === "ride") return rideCardFor(base, run, away, minute);
-    const remain = Math.max(0, away.end_min - Math.floor(minute));
+    const remain = Math.ceil(Math.max(0, away.end_min - Math.floor(minute)));
     const dur = Math.max(1, away.end_min - away.start_min);
     const now = away.kind === "work"
       ? `${away.label} 중 · ${hhmm(away.end_min)}까지`
@@ -197,16 +197,16 @@ function rideCardFor(base, run, away, minute) {
   let now;
   if (banner) {
     const legBits = ride.legs.map((l) => `${l.lineName} ${l.from}→${l.to} (약 ${l.minutes}분)`).join(" · 환승 · ");
-    now = `지하철 이동 중 · ${legBits} · ${banner.minutesLeft}분 남음`;
+    now = `지하철 이동 중 · ${legBits} · ${Math.ceil(banner.minutesLeft)}분 남음`;
   } else {
-    const left = Math.max(0, away.end_min - m);
+    const left = Math.ceil(Math.max(0, away.end_min - m));
     const note = detail.journey_note || "경로 없음";
     now = `지하철 이동 중 · ${note} · ${left}분 남음`;
   }
   const payload = {
     direction: dir,
     where: banner ? banner.where : (detail.journey_note || "경로 없음"),
-    minutesLeft: banner ? banner.minutesLeft : Math.max(0, away.end_min - m),
+    minutesLeft: banner ? Math.ceil(banner.minutesLeft) : Math.ceil(Math.max(0, away.end_min - m)),
     inTransfer: banner ? banner.inTransfer : false,
     legs: banner ? banner.legs : [],
     transfers: ride ? ride.transfers.map((t) => ({ station: t.station, minutes: t.minutes })) : [],

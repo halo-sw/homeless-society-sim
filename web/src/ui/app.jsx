@@ -369,17 +369,17 @@ function heroSentence(state) {
 // The hero's big number: minutes left in the current situation, from
 // the journey/ride payload when riding, else read off the engine's
 // own one-line wording (walk remain, stay remain, work end time).
-function heroBig(state) {
+export function heroBig(state) {
   const n = state.now;
   const left = state.journey && Number.isFinite(state.journey.minutesLeft)
     ? state.journey.minutesLeft
     : n.ride && Number.isFinite(n.ride.minutesLeft) ? n.ride.minutesLeft : null;
-  if (left !== null) return `${left}분 남음`;
-  const m = /(\d+)분 남음/.exec(n.now);
-  if (m) return `${m[1]}분 남음`;
+  if (left !== null) return `${Math.ceil(left)}분 남음`;
+  const m = /(\d+(?:\.\d+)?)분 남음/.exec(n.now);
+  if (m) return `${Math.ceil(Number(m[1]))}분 남음`;
   if (/곧 도착/.test(n.now)) return "곧 도착";
-  const stay = /(\d+)분 머묾/.exec(n.now);
-  if (stay) return `${stay[1]}분 머묾`;
+  const stay = /(\d+(?:\.\d+)?)분 머묾/.exec(n.now);
+  if (stay) return `${Math.ceil(Number(stay[1]))}분 머묾`;
   const end = /(\d{2}):(\d{2})까지/.exec(n.now);
   if (end && state.clock) {
     const rest = (Number(end[1]) * 60 + Number(end[2])) - Math.floor(state.clock.minute);
