@@ -80,7 +80,7 @@ import {
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
-  runGate, profileHomeKinds,
+  runGate, profileHomeKinds, regionsForCurrency,
 } from "../chat/engine.js";
 import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
@@ -1810,7 +1810,8 @@ export function ChatScreen() {
           <MsgBoundary>
           <StageArea
             map={buildChatMap({
-              regions: dataRef.current?.regionsDoc || { regions: [] },
+              regions: regionsForCurrency(dataRef.current?.regionsDoc
+                || { regions: [] }, currencyOf(profile)),
               network: dataRef.current?.network || null,
               tiles: mapTiles,
               green: mergeGreenBoxes(dataRef.current?.greenBoxes),

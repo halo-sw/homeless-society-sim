@@ -141,7 +141,11 @@ export function commuteLines(run, agentKey, current, currentStart) {
   const avg = commuteOneWayMinutes(run, agentKey);
   if (Number.isFinite(avg)) {
     const days = (run && run.meta && run.meta.days) || 30;
-    lines.push({ text: `${days}일 출퇴근 편도 평균 ${Math.round(avg)}분 중 하루예요`, tag: "측정" });
+    // A bike leg is an assumed speed (26d), so an average counting a
+    // bike trip is 가정값 — same any-bike rule as the line above.
+    const runBike = ((run && run.trips) || []).some((t) => t && t.agent === agentKey
+      && t.purpose === "commute" && t.mode === "bike");
+    lines.push({ text: `${days}일 출퇴근 편도 평균 ${Math.round(avg)}분 중 하루예요`, tag: runBike ? "가정값" : "측정" });
   }
   if (assumed.length > 0) {
     const pct = Math.round(Math.max(...assumed));

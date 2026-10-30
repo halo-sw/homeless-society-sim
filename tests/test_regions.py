@@ -99,14 +99,21 @@ def test_pick_missing_boundary_raises():
                     reason="operator runs `pipeline regions` first")
 def test_real_regions_json_shape():
     doc = json.loads(REGIONS_JSON.read_text(encoding="utf-8"))
-    assert [r["id"] for r in doc["regions"]] == list(REGION_IDS)
-    for region in doc["regions"]:
+    kr = [r for r in doc["regions"] if r.get("country", "KR") == "KR"]
+    assert [r["id"] for r in kr] == list(REGION_IDS)
+    for region in kr:
         assert region["relations"], region["id"]
         assert region["bbox"] and len(region["bbox"]) == 4
         minlon, minlat, maxlon, maxlat = region["bbox"]
         assert minlon < maxlon and minlat < maxlat
         assert region["rtms_files"]
-    wirye = next(r for r in doc["regions"] if r["id"] == "wirye")
+    for region in doc["regions"]:
+        if region.get("country", "KR") == "KR":
+            continue
+        assert region["country"] == "US", region["id"]
+        assert region["currency"] == "USD", region["id"]
+        assert region["bbox"] and len(region["bbox"]) == 4
+    wirye = next(r for r in kr if r["id"] == "wirye")
     # OSM carries 서울 + 하남 위례동; 성남 위례동 has no boundary here.
     assert len(wirye["relations"]) == 2
     assert {r["relation_id"] for r in wirye["relations"]} == {11117000, 13316464}

@@ -161,6 +161,15 @@ export async function loadRegions(fetchJson) {
   }
 }
 
+// 26l: regions.json holds both countries now — keep the US region out
+// of Korean views (and vice versa). A missing country counts as KR.
+export function regionsForCurrency(doc, currency) {
+  const want = currency === "USD" ? "US" : "KR";
+  const list = (doc && doc.regions) || [];
+  const regions = list.filter((r) => ((r && r.country) || "KR") === want);
+  return { ...(doc || {}), regions };
+}
+
 // 18: payroll rule table for the custom-run money doc (same file
 // money.mjs reads). Null when unserved — the builder then refuses and
 // the card says so honestly.
