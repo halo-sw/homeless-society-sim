@@ -587,8 +587,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-ink); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; }
-.ui-pick-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: var(--ui-t14); }
+.ui-pick-name { max-width: 180px; overflow-wrap: anywhere;
+  word-break: keep-all; font-size: var(--ui-t14); }
 .ui-pick-x { background: none; border: none; cursor: pointer; padding: 2px 4px;
   color: var(--ui-ink2); font-size: 14px; line-height: 1; }
 /* 19a: detail / compare open over the stage right edge only on demand. */
@@ -603,7 +603,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   .ui-chat-narrow-work .ui-chat-stage { display: flex; }
   .ui-picks-tray { left: 0; right: 0; bottom: 0; max-width: none;
     border-radius: var(--ui-r-sheet) var(--ui-r-sheet) 0 0; }
-  .ui-side-panel { left: 0; right: 0; top: auto; height: 70%; width: auto; }
+  .ui-side-panel { left: 0; right: 0; top: auto; height: 70%; width: auto; overflow-y: auto; }
 }
 
 /* ---------- 13d: sim grid (stage + drawer, timeline docked, no overlap) ---------- */

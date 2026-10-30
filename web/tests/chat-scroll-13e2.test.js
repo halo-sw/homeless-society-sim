@@ -57,6 +57,6 @@ describe("13e2 chat column scrolling", () => {
   it("stage never scrolls, drawer keeps its own scroll", () => {
     assert.ok(rule(".ui-chat-stage").includes("overflow: hidden"), "stage clips");
     assert.ok(rule(".ui-chat-stage-body").includes("overflow: hidden"), "stage body clips");
-    assert.ok(rule(".ui-chat-drawer").includes("overflow-y: auto"), "drawer scrolls");
+    assert.ok(rule(".ui-side-panel").includes("overflow-y: auto"), "drawer scrolls");
   });
 });
