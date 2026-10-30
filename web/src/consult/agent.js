@@ -15,8 +15,8 @@ import { checkConsultReply, numbersOnlyAnswer, actionConfirmation, isMostlyKorea
 // 26u: English-mode anchor. Sent once up front and re-sent as the last
 // message before the final completion so it sits after the tool results
 // (Korean tool output otherwise drags the model back to Korean).
-const ENGLISH_NOTE =
-  "The customer reads English. Answer in plain English. Write place and station names romanized with the Korean once in parentheses, e.g. Gangnam Stn (강남역). Write money as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M. Every rule above still applies.";
+export const ENGLISH_NOTE =
+  "The customer reads English. Answer in plain English. Korean place and station names: romanized, with the Korean once in parentheses, e.g. Gangnam Stn (강남역). US places, streets and Meta HQ are already English: write them as they are, never with Korean. Write money for Korean homes as won with full digits and commas, e.g. ₩260,000,000, or as ₩260M; US rents in dollars as given, e.g. $4,261/mo. Every rule above still applies.";
 const ENGLISH_RETRY_NOTE =
   "Your last answer was in Korean. Rewrite it in plain English with the same facts and numbers.";
 
@@ -40,6 +40,7 @@ export const SYSTEM_PROMPT = [
   "질문은 한 번에 하나만 짧게 한다. 설문처럼 여러 개를 묻지 않는다. 모르는 값은 기본값으로 두고 '가정'이라고 밝힌다. 출근지나 예산 중 하나라도 있으면 extract_profile 다음 바로 find_homes로 후보를 보여 준다. 우선순위는 고객이 말할 때만 set_priorities로 기록한다.",
   "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support. 동네를 물으면 neighborhood로 걸어서 몇 분인지 확인해 답하고 open_panel(panel=tour, candidate_id)로 3D 동네를 연다. 출근길(commute)과 결과(result) 장면은 살아 보기가 끝난 뒤에만 연다.",
   "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다. start_life_run을 부른 턴에는 \"시작했어요. 다 살면 일기로 알려 드릴게요.\" 한 문장만 답한다(결과 숫자는 아직 없다).",
+  "다루는 지역: 한국 수도권 역세권 지역들(list_areas)과 미국 1곳 — Menlo Park의 Meta HQ(1 Hacker Way) 주변 아파트. 미국은 월세만, Zillow ZIP 추정 월세(USD), 출근은 자전거·도보 분. 출근지가 Meta HQ·Menlo Park면 준비 중이라고 하지 말고 extract_profile 다음 바로 find_homes를 부른다.",
   "다루지 않는 지역이면 '아직 준비 중이에요'라고 말하고 가장 가까운 다루는 지역을 제안한다. 엉뚱한 질문에도 한 줄로 답하고 집 고민으로 돌아온다.",
   "답은 2~3문장, 본문은 짧게. 후보·숫자 목록은 카드와 지도에 이미 있으니 문장으로 늘어놓지 않고 1~2곳만 짚는다. 본문 다음 새 줄에 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
   "수치는 반드시 이번 대화의 도구 결과에 나온 것만 그대로 인용한다. 도구 결과를 보지 않은 숫자를 만들지 않는다.",
@@ -280,7 +281,7 @@ export async function runTurn(opts) {
     loadRegion = null, loadAreaMeta = null,
     loadPayroll = null, loadRtms = null, loadHousing = null,
     loadSafety = null, loadPersona = null, loadAssumption = null,
-    loadHomes = null, loadPhotos = null, loadAreasIndex = null,
+    loadHomes = null, loadUsHomes = null, loadPhotos = null, loadAreasIndex = null,
     loadStationBoxes = null, loadTransit = null,
     fetchImpl = null, completeFn = null, apiKey = null, onEvent = null,
   } = opts;
@@ -291,7 +292,7 @@ export async function runTurn(opts) {
   const session = createSession({
     scenario, cache, loadArea, loadDecisions, judgeHome, loadRegion, loadAreaMeta,
     loadPayroll, loadRtms, loadHousing, loadSafety, loadPersona, loadAssumption,
-    loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
+    loadHomes, loadUsHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
     provider, fetchImpl, museRunsPrior: countMuseRuns(messages),
     context,
   });

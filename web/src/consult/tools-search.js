@@ -143,7 +143,7 @@ async function extract_profile(session, args) {
     { stations: stationNames(network) });
   if (!r.ok) return fail(`profile values must appear in the text: ${r.errors.join("; ")}`);
   session.lastProfile = clone(r.profile);
-  return {
+  const out = {
     ok: true,
     profile: r.profile,
     asked: r.asked,
@@ -152,6 +152,10 @@ async function extract_profile(session, args) {
       ? `ask the customer (at most 2): ${r.asked.map((q) => q.ask).join(" ")}`
       : "essentials present — call find_homes",
   };
+  if (isUsProfile(r.profile, null)) {
+    out.next = "US profile — call find_homes now (Menlo Park homes)";
+  }
+  return out;
 }
 
 export async function boxesForHomes(session, homes, max = 6) {
@@ -173,6 +177,34 @@ export async function boxesForHomes(session, homes, max = 6) {
   return boxes;
 }
 
+// 26y: the server tool mirrors the browser rule flow — a US profile
+// searches only the Menlo Park file, never the Korean index.
+function isUsHome(home) {
+  return !!home && (home.currency === "USD" || home.country === "US");
+}
+
+function workplacesUsRegion(profile) {
+  const list = profile && profile.workplaces && Array.isArray(profile.workplaces.value)
+    ? profile.workplaces.value : [];
+  return list.some((e) => e && e.resolved && typeof e.resolved.region === "string"
+    && e.resolved.region.startsWith("us-"));
+}
+
+function isUsProfile(profile, namedRegions) {
+  if (profile && profile.currency && profile.currency.value === "USD") return true;
+  if (workplacesUsRegion(profile)) return true;
+  return Array.isArray(namedRegions) && namedRegions.includes("us-menlo");
+}
+
+async function needUsHomes(session) {
+  if (!session.loadUsHomes) throw new Error("US homes are not available on this server");
+  const homes = await session.loadUsHomes();
+  if (!Array.isArray(homes) || homes.length === 0) {
+    throw new Error("US homes are not available on this server");
+  }
+  return { homes };
+}
+
 async function find_homes(session, args) {
   const profile = mergeProfiles(session.context && session.context.profile,
     session.lastProfile, profileFromArgs(args));
@@ -181,11 +213,25 @@ async function find_homes(session, args) {
   if (!HOME_SORTS.includes(sort)) {
     return fail(`sort wants one of ${HOME_SORTS.join(", ")} (default ${DEFAULT_HOME_SORT})`);
   }
-  const index = await needHomes(session);
   const network = await needNetwork(session);
   const manifest = await needPhotos(session);
   const schedule = await needTransit(session);
   const regions = args.regions ? regionsForNames(args.regions) : null;
+  let index;
+  let effRegions = regions;
+  if (isUsProfile(profile, regions)) {
+    try {
+      index = await needUsHomes(session);
+    } catch {
+      return fail("US homes are not available on this server");
+    }
+    effRegions = ["us-menlo"];
+  } else {
+    const raw = await needHomes(session);
+    index = raw && Array.isArray(raw.homes)
+      ? { ...raw, homes: raw.homes.filter((h) => !isUsHome(h)) }
+      : raw;
+  }
   const kind = kindForName(args.kind);
   if (args.kind && !kind) {
     return fail(`kind wants one of 아파트/연립·다세대(빌라)/오피스텔 (got ${JSON.stringify(args.kind)})`);
@@ -194,11 +240,11 @@ async function find_homes(session, args) {
   // Two passes: prelim without box graphs, then reload with boxes so
   // must-have minutes filter honestly.
   const prelim = findHomesCore(profile, index, {
-    sort, limit: 12, regions, kind, network, schedule, boxes: null, photos: manifest,
+    sort, limit: 12, regions: effRegions, kind, network, schedule, boxes: null, photos: manifest,
   });
   const boxes = await boxesForHomes(session, prelim.candidates.slice(0, limit), limit);
   const final = findHomesCore(profile, index, {
-    sort, limit, regions, kind, network, schedule, boxes, photos: manifest,
+    sort, limit, regions: effRegions, kind, network, schedule, boxes, photos: manifest,
   });
   session.lastCandidateNames = Object.fromEntries(
     (final.candidates || [])
@@ -208,7 +254,7 @@ async function find_homes(session, args) {
     ok: true,
     profile_used: clone(profile),
     ...final,
-    asked_for: { regions: regions || "all", kind: kind || "all" },
+    asked_for: { regions: effRegions || "all", kind: kind || "all" },
     next: final.candidates.length > 0
       ? "show 3–6 candidates with numbers + source badges; the customer picks 2 (or 3), then build_scenario"
       : "no candidates under these conditions — loosen budget/size/regions with the customer",
@@ -222,8 +268,11 @@ async function find_public_rentals(session, args) {
   if (!session.loadHousing) {
     return fail("public-rental data is unavailable on this server");
   }
-  const snapshot = await session.loadHousing();
   const regions = args.regions ? regionsForNames(args.regions) : null;
+  if (isUsProfile(profile, regions)) {
+    return fail("public-rental data covers Korean regions only — no US listings on this server");
+  }
+  const snapshot = await session.loadHousing();
   const r = findPublicCore(profile, snapshot, {
     limit: args.limit !== undefined ? args.limit : 6,
     regions,

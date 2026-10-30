@@ -299,6 +299,7 @@ export function createSession(opts) {
     loadPersona: opts.loadPersona || null,
     loadAssumption: opts.loadAssumption || null,
     loadHomes: opts.loadHomes || null,
+    loadUsHomes: opts.loadUsHomes || null,
     loadPhotos: opts.loadPhotos || null,
     loadAreasIndex: opts.loadAreasIndex || null,
     loadStationBoxes: opts.loadStationBoxes || null,
@@ -568,16 +569,18 @@ function explain_criterion(session, args) {
 async function list_areas(session) {
   // 12a: the built areas index when the server has it, else the four
   // legacy areas (tests, old servers).
+  const US_MENLO_AREA = { id: "us-menlo", label: "Menlo Park · Meta HQ (US)",
+    note: "월세(Zillow ZIP 추정), 자전거·도보 출근, 3D 상자 없음" };
   if (session && session.loadAreasIndex) {
     const areas = await cachedIndexAreas(session);
     if (areas.length > 0) {
       return { ok: true,
-        areas: areas.map((a) => ({ id: a.id, label: a.label })),
-        note: "3D로 살아 볼 수 있는 상자(1.2 km 역세권) 목록이다." };
+        areas: [...areas.map((a) => ({ id: a.id, label: a.label })), { ...US_MENLO_AREA }],
+        note: "3D로 살아 볼 수 있는 상자(1.2 km 역세권) 목록이다. us-menlo(Menlo Park · Meta HQ)는 find_homes로 찾을 수 있으나 3D 상자는 없다." };
     }
   }
-  return { ok: true, areas: clone(CONSULT_AREAS),
-    note: "오늘 고를 수 있는 지역은 이 4곳뿐이다. 전국 생성은 다음 단계다." };
+  return { ok: true, areas: [...clone(CONSULT_AREAS), { ...US_MENLO_AREA }],
+    note: "오늘 고를 수 있는 지역은 이 4곳뿐이다. 전국 생성은 다음 단계다. us-menlo(Menlo Park · Meta HQ)는 find_homes로 찾을 수 있으나 3D 상자는 없다." };
 }
 
 async function list_complexes(session, args) {
