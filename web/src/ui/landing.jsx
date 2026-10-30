@@ -13,6 +13,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Popover } from "@astryxdesign/core/Popover";
 import { ChatComposer } from "@astryxdesign/core/Chat";
 import { chatUrl } from "../chat/urls.js";
+import { LangToggle } from "./lang-toggle.jsx";
 
 export const LANDING_BRAND = "Ithaca · The Pre-living Agent for Your Next Home";
 export const LANDING_TAGLINE = "We walk the odyssey. You just come home.";
@@ -97,6 +98,7 @@ export function Landing() {
         <div className="ui-landing-brand">
           <span className="ui-landing-brandname">Ithaca</span>
           <span className="ui-landing-brandtag">{LANDING_TAGLINE}</span>
+          <LangToggle />
         </div>
         <Layout
           height="fill"
