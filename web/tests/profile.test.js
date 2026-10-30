@@ -49,6 +49,9 @@ describe("extract_profile", () => {
     // Every filled field carries verbatim evidence from the text.
     for (const [key, f] of Object.entries(r.profile)) {
       if (!f || typeof f !== "object" || f.value === null) continue;
+      // Engine defaults (e.g. currency KRW) are labelled constants,
+      // not customer claims — they need no verbatim evidence.
+      if (f.source === "default") continue;
       if ((key === "mustHaves" || key === "home_kinds")
         && Array.isArray(f.value) && f.value.length === 0) continue;
       assert.ok(typeof f.evidence === "string" && TEXT.includes(f.evidence),

@@ -19,7 +19,7 @@ import { assetUrl } from "../paths.js";
 import { parseInterstationCsv } from "../transit/schedule.js";
 import { compare as compareRuns } from "../engine/simulate.js";
 import { regionsForNames, kindForName } from "../region-names.js";
-import { fmtWon } from "../money/format.js";
+import { fmtMoney, currencyOf } from "../money/currency.js";
 
 export const HOMES_SUMMARY_URL = assetUrl("/data/homes/summary.json");
 export const HOMES_REGION_URL = (id) => assetUrl(`/data/homes/${id}.json`);
@@ -407,7 +407,10 @@ export function fieldRows(profile) {
     rows.push({ key, label, value: v, source: f.source || "",
       note: f.note || "", text: fmt(v, f) });
   };
-  const won = (v) => (v === null || v === undefined ? "아직" : fmtWon(v));
+  // 26c: money fields render in the profile's currency (KRW output
+  // is fmtWon, byte-identical to before).
+  const cur = currencyOf(profile);
+  const won = (v) => (v === null || v === undefined ? "아직" : fmtMoney(v, cur));
   push("members", "함께 사는 사람", (v) => {
     if (!Array.isArray(v) || v.length === 0) return "아직";
     return `${v.length}인`;
@@ -416,12 +419,14 @@ export function fieldRows(profile) {
     if (!Array.isArray(v) || v.length === 0 || !v[0]) return "아직";
     const w = v[0];
     if (w.noCommute) return "출근 안 해요";
-    const where = (w.resolved && w.resolved.station) || w.text || "모름";
+    const where = (w.resolved
+      && (w.resolved.station || (w.resolved.place && w.resolved.place.name)))
+      || w.text || "모름";
     return `${where}${w.resolved ? "" : " (모름)"}`;
   });
   push("salaryAnnual", "연봉", (v) => {
     if (!Array.isArray(v) || v.length === 0) return "아직";
-    return v.map((x) => fmtWon(x)).join(" · ");
+    return v.map((x) => fmtMoney(x, cur)).join(" · ");
   });
   push("cash", "모은 돈", won);
   push("tenure", "살고 싶은 형태", (v) => (v ? TENURE_KO[v] || v : "아직"));
@@ -443,7 +448,10 @@ export function profileSummary(profile) {
     if (wps[0].noCommute) {
       bits.push("출근 없이");
     } else {
-      const where = (wps[0].resolved && wps[0].resolved.station) || wps[0].text;
+      // 26c: a resolved place (Meta HQ) chips its place name.
+      const where = (wps[0].resolved
+        && (wps[0].resolved.station || (wps[0].resolved.place && wps[0].resolved.place.name)))
+        || wps[0].text;
       if (where) bits.push(`${where} 출근`);
     }
   }
@@ -455,7 +463,7 @@ export function profileSummary(profile) {
       : tenure === "wolse" ? profileValue(profile, "monthlyMax")
         : tenure === "trade" ? profileValue(profile, "priceMax") : null;
     bits.push(budget !== null && budget !== undefined
-      ? `${TENURE_KO[tenure]} ${fmtWon(budget)} 이하` : TENURE_KO[tenure]);
+      ? `${TENURE_KO[tenure]} ${fmtMoney(budget, currencyOf(profile))} 이하` : TENURE_KO[tenure]);
   }
   return bits.join(" · ");
 }

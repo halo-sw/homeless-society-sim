@@ -804,10 +804,18 @@ export function AgentTourCard() {
 
 export function regionWordsIn(text, aliases) {
   const src = String(text || "");
+  const lower = src.toLowerCase();
   const found = [];
   for (const words of Object.values(aliases || {})) {
     for (const w of words || []) {
-      if (w && src.includes(w)) found.push(w);
+      if (!w) continue;
+      // 26c: Latin words match case-insensitively ("Menlo Park"
+      // hits "menlo park"); Korean behaviour is unchanged.
+      if (/[a-zA-Z]/.test(w)) {
+        if (lower.includes(String(w).toLowerCase())) found.push(w);
+      } else if (src.includes(w)) {
+        found.push(w);
+      }
     }
   }
   return [...new Set(found)];
@@ -985,7 +993,17 @@ export function ChatScreen() {
   // --- structured flow ---
   async function structuredFlow(text) {
     const words = regionWordsIn(text, REGION_NAME_ALIASES);
-    const named = words.length > 0 ? regionsForNames(words) : null;
+    let named = words.length > 0 ? regionsForNames(words) : null;
+    // 26c: a US search loads exactly us-menlo — never Korean regions.
+    // A pre-read of this turn decides it (the full extract follows once
+    // the data is in); a USD profile from an earlier turn counts too.
+    const pre = extractStep(text, stateRef.current.profile, []);
+    const preProfile = pre.value && pre.value.profile;
+    const preCurrency = preProfile && preProfile.currency
+      ? preProfile.currency.value : null;
+    if ((named && named.includes("us-menlo")) || preCurrency === "USD") {
+      named = ["us-menlo"];
+    }
     const data = await ensureData(named);
     // The evidence guard is per call (same as the server tool), so
     // every turn re-reads the accumulated customer words.
@@ -1171,12 +1189,13 @@ export function ChatScreen() {
       const prof = ex.value.profile || {};
       const wps = prof.workplaces ? prof.workplaces.value : null;
       const w = Array.isArray(wps) && wps[0] ? wps[0] : null;
-      if (w && w.resolved && w.resolved.station) entry = w;
+      if (w && w.resolved && (w.resolved.station || w.resolved.place)) entry = w;
     }
     if (!entry) return false;
     const next = { ...(stateRef.current.profile || {}),
       workplaces: { value: [entry], source: "customer",
-        note: `직장 근처역: ${entry.resolved.station}` } };
+        note: entry.resolved.station ? `직장 근처역: ${entry.resolved.station}`
+          : `직장: ${entry.resolved.place.name}` } };
     profileRef.current = next;
     setProfile(next);
     store.set({ chatSummary: profileSummary(next) });
@@ -1581,9 +1600,15 @@ export function ChatScreen() {
   const [detail, setDetail] = useState(null);
   const compareOpen = useSyncExternalStore(store.subscribe,
     () => store.getState().compareOpen, () => store.getState().compareOpen);
-  const destName = (profile && profile.workplaces && profile.workplaces.value
-    && profile.workplaces.value[0] && profile.workplaces.value[0].resolved
-    && profile.workplaces.value[0].resolved.station) || "";
+  // 26c: a resolved place (Meta HQ) names the destination and pins
+  // the map's work pin at its lon/lat.
+  const wpResolved = (profile && profile.workplaces && profile.workplaces.value
+    && profile.workplaces.value[0] && profile.workplaces.value[0].resolved) || null;
+  const destName = (wpResolved
+    && (wpResolved.station || (wpResolved.place && wpResolved.place.name))) || "";
+  const workPlace = wpResolved && wpResolved.place
+    ? { name: wpResolved.place.name, lon: wpResolved.place.lon, lat: wpResolved.place.lat }
+    : null;
 
   const handlers = {
     picks,
@@ -1704,6 +1729,7 @@ export function ChatScreen() {
               candidates: candidatesData?.result?.candidates || [],
               picks,
               workplaceStation: destName || null,
+              workPlace: workPlace || null,
               tenure: candidatesData?.tenure || null,
             })}
             contextLine={stageContextLine(profile, candidatesData)}

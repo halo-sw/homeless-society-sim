@@ -20,6 +20,8 @@
 import { findPath } from "./engine/journey.js";
 import { rideMinutes as derivedRideMinutes } from "./transit/schedule.js";
 import { romanize, NAMES } from "./i18n/romanize.js";
+import { findUsWorkplace, US_REGION_ID } from "./places-us.js";
+import { REGION_NAME_ALIASES } from "./region-names.js";
 
 export const PROFILE_SOURCES = ["customer", "default", "derived", "asked"];
 
@@ -38,7 +40,7 @@ export const TENURE_KO = {
 export const PROFILE_FIELDS = [
   "members", "workplaces", "salaryAnnual", "takehomeMonthly", "cash",
   "debts", "tenure", "depositMax", "monthlyMax", "priceMax", "sizeMin",
-  "commuteMax", "priorities", "mustHaves", "home_kinds",
+  "commuteMax", "priorities", "mustHaves", "home_kinds", "currency",
 ];
 
 export function field(value, source, note = "") {
@@ -57,6 +59,7 @@ export function emptyProfile() {
     sizeMin: blank(), commuteMax: blank(),
     priorities: blank(), mustHaves: field([], "asked", ""),
     home_kinds: field([], "asked", ""),
+    currency: field("KRW", "default"),
   };
 }
 
@@ -128,15 +131,46 @@ export function parseEnglishMoney(chunk) {
   return Math.round(num * mult);
 }
 
+// Parse one dollar chunk to whole dollars: "$4,000" -> 4000,
+// "$4.5k" -> 4500, "4,000 dollars" / "4000 USD" / "US$4,000" ->
+// 4000, "4천 달러" -> 4000, "월 4000달러" -> 4000. Bare digits are
+// dollars as said (never 만원).
+function parseDollarChunk(chunk) {
+  const s = String(chunk || "");
+  const cheon = s.match(/([\d,]+(?:\.\d+)?)\s*천/);
+  if (cheon) {
+    const n = Number(cheon[1].replace(/,/g, ""));
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 1000) : null;
+  }
+  const num = s.match(/[\d,]+(?:\.\d+)?/);
+  if (!num) return null;
+  const n = Number(num[0].replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const after = s.slice(s.indexOf(num[0]) + num[0].length);
+  const mult = /^[ \t]*[kK]\b/.test(after) ? 1000 : 1;
+  return Math.round(n * mult);
+}
+
 // Find money expressions with their evidence spans. Returns
-// [{won, evidence}] in text order.
+// [{won, evidence, currency}] in text order; currency is "USD" for
+// dollar amounts (the key stays `won` for schema reuse — the unit is
+// dollars) and "KRW" otherwise. A dollar amount is never read as won.
 function findMoney(text) {
   const src = String(text || "");
   const out = [];
   const hits = [];
+  const dollarRe = /US\$\s*[\d,]+(?:\.\d+)?[kK]?\b|\$\s*[\d,]+(?:\.\d+)?[kK]?\b|\b\d[\d,]*(?:\.\d+)?\s*[kK]\s*(?:dollars?|USD)\b|\b\d[\d,]*(?:\.\d+)?\s*(?:dollars?|USD)\b|\b\d[\d,]*\s*천\s*달러|월\s*\d[\d,]*\s*달러|\b\d[\d,]*\s*달러/gi;
   const koRe = /\d[\d,]*\s*억(?:\s*\d[\d,]*\s*(?:천|만))?|\d[\d,]*\s*천(?:\s*만)?|\d[\d,]*\s*만\s*원?/g;
   const enRe = /(?:₩\s*|KRW\s*)\d[\d,]*(?:\.\d+)?\s*(?:[MBK]\b|millions?\b|billions?\b)?(?:\s*won\b)?|\d[\d,]*(?:\.\d+)?\s*(?:[MBK]\b|millions?\b|billions?\b)(?:\s*won\b)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*won\b/gi;
   let m;
+  const dollarSpans = [];
+  while ((m = dollarRe.exec(src)) !== null) {
+    const amount = parseDollarChunk(m[0]);
+    if (amount !== null) {
+      hits.push({ index: m.index, evidence: m[0], kind: "dollar", amount });
+      dollarSpans.push([m.index, m.index + m[0].length]);
+    }
+  }
   while ((m = koRe.exec(src)) !== null) {
     hits.push({ index: m.index, evidence: m[0], kind: "ko" });
   }
@@ -147,9 +181,16 @@ function findMoney(text) {
   let lastEnd = -1;
   for (const h of hits) {
     if (h.index < lastEnd) continue;
-    const won = h.kind === "ko" ? parseMoneyChunk(h.evidence) : parseEnglishMoney(h.evidence);
+    // A won hit inside a dollar span (e.g. "4천" in "4천 달러")
+    // belongs to the dollars.
+    if (h.kind !== "dollar"
+      && dollarSpans.some(([s, e]) => h.index >= s && h.index < e)) continue;
+    const won = h.kind === "ko" ? parseMoneyChunk(h.evidence)
+      : h.kind === "en" ? parseEnglishMoney(h.evidence) : h.amount;
     if (won !== null) {
-      out.push({ won, evidence: h.evidence });
+      out.push(h.kind === "dollar"
+        ? { won, evidence: h.evidence, currency: "USD" }
+        : { won, evidence: h.evidence, currency: "KRW" });
       lastEnd = h.index + h.evidence.length;
     }
   }
@@ -275,6 +316,18 @@ function resolveWorkplace(mention, stations) {
 }
 
 function findWorkplace(text, stations) {
+  // 26c: a US workplace resolves first, without any station list.
+  const us = findUsWorkplace(text);
+  if (us) {
+    return {
+      text: us.evidence, evidence: us.evidence,
+      resolved: {
+        place: { id: us.place.id, name: us.place.name,
+          lon: us.place.lon, lat: us.place.lat },
+        region: us.place.region,
+      },
+    };
+  }
   // "판교로 출근", "강남역으로 출근", "직장이 판교", "회사 판교".
   // "으로" must precede "로": the lazy group would otherwise stop at
   // "강남역으" with "로" matching. A trailing "으" on "역으" is stripped
@@ -356,6 +409,9 @@ export function guardProfileValues(fields, text) {
   const errors = [];
   for (const [key, f] of Object.entries(fields || {})) {
     if (!f || typeof f !== "object") continue;
+    // Engine defaults (e.g. currency KRW) are labelled constants, not
+    // customer claims — they need no verbatim evidence.
+    if (f.source === "default") continue;
     const ev = f.evidence;
     if (f.value === null || f.value === undefined) continue;
     if (Array.isArray(f.value) && f.value.length === 0) continue;
@@ -424,26 +480,55 @@ export function extract_profile(text, current = null, opts = {}) {
     };
   };
 
+  // 26c: won readings never touch dollar amounts and vice versa.
+  const krwMonies = monies.filter((h) => h.currency !== "USD");
+  const dollarMonies = monies.filter((h) => h.currency === "USD");
+  const usPlace = findUsWorkplace(src);
+  const usRegionWord = (REGION_NAME_ALIASES[US_REGION_ID] || [])
+    .find((w) => /[a-zA-Z]/.test(w)
+      ? src.toLowerCase().includes(String(w).toLowerCase())
+      : src.includes(w)) || null;
+  // Once USD it stays USD for later turns.
+  const wasUsd = !!(current && current.currency && current.currency.value === "USD");
+  const currency = (wasUsd || usPlace || usRegionWord || dollarMonies.length > 0)
+    ? "USD" : "KRW";
+  if (currency === "USD" && !wasUsd) {
+    const ev = (usPlace && usPlace.evidence) || usRegionWord
+      || (dollarMonies[0] && dollarMonies[0].evidence);
+    if (ev) {
+      profile.currency = { value: "USD", source: "customer", note: "달러(USD) 기준", evidence: ev };
+    }
+  }
+  const isUsd = profile.currency && profile.currency.value === "USD";
+
   const tenure = findTenure(src);
-  const salaryHit = nearMoney(src, /연봉|세전|급여/, monies)
-    || nearMoney(src, /salary|earn|make|income/i, monies, 24)
+  const salaryHit = nearMoney(src, /연봉|세전|급여/, krwMonies)
+    || nearMoney(src, /salary|earn|make|income/i, krwMonies, 24)
     || (/(신입|초봉).*?(4천|3천|5천)/.test(src) ? null : null);
-  const cashHit = nearMoney(src, /모은\s*돈|모은돈|보유|현금|수중|마련|종잣돈/, monies, 20)
-    || nearMoney(src, /savings|saved|cash|in the bank/i, monies, 24);
-  const depositHit = nearMoney(src, /전세/, monies)
-    || nearMoney(src, /보증금/, monies)
-    || nearMoney(src, /jeonse|deposit/i, monies, 24);
-  const monthlyHit = nearMoney(src, /월\s*\d|월세/, monies)
-    || nearMoney(src, /per month|a month|\/month/i, monies, 24)
-    || nearMoney(src, /monthly(?: rent)?|wolse/i, monies, 24)
+  const cashHit = nearMoney(src, /모은\s*돈|모은돈|보유|현금|수중|마련|종잣돈/, krwMonies, 20)
+    || nearMoney(src, /savings|saved|cash|in the bank/i, krwMonies, 24);
+  const depositHit = nearMoney(src, /전세/, krwMonies)
+    || nearMoney(src, /보증금/, krwMonies)
+    || nearMoney(src, /jeonse|deposit/i, krwMonies, 24);
+  const monthlyHit = nearMoney(src, /월\s*\d|월세/, krwMonies)
+    || nearMoney(src, /per month|a month|\/month/i, krwMonies, 24)
+    || nearMoney(src, /monthly(?: rent)?|wolse/i, krwMonies, 24)
     || (() => {
+      // "월 80" (만원) is a won convention — never from dollar text.
+      if (dollarMonies.length > 0) return null;
       const m = /월\s*(\d[\d,]*)/.exec(src);
       if (!m) return null;
       const won = Number(m[1].replace(/,/g, "")) * WON_MAN;
-      return { won, evidence: m[0] };
+      return { won, evidence: m[0], currency: "KRW" };
     })();
-  const priceHit = nearMoney(src, /매매|매매가|집값/, monies)
-    || nearMoney(src, /buy|purchase|price/i, monies, 24);
+  // 26c: US data has monthly rent only — the first dollar amount near
+  // a monthly anchor, or a lone dollar amount, is the monthly max.
+  // depositMax / priceMax / salaryAnnual are never filled from dollars.
+  const usMonthlyHit = nearMoney(src,
+    /a month|per month|monthly|\/month|\/\s*mo\b|rent|월세|한\s*달|월/,
+    dollarMonies, 24);
+  const priceHit = nearMoney(src, /매매|매매가|집값/, krwMonies)
+    || nearMoney(src, /buy|purchase|price/i, krwMonies, 24);
   const sizeHit = (() => {
     const m = /(\d+(?:\.\d+)?)\s*(?:㎡|평|제곱)/.exec(src);
     if (m) return { value: Number(m[1]), evidence: m[0] };
@@ -475,6 +560,16 @@ export function extract_profile(text, current = null, opts = {}) {
   if (cashHit && profile.cash.value === null) {
     set("cash", cashHit.won, cashHit.evidence, "모은 돈");
   }
+  // 26c: US data has rent only — tenure is always wolse, even when
+  // the text says buy/purchase/매매/전세.
+  if (isUsd && profile.tenure.value === null) {
+    const rentWord = /\brent(?:ing|s|als?)?\b/i.exec(src) || /월세/.exec(src);
+    const usEv = (tenure && tenure.evidence) || (rentWord && rentWord[0])
+      || (usMonthlyHit && usMonthlyHit.evidence)
+      || (dollarMonies[0] && dollarMonies[0].evidence)
+      || (usPlace && usPlace.evidence);
+    if (usEv) set("tenure", "wolse", usEv, "미국 자료는 월세만 있어요");
+  }
   if (tenure && profile.tenure.value === null) {
     set("tenure", tenure.key, tenure.evidence, TENURE_KO[tenure.key]);
   }
@@ -487,14 +582,19 @@ export function extract_profile(text, current = null, opts = {}) {
   if (monthlyHit && profile.monthlyMax.value === null) {
     set("monthlyMax", monthlyHit.won, monthlyHit.evidence, "월 지출 상한");
   }
+  if (isUsd && profile.monthlyMax.value === null) {
+    const usHit = usMonthlyHit
+      || (dollarMonies.length === 1 ? dollarMonies[0] : null);
+    if (usHit) set("monthlyMax", usHit.won, usHit.evidence, "한 달 월세 상한(USD)");
+  }
   if (priceHit && profile.priceMax.value === null) {
     set("priceMax", priceHit.won, priceHit.evidence, "매매가 상한");
-  } else if (!priceHit && tenureNow === "trade" && monies.length > 0
+  } else if (!priceHit && tenureNow === "trade" && krwMonies.length > 0
       && profile.priceMax.value === null && !salaryHit) {
     // "매매 5억" without the price anchor nearby is still the price
     // when no other money reading consumed it — but only with the
     // 매매 anchor present (guarded by evidence below).
-    const fallback = nearMoney(src, /매매/, monies, 20);
+    const fallback = nearMoney(src, /매매/, krwMonies, 20);
     if (fallback) set("priceMax", fallback.won, fallback.evidence, "매매가 상한");
   }
   if (sizeHit && profile.sizeMin.value === null) {
@@ -507,12 +607,21 @@ export function extract_profile(text, current = null, opts = {}) {
     set("members", membersHit.members, membersHit.evidence, "함께 사는 사람");
   }
   if (workHit) {
-    const workplaces = [{
-      member: 0, text: workHit.text,
-      resolved: workHit.resolved ? { station: workHit.resolved } : null,
-    }];
-    set("workplaces", workplaces, workHit.evidence,
-      workHit.resolved ? `직장 근처역: ${workHit.resolved}` : "우리 자료에 없는 곳(모름)");
+    if (workHit.resolved && workHit.resolved.place) {
+      const p = workHit.resolved.place;
+      set("workplaces",
+        [{ member: 0, text: workHit.evidence,
+          resolved: { place: { id: p.id, name: p.name, lon: p.lon, lat: p.lat },
+            region: workHit.resolved.region || US_REGION_ID } }],
+        workHit.evidence, `직장: ${p.name}`);
+    } else {
+      const workplaces = [{
+        member: 0, text: workHit.text,
+        resolved: workHit.resolved ? { station: workHit.resolved } : null,
+      }];
+      set("workplaces", workplaces, workHit.evidence,
+        workHit.resolved ? `직장 근처역: ${workHit.resolved}` : "우리 자료에 없는 곳(모름)");
+    }
   }
   if (kindsHit && (profile.home_kinds.value || []).length === 0) {
     set("home_kinds", kindsHit.kinds, kindsHit.evidence, "원하는 집 유형");
@@ -548,6 +657,8 @@ export function missingQuestions(profile) {
   const p = profile || {};
   const v = (k) => (p[k] && p[k].value !== null && p[k].value !== undefined)
     ? p[k].value : null;
+  // 26c: US rents have no deposit, no station walk and no size.
+  const isUsd = v("currency") === "USD";
   const out = [];
   if (!v("members")) {
     out.push({ field: "members", ask: "함께 사는 분이 어떻게 되세요? (예: 혼자, 둘이, 아이와 함께)" });
@@ -559,18 +670,20 @@ export function missingQuestions(profile) {
   if (!tenure) {
     out.push({ field: "tenure", ask: "전세·월세·매매·공공임대 중 어떻게 살고 싶으세요?" });
   } else if (tenure === "jeonse" || tenure === "wolse" || tenure === "public") {
-    if (v("depositMax") === null) {
+    if (v("depositMax") === null && !isUsd) {
       out.push({ field: "depositMax", ask: "보증금은 얼마까지 생각하세요? (예: 2억 이하)" });
     }
     if (tenure === "wolse" && v("monthlyMax") === null) {
-      out.push({ field: "monthlyMax", ask: "월세는 매달 얼마까지 내실 수 있어요?" });
+      out.push(isUsd
+        ? { field: "monthlyMax", ask: "한 달 월세는 얼마까지 생각하세요? (예: $4,000 이하)" }
+        : { field: "monthlyMax", ask: "월세는 매달 얼마까지 내실 수 있어요?" });
     }
   } else if (tenure === "trade") {
     if (v("priceMax") === null) {
       out.push({ field: "priceMax", ask: "집값은 얼마까지 보세요? (예: 5억 이하)" });
     }
   }
-  if (v("sizeMin") === null) {
+  if (v("sizeMin") === null && !isUsd) {
     out.push({ field: "sizeMin", ask: "집 크기는 몇 ㎡ 이상이면 좋겠어요? (모르면 넘어가도 돼요)" });
   }
   if (v("commuteMax") === null) {
@@ -588,7 +701,9 @@ export function runGate(profile) {
   if (Array.isArray(wps) && wps.length > 0 && wps[0]) {
     const w = wps[0];
     if (w.noCommute) return { ok: true, noCommute: true };
-    if (w.resolved && (w.resolved.station || w.resolved === true)) return { ok: true };
+    if (w.resolved && (w.resolved.station || w.resolved.place || w.resolved === true)) {
+      return { ok: true };
+    }
     return { ok: false, ask: "workplace" };
   }
   return { ok: false, ask: "workplace" };
@@ -808,6 +923,7 @@ export function exampleProfile() {
       "customer", "예시: 모두 보통"),
     mustHaves: field([], "customer", "예시: 없음"),
     home_kinds: field([], "customer", "예시: 없음"),
+    currency: field("KRW", "default", "예시: 원화 기준"),
     _example: true,
   };
 }
