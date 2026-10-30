@@ -64,7 +64,7 @@ describe("18-2 one run verdict everywhere", () => {
     assert.match(r.hint, /B집/);
   });
 
-  it("chat card points at the tray; the wrapper renders the one run button", async () => {
+  it("chat card has no run button; the wrapper renders the one run button", async () => {
     const React = (await import("react")).default;
     const { renderToString } = await import("react-dom/server");
     const { CandidatesCard, DrawerArea } =
@@ -77,10 +77,9 @@ describe("18-2 one run verdict everywhere", () => {
         picks: ["a", "b"], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "판교" }));
-    // 19a: no run button inside the list — the label appears only
-    // as the quoted pointer at the tray.
-    assert.equal(chatHtml.split(RUN_BUTTON_LABEL).length - 1, 1, "label only quoted, no button");
-    assert.ok(chatHtml.includes("지도 아래"), "chat points at the tray");
+    // 19a: no run button inside the list — the footer says what to say.
+    assert.equal(chatHtml.split(RUN_BUTTON_LABEL).length - 1, 0, "no run button in the list");
+    assert.ok(chatHtml.includes("살아 봐 줘"), "footer says what to say");
     const drawerHtml = renderToString(React.createElement(DrawerArea,
       { picks: ["a", "b"],
         candidatesData: { result: { candidates: cands }, tenure: "jeonse" },

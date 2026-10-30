@@ -130,23 +130,20 @@ describe("candidates card", () => {
     assert.ok(two.indexOf("집b") < two.indexOf("집a"));
   });
 
-  it("points at the tray instead of running in the list", () => {
+  it("no run button in the list; the footer says what to say", () => {
     const base = { data: data(["a", "b"]), tenure: "jeonse", sort: "commute",
       onSort: () => {}, onTogglePick: () => {}, onPreview3D: () => {},
       onJeonse: () => {}, onRun: () => {} };
     const { RUN_BUTTON_LABEL } = chat;
     const none = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: [] })));
-    // 19a: no run button in the list; the line points at the tray.
-    // (The 2-pick line quotes the tray button's label, so it appears
-    // exactly once as quoted text.)
+    // 19a: no run button in the list; the footer says what to say.
     assert.ok(!none.includes(RUN_BUTTON_LABEL));
-    assert.ok(none.includes("마음에 드는 집을 2곳 담으면 지도 아래에서"));
+    assert.ok(none.includes("마음에 드는 집을 2곳 담고"));
     const two = textOf(render(React.createElement(chat.CandidatesCard,
       { ...base, picks: ["a", "b"] })));
-    assert.equal(two.split(RUN_BUTTON_LABEL).length - 1, 1);
-    assert.ok(two.includes(`‘${RUN_BUTTON_LABEL}’`));
-    assert.ok(two.includes("지도 아래"));
+    assert.equal(two.split(RUN_BUTTON_LABEL).length - 1, 0);
+    assert.ok(two.includes("두 집에서 살아 봐 줘"));
   });
 });
 
