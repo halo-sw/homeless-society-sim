@@ -244,7 +244,9 @@ function PublicNotices({ doc }) {
     return (
       <VStack gap={1}>
         <Heading level={4}>공공 매물·공고</Heading>
-        <Text type="supporting">공공 매물 자료가 없어요. money.mjs를 다시 실행하세요.</Text>
+        <Text type="supporting">{doc.custom
+          ? "이 살아 보기에는 공공 매물 자료를 넣지 않았어요. 공공임대 찾기는 대화에서 물어보세요."
+          : "공공 매물 자료가 없어요. money.mjs를 다시 실행하세요."}</Text>
       </VStack>
     );
   }

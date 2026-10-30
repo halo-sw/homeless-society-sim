@@ -67,11 +67,12 @@ import { outingsFor, hhmm } from "../timeline.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
   loadHomesIndex, loadNetwork, loadSchedule, loadPhotosManifest,
-  loadNamedPhotos, loadRegions,
+  loadNamedPhotos, loadRegions, loadPayroll,
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
 } from "../chat/engine.js";
+import { buildCustomMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
@@ -800,8 +801,29 @@ export function ChatScreen() {
         summary: `30일 · ${labels.join("·")}`, ms });
       const cmpId = addToolRow({ name: "compare", ok: true,
         summary: `${compare.metrics.length}개 지표`, ms: 0 });
+      // 18: the run's own money doc, built in the browser from the
+      // picked candidates' 실거래 — never another scenario's file.
+      // A build failure keeps the 30-day runs and reports the money
+      // as missing (with its reason), never demo numbers.
+      setProgress({ done: picked.length + 1, total: picked.length + 2, label: "돈 계산" });
+      let moneyDoc = null;
+      let moneyMissing = "";
+      try {
+        const payroll = await loadPayroll(fetchJson);
+        if (!payroll) throw new Error("급여 요율표를 불러오지 못했어요");
+        moneyDoc = buildCustomMoneyDoc({
+          scenario: scenValue, runs, profile: st.profile,
+          picked: picked.map((p, i) => ({ label: labels[i], candidate: p,
+            complexName: homes[i].name, areaId: p.scene })),
+          payrollTable: payroll, areas,
+          network: data.network || null, fareSchedule: data.schedule || null,
+        });
+      } catch (err) {
+        moneyMissing = String((err && err.message) || err);
+      }
       const customId = newCustomId();
       await saveCustomRun({ id: customId, scenario: scenValue, runs, labels,
+        moneyDoc, moneyMissing,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])) });
       const moments = labels.map((l) => ({ label: l, ...firstMomentOfRun(runs[l]) }));
       const anchors = labels.map((l) => ({ label: l,
@@ -816,8 +838,13 @@ export function ChatScreen() {
       }
       const payload = { status: "done", compare, moments, labels, customId,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])),
-        anchors, extraLine };
+        moneyDoc, moneyMissing, anchors, extraLine };
+      // The chat drawer tabs read the same custom docs as the sim.
       store.set({ compare });
+      if (moneyDoc) {
+        store.set({ money: moneyDoc,
+          moneyTenure: { ...(moneyDoc.default_tenure || {}) } });
+      }
       setMessages((prev) => prev.map((m) => (m.id === simId
         ? { ...m, data: payload,
           tool_calls: [{ id: buildId, name: "build_scenario" },
@@ -1179,6 +1206,7 @@ export function ChatScreen() {
               manifest: dataRef.current?.manifest || null,
               rentalCoverage: {},
             })}
+            contextLine={stageContextLine(profile, candidatesData)}
             cardHi={cardHi}
             onOrbRegion={(regionId) => {
               setOrbFilter(regionId);
@@ -1199,15 +1227,28 @@ export function ChatScreen() {
   );
 }
 
-function StageArea({ orbData, cardHi, onOrbRegion }) {
-  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+// 18: the stage header is the customer's context ("판교 출근 · 후보
+// 6곳"), never a fixed scene name.
+export function stageContextLine(profile, candidatesData) {
+  const bits = [];
+  const wps = profile && profile.workplaces && profile.workplaces.value;
+  const where = Array.isArray(wps) && wps[0]
+    && ((wps[0].resolved && wps[0].resolved.station) || wps[0].text);
+  if (where) bits.push(`${where} 출근`);
+  const n = candidatesData && candidatesData.result
+    && candidatesData.result.candidates ? candidatesData.result.candidates.length : 0;
+  if (n > 0) bits.push(`후보 ${n}곳`);
+  return bits.length > 0 ? bits.join(" · ") : "";
+}
+
+function StageArea({ orbData, cardHi, onOrbRegion, contextLine }) {
   const shapes = (orbData && orbData.shapes) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">
       <div style={{ padding: "8px 12px", background: "rgba(255,253,248,0.98)",
         borderBottom: "1px solid var(--border, #d8d2c4)" }}>
         <Text type="supporting">
-          {`지금 보는 장면 · ${state.area.label || state.area.id || "서울·경기 동남부"}`}
+          {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
           {" · "}
           {shapes.length > 0 ? `지역 ${shapes.length}곳` : "지역을 불러오는 중…"}
         </Text>

@@ -22,10 +22,11 @@ export function tenurePriceLine(candidate, tenure) {
   const sub = `실거래 중간값 · ${deals}건`;
   if (t.tenure === "wolse" && t.deposit_median_won !== null) {
     return { price: `${label} ${fmtWon(t.deposit_median_won)}/${fmtWon(t.median_won)}`,
-      sub, deals, fit: t.budget_fit, range: [t.min_won, t.max_won] };
+      sub, deals, fit: t.budget_fit, thin: t.thin_deal || null,
+      range: [t.min_won, t.max_won] };
   }
   return { price: `${label} ${fmtWon(t.median_won)}`, sub, deals,
-    fit: t.budget_fit, range: [t.min_won, t.max_won] };
+    fit: t.budget_fit, thin: t.thin_deal || null, range: [t.min_won, t.max_won] };
 }
 
 export function commuteShortLine(candidate, destName) {
@@ -78,7 +79,8 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
     price.fit === "all" ? "예산 안 ✓" : price.fit === "partial" ? "예산 일부 ✓" : price.fit === "none" ? "예산 밖" : null,
   ].filter(Boolean);
   const badges = [simBadgeFor(candidate)];
-  if (price.deals > 0) badges.push(`실거래 ${price.deals}건`);
+  if (price.thin) badges.push(price.thin);
+  else if (price.deals > 0) badges.push(`실거래 ${price.deals}건`);
   if (candidate.match === "osm_name") badges.push("OSM 위치");
   const photo = slots[slide] || null;
   return (

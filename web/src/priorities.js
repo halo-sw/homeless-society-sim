@@ -162,20 +162,24 @@ export function weightedView(values, weights, opts = {}) {
   return { ok: true, basis, homes, weights: w, formula, note };
 }
 
-// Per-home metric values from the money doc (+ compare leisure totals).
+// Per-home metric values from the money doc (18: leisure comes from
+// each home's embedded run totals, so the score never shifts when
+// another panel loads. compareDoc fills leisure ONLY for money docs
+// built before the field existed — a stale-file shim; fresh docs and
+// custom runs never read it).
 // Returns {homeLabel: {metricId: number|null}}. Pure: the drawer score
 // row, the 내 기준 tab and the share card all read this.
 export function priorityValues(moneyDoc, compareDoc, tenures) {
   const out = {};
-  const leisure = {};
+  const staleLeisure = {};
   if (compareDoc && Array.isArray(compareDoc.metrics)) {
     const errands = compareDoc.metrics.find((m) => m.key === "errands_done");
     const parks = compareDoc.metrics.find((m) => m.key === "park_visits");
     if (errands && parks) {
       const homeA = compareDoc.home_a && compareDoc.home_a.label;
       const homeB = compareDoc.home_b && compareDoc.home_b.label;
-      if (homeA) leisure[homeA] = (errands.a || 0) + (parks.a || 0);
-      if (homeB) leisure[homeB] = (errands.b || 0) + (parks.b || 0);
+      if (homeA) staleLeisure[homeA] = (errands.a || 0) + (parks.a || 0);
+      if (homeB) staleLeisure[homeB] = (errands.b || 0) + (parks.b || 0);
     }
   }
   for (const [label, h] of Object.entries((moneyDoc && moneyDoc.homes) || {})) {
@@ -198,7 +202,7 @@ export function priorityValues(moneyDoc, compareDoc, tenures) {
     v.life_commute_min = time.commute_minutes_per_day ?? null;
     v.life_evening_min = time.evening_at_home_minutes_per_day ?? null;
     v.life_fatigue = (h.qol_fatigue || {}).avg_30d ?? null;
-    v.life_trips = leisure[label] ?? null;
+    v.life_trips = h.leisure_trips_30d ?? staleLeisure[label] ?? null;
     const safety = h.qol_safety || {};
     v.safety_total = safety.total ?? null;
     if (Array.isArray(safety.groups)) {

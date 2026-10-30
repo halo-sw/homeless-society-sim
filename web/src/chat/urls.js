@@ -52,11 +52,13 @@ export function landingUrl() {
 
 // 3D에서 보기: a moment in a committed scenario, or in a custom
 // client-run simulation (?custom=<id> loads runs from IndexedDB).
-export function simMomentUrl({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1 } = {}) {
+// 18: carries an explicit style choice (both default to painted).
+export function simMomentUrl({ scenario = null, custom = null, home = "A", day = 1, t = "08:30", follow = 1, style = null } = {}) {
   const q = new URLSearchParams({ mode: "sim", home, day: String(day), t });
   if (follow) q.set("follow", String(follow));
   if (custom) q.set("custom", custom);
   else if (scenario) q.set("scenario", scenario);
+  if (style) q.set("style", style);
   return `/?${q}`;
 }
 

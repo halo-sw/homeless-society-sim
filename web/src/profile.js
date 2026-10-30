@@ -429,6 +429,30 @@ export function complexNameForHome(home, area) {
 
 const HOME_LABELS = ["A", "B", "C", "D"];
 
+// 18: household role names. The customer named these members, so the
+// sim, drawer, labels and share card call them 나 / 배우자 / 아이 … —
+// never "구성원 1". Explicit labels win; intake relations map
+// (자녀 → 아이); the first member defaults to 나.
+const RELATION_LABEL = {
+  배우자: "배우자", 자녀: "아이", 아이: "아이", 부모: "부모",
+  형제자매: "형제자매", 동거인: "동거인",
+};
+
+export function memberLabelFor(m, index) {
+  const mem = m || {};
+  if (typeof mem.label === "string" && mem.label && !/^구성원 \d+$/.test(mem.label)) {
+    return mem.label;
+  }
+  if (mem.role === "self") return "나";
+  if (mem.relation && RELATION_LABEL[mem.relation]) return RELATION_LABEL[mem.relation];
+  if (mem.role === "child") return "아이";
+  if (index === 0) return "나";
+  if (mem.role === "member" || mem.role === "adult") {
+    return index === 1 ? "배우자" : `함께 사는 사람 ${index + 1}`;
+  }
+  return `구성원 ${index + 1}`;
+}
+
 export function scenarioFromProfile(profile, homes, opts = {}) {
   const p = profile || {};
   const v = (k) => (p[k] ? p[k].value : null);
@@ -486,7 +510,7 @@ export function scenarioFromProfile(profile, homes, opts = {}) {
     const dest = wp && wp.resolved && wp.resolved.station ? wp.resolved.station : null;
     const out = {
       id: `m${i + 1}`,
-      label: `구성원 ${i + 1}`,
+      label: memberLabelFor(m, i),
       role: m.role || "adult",
       workdays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
       work: { type: "none" },

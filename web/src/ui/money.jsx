@@ -191,6 +191,9 @@ export function MoneyTab({ state }) {
               {options.length > 0 && <TenureSwitch label={label} options={options} value={t} />}
             </HStack>
             {!sel && <Text type="supporting">이 사는 방식으로는 실제로 거래된 값이 없어요. 상담에서 면적·사는 방식을 바꿔보세요.</Text>}
+            {Array.isArray(h.missing) && h.missing.map((m, i) => (
+              <Text key={i} type="supporting">{`아직 계산하지 못했어요 · ${m.reason_ko || m.field}`}</Text>
+            ))}
             {sel && (
               <>
                 <SpendBar totals={sel.totals_by_category} net={net} />

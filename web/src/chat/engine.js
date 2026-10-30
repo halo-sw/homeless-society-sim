@@ -27,6 +27,7 @@ export const SCHEDULE_URL = "/scenarios/transit/seoul-metro-interstation.csv";
 export const PHOTOS_MANIFEST_URL = "/scenarios/places/commons-photos.json";
 export const NAMED_PHOTOS_URL = "/scenarios/places/commons-named.json";
 export const REGIONS_URL = "/data/regions.json";
+export const PAYROLL_URL = "/scenarios/assumptions/kr-payroll.json";
 export const BOX_AREA_URL = (boxId) => `/data/${boxId}/area.json`;
 export const WALKGRAPH_URL = (regionId) => `/data/walkgraph/${regionId}.json`;
 
@@ -131,6 +132,18 @@ export async function loadRegions(fetchJson) {
   try {
     const doc = await fetchJson(REGIONS_URL);
     return doc && Array.isArray(doc.regions) ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
+// 18: payroll rule table for the custom-run money doc (same file
+// money.mjs reads). Null when unserved — the builder then refuses and
+// the card says so honestly.
+export async function loadPayroll(fetchJson) {
+  try {
+    const doc = await fetchJson(PAYROLL_URL);
+    return doc && doc.social_insurance ? doc : null;
   } catch {
     return null;
   }

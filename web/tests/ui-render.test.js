@@ -380,7 +380,8 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
       assert.ok(html.includes(m), `mode ${m}`);
     }
     assert.ok(html.includes("설정"), "settings button");
-    assert.ok(html.includes("지금 보는 장면"), "work area");
+    // 18: the stage header is the customer context, never a fixed scene.
+    assert.ok(html.includes("출근지를 말하면 후보가 지도에 표시돼요"), "work area");
   });
 
   it("renders the day strip + route steps + month strip at A 08:50", () => {

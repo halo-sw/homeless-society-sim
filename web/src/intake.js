@@ -227,8 +227,11 @@ export function intakeToProfilePatch(intake, household) {
   }
   const members = (household && household.members) || [];
   if (members.length > 0) {
+    // 18: school-age bands ride the school path (role child), so the
+    // engine plans schooldays and the money doc draws school routes.
+    const CHILD_BANDS = new Set(["미취학", "초등", "중·고등"]);
     patch.members = [{ role: "self" }, ...members.map((m) => ({
-      role: "member",
+      role: CHILD_BANDS.has(m.ageBand) ? "child" : "member",
       relation: m.relation,
       ageBand: m.ageBand,
       workplace: m.workplace,

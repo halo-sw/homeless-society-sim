@@ -1295,7 +1295,9 @@ async function bootSim() {
   registerCommonActions();
   store.set({ mode: "sim" });
   const loading = document.getElementById("loading");
-  const scenarioName = PARAMS.get("scenario") || "demo-two-homes";
+  // 18: a custom run is its own scenario — never the demo default.
+  // (Reassigned once the stored run loads below.)
+  let scenarioName = PARAMS.get("scenario") || "demo-two-homes";
   const homeLabel = PARAMS.get("home") || "A";
   // 12b: ?custom=<id> loads a chat-run simulation (scenario + runs)
   // from IndexedDB instead of /data + /scenarios.
@@ -1311,6 +1313,9 @@ async function bootSim() {
       loading.textContent = `저장된 살아 보기에 홈 ${homeLabel}이(가) 없어요.`;
       throw new Error(`custom run ${customId} has no home ${homeLabel}`);
     }
+  }
+  if (customRecord) {
+    scenarioName = (customRecord.scenario && customRecord.scenario.name) || "custom";
   }
   let scenario = customRecord ? customRecord.scenario : null;
   if (!scenario) {
@@ -2623,6 +2628,9 @@ async function bootSim() {
     if (customId) p.set("custom", customId);
     else p.set("scenario", scenarioName);
     if (f) p.set("follow", String(f));
+    // 18: an explicit style choice survives home/day jumps (custom and
+    // demo render the same painted look by default).
+    if (PARAMS.get("style")) p.set("style", PARAMS.get("style"));
     return `${location.pathname}?${p}`;
   }
 
@@ -2793,11 +2801,18 @@ async function bootSim() {
   async function paintMoney() {
     if (store.getState().money) return;
     store.set({ moneyLoading: true });
-    const doc = await fetch(`/data/sim/${scenarioName}-money.json`)
-      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    // 18: a custom run never reads another scenario's money file —
+    // it uses the money doc built with the run, or reports it missing.
+    const doc = customRecord ? (customRecord.moneyDoc || null)
+      : await fetch(`/data/sim/${scenarioName}-money.json`)
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (!doc) {
-      store.set({ moneyLoading: false,
-        money: { error: `node web/scripts/money.mjs --scenario scenarios/${scenarioName}.json 실행 후 새로고침하세요.` } });
+      // 18: a custom run without its money doc says so (with the
+      // stored reason) — it never borrows another scenario's file.
+      const err = customRecord
+        ? `아직 계산하지 못했어요${customRecord.moneyMissing ? ` (${customRecord.moneyMissing})` : ""}. 대화에서 30일 살아 보기를 다시 실행해 주세요.`
+        : `node web/scripts/money.mjs --scenario scenarios/${scenarioName}.json 실행 후 새로고침하세요.`;
+      store.set({ moneyLoading: false, money: { error: err } });
       return;
     }
     // The agent may already have merged home C while we fetched.
