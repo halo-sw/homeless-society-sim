@@ -354,6 +354,15 @@ export async function runTurn(opts) {
               guardRetries: 1, fallback: false });
           }
           if (checked2.ok) {
+            // 26x2: a completed action has a fixed translatable
+            // confirmation — prefer it over free Korean model text,
+            // which the phrase layer has no entry for.
+            const actionFallback = actionConfirmation(toolResults, { names: session.lastCandidateNames });
+            if (actionFallback) {
+              appended.push({ role: "assistant", content: actionFallback });
+              return finish({ reply: actionFallback, suggestions: split2.suggestions,
+                guardRetries: 1, fallback: true, guardCause: "english_retry_korean_action" });
+            }
             // Still Korean: keep the text but leave it translatable —
             // the fallback flag clears fromModel so the UI skips
             // data-no-i18n and the phrase layer translates what it can.
