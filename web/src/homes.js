@@ -433,6 +433,40 @@ function rideSourceBadges(ride) {
   return out;
 }
 
+// --- 21a: housing-type preference ------------------------------------------------
+// The customer's own words (profile.home_kinds, e.g. [오피스텔]).
+// Keeps only those kinds when at least 3 remain; otherwise fills with
+// the others and flags them kind_mismatch (labelled
+// "원하신 유형이 아니에요" on the card). Pure.
+export const KIND_MISMATCH_KO = "원하신 유형이 아니에요";
+
+export function applyKindPreference(candidates, homeKinds) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const wants = (Array.isArray(homeKinds) ? homeKinds : []).filter(Boolean);
+  if (wants.length === 0) return list;
+  const matching = list.filter((c) => wants.includes(c && c.kind));
+  if (matching.length >= 3) return matching;
+  return list.map((c) => (wants.includes(c && c.kind)
+    ? c : { ...c, kind_mismatch: true }));
+}
+
+// --- 21a: lot-number names ------------------------------------------------------
+// A bare lot number ("(242-4)", "242-4") is not a name: show
+// "{동} {유형} ({지번})", e.g. "대치동 연립·다세대 (242-4)". Pure.
+const LOT_NAME_RE = /^\(?\d+(-\d+)?\)?$/;
+
+export function displayNameFor(candidate) {
+  const name = candidate ? String(candidate.name || "").trim() : "";
+  if (!name || !LOT_NAME_RE.test(name)) return candidate ? candidate.name : name;
+  const lot = name.replace(/^\(/, "").replace(/\)$/, "");
+  const place = (candidate.dong || candidate.region || "").trim();
+  const kind = (candidate.kind || "").trim();
+  if (place && kind) return `${place} ${kind} (${lot})`;
+  if (kind) return `${kind} (${lot})`;
+  if (place) return `${place} (${lot})`;
+  return candidate.name;
+}
+
 export function find_homes(profile, index, opts = {}) {
   const tenure = profileValue(profile, "tenure");
   const sizeMin = profileValue(profile, "sizeMin");
@@ -526,6 +560,7 @@ export function find_homes(profile, index, opts = {}) {
       name: home.name,
       kind: home.kind,
       region: home.region,
+      dong: home.dong || null,
       lon: home.lon,
       lat: home.lat,
       build_year: home.build_year,

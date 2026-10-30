@@ -37,7 +37,7 @@ export const TENURE_KO = {
 export const PROFILE_FIELDS = [
   "members", "workplaces", "salaryAnnual", "takehomeMonthly", "cash",
   "debts", "tenure", "depositMax", "monthlyMax", "priceMax", "sizeMin",
-  "commuteMax", "priorities", "mustHaves",
+  "commuteMax", "priorities", "mustHaves", "home_kinds",
 ];
 
 export function field(value, source, note = "") {
@@ -55,6 +55,7 @@ export function emptyProfile() {
     depositMax: blank(), monthlyMax: blank(), priceMax: blank(),
     sizeMin: blank(), commuteMax: blank(),
     priorities: blank(), mustHaves: field([], "asked", ""),
+    home_kinds: field([], "asked", ""),
   };
 }
 
@@ -156,6 +157,33 @@ function findMembers(text) {
   return { members, evidence };
 }
 
+// Housing-type words the customer named ("오피스텔이면 좋겠어요").
+// Maps to index kinds (아파트 | 연립·다세대 | 오피스텔); 원룸 is kept
+// as said (no index kind matches it — the search fills + labels).
+const HOME_KIND_WORDS = [
+  ["오피스텔", "오피스텔"], ["아파트", "아파트"],
+  ["연립·다세대", "연립·다세대"], ["연립", "연립·다세대"],
+  ["다세대", "연립·다세대"], ["빌라", "연립·다세대"], ["원룸", "원룸"],
+];
+export function findHomeKinds(text) {
+  const src = String(text || "");
+  const kinds = [];
+  const hits = [];
+  for (const [word, kind] of HOME_KIND_WORDS) {
+    if (src.includes(word) && !kinds.includes(kind)) {
+      kinds.push(kind);
+      hits.push(word);
+    }
+  }
+  // Bare 오피 only when 오피스텔 itself was not said.
+  if (!kinds.includes("오피스텔") && /오피(?!스텔)/.test(src)) {
+    kinds.push("오피스텔");
+    hits.push("오피");
+  }
+  if (kinds.length === 0) return null;
+  return { kinds, evidence: hits.join("·") };
+}
+
 function normStationWord(s) {
   return String(s || "").trim().replace(/역$/, "").trim();
 }
@@ -172,9 +200,13 @@ function resolveWorkplace(mention, stations) {
 }
 
 function findWorkplace(text, stations) {
-  // "판교로 출근", "판교 출근", "직장이 판교", "회사 판교", "판교에 다녀".
+  // "판교로 출근", "강남역으로 출근", "직장이 판교", "회사 판교".
+  // "으로" must precede "로": the lazy group would otherwise stop at
+  // "강남역으" with "로" matching. A trailing "으" on "역으" is stripped
+  // defensively below.
   const pats = [
-    /([가-힣A-Za-z0-9·]+?)(?:로|에|에서)\s*출근/,
+    /([가-힣A-Za-z0-9·]+?)(?:으로|로|에서|에)\s*출근/,
+    /([가-힣A-Za-z0-9·]+?)(?:에서|에)\s*일해/,
     /출근(?:지|은|이)\s*([가-힣A-Za-z0-9·]+)/,
     /(?:직장|회사)(?:이|은|는)?\s*([가-힣A-Za-z0-9·]+)/,
     /([가-힣A-Za-z0-9·]+?)\s*출근/,
@@ -183,7 +215,9 @@ function findWorkplace(text, stations) {
     const m = re.exec(text);
     if (m && m[1] && m[1].length >= 2) {
       // Never strip leading syllables: 제주/제기동 are real places.
-      const mention = m[1].trim();
+      let mention = m[1].trim();
+      // Defensive: "강남역으로" mis-split would leave "강남역으".
+      if (/역으$/.test(mention)) mention = mention.slice(0, -1);
       return {
         text: mention, evidence: m[0],
         resolved: resolveWorkplace(mention, stations),
@@ -293,6 +327,7 @@ export function extract_profile(text, current = null, opts = {}) {
   })();
   const membersHit = findMembers(src);
   const workHit = findWorkplace(src, stations);
+  const kindsHit = findHomeKinds(src);
 
   // Salary: "연봉 4천" anchor; bare "4천" with 연봉 nearby also counts
   // because nearMoney already requires the anchor word.
@@ -343,6 +378,9 @@ export function extract_profile(text, current = null, opts = {}) {
     }];
     set("workplaces", workplaces, workHit.evidence,
       workHit.resolved ? `직장 근처역: ${workHit.resolved}` : "우리 자료에 없는 곳(모름)");
+  }
+  if (kindsHit && (profile.home_kinds.value || []).length === 0) {
+    set("home_kinds", kindsHit.kinds, kindsHit.evidence, "원하는 집 유형");
   }
 
   const errors = guardProfileValues(profile, src);
@@ -404,6 +442,31 @@ export function missingQuestions(profile) {
     out.push({ field: "commuteMax", ask: "출퇴근은 편도 몇 분까지 괜찮으세요?" });
   }
   return out;
+}
+
+// --- run gate (21a) ------------------------------------------------------------
+// The run needs a commute to simulate: unresolved workplace blocks it.
+// "출근 안 해요" (noCommute) runs honestly without one.
+// Returns { ok: false, ask: "workplace" } | { ok: true } | { ok: true, noCommute: true }.
+export function runGate(profile) {
+  const wps = profile && profile.workplaces ? profile.workplaces.value : null;
+  if (Array.isArray(wps) && wps.length > 0 && wps[0]) {
+    const w = wps[0];
+    if (w.noCommute) return { ok: true, noCommute: true };
+    if (w.resolved && (w.resolved.station || w.resolved === true)) return { ok: true };
+    return { ok: false, ask: "workplace" };
+  }
+  return { ok: false, ask: "workplace" };
+}
+
+// Workplace entry for "출근 안 해요" (customer-chosen, evidence-guarded
+// by the caller passing the customer's words as evidence).
+export function noCommuteEntry(evidence = "출근 안 해요") {
+  return { member: 0, text: "출근 안 해요", noCommute: true, resolved: null, evidence };
+}
+
+export function isNoCommuteProfile(profile) {
+  return runGate(profile).noCommute === true;
 }
 
 // --- scenarioFromProfile (deterministic) -----------------------------------------
@@ -609,6 +672,7 @@ export function exampleProfile() {
     priorities: field({ edu: 3, life: 3, safety: 3, money: 3, convenience: 3 },
       "customer", "예시: 모두 보통"),
     mustHaves: field([], "customer", "예시: 없음"),
+    home_kinds: field([], "customer", "예시: 없음"),
     _example: true,
   };
 }

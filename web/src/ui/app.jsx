@@ -701,7 +701,9 @@ const PLAIN_FATIGUE_NOUN = {
 export function plainMetricLine(m, days = 30) {
   if (!m) return null;
   const d = m.delta_b_minus_a;
-  if (d === null || d === undefined || !Number.isFinite(m.a) || !Number.isFinite(m.b)) return null;
+  // 21a: a missing side never reads 같아요 (d must be finite too).
+  if (d === null || d === undefined || !Number.isFinite(d)
+    || !Number.isFinite(m.a) || !Number.isFinite(m.b)) return null;
   // 18d: the one 출퇴근 편도 (same C01 number as the result and share
   // cards) — a per-commute value, never divided by days again.
   if (m.key === "commute_one_way") {

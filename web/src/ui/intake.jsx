@@ -231,12 +231,13 @@ export function IntakeCard({ step, index, total, value, said, onAnswer, onSkip }
   );
 }
 
-export function HouseholdCard({ household, onAdd, onRemove }) {
+export function HouseholdCard({ household, onAdd, onRemove, defaultWorkplace }) {
   const members = (household && household.members) || [];
   // 18: nothing preselected — a 1인 customer sees 0/4 with no
   // relation or age band chosen. Adding needs both taps.
+  // 21a: the sentence-named workplace pre-fills the 직장 box.
   const [draft, setDraft] = useState({ relation: "", ageBand: "",
-    commuteMax: 45, workplaceText: "", incomeMan: null });
+    commuteMax: 45, workplaceText: defaultWorkplace || "", incomeMan: null });
   const [error, setError] = useState("");
   return (
     <Card padding={3}>

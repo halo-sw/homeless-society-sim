@@ -62,14 +62,14 @@ import { fmtMinutes, fmtWon, fmtWonShort } from "../money/format.js";
 import { monthlyHousingOf } from "../money/monthly.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
-import { oneWayByLabel, oneWayDelta } from "../verify/numbers.js";
+import { oneWayByLabel, oneWayDelta, oneWaySentence } from "../verify/numbers.js";
 import { ShareDialog } from "./share.jsx";
 import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
-import { HOME_SORTS, HOME_SORT_KO } from "../homes.js";
-import { EXAMPLE_PROFILE_LABEL } from "../profile.js";
+import { HOME_SORTS, HOME_SORT_KO, applyKindPreference } from "../homes.js";
+import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
@@ -78,6 +78,7 @@ import {
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
+  runGate, profileHomeKinds,
 } from "../chat/engine.js";
 import { buildCustomMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
@@ -116,9 +117,14 @@ function customerChips(profile) {
   if (set(by.members)) out.push(by.members.text);
   if (set(by.workplaces)) {
     const v = by.workplaces.value;
-    const known = Array.isArray(v) && v[0] && v[0].resolved;
-    out.push(known ? `${by.workplaces.text} 출근` : by.workplaces.text);
+    if (Array.isArray(v) && v[0] && v[0].noCommute) {
+      out.push("출근 없이");
+    } else {
+      const known = Array.isArray(v) && v[0] && v[0].resolved;
+      out.push(known ? `${by.workplaces.text} 출근` : by.workplaces.text);
+    }
   }
+  if (set(by.home_kinds)) out.push(by.home_kinds.text);
   if (set(by.tenure)) {
     const t = by.tenure.value;
     const budget = t === "jeonse" ? by.depositMax
@@ -329,8 +335,11 @@ export function commuteOneWayOf(compare) {
   for (const m of (compare && compare.members) || []) {
     const w = m.commute_walk_minutes || {};
     const r = m.commute_ride_minutes || {};
-    const total = (Number(w.a) || 0) + (Number(w.b) || 0)
-      + (Number(r.a) || 0) + (Number(r.b) || 0);
+    // 21a: a present-but-unmeasurable side (NaN) is missing, never 0.
+    const raw = [w.a, w.b, r.a, r.b].map((x) => (
+      x === null || x === undefined || x === "" ? 0 : Number(x)));
+    if (!raw.every(Number.isFinite)) continue;
+    const total = raw[0] + raw[1] + raw[2] + raw[3];
     if (!(total > 0)) continue;
     const one = (x) => Math.round((((Number(x) || 0) / days / 2)) * 10) / 10;
     const a = one((Number(w.a) || 0) + (Number(r.a) || 0));
@@ -412,7 +421,13 @@ export function ResultSummary({ data }) {
           );
         }),
       ]}
-      {oneWay ? [
+      {data.noCommute ? [
+        <span key="commute-label" className="ui-result-label">출근 없이</span>,
+        ...labels.map((l) => (
+          <span key={`commute-${l}`} className="ui-result-value">–</span>
+        )),
+        <span key="commute-delta" className="ui-result-span">출근 없이 살아 봤어요</span>,
+      ] : oneWay ? [
         <span key="commute-label" className="ui-result-label">출퇴근 편도</span>,
         ...labels.map((l) => (
           <span key={`commute-${l}`} className="ui-result-value">
@@ -420,16 +435,23 @@ export function ResultSummary({ data }) {
           </span>
         )),
         <span key="commute-delta" className="ui-result-span">
-          {oneWay.d === 0
-            ? `A와 B가 같아요 (편도 평균 ${fmtMinutes(oneWay.a)})`
-            : `${oneWay.d > 0 ? "B" : "A"}가 편도 평균 ${fmtMinutes(Math.abs(oneWay.d))} 더 걸려요`}
+          {oneWaySentence(data.compare.one_way, fmtMinutes)}
         </span>,
-      ] : commutes.map((c) => [
+      ] : commutes.length > 0 ? commutes.map((c) => [
         <span key={`${c.member}-label`} className="ui-result-label">{`${c.label} 출퇴근 편도`}</span>,
         <span key={`${c.member}-a`} className="ui-result-value">{fmtMinutes(c.a)}</span>,
         <span key={`${c.member}-b`} className="ui-result-value">{fmtMinutes(c.b)}</span>,
         <span key={`${c.member}-plain`} className="ui-result-span">{c.plain}</span>,
-      ])}
+      ]) : [
+        <span key="commute-label" className="ui-result-label">출퇴근 편도</span>,
+        ...labels.map((l) => (
+          <span key={`commute-${l}`} className="ui-result-value">–</span>
+        )),
+        <span key="commute-delta" className="ui-result-span">
+          {oneWaySentence(
+            data.compare ? data.compare.one_way : null, fmtMinutes)}
+        </span>,
+      ]}
     </div>
   );
 }
@@ -515,6 +537,7 @@ export function SimulationCard({ data, example, onRetry }) {
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>30일 살아 보기 결과</Heading>
+          {data.noCommute && <Text type="supporting">출근 없이</Text>}
           {example && <span className="ui-result-example">{EXAMPLE_PROFILE_LABEL}</span>}
           {data.recorded && <Text type="supporting">기록된 답변</Text>}
         </HStack>
@@ -612,6 +635,17 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
   const step = currentStep(intake);
   const took = profile ? intakeTookLine(profile) : "";
   const hhHint = householdHint(profile, household);
+  const memberCount = profile && profile.members
+    && Array.isArray(profile.members.value)
+    ? profile.members.value.length : null;
+  // 21a: one question at a time — the current step only. A 1인
+  // household never sees the 함께 사는 사람 form; the said workplace
+  // pre-fills its 직장 box otherwise.
+  const showHousehold = memberCount === null || memberCount > 1;
+  const saidWork = profile && profile.workplaces
+    && Array.isArray(profile.workplaces.value)
+    && profile.workplaces.value[0]
+    ? profile.workplaces.value[0].text || "" : "";
   return (
     <VStack gap={2}>
       {took && <Text type="supporting">{took}</Text>}
@@ -621,9 +655,11 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
           value={intake.values[step]} said={Boolean(intake.said[step])}
           onAnswer={handlers.onIntakeAnswer} onSkip={handlers.onIntakeSkip} />
       )}
-      <HouseholdCard household={household}
-        onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
-      {hhHint && <Text type="supporting">{hhHint}</Text>}
+      {showHousehold && (
+        <HouseholdCard household={household} defaultWorkplace={saidWork}
+          onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
+      )}
+      {showHousehold && hhHint && <Text type="supporting">{hhHint}</Text>}
       {profile && (
         <ProfileCard profile={profile} example={handlers.exampleId}
           onChip={handlers.onChip} />
@@ -1040,6 +1076,10 @@ export function ChatScreen() {
     if (mustHaves.length > 0) {
       result = await searchWithBoxes(fetchJson, prof, data.index, result, data, { sort, limit: 6 });
     }
+    // 21a: the customer's own housing-type words filter the list (kept
+    // when at least 3 remain, else filled + labelled).
+    result = { ...result,
+      candidates: applyKindPreference(result.candidates, profileHomeKinds(prof)) };
     const ms = Date.now() - t0;
     const rowId = addToolRow({ name: "find_homes", ok: true,
       summary: `${result.candidates.length}곳 · ${HOME_SORT_KO[sort]}`, ms });
@@ -1088,11 +1128,60 @@ export function ChatScreen() {
       content: "전세 점검 탭을 작업 영역에 열었어요. 후보 카드의 ’보증금이 집값의 몇 %인지’도 함께 보세요." });
   }
 
+  // 21a: the tray's inline workplace box. A bare station/동네 name
+  // resolves against the station list; a full sentence goes through
+  // the parser. Returns whether the run gate now passes.
+  function handleTrayWorkplace(raw) {
+    const text = String(raw || "").trim();
+    if (!text) return false;
+    const data = dataRef.current;
+    const stations = data && data.network ? stationNames(data.network) : [];
+    const want = text.replace(/역$/, "").trim();
+    const hit = stations.find((s) => s === want || s === text || `${s}역` === text) || null;
+    let entry = null;
+    if (hit) {
+      entry = { member: 0, text, resolved: { station: hit } };
+    } else {
+      const ex = extractStep(text, stateRef.current.profile, stations);
+      const prof = ex.value.profile || {};
+      const wps = prof.workplaces ? prof.workplaces.value : null;
+      const w = Array.isArray(wps) && wps[0] ? wps[0] : null;
+      if (w && w.resolved && w.resolved.station) entry = w;
+    }
+    if (!entry) return false;
+    const next = { ...(stateRef.current.profile || {}),
+      workplaces: { value: [entry], source: "customer",
+        note: `직장 근처역: ${entry.resolved.station}` } };
+    profileRef.current = next;
+    setProfile(next);
+    store.set({ chatSummary: profileSummary(next) });
+    liveResearch(next);
+    return true;
+  }
+
+  function handleTrayNoCommute() {
+    const next = { ...(stateRef.current.profile || {}),
+      workplaces: { value: [noCommuteEntry()], source: "customer",
+        note: "출근 안 해요" } };
+    profileRef.current = next;
+    setProfile(next);
+    store.set({ chatSummary: profileSummary(next) });
+    liveResearch(next);
+  }
+
   async function handleRun() {
     const st = stateRef.current;
     const picked = ((st.candidatesData && st.candidatesData.result.candidates) || [])
       .filter((c) => st.picks.includes(c.id));
     if (picked.length < 2 || !st.profile) return;
+    // 21a: no run without a commute — unless the customer chose none.
+    const gate = runGate(st.profile);
+    if (!gate.ok) {
+      pushMsg({ role: "assistant", kind: "text",
+        content: "회사 위치를 먼저 알려 주세요. 회사 근처 역이나 동네를 말씀해 주시면 그 길로 30일 살아 보기를 돌려요. 출근을 안 하시면 “출근 안 해요”라고 말씀해 주세요." });
+      return;
+    }
+    const noCommute = gate.noCommute === true;
     const blocked = picked.filter((c) => readinessNote(c));
     if (blocked.length > 0) {
       pushMsg({ role: "assistant", kind: "text",
@@ -1149,7 +1238,7 @@ export function ChatScreen() {
           { done: pg.done + 1, total: picked.length + 1, label: pg.label })),
         scenValue, labels);
       const runId = addToolRow({ name: "run_simulation", ok: true,
-        summary: `30일 · ${labels.join("·")}`, ms });
+        summary: `${noCommute ? "출근 없이 · " : ""}30일 · ${labels.join("·")}`, ms });
       const cmpId = addToolRow({ name: "compare", ok: true,
         summary: `${compare.metrics.length}개 지표`, ms: 0 });
       // 18: the run's own money doc, built in the browser from the
@@ -1207,7 +1296,7 @@ export function ChatScreen() {
       }
       const payload = { status: "done", compare, moments, labels, customId,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])),
-        moneyDoc, moneyMissing, anchors, momentTexts, extraLine };
+        moneyDoc, moneyMissing, anchors, momentTexts, extraLine, noCommute };
       // The chat drawer tabs read the same custom docs as the sim.
       store.set({ compare });
       if (moneyDoc) {
@@ -1611,6 +1700,10 @@ export function ChatScreen() {
           </MsgBoundary>
           <PicksTray picks={picks}
             candidates={(candidatesData && candidatesData.result.candidates) || []}
+            gate={runGate(profile)}
+            stations={dataRef.current && dataRef.current.network
+              ? stationNames(dataRef.current.network) : []}
+            onWorkplaceText={handleTrayWorkplace} onNoCommute={handleTrayNoCommute}
             onRun={handleRun} onRemove={handleTogglePick} />
           <SidePanel picks={picks} candidatesData={candidatesData}
             detail={detail} onCloseDetail={() => setDetail(null)}
@@ -1696,12 +1789,33 @@ const PICK_LETTERS = ["A", "B", "C"];
 
 // 19a: the only run button on the chat screen. It floats over the
 // bottom of the map stage; nothing renders until a home is picked.
-export function PicksTray({ picks, candidates, onRun, onRemove }) {
+// 21a: no run without a commute. When gate is unresolved the button
+// reads WORKPLACE_ASK_LABEL and clicking it focuses the inline
+// workplace input (station autocomplete + "출근 안 해요"); only a
+// resolved workplace (or 출근 안 해요) restores the run label.
+export const WORKPLACE_ASK_LABEL = "회사 위치를 알려 주세요";
+
+export function PicksTray({ picks, candidates, onRun, onRemove,
+  gate, stations, onWorkplaceText, onNoCommute }) {
   const { picked, canRun, hint } = runReadiness(picks, candidates);
+  const [workText, setWorkText] = useState("");
+  const [workError, setWorkError] = useState("");
+  const workRef = useRef(null);
   if (picked.length === 0) return null;
+  const needWorkplace = !!(gate && !gate.ok);
+  const label = needWorkplace ? WORKPLACE_ASK_LABEL : RUN_BUTTON_LABEL;
   const trayHint = picked.length === 1
     ? "한 곳 더 담으면 비교할 수 있어요"
     : hint;
+  const submitWork = () => {
+    const ok = onWorkplaceText ? onWorkplaceText(workText) : false;
+    if (ok) {
+      setWorkText("");
+      setWorkError("");
+    } else {
+      setWorkError("우리 자료에 없는 곳이에요. 가까운 역 이름으로 다시 알려 주세요.");
+    }
+  };
   return (
     <div className="ui-picks-tray" role="group" aria-label="고른 집">
       <div className="ui-picks-tray-row">
@@ -1718,10 +1832,35 @@ export function PicksTray({ picks, candidates, onRun, onRemove }) {
             </span>
           ))}
         </div>
-        <Button label={RUN_BUTTON_LABEL} variant="primary"
-          isDisabled={!canRun} onClick={() => onRun && onRun()} />
+        <Button label={label} variant="primary"
+          isDisabled={!needWorkplace && !canRun}
+          onClick={() => {
+            if (needWorkplace) {
+              if (workRef.current && workRef.current.focus) workRef.current.focus();
+              return;
+            }
+            if (onRun) onRun();
+          }} />
       </div>
-      {!canRun && (
+      {needWorkplace && (
+        <div className="ui-picks-work">
+          <input className="ui-keyinput" value={workText} ref={workRef}
+            placeholder="회사 근처 역이나 동네 (예: 강남역)"
+            list="ui-picks-stations"
+            onChange={(e) => setWorkText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submitWork(); }}
+            aria-label="회사 근처 역이나 동네" />
+          <datalist id="ui-picks-stations">
+            {(stations || []).map((s) => <option key={s} value={`${s}역`} />)}
+          </datalist>
+          <Button size="sm" variant="secondary" label="입력" onClick={submitWork} />
+          <Button size="sm" variant="ghost" label="출근 안 해요"
+            onClick={() => onNoCommute && onNoCommute()} />
+        </div>
+      )}
+      {needWorkplace && workError ? (
+        <Text type="supporting">{workError}</Text>
+      ) : !canRun && (
         <Text type="supporting">{trayHint}</Text>
       )}
     </div>

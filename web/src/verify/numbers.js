@@ -207,10 +207,31 @@ export function oneWayByLabel(runsByLabel) {
 // The A/B pair behind compare.one_way for display, or null when
 // either side is missing. d is B−A in minutes (1-decimal).
 export function oneWayDelta(oneWay) {
-  const a = oneWay ? Number(oneWay.A) : NaN;
-  const b = oneWay ? Number(oneWay.B) : NaN;
+  // 21a: Number(null) is 0 — null/blank sides are missing, never 0.
+  const num = (x) => (x === null || x === undefined || x === "" ? NaN : Number(x));
+  const a = oneWay ? num(oneWay.A) : NaN;
+  const b = oneWay ? num(oneWay.B) : NaN;
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return { a, b, d: Math.round((b - a) * 10) / 10 };
+}
+
+// 21a: the honest commute comparison sentence. Missing or non-finite
+// on either side — or zeros on both sides (no commute was simulated)
+// — never reads 같아요.
+export const NO_WORKPLACE_COMMUTE_KO = "회사 위치가 없어 계산하지 않았어요";
+
+export function oneWaySentence(oneWay, fmt = (n) => `${n}분`) {
+  const raw = oneWay || {};
+  // 21a: Number(null) is 0 — null/blank sides are missing, never 0.
+  const num = (x) => (x === null || x === undefined || x === "" ? NaN : Number(x));
+  const a = num(raw.a !== undefined ? raw.a : raw.A);
+  const b = num(raw.b !== undefined ? raw.b : raw.B);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || (a <= 0 && b <= 0)) {
+    return NO_WORKPLACE_COMMUTE_KO;
+  }
+  const d = Math.round((b - a) * 10) / 10;
+  if (d === 0) return `A와 B가 같아요 (편도 평균 ${fmt(a)})`;
+  return `${d > 0 ? "B" : "A"}가 편도 평균 ${fmt(Math.abs(d))} 더 걸려요`;
 }
 
 // Every number cited in the text (via the judge guards' extraction).
