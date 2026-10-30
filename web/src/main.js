@@ -13,6 +13,7 @@ import { buildingCard, destSuffixFor, labelItemsFor, placeLabels } from "./label
 import { buildGround } from "./ground.js";
 import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, followZoomAfterWheel, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
+import { assetUrl, STATIC_SITE } from "./paths.js";
 import { drapeAerial } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { oneWayByLabel } from "./verify/numbers.js";
@@ -436,7 +437,7 @@ function buildWorld(area, scene14, opts = {}) {
   // 20d: real aerial photos on the ground and roofs (VWorld, live tiles
   // via the dev-server proxy). Async: without a key, or with
   // ?ground=paint, the painted ground stays as it is. Never logs URLs.
-  if (PARAMS.get("ground") !== "paint") {
+  if (!STATIC_SITE && PARAMS.get("ground") !== "paint") {
     drapeAerial({ THREE, renderer, scene, area, origin, terrainMesh,
       groundMesh, roadMeshes: sceneRoadMeshes, roofMesh, look: LOOK, style: STYLE })
       .then((r) => {
@@ -1289,7 +1290,7 @@ let simAreaId = DEFAULT_AREA;
 // ---------- sim mode (?mode=sim) ----------
 
 async function loadRunFile(scenarioName, homeLabel) {
-  const r = await fetch(`/data/sim/${scenarioName}-${homeLabel}.json`);
+  const r = await fetch(assetUrl(`/data/sim/${scenarioName}-${homeLabel}.json`));
   if (!r.ok) return null;
   return r.json();
 }
@@ -1355,7 +1356,7 @@ async function bootSim() {
   let scenario = customRecord ? customRecord.scenario : null;
   if (!scenario) {
     try {
-      const r = await fetch(`/scenarios/${scenarioName}.json`);
+      const r = await fetch(assetUrl(`/scenarios/${scenarioName}.json`));
       if (r.ok) scenario = await r.json();
     } catch {
       scenario = null;
@@ -1384,7 +1385,7 @@ async function bootSim() {
   const judgeProvider = PARAMS.get("provider") || "meta";
   const judgeExtras = new Map();
   try {
-    const r = await fetch(`/scenarios/decisions/${scenarioName}-${homeLabel}-${judgeProvider}.json`);
+    const r = await fetch(assetUrl(`/scenarios/decisions/${scenarioName}-${homeLabel}-${judgeProvider}.json`));
     if (r.ok) {
       const doc = await r.json();
       for (const d of doc.decisions || []) judgeExtras.set(d.id, d);
@@ -1404,6 +1405,16 @@ async function bootSim() {
       };
     }
     return d;
+  }
+  // 22a: on the static site there is no live model call. A decision
+  // with a matching committed record is labelled "기록된 Muse 판단",
+  // otherwise "규칙 판단" — both describe today, never a live call.
+  function badgeFor(v) {
+    const badge = decisionBadge(v);
+    if (!STATIC_SITE) return badge;
+    const e = judgeExtras.get(v.id);
+    const recorded = Boolean(e && e.chosen_key === v.chosen_key);
+    return { text: recorded ? "기록된 Muse 판단" : "규칙 판단", cls: badge.cls };
   }
   const area = await fetchArea(run.meta.area);
   simAreaId = run.meta.area;
@@ -2335,7 +2346,7 @@ async function bootSim() {
       return;
     }
     const v = judgedView(d);
-    const badge = decisionBadge(v);
+    const badge = badgeFor(v);
     store.set({ judge: {
       badgeText: badge.text,
       badgeCls: badge.cls,
@@ -2384,6 +2395,7 @@ async function bootSim() {
   // Dev-only live judgment: ask Muse about the captioned decision. The
   // key stays on the dev server (/api/judge); production has no button.
   async function askLive() {
+    if (STATIC_SITE) return; // static site: no /api/judge, recorded/rule labels stand
     const v = judgedView(run.decisions.find((d) => d.id === captionedId) || {});
     if (!v || !v.kind) return;
     store.set({ judgeAskState: "asking", askError: "" });
@@ -2418,7 +2430,7 @@ async function bootSim() {
   function paintJudgeLog() {
     const rows = dayDecisions(run, day).slice(0, 12).map((d) => {
       const v = judgedView(d);
-      const badge = decisionBadge(v);
+      const badge = badgeFor(v);
       return {
         id: v.id,
         minute: hhmm(v.minute),
@@ -2473,12 +2485,12 @@ async function bootSim() {
   async function ensureRegion() {
     if (regionNetwork !== null || corridorsIndex !== null) return;
     try {
-      regionNetwork = await fetchJson("/data/region/network.json");
+      regionNetwork = await fetchJson(assetUrl("/data/region/network.json"));
     } catch {
       regionNetwork = null;
     }
     try {
-      corridorsIndex = await fetchJson("/data/region/corridors.json");
+      corridorsIndex = await fetchJson(assetUrl("/data/region/corridors.json"));
     } catch {
       corridorsIndex = null;
     }
@@ -2492,7 +2504,7 @@ async function bootSim() {
   async function ensureCongestion() {
     if (regionCongestion !== null) return regionCongestion;
     try {
-      regionCongestion = await fetchJson("/data/region/congestion.json");
+      regionCongestion = await fetchJson(assetUrl("/data/region/congestion.json"));
     } catch {
       regionCongestion = null;
     }
@@ -2592,7 +2604,7 @@ async function bootSim() {
       return indexed.bbox;
     }
     try {
-      const doc = await fetchJson(`/data/${areaId}/area.json`);
+      const doc = await fetchJson(assetUrl(`/data/${areaId}/area.json`));
       areaBboxes.set(areaId, doc.bbox || null);
       return doc.bbox || null;
     } catch {
@@ -2703,7 +2715,7 @@ async function bootSim() {
         if (corridor) {
           try {
             journeyLayer.setManifest(
-              await fetchJson(`/data/region/corridor/${corridor.id}/manifest.json`));
+              await fetchJson(assetUrl(`/data/region/corridor/${corridor.id}/manifest.json`)));
           } catch {
             // The line still draws; tiles just stay empty.
           }
@@ -3154,7 +3166,7 @@ async function bootSim() {
         return;
       }
     }
-    let cmp = await fetch(`/data/sim/${scenarioName}-compare.json`)
+    let cmp = await fetch(assetUrl(`/data/sim/${scenarioName}-compare.json`))
       .then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (!cmp && homes.length >= 2) {
       try {
@@ -3185,7 +3197,7 @@ async function bootSim() {
     // 18: a custom run never reads another scenario's money file —
     // it uses the money doc built with the run, or reports it missing.
     const doc = customRecord ? (customRecord.moneyDoc || null)
-      : await fetch(`/data/sim/${scenarioName}-money.json`)
+      : await fetch(assetUrl(`/data/sim/${scenarioName}-money.json`))
         .then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (!doc) {
       // 18: a custom run without its money doc says so (with the
@@ -3226,7 +3238,7 @@ async function bootSim() {
     if (store.getState().criteria || store.getState().criteriaLoading) return;
     store.set({ criteriaLoading: true });
     try {
-      const r = await fetch("/scenarios/criteria/kr-default.json");
+      const r = await fetch(assetUrl("/scenarios/criteria/kr-default.json"));
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const doc = await r.json();
       // Resolve the working scenario against the same criteria the

@@ -19,6 +19,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { Text } from "@astryxdesign/core/Text";
 import { PHOTOS_DISCLAIMER, sceneThumbnail,
   createWebGLThumbnailRenderer } from "../places/photos.js";
+import { assetUrl } from "../paths.js";
 import { SOURCE_BADGES } from "../homes.js";
 import { JEONSE_MIN_TRADES, JEONSE_REF_NOTE, JEONSE_SPARSE_NOTE,
   JEONSE_CAUTION_ID, JEONSE_WARNING_ID } from "../money/jeonse.js";
@@ -95,11 +96,11 @@ export function PhotoStrip({ photos }) {
 function defaultThumbDeps(boxId) {
   return {
     loadArea: async (id) => {
-      const area = await (await fetch(`/data/${id}/area.json`)).json();
+      const area = await (await fetch(assetUrl(`/data/${id}/area.json`))).json();
       for (const [key, value] of Object.entries(area)) {
         if (value && typeof value === "object" && !Array.isArray(value)
             && Object.keys(value).join() === "$ref") {
-          area[key] = await (await fetch(`/data/${id}/${value.$ref}`)).json();
+          area[key] = await (await fetch(assetUrl(`/data/${id}/${value.$ref}`))).json();
         }
       }
       return area;

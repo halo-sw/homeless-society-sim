@@ -6,7 +6,9 @@
 // small (one row per built area) and carries the bboxes, so station
 // containment needs no area.json fetch.
 
-export const AREAS_INDEX_URL = "/data/areas-index.json";
+import { assetUrl } from "./paths.js";
+
+export const AREAS_INDEX_URL = assetUrl("/data/areas-index.json");
 
 // Last-resort fallback when the built index is absent (dev before any
 // build): the four legacy areas. Labelled as fallback wherever shown.

@@ -9,6 +9,7 @@
 // CanvasTexture uses flipY = false, so uvForLonLat maps directly.
 import { TILE_PX, MAX_MOSAIC_PX, tilesForBBox, uvForLonLat, pickZoom } from "./tiles.js";
 import { haversineM, xyToLonLat } from "../frame.js";
+import { STATIC_SITE } from "../paths.js";
 
 export const AERIAL_CREDIT = "항공사진 © 국토교통부 공간정보 오픈플랫폼(VWorld)";
 
@@ -58,6 +59,8 @@ function pushMosaicUVs(geo, origin, range, zoom, onlyUpward = false) {
 export async function drapeAerial({ THREE, renderer, scene, area, origin,
   terrainMesh = null, groundMesh = null, roadMeshes = [], roofMesh = null,
   look = {}, style = "photo" }) {
+  // 22a: on the static site there is no /api/aerial — the ground stays painted.
+  if (STATIC_SITE) return { ok: false, reason: "static" };
   // 1. Key check: without a key the painted ground stays as it is.
   let status = null;
   try {

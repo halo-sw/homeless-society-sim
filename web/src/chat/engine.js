@@ -15,23 +15,24 @@
 import { complexNameForHome, extract_profile, missingQuestions, runGate,
   scenarioFromProfile, TENURE_KO } from "../profile.js";
 import { DEFAULT_HOME_SORT, find_homes } from "../homes.js";
+import { assetUrl } from "../paths.js";
 import { parseInterstationCsv } from "../transit/schedule.js";
 import { compare as compareRuns } from "../engine/simulate.js";
 import { regionsForNames, kindForName } from "../region-names.js";
 import { fmtWon } from "../money/format.js";
 
-export const HOMES_SUMMARY_URL = "/data/homes/summary.json";
-export const HOMES_REGION_URL = (id) => `/data/homes/${id}.json`;
-export const NETWORK_URL = "/data/region/network.json";
-export const SCHEDULE_URL = "/scenarios/transit/seoul-metro-interstation.csv";
-export const PHOTOS_MANIFEST_URL = "/scenarios/places/commons-photos.json";
-export const NAMED_PHOTOS_URL = "/scenarios/places/commons-named.json";
-export const REGIONS_URL = "/data/regions.json";
-export const CORRIDOR_TILES_URL = "/data/region/corridor/c1/manifest.json";
-const CORRIDOR_TILE_URL = (id) => `/data/region/corridor/c1/tiles/${id}.json`;
-export const PAYROLL_URL = "/scenarios/assumptions/kr-payroll.json";
-export const BOX_AREA_URL = (boxId) => `/data/${boxId}/area.json`;
-export const WALKGRAPH_URL = (regionId) => `/data/walkgraph/${regionId}.json`;
+export const HOMES_SUMMARY_URL = assetUrl("/data/homes/summary.json");
+export const HOMES_REGION_URL = (id) => assetUrl(`/data/homes/${id}.json`);
+export const NETWORK_URL = assetUrl("/data/region/network.json");
+export const SCHEDULE_URL = assetUrl("/scenarios/transit/seoul-metro-interstation.csv");
+export const PHOTOS_MANIFEST_URL = assetUrl("/scenarios/places/commons-photos.json");
+export const NAMED_PHOTOS_URL = assetUrl("/scenarios/places/commons-named.json");
+export const REGIONS_URL = assetUrl("/data/regions.json");
+export const CORRIDOR_TILES_URL = assetUrl("/data/region/corridor/c1/manifest.json");
+const CORRIDOR_TILE_URL = (id) => assetUrl(`/data/region/corridor/c1/tiles/${id}.json`);
+export const PAYROLL_URL = assetUrl("/scenarios/assumptions/kr-payroll.json");
+export const BOX_AREA_URL = (boxId) => assetUrl(`/data/${boxId}/area.json`);
+export const WALKGRAPH_URL = (regionId) => assetUrl(`/data/walkgraph/${regionId}.json`);
 
 export function stationNames(network) {
   const names = new Set();
@@ -178,7 +179,7 @@ export async function loadBoxArea(fetchJson, boxId) {
   for (const [key, value] of Object.entries(area || {})) {
     if (value && typeof value === "object" && !Array.isArray(value)
         && Object.keys(value).join() === "$ref") {
-      area[key] = await fetchJson(`/data/${boxId}/${value.$ref}`);
+      area[key] = await fetchJson(assetUrl(`/data/${boxId}/${value.$ref}`));
     }
   }
   return area;

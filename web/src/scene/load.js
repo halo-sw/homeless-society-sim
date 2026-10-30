@@ -22,9 +22,11 @@ export function toTypedMesh(data) {
   };
 }
 
+import { assetUrl } from "../paths.js";
+
 export async function loadScene(areaId, fetchJson) {
   try {
-    return await fetchJson(`/data/${areaId}/scene.json`);
+    return await fetchJson(assetUrl(`/data/${areaId}/scene.json`));
   } catch (err) {
     console.warn(`[scene] no scene.json for ${areaId}, flat fallback (${err.message})`);
     return null;

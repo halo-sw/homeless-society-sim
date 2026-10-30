@@ -15,6 +15,7 @@ import { lonLatToXY } from "./frame.js";
 import { BAND_COLORS, STATION_DOT_PX, corridorLoadPlan, markerScaleFor, patternById, trainPosition } from "./journey.js";
 import { baseMapBounds, hexToRgb, sliceGeometry, tileBuildings, tileLines,
   tileRoadRibbons, tileWater, tileWaterRibbons } from "./corridor.js";
+import { assetUrl } from "./paths.js";
 import { congestionBand } from "./engine/journey.js";
 import { DEFAULT_LOOK } from "./render/look.js";
 
@@ -521,7 +522,7 @@ export function createJourneyLayer(scene, origin, { look = null, tags = null } =
           if (i >= plan.ids.length) return;
           try {
             const tile = await fetchJson(
-              `/data/region/corridor/${manifest.id}/tiles/${plan.ids[i]}.json`);
+              assetUrl(`/data/region/corridor/${manifest.id}/tiles/${plan.ids[i]}.json`));
             if (!state.cancelled) addTile(tile);
           } catch {
             // A missing tile never breaks the journey; the line still draws.

@@ -1,0 +1,61 @@
+# 22a: public static site on GitHub Pages.
+#
+# Static only: there are no /api/* routes on Pages, so the build sets
+# VITE_STATIC=1 (model calls stay off, recorded/rule labels stand, the
+# ground stays painted) and PAGES_BASE=/homeless-society-sim/.
+#
+# data/build is never committed. The orchestrator packs
+# `node web/scripts/runtime-data-list.mjs` output into the release asset
+# runtime-data.tgz (unpacks to data/…); this workflow downloads it into
+# web/dist/. Committed scenarios/**/*.json + the interstation CSV are
+# copied from git, so the tarball must not contain them.
+name: Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  pages: write
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: PAGES_BASE=/homeless-society-sim/ VITE_STATIC=1 npx vite build
+        working-directory: web
+      - name: Download runtime data asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release download data-v1 -p runtime-data.tgz; then
+            echo "::error::runtime-data.tgz is missing: publish the data-v1 release asset first (see web/scripts/runtime-data-list.mjs)"
+            exit 1
+          fi
+          tar -xzf runtime-data.tgz -C web/dist
+      - name: Copy committed scenarios
+        run: |
+          mkdir -p web/dist/scenarios
+          cd scenarios
+          find . -name '*.json' -exec cp --parents {} ../web/dist/scenarios/ \;
+          cp --parents transit/seoul-metro-interstation.csv ../web/dist/scenarios/
+      - run: touch web/dist/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -935,6 +935,7 @@ function LegendCard({ state, onClose }) {
             </VStack>
           )}
           <Text type="supporting">{legend.note}</Text>
+          <Text type="supporting">출처: 서울교통공사 · 공공누리 제3유형(출처표시·변경금지)</Text>
           {state.aerial && <Text type="supporting">{AERIAL_CREDIT}</Text>}
         </VStack>
       </Card>
