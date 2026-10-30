@@ -457,6 +457,14 @@ export function resultScoreOf(moneyDoc, compare, weights, explicit) {
   }
 }
 
+// 26s: diary model text skips the DOM re-translation in English mode.
+// Lines are always model-written; the summary is, unless it fell back
+// to the Korean rule template (which stays translatable).
+export function diaryNoI18n(diary, lang = LANG) {
+  if (lang !== "en" || !diary || diary.status !== "done") return false;
+  return !(diary.check && diary.check.summary_fallback);
+}
+
 // 19d: the 30-day result as an A|B table — one grid, never sorted,
 // never crowned. Header: letter disc + name per home. Rows: 내 기준
 // 점수 (score + neutral bar, caption spanning below), 월 주거비
@@ -494,14 +502,14 @@ export function ResultSummary({ data, onScene }) {
       )}
       {diary && diary.status === "done" && (
         <div className="ui-result-diary">
-          <p><span className="ui-result-muse">Muse</span> {diary.summary}</p>
+          <p><span className="ui-result-muse">Muse</span> <span {...(diaryNoI18n(diary) ? { "data-no-i18n": true } : null)}>{diary.summary}</span></p>
           <div className="ui-result-diary-lines">
             <Text>살아 본 일기</Text>
             {(diary.lines || []).map((line, i) => (
               <div key={i} className="ui-result-moment">
                 <span className="ui-pick-disc" aria-hidden="true">{line.home}</span>
                 <span className="ui-result-when">{`${line.day + 1}일째 ${hhmm(line.minute)}`}</span>
-                <span className="ui-result-text">{line.text}</span>
+                <span className="ui-result-text" {...(LANG === "en" ? { "data-no-i18n": true } : null)}>{line.text}</span>
                 <Button size="sm" variant="ghost" label="장면 보기"
                   onClick={() => {
                     if (onScene) onScene({ url: simMomentUrl({ custom: data.customId, home: line.home, day: line.day + 1, t: hhmm(line.minute), follow: 1, embed: true }), title: `${line.day + 1}일째 ${hhmm(line.minute)} · ${line.home}` });
@@ -1682,11 +1690,13 @@ export function ChatScreen() {
           const digests = labels.map((l) => runDigest(runs[l], l, { name: (payload.names || {})[l] || "" }));
           setMessages((prev) => prev.map((m) => (m.id === simId
             ? { ...m, data: { ...m.data, diary: { status: "writing" } } } : m)));
-          postDiary({ provider, digests }).then((result) => {
+          postDiary({ provider, digests, lang: LANG }).then((result) => {
             setMessages((prev) => prev.map((m) => (m.id === simId
               ? { ...m, data: { ...m.data, diary: { status: "done", ...result } } } : m)));
-            pushMsg({ role: "assistant", kind: "text",
-              content: `다 살아 봤어요. ${result.summary}`,
+            pushMsg({ role: "assistant", kind: "text", fromModel: true,
+              content: LANG === "en"
+                ? `Finished living there. ${result.summary}`
+                : `다 살아 봤어요. ${result.summary}`,
               suggestions: ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"] });
           }).catch(() => {
             setMessages((prev) => prev.map((m) => (m.id === simId
@@ -1790,7 +1800,7 @@ export function ChatScreen() {
       }
       const bubble = turnBubble(out);
       pushMsg({ role: "assistant", kind: "text", content: bubble.content || "",
-        tool_calls: bubble.tool_calls, suggestions: [...suggestions] });
+        tool_calls: bubble.tool_calls, suggestions: [...suggestions], fromModel: true });
       appendToolCards(out.messages);
       // 27g: the Muse path never ran ensureData, so the map stayed on its
       // placeholder after Muse found homes. Fill it now (no await — the

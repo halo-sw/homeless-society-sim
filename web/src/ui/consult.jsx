@@ -18,6 +18,7 @@ import {
 import { store } from "./store.js";
 import { citationsFor, toolActionKo, toolDurationKo } from "./agent-float.js";
 import { sourceById } from "../sources.js";
+import { LANG } from "../i18n/lang.js";
 
 export const PROVIDER_BADGE = { meta: "Muse Spark 1.3", baseten: "Muse Spark Open" };
 
@@ -60,10 +61,15 @@ export function CiteRows({ tools, sourceIds = null }) {
   );
 }
 
-export function AssistantMsg({ msg, toolRows }) {
+// 26s: in English mode, bubbles showing model-written text (msg.fromModel)
+// carry data-no-i18n so the DOM translator does not re-translate Muse's
+// own English (which may hold Korean names in parentheses). Rule-mode
+// fallback replies and UI labels stay translatable.
+export function AssistantMsg({ msg, toolRows, lang = LANG }) {
   const rows = (msg.tool_calls || []).map((c) => toolRows[c.id]).filter(Boolean);
   const tools = (msg.tool_calls || []).map((c) => c.name);
   if (!msg.content && rows.length === 0) return null;
+  const modelText = lang === "en" && msg.fromModel === true;
   return (
     <ChatMessage sender="assistant">
       {msg.recorded && (
@@ -72,7 +78,7 @@ export function AssistantMsg({ msg, toolRows }) {
         </ChatMessageBubble>
       )}
       {msg.content && (
-        <ChatMessageBubble variant="ghost">
+        <ChatMessageBubble variant="ghost" {...(modelText ? { "data-no-i18n": true } : null)}>
           <Markdown>{msg.content}</Markdown>
         </ChatMessageBubble>
       )}

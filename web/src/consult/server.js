@@ -271,10 +271,16 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
             throw new Error("each digest must have at most 60 facts");
           }
         }
+        // 26s: the UI language travels like context.lang does for the
+        // agent — explicit `lang` wins, else the request context.
+        const diaryLang = typeof body.lang === "string" && body.lang !== ""
+          ? body.lang
+          : (body.context && body.context.lang) || "ko";
         const out = await writeDiary({
           complete: (args) => completeWithTools({ ...args, fetchImpl: fetchImpl || fetch, apiKey }),
           provider,
           digests: body.digests,
+          lang: diaryLang,
         });
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(out));

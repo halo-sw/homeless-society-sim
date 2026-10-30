@@ -61,7 +61,7 @@ export async function postConsult({ provider, messages, scenario, context = null
   return payload;
 }
 
-export async function postDiary({ provider, digests, byoKey = "" }) {
+export async function postDiary({ provider, digests, lang = "ko", byoKey = "" }) {
   if (!LIVE_API) return { off: true };
   const headers = { "Content-Type": "application/json" };
   if (byoKey) headers["x-model-key"] = byoKey;
@@ -69,7 +69,7 @@ export async function postDiary({ provider, digests, byoKey = "" }) {
   const r = await fetch(apiUrl("/api/consult"), {
     method: "POST",
     headers,
-    body: JSON.stringify({ task: "diary", provider, digests }),
+    body: JSON.stringify({ task: "diary", provider, digests, lang }),
   });
   const latencyMs = (typeof performance !== "undefined" ? performance.now() : 0) - started;
   let payload = null;

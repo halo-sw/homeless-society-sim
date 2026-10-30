@@ -9,6 +9,20 @@ export const DIARY_PROMPT = [
   'JSON으로만 답한다: {"summary": "...", "lines": [{"home": "A", "id": "<fact id>", "text": "..."}]}',
 ].join("\n");
 
+// 26s: English-mode suffix. Facts, ids, numbers and every other rule
+// stay the same; only the language changes (romanized names with the
+// Korean once in parentheses, as in the agent's English rule).
+export const DIARY_PROMPT_EN =
+  "Write every diary line and the summary in plain English. "
+  + "The facts, their ids, the numbers and every other rule above stay the same. "
+  + "Write place and home names romanized with the Korean once in parentheses.";
+
+// Prompt builder: Korean (or unset) is DIARY_PROMPT byte-identical.
+export function diaryPrompt(lang) {
+  if (lang === "en") return `${DIARY_PROMPT}\n${DIARY_PROMPT_EN}`;
+  return DIARY_PROMPT;
+}
+
 const BANNED_SUMMARY = ["추천", "계약하", "사세요", "낫다"];
 
 export function parseDiaryJson(content) {
@@ -21,6 +35,19 @@ export function parseDiaryJson(content) {
     text = lines.join("\n").trim();
   }
   return JSON.parse(text);
+}
+
+// 26s: number check tolerant of comma grouping ("660,000" vs
+// "660000"). Passes when either the raw or the comma-stripped text
+// cites only allowed numbers.
+function inventedInDiary(text, allowed) {
+  const bad = findInventedNumbers(String(text || ""), "", allowed);
+  if (bad.length === 0) return bad;
+  const flat = String(text || "").replace(/(\d),(?=\d)/g, "$1");
+  if (flat === String(text || "")) return bad;
+  const badFlat = findInventedNumbers(flat, "", allowed);
+  if (badFlat.length === 0) return badFlat;
+  return bad;
 }
 
 function digestsByLabel(digests) {
@@ -61,7 +88,11 @@ export function checkDiary(parsed, digests) {
       failures.push({ index: i, reason_ko: `줄 ${n}: 80자를 넘었어요` });
       return;
     }
-    const bad = findInventedNumbers(text, "", new Set(fact.numbers || []));
+    // 26s: comma-grouped won reads the same either way — "₩660,000"
+    // cites 660000 when the fact holds it whole, and 660 + 0 when the
+    // fact text held the comma form. Either tokenization passing is
+    // enough; a truly invented number fails both.
+    const bad = inventedInDiary(text, new Set(fact.numbers || []));
     if (bad.length > 0) {
       failures.push({ index: i, reason_ko: `줄 ${n}: 기록에 없는 숫자 ${bad[0]}` });
     }
@@ -78,7 +109,7 @@ export function checkDiary(parsed, digests) {
         if (Number.isFinite(v)) allowed.add(v);
       }
     }
-    const bad = findInventedNumbers(summary, "", allowed);
+    const bad = inventedInDiary(summary, allowed);
     if (bad.length > 0) summaryOk = false;
   }
   return { failures, summaryOk };
@@ -108,9 +139,9 @@ function keptLines(parsed, digests) {
   return out;
 }
 
-export async function writeDiary({ complete, provider, digests }) {
+export async function writeDiary({ complete, provider, digests, lang = "ko" }) {
   const baseMessages = [
-    { role: "system", content: DIARY_PROMPT },
+    { role: "system", content: diaryPrompt(lang) },
     { role: "user", content: JSON.stringify(digests) },
   ];
   const first = await complete({ provider, messages: baseMessages, maxTokens: 8000 });
