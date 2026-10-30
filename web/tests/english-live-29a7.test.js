@@ -2,6 +2,10 @@
 // turn, chips readable. node --test, no network.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { META_HQ_EXAMPLE } from "../src/places-us.js";
+import { chipSourceIds } from "../src/sources.js";
+import { citationsFor } from "../src/ui/agent-float.js";
 import {
   SYSTEM_PROMPT, runTurn, needsEnglishRetry, splitSuggestions,
 } from "../src/consult/agent.js";
@@ -80,7 +84,7 @@ function lastSystemIsEnglishNote(seen) {
   }
 }
 
-const EN_USER = "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,000 a month.";
+const EN_USER = "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,500 a month.";
 
 describe("29a7 prompt covers Meta HQ", () => {
   it("lists Menlo Park and never pins Korean-only replies", () => {
@@ -219,5 +223,44 @@ describe("29a7 chips never romanize ordinary words", () => {
     const out = tr().translate("찾아줘");
     assert.equal(out, "찾아줘");
     assert.ok(!/jwo\b/i.test(out), out);
+  });
+});
+
+describe("29a7b Meta HQ example finds homes", () => {
+  it("META_HQ_EXAMPLE uses the $4,500 cap the data can match", () => {
+    assert.ok(META_HQ_EXAMPLE.includes("$4,500"), META_HQ_EXAMPLE);
+    assert.equal(EN_USER, META_HQ_EXAMPLE);
+  });
+
+  it("landing and chat reuse the constant (no $4,000 literal in ui)", () => {
+    for (const rel of ["../src/ui/landing-page.jsx", "../src/ui/chat.jsx"]) {
+      const text = readFileSync(new URL(rel, import.meta.url), "utf8");
+      assert.ok(text.includes("META_HQ_EXAMPLE"), rel);
+      assert.ok(!text.includes("$4,000 a month"), rel);
+    }
+  });
+});
+
+describe("29a7b US citations never cite MOLIT", () => {
+  it("chipSourceIds returns the Zillow entry for a US home list", () => {
+    const ids = chipSourceIds({ candidates: [
+      usHome("us-home-0001", 4261), usHome("us-home-0002", 3800)] });
+    assert.ok(ids.includes("zillow-zori"), String(ids));
+    assert.ok(!ids.includes("rtms"), String(ids));
+  });
+
+  it("citationsFor(find_homes) over US homes cites Zillow, not MOLIT", () => {
+    const cites = citationsFor(["find_homes"],
+      { candidates: [usHome("us-home-0001", 4261)] });
+    const titles = cites.map((c) => c.title).join(" | ");
+    assert.ok(titles.includes("Zillow"), titles);
+    assert.ok(!titles.includes("국토교통부"), titles);
+  });
+
+  it("citationsFor(find_homes) over Korean homes still cites MOLIT", () => {
+    const cites = citationsFor(["find_homes"],
+      { candidates: [krHome("kr-home-0001")] });
+    assert.ok(cites.some((c) => String(c.title).includes("국토교통부")),
+      JSON.stringify(cites));
   });
 });

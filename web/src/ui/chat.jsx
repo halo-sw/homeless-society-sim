@@ -75,6 +75,7 @@ import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
 import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../homes.js";
 import { chipSourceIds } from "../sources.js";
+import { META_HQ_EXAMPLE } from "../places-us.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
 import { runDigest } from "../diary/digest.js";
@@ -2666,7 +2667,7 @@ export const EMPTY_STARTERS = [
 ];
 
 const EMPTY_FIND_TEXT = "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘";
-const META_HQ_TEXT = "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,000 a month.";
+const META_HQ_TEXT = META_HQ_EXAMPLE;
 
 export function ChatEmpty({ onSend, onListing, onExample }) {
   const [value, setValue] = useState("");

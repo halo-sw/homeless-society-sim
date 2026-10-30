@@ -6,6 +6,7 @@ import { ChatComposer } from "@astryxdesign/core/Chat";
 import { assetUrl, appUrl } from "../paths.js";
 import { appEntryUrl, chatUrl } from "../chat/urls.js";
 import { currentLang } from "../i18n/lang.js";
+import { META_HQ_EXAMPLE } from "../places-us.js";
 import { COVERAGE_LINE, EXAMPLE_PROMPTS } from "./landing.jsx";
 import { LangToggle } from "./lang-toggle.jsx";
 import { PoweredByMuse, MUSE_LOGO_PATH } from "./powered-by-muse.jsx";
@@ -15,7 +16,7 @@ const HERO_PLACEHOLDER = "판교 출근인데 전세 2억 이하로 혼자 살 �
 const COMPOSER_FILL = "판교로 출근해요. 전세로 혼자 살 집 찾아 줘";
 const NIGHT_PROMPT = "판교 출근 집 두 곳에서 30일 살아 보고 밤 10시 이후 귀가를 보여 줘";
 const HOOD_PROMPT = "미금역 근처 전세 찾아 주고 동네를 보여 줘";
-const META_HQ_PROMPT = "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,000 a month.";
+const META_HQ_PROMPT = META_HQ_EXAMPLE;
 
 export function replayIdForLang(lang) {
   return lang === "en" ? "menlo-month" : "seoul-couple";

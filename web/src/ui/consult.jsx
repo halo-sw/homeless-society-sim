@@ -46,15 +46,16 @@ export function shortSourceName(fullName) {
   return (s && (s.short || s.name)) || fullName;
 }
 
-export function CiteRows({ tools, sourceIds = null }) {
+export function CiteRows({ tools, sourceIds = null, candidates = null }) {
   // 26k: sourceIds overrides the tool citations (USD candidates/runs
   // cite the US entries from sources.js); null keeps the old mapping.
   // 29a4: chips show the short name (sources.js `short`) with the full
   // name in `title`, and never truncate.
+  // 29a7b: an all-US find_homes list cites Zillow ZORI + OSM, never MOLIT.
   const fromIds = (Array.isArray(sourceIds) ? sourceIds : [])
     .map((id) => sourceById(id)).filter(Boolean)
     .map((s) => ({ short: s.short || s.name, title: s.name, url: s.url }));
-  const cites = fromIds.length > 0 ? fromIds : citationsFor(tools || [])
+  const cites = fromIds.length > 0 ? fromIds : citationsFor(tools || [], { candidates })
     .map((c) => ({ short: shortSourceName(c.title), title: c.title, url: c.url }));
   if (cites.length === 0) return null;
   return (
@@ -96,7 +97,9 @@ export function AssistantMsg({ msg, toolRows, lang = LANG }) {
         </ChatMessageBubble>
       )}
       <ToolRows rows={rows} />
-      <CiteRows tools={tools} />
+      <CiteRows tools={tools}
+        candidates={msg && msg.data && msg.data.result
+          ? msg.data.result.candidates || null : null} />
     </ChatMessage>
   );
 }

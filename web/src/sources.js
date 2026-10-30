@@ -166,6 +166,7 @@ export const SOURCES = [
   {
     id: "zillow-zori",
     name: "Zillow Observed Rent Index (ZORI)",
+    short: "Zillow ZORI",
     use: "ZIP 단위 월세 추정 (매물 가격이 아닌 대표 월세, 참고용). 미국 후보의 월세 비교에 씁니다.",
     licence: "Zillow 인용 (출처 표시)",
     version: "ZIP 단위 추정 2026-09 기준",
