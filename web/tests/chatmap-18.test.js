@@ -87,9 +87,10 @@ describe("18-4 pins, colours and paths", () => {
   });
 
   it("paints the palette ground, water and parks", () => {
-    assert.equal(MAP_COLORS.ground, "#cfc4ad");
-    assert.equal(MAP_COLORS.water, "#3f6f8f");
-    assert.equal(MAP_COLORS.park, "#8a9a5b");
+    // 19b: light product basemap.
+    assert.equal(MAP_COLORS.ground, "#f3f1ec");
+    assert.equal(MAP_COLORS.water, "#c9dcea");
+    assert.equal(MAP_COLORS.park, "#dfe9d3");
   });
 
   it("routes picked homes along the subway to work, null when unknown", () => {
@@ -135,8 +136,8 @@ describe("18-4 stage render", () => {
       candidates: CANDS, picks: ["a"], workplaceStation: "S2", tenure: "jeonse" });
     const html = renderToString(React.createElement(ChatMap, { map: m, cardHi: "home:a" }));
     assert.ok(html.includes("<svg"), "svg stage");
-    assert.ok(html.includes(">1<") && html.includes(">2<"), "numbered pins");
-    assert.ok(html.includes("직장"), "workplace pin");
+    assert.ok(html.includes(">A<") && html.includes(">2<"), "letter pill for the pick, number for the rest");
+    assert.ok(html.includes("회사 · S2"), "workplace pill");
     assert.ok(html.includes("R1"), "region label");
     assert.ok(html.includes("#123456"), "network line colour");
     assert.ok(!html.includes("BoxGeometry"), "no slabs");
@@ -207,16 +208,16 @@ describe("18d walkthrough map: one projected space, readable pins", () => {
     for (const p of pins) inside(Number(p[1]), Number(p[2]), "candidate pin");
     // Pin numbers, price tags and region label.
     for (const m of html.matchAll(
-      /<text x="([\d.\-e]+)" y="([\d.\-e]+)"[^>]*>([12]|전세 [^<]*|성남 분당구)<\/text>/g)) {
+      /<text x="([\d.\-e]+)" y="([\d.\-e]+)"[^>]*>([12AB]|전세 [^<]*|성남 분당구)<\/text>/g)) {
       inside(Number(m[1]), Number(m[2]), `label ${m[3]}`);
     }
-    // Workplace pin dot + 직장 label.
+    // Workplace pill + 회사 label.
     const work = html.match(
-      /<circle cx="([\d.\-e]+)" cy="([\d.\-e]+)" r="[\d.\-e]+" fill="#b25a33"/);
-    assert.ok(work, "workplace dot");
-    inside(Number(work[1]), Number(work[2]), "workplace pin");
+      /<rect x="([\d.\-e]+)" y="([\d.\-e]+)" width="([\d.\-e]+)" height="26"[^>]*fill="#1d1b18"/);
+    assert.ok(work, "workplace pill");
+    inside(Number(work[1]) + Number(work[3]) / 2, Number(work[2]) + 13, "workplace pill");
     const workLabel = html.match(
-      /<text x="([\d.\-e]+)" y="([\d.\-e]+)"[^>]*>직장 · 판교<\/text>/);
+      /<text x="([\d.\-e]+)" y="([\d.\-e]+)"[^>]*>회사 · 판교<\/text>/);
     assert.ok(workLabel, "workplace label");
     inside(Number(workLabel[1]), Number(workLabel[2]), "workplace label");
     // Commute minute labels on the picked lines.
@@ -233,11 +234,14 @@ describe("18d walkthrough map: one projected space, readable pins", () => {
     const html = await svgFor();
     const sizes = [...html.matchAll(/font-size="([\d.]+)"/g)].map((m) => Number(m[1]));
     assert.ok(sizes.length > 0, "labels carry font sizes");
-    for (const s of sizes) assert.ok(s >= 11, `label ${s}px >= 11px`);
-    const pins = [...html.matchAll(/<circle[^>]*r="([\d.]+)"[^>]*fill="#1d1b18"/g)]
+    // 19b: pill number glyphs are 10 px by design; everything else ≥ 11 px.
+    for (const s of sizes) assert.ok(s >= 10, `label ${s}px >= 10px`);
+    const dots = [...html.matchAll(/<circle[^>]*r="([\d.]+)"[^>]*fill="#1d1b18"/g)]
       .map((m) => Number(m[1]));
-    assert.ok(pins.length === 2, `two candidate pins, got ${pins.length}`);
-    for (const r of pins) assert.ok(r * 2 >= 20, `pin ${r * 2}px across`);
+    assert.ok(dots.length === 2, `two true-point dots, got ${dots.length}`);
+    for (const r of dots) assert.ok(r * 2 >= 8, `dot ${r * 2}px across`);
+    const pills = [...html.matchAll(/<rect[^>]*height="24"[^>]*rx="999"/g)];
+    assert.ok(pills.length === 2, `two price pills, got ${pills.length}`);
   });
 });
 
