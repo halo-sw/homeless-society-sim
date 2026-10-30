@@ -222,9 +222,14 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         })}
         {regions.map((r) => {
           if (!Array.isArray(r.bbox)) return null;
-          const [x, y] = toXY((r.bbox[0] + r.bbox[2]) / 2, (r.bbox[1] + r.bbox[3]) / 2);
-          if (x < 0 || x > W || y < 0 || y > H) return null;
-          if (hitsPinBox(x, y)) return null;
+          const [cx, cy] = toXY((r.bbox[0] + r.bbox[2]) / 2, (r.bbox[1] + r.bbox[3]) / 2);
+          // 19h: centred pills can cover the label spot — try offsets
+          // before skipping; skip only if every spot collides.
+          const spot = [[0, 0], [0, 28], [0, -28], [60, 0], [-60, 0]]
+            .map(([dx, dy]) => [cx + dx, cy + dy])
+            .find(([x, y]) => x >= 0 && x <= W && y >= 0 && y <= H && !hitsPinBox(x, y));
+          if (!spot) return null;
+          const [x, y] = spot;
           return (
             <text key={r.id} data-layer="region-label" x={x} y={y}
               fontSize={fs(12)} fontWeight={500} letterSpacing="0.02em"

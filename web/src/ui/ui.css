@@ -128,6 +128,8 @@ body.sim .ui-legend { bottom: 218px; }
   border: 1px solid var(--ui-border); border-radius: var(--ui-r-chip); background: var(--ui-card); }
 /* Share dialog + print page. */
 .ui-share-scroll { max-height: 50dvh; min-height: 120px; overflow: auto; }
+/* 19h: a closed dialog must never sit on top of the thread. */
+dialog.astryx-dialog:not([open]) { display: none !important; pointer-events: none; }
 /* A·B comparison rows: label + sources | A | B. */
 .ui-share-rows { display: flex; flex-direction: column; }
 .ui-share-row {
@@ -753,7 +755,15 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-thread > [class*="banner"],
 .ui-chat-thread > [class*="Banner"],
 .ui-chat-thread > [role="alert"] { flex: none; }
-.ui-chat-chips { flex: none; }
+/* 19h: the composer follows the chips with an 8px gap. The ChatLayout
+   message area keeps 24px of bottom padding, and its always-mounted
+   scroll-to-bottom pill holds ~52px even while hidden — together the
+   ~80px band. Collapse both when the pill is idle (it carries `inert`
+   only while hidden). */
+.ui-chat-chips { flex: none; padding-bottom: 0; margin-bottom: 8px; }
+.ui-chat-thread .astryx-chat-layout > :first-child { padding-block-end: 0; }
+.ui-chat-thread .astryx-chat-layout > :last-child > :first-child:has(> [inert]) {
+  display: none; }
 .ui-chat-thread > p { flex: none; }
 .ui-chat-stage { overflow: hidden; }
 .ui-chat-stage-body { overflow: hidden; }

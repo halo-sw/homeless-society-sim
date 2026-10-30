@@ -153,6 +153,10 @@ export function ShareDialog() {
     }
   };
 
+  // 19h: a closed dialog renders nothing, so it can never sit on top
+  // of the thread and eat clicks. After all hooks — order is unchanged.
+  if (!open) return null;
+
   return (
     <>
       {/* 18: named + focused on open; Esc closes (purpose info). */}
