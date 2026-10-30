@@ -6,6 +6,7 @@ import { buildPrompt } from "./src/judge/context.js";
 import { providerConfig } from "./src/judge/providers.js";
 import { emptyUsage, judgeSingle } from "./src/judge/run.js";
 import { createConsultHandler } from "./src/consult/server.js";
+import { parseAerialPath, upstreamUrl } from "./src/aerial/proxy.js";
 
 // Serves the pipeline output (data/build/<area>/*.json) at /data/<area>/*
 // in dev. The data stays outside web/ (never copied); the production build
@@ -235,7 +236,67 @@ function consultApiPlugin() {
   };
 }
 
+// Aerial photo path (vite dev only): GET /api/aerial/{z}/{y}/{x}.jpeg
+// proxies the VWorld WMTS Satellite tiles. Key rules: only this
+// middleware reads process.env.VWORLD_KEY; the key travels in the
+// upstream path only, is never logged, never echoed in errors, and
+// never reaches the browser. Tiles stream through (never written to
+// disk) with Cache-Control: no-store.
+function aerialApiPlugin() {
+  return {
+    name: "aerial-api",
+    configureServer(server) {
+      server.middlewares.use("/api/aerial", (req, res) => {
+        if (req.method !== "GET") {
+          res.statusCode = 405;
+          res.end("method not allowed");
+          return;
+        }
+        // connect strips the mount prefix from req.url; rebuild the
+        // full path for parseAerialPath.
+        const full = `/api/aerial${req.url || ""}`;
+        if (full.split("?")[0] === "/api/aerial/status") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ hasKey: Boolean(process.env.VWORLD_KEY) }));
+          return;
+        }
+        const tile = parseAerialPath(full);
+        if (!tile) {
+          res.statusCode = 400;
+          res.end("bad tile");
+          return;
+        }
+        const key = process.env.VWORLD_KEY;
+        if (!key) {
+          res.statusCode = 503;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ missing: "VWORLD_KEY" }));
+          return;
+        }
+        const url = upstreamUrl(key, tile.z, tile.y, tile.x);
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 6000);
+        fetch(url, { signal: ctl.signal }).then(async (up) => {
+          clearTimeout(timer);
+          if (!up.ok) throw new Error(`upstream ${up.status}`);
+          const buf = Buffer.from(await up.arrayBuffer());
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "image/jpeg");
+          res.setHeader("Cache-Control", "no-store");
+          res.end(buf);
+        }).catch(() => {
+          clearTimeout(timer);
+          // Never echo the upstream URL or the key.
+          res.statusCode = 502;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "upstream" }));
+        });
+      });
+    },
+  };
+}
+
 export default {
-  plugins: [react(), areaDataPlugin(), judgeApiPlugin(), consultApiPlugin()],
+  plugins: [react(), areaDataPlugin(), judgeApiPlugin(), consultApiPlugin(), aerialApiPlugin()],
   server: { port: 5173 },
 };

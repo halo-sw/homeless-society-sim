@@ -3,12 +3,17 @@
 // (unit-tested); this file only wires three.js, the DOM, and playback.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineGeometry } from "three/addons/lines/LineGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import "./style.css";
 import { bboxToXY, lonLatToWorld, lonLatToXY } from "./frame.js";
 import { buildBuildings } from "./buildings.js";
+import { buildingCard, destSuffixFor, labelItemsFor, placeLabels } from "./labels3d.js";
 import { buildGround } from "./ground.js";
-import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, archLensPose, cameraStyle, distanceForWidth, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
+import { ARCH_FOV_DEG, GLIDE_FRAME_M, STOP_FRAME_M, TOUR_AZIMUTH, applyFollowOffset, archLensPose, cameraStyle, distanceForWidth, followZoomAfterWheel, footprintsOf, frameWidthFor, hostTowerIds, journeyCruisePose, occludingIds, pickStopAzimuth, resolveStyle, tourFrameWidths, tourOffset, zoomClampDistances } from "./camera.js";
 import { loadArea, originOf } from "./load.js";
+import { drapeAerial } from "./aerial/drape.js";
 import { compare as compareRuns } from "./engine/simulate.js";
 import { oneWayByLabel } from "./verify/numbers.js";
 import { CRITERIA_GROUPS, criterionDefault, criterionValuesLine, resolveCriteria } from "./engine/criteria.js";
@@ -20,6 +25,7 @@ import { createJourneyLayer } from "./journey-scene.js";
 import { dayKindFor } from "./engine/journey.js";
 import { pickMoments } from "./engine/moments.js";
 import { householdNow, nowCardFor, simMetaFor, tickerFor } from "./nowcard.js";
+import { sceneEvidence } from "./evidence.js";
 import { destInLoadedAreas, pickStationArea } from "./station-areas.js";
 import { DECISION_KIND_KO, SIM_TICK_S, SPEEDS, agentLabelOf, chosenLabel, dayDecisions, decisionBadge, formatClock, homeOccupancy, indexRun, latestDecision, optionsLine, parseTParam, sampleAgent, shouldAutoplay, simInstant, tripFractions } from "./sim.js";
 import { memberLabelFor } from "./profile.js";
@@ -121,7 +127,6 @@ function footprintRings(buildings, origin) {
 const BASE_GROUND = 0x969488; // unmapped fringe under the ground layer (stage 11: darker)
 const FOG_DAY = 0xd9dee2;
 // 12b: map-route colours shared with the day strip (timeline.js).
-const WALK_ROUTE_CSS = ACTIVITIES.walk.color;
 const SUBWAY_ROUTE_CSS = ACTIVITIES.subway.color;
 
 const PARAMS = new URLSearchParams(location.search);
@@ -311,7 +316,8 @@ function buildWorld(area, scene14, opts = {}) {
     mask.anisotropy = maxAniso;
     terrainMesh = new THREE.Mesh(toIndexedGeometry(t),
       new THREE.MeshStandardMaterial({ map: mask, vertexColors: true,
-        roughness: 1, metalness: 0 }));
+        roughness: 1, metalness: 0, polygonOffset: true,
+        polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
     terrainMesh.receiveShadow = true;
     scene.add(terrainMesh);
   }
@@ -338,7 +344,9 @@ function buildWorld(area, scene14, opts = {}) {
   let sceneWaterMesh = null;
   if (scene14) {
     const { meshes } = buildRoadMeshes(scene14.roads, heightAt, LOOK);
-    const offsets = { road: 1, rail: 1, foot: 2, cycle: 2 };
+    // 20a: ribbons float further above the pushed-back terrain so the two
+    // road layers stop fighting (ragged grey patches when moving).
+    const offsets = { road: 2, rail: 2, foot: 3, cycle: 3 };
     for (const [cls, data] of Object.entries(meshes)) {
       if (data.triangles === 0) continue;
       const mesh = new THREE.Mesh(toIndexedGeometry(data),
@@ -362,6 +370,10 @@ function buildWorld(area, scene14, opts = {}) {
   // it, so it sits out in painted scene mode (flat mode keeps it).
   let sceneMarkingsMesh = null;
   if (scene14 && STYLE === "painted") {
+    // 20a: one road layer in painted scene mode — the old ground roads
+    // fought the terrain/ribbons at the same height (ragged grey patches
+    // that crawled with the camera), so roads draw as ribbons only.
+    groundMesh.visible = false;
     if (markMesh) markMesh.visible = false;
     const mk = buildRoadMarkings(scene14.roads, heightAt);
     if (mk.mesh.triangles > 0) {
@@ -420,6 +432,23 @@ function buildWorld(area, scene14, opts = {}) {
   trackRanges(roofMesh, built.detail.roofs);
   // "주거만 강조" dims the non-residential walls + podium.
   const dimMeshes = [wallMeshes.none, podiumMesh].filter(Boolean);
+
+  // 20d: real aerial photos on the ground and roofs (VWorld, live tiles
+  // via the dev-server proxy). Async: without a key, or with
+  // ?ground=paint, the painted ground stays as it is. Never logs URLs.
+  if (PARAMS.get("ground") !== "paint") {
+    drapeAerial({ THREE, renderer, scene, area, origin, terrainMesh,
+      groundMesh, roadMeshes: sceneRoadMeshes, roofMesh, look: LOOK, style: STYLE })
+      .then((r) => {
+        if (r && r.ok) {
+          console.log(`[aerial] ok ${r.tiles} tiles z${r.zoom}`);
+          store.set({ aerial: true });
+        } else {
+          console.log("[aerial] off (no key)");
+        }
+      })
+      .catch(() => console.log("[aerial] off (no key)"));
+  }
 
   // --- trees: OSM forest/park placements (scene) or decorative (flat) ---
   const treeMeshes = [];
@@ -1507,16 +1536,30 @@ async function bootSim() {
   // Route: one bright line ahead of the followed resident, one faded
   // line behind. Destination: a pin label + a small ground marker. The
   // ride stub is a dashed line for off-area station rides.
-  const routeAhead = new THREE.Line(new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95, depthTest: false }));
-  const routeDone = new THREE.Line(new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ color: 0x8a8a8a, transparent: true, opacity: 0.3 }));
+  // 20e: the remaining trip path reads on the ground — 4 px, #2f6fed at
+  // 85 %, above the road ribbons (renderOrder + no depth test). The
+  // walked part is grey at 40 %. Fat lines (Line2): plain THREE.Line is
+  // always 1 px, which the follow view could never show.
+  const routeAheadMat = new LineMaterial({ color: 0x2f6fed, linewidth: 4,
+    transparent: true, opacity: 0.85, depthTest: false });
+  const routeDoneMat = new LineMaterial({ color: 0x8a8a8a, linewidth: 4,
+    transparent: true, opacity: 0.4, depthTest: false });
+  const routeAhead = new Line2(new LineGeometry(), routeAheadMat);
+  const routeDone = new Line2(new LineGeometry(), routeDoneMat);
   routeAhead.renderOrder = 998;
+  routeDone.renderOrder = 998;
   routeAhead.frustumCulled = false;
   routeDone.frustumCulled = false;
   routeAhead.visible = false;
   routeDone.visible = false;
   scene.add(routeAhead, routeDone);
+  function syncRouteResolution() {
+    const w = (renderer.domElement && renderer.domElement.clientWidth) || innerWidth;
+    const h = (renderer.domElement && renderer.domElement.clientHeight) || innerHeight;
+    routeAheadMat.resolution.set(w, h);
+    routeDoneMat.resolution.set(w, h);
+  }
+  syncRouteResolution();
   const destPin = document.createElement("div");
   destPin.className = "hopin";
   destPin.style.display = "none";
@@ -1615,6 +1658,206 @@ async function bootSim() {
     paintTag(el, x, y, z, true);
   }
 
+  // --- 20b: what-every-building-is labels + hover card ---
+  // Items come from labels3d.js (pure); anchors are projected with the
+  // same camera helper the household tags use, then placeLabels resolves
+  // screen-space collisions. Home + destination always show; complexes
+  // show in overview, POIs + dong names up close. Rendered into #tags.
+  const label20bEls = new Map();
+  const label20bV = new THREE.Vector3();
+  function label20bLift(level) {
+    if (level === "complex") return 42;
+    if (level === "dong") return 30;
+    if (level === "always") return 34;
+    return 12;
+  }
+  function label20bEl(id, level) {
+    let el = label20bEls.get(id);
+    if (!el) {
+      el = document.createElement("div");
+      el.dataset.lb20b = level;
+      tagsLayer.appendChild(el);
+      label20bEls.set(id, el);
+    }
+    return el;
+  }
+  function paintLabel20b(el, item) {
+    const base = "font-family:Pretendard,system-ui,sans-serif;";
+    if (item.level === "dong") {
+      el.textContent = item.title;
+      el.setAttribute("style", `${base}font-size:11px;color:#5b6472;` +
+        `text-shadow:0 1px 2px rgba(255,255,255,.9);white-space:nowrap;`);
+    } else if (item.level === "poi") {
+      el.textContent = "";
+      el.setAttribute("style", `${base}display:flex;align-items:center;gap:4px;` +
+        `background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:999px;` +
+        `box-shadow:0 1px 2px rgba(0,0,0,.2);padding:2px 8px 2px 2px;` +
+        `font-size:12px;font-weight:600;color:#222;white-space:nowrap;`);
+      const dot = document.createElement("span");
+      dot.textContent = item.glyph || "•";
+      dot.setAttribute("style", "display:inline-flex;align-items:center;justify-content:center;" +
+        "width:16px;height:16px;border-radius:999px;background:#eef2f7;color:#2f6fed;" +
+        "font-size:11px;font-weight:700;");
+      const name = document.createElement("span");
+      name.textContent = item.title;
+      el.append(dot, name);
+    } else {
+      const accent = item.accent || item.level === "always";
+      el.textContent = "";
+      el.setAttribute("style", `${base}background:${accent ? "#2f6fed" : "#fff"};` +
+        `color:${accent ? "#fff" : "#222"};border:1px solid rgba(0,0,0,.08);` +
+        `border-radius:999px;box-shadow:0 1px 2px rgba(0,0,0,.2);padding:3px 10px;` +
+        `font-size:${item.level === "complex" ? "12px" : "12px"};font-weight:600;` +
+        `white-space:nowrap;` +
+        (item.level === "complex" && item.sub
+          ? "text-align:center;line-height:1.25;"
+          : ""));
+      const main = document.createElement("div");
+      main.textContent = item.title;
+      el.append(main);
+      if (item.level === "complex" && item.sub) {
+        const sub = document.createElement("div");
+        sub.textContent = item.sub;
+        sub.setAttribute("style", `font-size:10px;font-weight:400;color:${accent ? "#dbe6ff" : "#8a93a3"};`);
+        el.append(sub);
+      }
+    }
+    el.style.display = "block";
+    el.style.position = "absolute";
+    el.style.transform = "translate(-50%,-100%)";
+    el.style.left = `${item._sx}px`;
+    el.style.top = `${item._sy}px`;
+    el.style.pointerEvents = "none";
+  }
+  function paintLabels20b() {
+    try {
+      if (!hiState) return;
+      const camDist = camera.position.distanceTo(controls.target);
+      const destLonLat = hiState.destNodeId ? nodeLonLat.get(hiState.destNodeId) : null;
+      const tripNow = hiState.trip ? tripById.get(hiState.trip.id) : null;
+      const items = labelItemsFor(area, {
+        homeBuildingId: hiState.homeBuildingId || null,
+        destination: hiState.destLabel
+          ? { label: hiState.destLabel, lonlat: destLonLat || undefined }
+          : null,
+        destinationSuffix: destSuffixFor(tripNow, run.aways),
+        cameraDistM: camDist,
+      });
+      const canvasEl = document.getElementById("scene");
+      const rect = canvasEl ? canvasEl.getBoundingClientRect()
+        : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+      const wrapEl = document.getElementById("scene-wrap");
+      const wrap = wrapEl ? wrapEl.getBoundingClientRect() : { left: 0, top: 0 };
+      const projected = [];
+      for (const item of items) {
+        if (item.lon == null || item.lat == null) continue;
+        const [wx, wy] = lonLatToXY(item.lon, item.lat, origin);
+        const lift = label20bLift(item.level);
+        label20bV.set(wx, heightAt(wx, -wy) + lift, -wy).project(camera);
+        if (label20bV.z > 1) continue;
+        const sx = rect.left + ((label20bV.x + 1) / 2) * rect.width;
+        const sy = rect.top + ((1 - label20bV.y) / 2) * rect.height;
+        if (sx < rect.left || sy < rect.top || sx > rect.left + rect.width || sy > rect.top + rect.height) continue;
+        const glyphW = item.glyph ? 20 : 0;
+        const w = [...String(item.title || "")].length * 13 + 24 + glyphW;
+        const h = item.level === "complex" && item.sub ? 36 : 22;
+        projected.push({ ...item, x: sx - rect.left, y: sy - rect.top, w, h,
+          _sx: sx - wrap.left, _sy: sy - wrap.top });
+      }
+      // 20e label safe zones: the top-left toolbar (A·B / 집만 밝게 보기 /
+      // 범례) and the bottom timeline reserve screen space. Overlapping
+      // labels are skipped; always-items (home, destination) nudge out.
+      const reserved = [];
+      for (const sel of [".ui-tools", ".ui-simbar"]) {
+        const el = document.querySelector(sel);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        reserved.push({ left: r.left - rect.left, top: r.top - rect.top,
+          right: r.right - rect.left, bottom: r.bottom - rect.top });
+      }
+      const placed = placeLabels(projected, rect.width, rect.height, reserved);
+      const seen = new Set(placed.map((p) => p.id));
+      for (const p of placed) paintLabel20b(label20bEl(p.id, p.level), p);
+      for (const [id, el] of label20bEls) {
+        if (id.startsWith("hover20b")) continue;
+        if (!seen.has(id)) el.style.display = "none";
+      }
+    } catch {
+      // Labels must never break the frame.
+    }
+  }
+  // Hover a building: raycast the merged building meshes and map the hit
+  // triangle back to its building id via the ranges buildBuildings groups
+  // them by, then show the 건축물대장 card.
+  const hover20bEl = document.createElement("div");
+  hover20bEl.dataset.lb20b = "hover";
+  hover20bEl.style.display = "none";
+  hover20bEl.style.position = "absolute";
+  hover20bEl.style.zIndex = "30";
+  hover20bEl.style.pointerEvents = "none";
+  tagsLayer.appendChild(hover20bEl);
+  const ray20b = new THREE.Raycaster();
+  const ptr20b = new THREE.Vector2();
+  function buildingIdFromHit(hit) {
+    const ranges = (hit.object && hit.object.userData && hit.object.userData.ranges) || [];
+    const faceIndex = hit.faceIndex ?? (hit.face ? hit.faceIndex : null);
+    if (faceIndex == null) return null;
+    const v = faceIndex * 3;
+    for (const r of ranges) {
+      if (v >= r.start && v < r.start + r.count) return r.id;
+    }
+    return null;
+  }
+  function onHover20b(ev) {
+    try {
+      const canvasEl = document.getElementById("scene");
+      const rect = canvasEl ? canvasEl.getBoundingClientRect()
+        : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+      ptr20b.set(
+        (((ev.clientX - rect.left) / rect.width) * 2) - 1,
+        -(((ev.clientY - rect.top) / rect.height) * 2) + 1);
+      ray20b.setFromCamera(ptr20b, camera);
+      const meshes = [...Object.values(wallMeshes), podiumMesh, roofMesh].filter(Boolean);
+      const hits = ray20b.intersectObjects(meshes, false);
+      if (hits.length === 0) {
+        hover20bEl.style.display = "none";
+        return;
+      }
+      const id = buildingIdFromHit(hits[0]);
+      const b = (area.buildings || []).find((x) => x.id === id);
+      if (!b) {
+        hover20bEl.style.display = "none";
+        return;
+      }
+      const card = buildingCard(b);
+      hover20bEl.textContent = "";
+      hover20bEl.setAttribute("style", "display:block;position:absolute;z-index:30;pointer-events:none;" +
+        "font-family:Pretendard,system-ui,sans-serif;background:#fff;color:#222;" +
+        "border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.2);" +
+        "padding:8px 10px;font-size:12px;max-width:230px;white-space:normal;");
+      const t = document.createElement("div");
+      t.textContent = card.title;
+      t.setAttribute("style", "font-weight:700;");
+      const m = document.createElement("div");
+      m.textContent = card.meta;
+      m.setAttribute("style", "color:#444;margin-top:2px;");
+      const s = document.createElement("div");
+      s.textContent = card.source;
+      s.setAttribute("style", "color:#8a93a3;font-size:11px;margin-top:2px;");
+      hover20bEl.append(t, m, s);
+      const wrapEl = document.getElementById("scene-wrap");
+      const wrap = wrapEl ? wrapEl.getBoundingClientRect() : { left: 0, top: 0 };
+      hover20bEl.style.left = `${ev.clientX - wrap.left + 14}px`;
+      hover20bEl.style.top = `${ev.clientY - wrap.top + 10}px`;
+    } catch {
+      hover20bEl.style.display = "none";
+    }
+  }
+  if (renderer.domElement) {
+    renderer.domElement.addEventListener("pointermove", onHover20b);
+  }
+
   function nodeWorld(nodeId, lift = 1.5) {
     const p = nodeLonLat.get(nodeId);
     if (!p) return null;
@@ -1641,6 +1884,13 @@ async function bootSim() {
   }
 
   function setLine(line, pts) {
+    if (line && line.isLine2) {
+      const list = pts.length > 1 ? pts
+        : pts.length === 1 ? [pts[0], pts[0].clone()]
+        : [new THREE.Vector3(0, -100, 0), new THREE.Vector3(0, -100, 0)];
+      line.geometry.setPositions(list.flatMap((p) => [p.x, p.y, p.z]));
+      return;
+    }
     line.geometry.setFromPoints(pts.length > 0 ? pts : [new THREE.Vector3(0, -100, 0)]);
     if (line.computeLineDistances) line.computeLineDistances();
   }
@@ -1717,8 +1967,11 @@ async function bootSim() {
         rows: householdNow({ run, indexed, day, minute: m }) }, ticker: [] });
     } else {
       const agent = household[follow - 1];
+      const card = nowCardFor({ run, indexed, agentKey: agent.key, day, minute: m });
+      card.evidence = sceneEvidence({ run, agentKey: agent.key, day, minute: m, now: card });
+      card.familyRows = householdNow({ run, indexed, day, minute: m });
       store.set({
-        now: nowCardFor({ run, indexed, agentKey: agent.key, day, minute: m }),
+        now: card,
         ticker: tickerFor({ run, indexed, agentKey: agent.key, day, minute: m,
           moneyEvents: spendingEvents() }),
       });
@@ -1786,6 +2039,11 @@ async function bootSim() {
     bgMesh.material.needsUpdate = true;
   }
 
+  // 20f: destination pill wording lives in labels3d.js (pure, tested).
+  // The walk leg of a commute ends at the station, so the text is decided
+  // by the trip (a ride follows within 30 min, or the trip ends at a
+  // station node) — not by whether the name ends in 역.
+
   function paintHighlightFrame() {
     if (pulse) {
       const k = (performance.now() - pulse.t0) / 700;
@@ -1809,14 +2067,14 @@ async function bootSim() {
         const { behind, ahead } = splitRoute(trip, frac);
         setLine(routeAhead, ahead);
         setLine(routeDone, behind);
-        // 12b: the walked route shares the day strip's 걷기 colour.
-        routeAhead.material.color.set(WALK_ROUTE_CSS);
       }
       routeAhead.visible = true;
       routeDone.visible = true;
       const dp = h.destNodeId ? nodeWorld(h.destNodeId, 0) : null;
       if (dp && h.destLabel) {
-        paintTagPin(destPin, dp.x, tagY(dp.x, dp.z, 10), dp.z, h.destLabel);
+        // 20f: the 20b destination label already carries this pill —
+        // painting destPin too would draw it twice.
+        destPin.style.display = "none";
         destMark.position.set(dp.x, tagY(dp.x, dp.z, 3), dp.z);
         destMark.material.color.setHex(hhColors[(follow - 1) % hhColors.length]);
         destMark.visible = true;
@@ -1834,7 +2092,7 @@ async function bootSim() {
       if (sp) {
         setLine(rideStub, [sp, new THREE.Vector3(sp.x, tagY(sp.x, sp.z, 30), sp.z)]);
         rideStub.visible = true;
-        paintTagPin(destPin, sp.x, tagY(sp.x, sp.z, 34), sp.z, `지하철 탑승 (가정값 ${h.rideAway.rideMinutes}분)`);
+        paintTagPin(destPin, sp.x, tagY(sp.x, sp.z, 34), sp.z, `지하철 탑승 (가정값 ${Math.round(h.rideAway.rideMinutes)}분)`);
       } else {
         rideStub.visible = false;
         destPin.style.display = "none";
@@ -1902,6 +2160,27 @@ async function bootSim() {
   // --- follow camera (2b miniature framing) ---
   const stopDist = distanceForWidth(STOP_FRAME_M, CAM.fovDeg, camera.aspect);
   let snapFollow = follow > 0;
+  // 20e: follow keeps the user in control. followZoom (0.5–6) scales the
+  // camera-to-target distance, followYaw adds an azimuth around the
+  // followed target. The wheel zooms, a drag orbits; the controls stay
+  // enabled so both reach the camera. followMode "overview" (동네 전체)
+  // parks the camera on home + destination + route until 따라가기.
+  let followZoom = 1;
+  let followYaw = 0;
+  let followMode = "follow"; // "follow" | "overview"
+  const clampFollowZoom = (z) => Math.min(6, Math.max(0.5, z));
+  function setFollowPose(pos, look) {
+    const off = applyFollowOffset(
+      { pos: [pos.x, pos.y, pos.z], look: [look.x, look.y, look.z] },
+      [look.x, look.y, look.z], { zoom: followZoom, yaw: followYaw });
+    camera.position.set(off.pos[0], off.pos[1], off.pos[2]);
+    controls.target.set(off.look[0], off.look[1], off.look[2]);
+    controls.enabled = true;
+    // 20f: while following, only our wheel/drag handlers act —
+    // OrbitControls' own dolly/rotate would fight the follow offset.
+    controls.enableZoom = false;
+    controls.enableRotate = false;
+  }
 
   function followedSample() {
     if (follow < 1 || follow > household.length) return null;
@@ -1911,6 +2190,73 @@ async function bootSim() {
     return { agent, s };
   }
 
+  // 20e "동네 전체": frame home, the current destination and the route.
+  function frameOverview() {
+    followMode = "overview";
+    const pts = [];
+    const pushLL = (lon, lat) => {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      const [x, y] = lonLatToXY(lon, lat, origin);
+      pts.push([x, -y]);
+    };
+    const agent = household[follow - 1];
+    if (agent) {
+      const home = homeLonLat.get(agent.key);
+      if (home) pushLL(home[0], home[1]);
+    }
+    const h = hiState;
+    const trip = h && h.trip ? tripById.get(h.trip.id) : null;
+    if (trip && Array.isArray(trip.path)) {
+      for (const id of trip.path) {
+        const p = nodeLonLat.get(id);
+        if (p) pushLL(p[0], p[1]);
+      }
+    }
+    if (h && h.destNodeId) {
+      const p = nodeLonLat.get(h.destNodeId);
+      if (p) pushLL(p[0], p[1]);
+    }
+    if (h && h.rideAway && h.rideAway.stationNodeId) {
+      const p = nodeLonLat.get(h.rideAway.stationNodeId);
+      if (p) pushLL(p[0], p[1]);
+    }
+    if (pts.length === 0) return;
+    let cx = 0, cz = 0;
+    for (const p of pts) { cx += p[0]; cz += p[1]; }
+    cx /= pts.length; cz /= pts.length;
+    let radius = 150;
+    for (const p of pts) radius = Math.max(radius, Math.hypot(p[0] - cx, p[1] - cz));
+    const span = Math.min(4000, Math.max(300, radius * 2.6));
+    const dist = distanceForWidth(span, CAM.fovDeg, camera.aspect);
+    const [ox, oy, oz] = tourOffset(dist, CAM.pitchDeg, CAM.azimuth);
+    camera.position.set(cx + ox, oy, cz + oz);
+    controls.target.set(cx, 0, cz);
+    controls.enabled = true;
+    // 20f: overview is user-driven — hand zoom/rotate back to OrbitControls.
+    controls.enableZoom = true;
+    controls.enableRotate = CAM.rotate;
+  }
+
+  // 20f: the wheel zooms (followZoom 0.5–6, down zooms out), a drag
+  // orbits the followed target (followYaw). OrbitControls' own zoom and
+  // rotate are off while following (see setFollowPose), so only these
+  // handlers move the camera; the per-frame pose re-applies the offset.
+  if (renderer.domElement) {
+    renderer.domElement.addEventListener("wheel", (e) => {
+      if (!follow || followMode !== "follow") return;
+      followZoom = followZoomAfterWheel(followZoom, e.deltaY, e.deltaMode);
+    }, { passive: true });
+    let dragX = null;
+    renderer.domElement.addEventListener("pointerdown", (e) => { dragX = e.clientX; });
+    window.addEventListener("pointermove", (e) => {
+      if (dragX === null || !follow || followMode !== "follow") return;
+      if (e.buttons === 0) { dragX = null; return; }
+      followYaw += (e.clientX - dragX) * 0.25;
+      dragX = e.clientX;
+    });
+    window.addEventListener("pointerup", () => { dragX = null; });
+  }
+
   function paintFollow(dt, forceCaption) {
     if (!follow) {
       if (forceCaption) {
@@ -1918,6 +2264,17 @@ async function bootSim() {
         paintNow();
       }
       controls.enabled = true;
+      // 20f: free camera — OrbitControls owns zoom/rotate again.
+      controls.enableZoom = true;
+      controls.enableRotate = CAM.rotate;
+      return;
+    }
+    if (followMode === "overview") {
+      controls.enabled = true;
+      // 20f: overview (동네 전체) is user-driven — restore OrbitControls.
+      controls.enableZoom = true;
+      controls.enableRotate = CAM.rotate;
+      if (forceCaption) paintNow();
       return;
     }
     // The journey camera owns follow mode while a station ride plays.
@@ -1937,18 +2294,27 @@ async function bootSim() {
     const [ox, oy, oz] = tourOffset(stopDist, CAM.pitchDeg, CAM.azimuth);
     const pos = new THREE.Vector3(x + ox, oy, -y + oz);
     const look = new THREE.Vector3(x, 2, -y);
+    const goal = applyFollowOffset(
+      { pos: [pos.x, pos.y, pos.z], look: [look.x, look.y, look.z] },
+      [look.x, look.y, look.z], { zoom: followZoom, yaw: followYaw });
+    const gpos = new THREE.Vector3(goal.pos[0], goal.pos[1], goal.pos[2]);
+    const glook = new THREE.Vector3(goal.look[0], goal.look[1], goal.look[2]);
+    // 20f: the walk branch applies the same follow offset (zoom/yaw)
+    // as setFollowPose above — OrbitControls stays out of it.
+    controls.enableZoom = false;
+    controls.enableRotate = false;
     // Snap when far (a fast clock would lag behind); otherwise glide,
     // so the followed member stays in frame at any speed.
-    if (snapFollow || controls.target.distanceTo(look) > 60) {
-      camera.position.copy(pos);
-      controls.target.copy(look);
+    if (snapFollow || controls.target.distanceTo(glook) > 60) {
+      camera.position.copy(gpos);
+      controls.target.copy(glook);
       snapFollow = false;
     } else {
       const k = 1 - Math.pow(0.001, dt);
-      camera.position.lerp(pos, k);
-      controls.target.lerp(look, k);
+      camera.position.lerp(gpos, k);
+      controls.target.lerp(glook, k);
     }
-    controls.enabled = false;
+    controls.enabled = true;
     if (forceCaption) {
       paintNow();
       paintJudgeCaption(hit.agent.key);
@@ -2500,10 +2866,12 @@ async function bootSim() {
     if (jf.phase === "hold") {
       if (jf.destLonLat) {
         const pose = streetPose(jf.destLonLat);
-        camera.position.copy(pose.pos);
-        controls.target.copy(pose.look);
+        setFollowPose(pose.pos, pose.look);
+      } else {
+        controls.enabled = true;
+        controls.enableZoom = false;
+        controls.enableRotate = false;
       }
-      controls.enabled = false;
       journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
       return true;
@@ -2511,10 +2879,12 @@ async function bootSim() {
     if (jf.phase === "boarding") {
       if (jf.boardLonLat) {
         const pose = streetPose(jf.boardLonLat);
-        camera.position.copy(pose.pos);
-        controls.target.copy(pose.look);
+        setFollowPose(pose.pos, pose.look);
+      } else {
+        controls.enabled = true;
+        controls.enableZoom = false;
+        controls.enableRotate = false;
       }
-      controls.enabled = false;
       journeyLayer.updateStationLabels(null);
       restoreClipFog(dt);
       return true;
@@ -2540,9 +2910,7 @@ async function bootSim() {
       pos = regional.pos;
       look = regional.look;
     }
-    camera.position.copy(pos);
-    controls.target.copy(look);
-    controls.enabled = false;
+    setFollowPose(pos, look);
     // Regional depth range + fog (the street fit only spans ~1 km).
     // Fog follows the live camera-to-target distance (not altitude): the
     // line, the train and the stations stay clear of the haze. Far ≥ 6×.
@@ -2940,11 +3308,29 @@ async function bootSim() {
     setFollow: (next) => {
       follow = Math.min(household.length, Math.max(0, next));
       snapFollow = follow > 0;
+      followMode = "follow";
       store.set({ follow });
       applyFollowDim();
       paintFollow(0.016, true);
       ensureItinerary();
       paintTimeline();
+    },
+    showOverview: () => {
+      frameOverview();
+    },
+    resumeFollow: () => {
+      followZoom = 1;
+      followYaw = 0;
+      followMode = "follow";
+      snapFollow = true;
+      if (!follow && household.length > 0) {
+        follow = 1;
+        store.set({ follow });
+        applyFollowDim();
+        ensureItinerary();
+        paintTimeline();
+      }
+      paintFollow(0.016, true);
     },
     toggleStripCompare: async () => {
       store.set({ stripCompare: !store.getState().stripCompare });
@@ -3109,6 +3495,7 @@ async function bootSim() {
     updateLighting();
     paintFollow(dt, false);
     paintHighlightFrame();
+    paintLabels20b();
     const jfTrain = journeyFrame();
     if (jfTrain.ride && (jfTrain.phase === "rising" || jfTrain.phase === "cruise"
         || jfTrain.phase === "descending" || jfTrain.phase === "boarding")) {
@@ -3140,7 +3527,10 @@ async function bootSim() {
     }
   });
 
-  const refitSim = () => refitToWrap(camera, renderCtl, controls);
+  const refitSim = () => {
+    refitToWrap(camera, renderCtl, controls);
+    syncRouteResolution();
+  };
   addEventListener("resize", refitSim);
   new ResizeObserver(refitSim).observe(document.getElementById("scene-wrap"));
 }

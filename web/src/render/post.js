@@ -2,8 +2,10 @@
 //
 // photo high:   Render → SAO → Bloom → Tilt-shift → Grade → Output
 // photo medium: Render → Bloom → Tilt-shift → Grade → Output
-// painted high/medium: Render → AO → Kuwahara → Outline → Bloom → Grade → Output
+// painted high/medium: Render → AO → Kuwahara → Outline → Bloom → Grade → AA → Output
 // low (both styles): direct render (no composer).
+// The painted AA step is MSAA (paintedSamples on WebGL2) or an FXAA
+// pass just before output elsewhere (20a); ?kuwa=0 drops Kuwahara.
 // Bloom strength follows the sky (lit windows / lamps at night and
 // dusk, off by day). Tilt-shift is the mild vertical-DOF
 // miniature-photo feel (?tilt=0 disables, photo only); grain is off by
@@ -18,10 +20,11 @@ import { SAOPass } from "three/addons/postprocessing/SAOPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { FXAAShader } from "three/addons/shaders/FXAAShader.js";
 import { qualitySettings } from "./quality.js";
 import { DEFAULT_LOOK, GRADE_LUMA, GRADE_WARM, GRADE_WARM_HI, GRADE_WARM_LO } from "./look.js";
 import { KuwaharaShader, PaintedPass, kuwaharaRadiusFor, outlineStrengthFor,
-  paintedPixelFactor } from "./painted.js";
+  paintedPixelFactor, temporalStableKuwahara } from "./painted.js";
 
 const TiltShiftShader = {
   uniforms: {
@@ -112,15 +115,22 @@ const GradeShader = {
 // SAO only with zero MSAA samples — the ANGLE Metal black-frame fix).
 // Painted replaces SAO with its own AO + outline passes and drops
 // tilt-shift; style defaults to photo so old callers keep today's chain.
+// 20a: painted ends grade → AA → output (MSAA via paintedSamples on
+// WebGL2, an FXAA pass just before output elsewhere).
 // 14f: AO runs before Kuwahara (low-frequency, survives it) and edges
 // after (1 px lines are high-variance outliers the Kuwahara selector
 // would erase) — so Kuwahara reads the post-AO colour and the 1 px edge
 // lands on the smoothed frame at full strength.
-export function postChainSpec(level, { saoOff = false, style = "photo" } = {}) {
+export function postChainSpec(level, { saoOff = false, style = "photo", kuwa = null } = {}) {
   const s = qualitySettings(level);
   if (!s.composer) return ["render"];
   if (style === "painted") {
-    return ["render", "ao", "kuwahara", "outline", "bloom", "grade", "output"];
+    // 20a: the AA step is MSAA (paintedSamples) on WebGL2, an FXAA pass
+    // just before output elsewhere. ?kuwa=0 drops the Kuwahara pass.
+    const chain = ["render", "ao"];
+    if (temporalStableKuwahara(level, kuwa) > 0) chain.push("kuwahara");
+    chain.push("outline", "bloom", "grade", "aa", "output");
+    return chain;
   }
   const chain = ["render"];
   if (s.sao && !saoOff) chain.push("sao");
@@ -207,6 +217,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
     debug: opts.debug === "albedo" || opts.debug === "depth" || opts.debug === "outline"
       ? opts.debug : null, // ?debug= painted-only debug view
     pxParam: opts.px ?? null, // ?px= main-pass pixel factor override
+    kuwaParam: opts.kuwa ?? null, // ?kuwa=0 drops the Kuwahara pass
     framedWidthM: null, // live framing (outline fade); set via update()
     // Stage 11: bloom threshold above window brightness (only lamps
     // bloom) and grade saturation, both from the look table (?look=).
@@ -220,6 +231,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
     edgePass: null, // painted edges (after Kuwahara; shares AO depth)
     debugPass: null, // lazy ?debug=depth|outline instance (any quality)
     kuwahara: null,
+    fxaa: null, // painted AA fallback when WebGL2 MSAA is unavailable
     bloom: null,
     tiltPass: null,
     grade: null,
@@ -230,7 +242,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
   function build() {
     const s = qualitySettings(state.level);
     const spec = postChainSpec(state.level,
-      { saoOff: state.saoOff, style: state.style });
+      { saoOff: state.saoOff, style: state.style, kuwa: state.kuwaParam });
     state.spec = spec;
     if (!s.composer) {
       state.composer = null;
@@ -238,27 +250,38 @@ export function createPost(renderer, scene, camera, opts = {}) {
       state.aoPass = null;
       state.edgePass = null;
       state.kuwahara = null;
+      state.fxaa = null;
       state.bloom = null;
       state.tiltPass = null;
       state.grade = null;
       return;
     }
     const composer = new EffectComposer(renderer);
-    if (s.composerSamples > 0 && renderer.capabilities.isWebGL2) {
+    const painted = state.style === "painted";
+    // 20a: painted anti-aliasing is MSAA on WebGL2 (its own AO pass runs
+    // here, never SAO, so the ANGLE/Metal SAO black-frame rule behind
+    // composerSamples: 0 does not apply). Photo keeps composerSamples.
+    const webgl2 = !!(renderer.capabilities && renderer.capabilities.isWebGL2);
+    const paintedMSAA = painted && (s.paintedSamples || 0) > 0 && webgl2;
+    if (paintedMSAA) {
+      for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+        rt.samples = s.paintedSamples;
+      }
+    } else if (!painted && s.composerSamples > 0 && webgl2) {
       for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
         rt.samples = s.composerSamples;
       }
     }
-    const painted = state.style === "painted";
     if (painted) {
-      // Pixel crispness: the main pass renders at 1/pixelFactor and the
-      // final quad upscales with nearest filtering (?px=1 disables).
+      // 20a: full-res main pass by default; linear upscale. Nearest
+      // filtering only when ?px=2+ explicitly opts into coarse pixels.
       const pf = paintedPixelFactor(state.level, state.pxParam);
       state.pixelFactor = pf;
       composer.setPixelRatio(Math.max(0.2, renderer.getPixelRatio() / pf));
+      const mag = pf > 1 ? THREE.NearestFilter : THREE.LinearFilter;
       for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
-        rt.texture.magFilter = THREE.NearestFilter;
-        rt.texture.minFilter = THREE.NearestFilter;
+        rt.texture.magFilter = mag;
+        rt.texture.minFilter = mag;
       }
     }
     composer.addPass(new RenderPass(scene, camera));
@@ -268,9 +291,15 @@ export function createPost(renderer, scene, camera, opts = {}) {
       state.aoPass = ao;
       state.sao = null;
       composer.addPass(ao);
-      const kuwahara = new ShaderPass(KuwaharaShader(kuwaharaRadiusFor(state.level)));
-      state.kuwahara = kuwahara;
-      composer.addPass(kuwahara);
+      // 20a: gentle radius-1 Kuwahara; ?kuwa=0 removes the pass so the
+      // frame cannot boil under camera motion.
+      state.kuwahara = null;
+      const kr = temporalStableKuwahara(state.level, state.kuwaParam);
+      if (kr > 0) {
+        const kuwahara = new ShaderPass(KuwaharaShader(kr));
+        state.kuwahara = kuwahara;
+        composer.addPass(kuwahara);
+      }
       const edge = new PaintedPass(scene, camera, { shareDepthFrom: ao });
       edge.setAOStrength(0); // edges only, on the smoothed frame
       edge.setOutlineStrength(outlineStrengthFor(state.framedWidthM));
@@ -306,8 +335,25 @@ export function createPost(renderer, scene, camera, opts = {}) {
     grade.uniforms.warm.value = state.style === "painted" ? 0 : 1;
     state.grade = grade;
     composer.addPass(grade);
+    // 20a: painted AA without WebGL2 MSAA is one FXAA pass just before
+    // output (the renderer's antialias flag cannot help inside a
+    // composer). Resolution is inverse pixels; refreshed in setSize().
+    state.fxaa = null;
+    if (painted && !paintedMSAA) {
+      const fxaa = new ShaderPass(FXAAShader);
+      syncFxaaResolution(fxaa);
+      state.fxaa = fxaa;
+      composer.addPass(fxaa);
+    }
     composer.addPass(new OutputPass());
     state.composer = composer;
+  }
+
+  function syncFxaaResolution(fxaa) {
+    if (!fxaa) return;
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    fxaa.uniforms.resolution.value.set(
+      1 / Math.max(2, size.x), 1 / Math.max(2, size.y));
   }
 
   build();
@@ -329,6 +375,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
       if (flags.sao !== undefined) state.saoOff = flags.sao === false;
       if (flags.style !== undefined) state.style = flags.style;
       if (flags.px !== undefined) state.pxParam = flags.px;
+      if (flags.kuwa !== undefined) state.kuwaParam = flags.kuwa;
       const old = state.composer;
       build();
       if (old && old !== state.composer) old.dispose();
@@ -343,6 +390,7 @@ export function createPost(renderer, scene, camera, opts = {}) {
         state.kuwahara.uniforms.resolution.value.set(
           Math.max(2, Math.round(w * pr)), Math.max(2, Math.round(h * pr)));
       }
+      syncFxaaResolution(state.fxaa);
     },
     update({ bloom = 0, framedWidthM = null } = {}, dt = 0.016) {
       state.time += dt;

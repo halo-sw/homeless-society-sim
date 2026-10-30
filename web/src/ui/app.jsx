@@ -35,9 +35,10 @@ import { fmtMinutes, fmtDistance, fmtCount, fmtIndex, fmtPercent } from "../mone
 import { BAND_LABEL, BAND_ORDER } from "../journey.js";
 import { congestionBand, congestionPeakLine } from "../engine/journey.js";
 import { criterionTitle } from "../engine/criteria.js";
-import { chipDisplay, tickerDisplay, FATIGUE_MODEL_NOTE } from "../nowcard.js";
+import { chipDisplay, tickerDisplay, FATIGUE_MODEL_NOTE, familyRowText } from "../nowcard.js";
 import { hhmm, navFromOutings, outingIndexAt, stepIndexAt } from "../timeline.js";
 import { ActivityIcon, ActivityLegend } from "./timeline.jsx";
+import { AERIAL_CREDIT } from "../aerial/drape.js";
 import { priorityValues, myScore } from "../priorities.js";
 
 function useStore() {
@@ -249,7 +250,7 @@ function FatigueBlock({ fatigue, nowMin }) {
   return (
     <VStack gap={1}>
       <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text>{`지금 피곤한 정도 ${fmtIndex(f.value)}${deltaText}`}</Text>
+        <Text>{`지금 피곤한 정도 ${Math.round(f.value)}/100${deltaText}`}</Text>
         {f.source && <SourceBadge source={f.source} />}
       </HStack>
       <div className="ui-progress" role="progressbar" aria-label="피곤한 정도 (0–100)"
@@ -407,7 +408,7 @@ function SimHero({ state }) {
         </div>
         {n.rows.map((r) => (
           <div key={r.agentKey} className="ui-hero-line">
-            {`${r.label} · ${r.line}${r.fatigue === null || r.fatigue === undefined ? "" : ` · 피곤한 정도 ${fmtIndex(r.fatigue)}`}`}
+            {familyRowText(r)}
           </div>
         ))}
       </div>
@@ -425,6 +426,19 @@ function SimHero({ state }) {
       </div>
       <div className="ui-hero-line">{heroSentence(state)}</div>
       {big && <div className="ui-hero-big">{big}</div>}
+      {n.evidence && n.evidence.length > 0 && (
+        <div className="ui-hero-evidence">
+          <div className="ui-hero-evidence-head">이 장면이 결과에 들어가는 곳</div>
+          <ul className="ui-hero-evidence-list">
+            {n.evidence.map((e, i) => (
+              <li key={i} className="ui-hero-evidence-line">
+                <span>{e.text}</span>
+                {e.tag && <span className="ui-tag">{e.tag}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {leg && (
         <div className="ui-hero-cong">
           <div className="ui-progress" role="progressbar" aria-label="타는 구간 붐비는 정도"
@@ -563,18 +577,40 @@ function MomentsSection({ state }) {
   );
 }
 
+// 20e: 지금 식구들 모습 — every household member in one rounded line,
+// right after 나 (지금). Hidden in free-camera mode (the hero already
+// shows the rows there) and when the scene publishes no rows.
+function FamilySection({ state }) {
+  const n = state.now;
+  if (!n || n.free || !Array.isArray(n.familyRows) || n.familyRows.length === 0) return null;
+  return (
+    <div className="ui-hero" data-testid="sim-family">
+      <div className="ui-hero-top">
+        <span className="ui-hero-name">지금 식구들 모습</span>
+      </div>
+      {n.familyRows.map((r) => (
+        <div key={r.agentKey} className="ui-hero-line">
+          {familyRowText(r)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// 20e drawer order: 나 (지금) → 지금 식구들 모습 → 오늘 → 살아 보니 →
+// 왜/비교·기록 → 내 기준 점수 last (it already lives on the result page).
 export function SimDrawer({ state }) {
   return (
     <div className="ui-drawer13f2">
-      <MyScoreRow state={state} />
-      <MomentsSection state={state} />
       <SimHero state={state} />
+      <FamilySection state={state} />
       <details className="ui-section" open data-testid="section-today">
         <summary className="ui-section-head">오늘</summary>
         <div className="ui-section-body">
           <TodayList state={state} />
         </div>
       </details>
+      <MomentsSection state={state} />
       <details className="ui-section" data-testid="section-why">
         <summary className="ui-section-head">왜 이렇게 판단했나</summary>
         <div className="ui-section-body">
@@ -587,6 +623,7 @@ export function SimDrawer({ state }) {
           <RecordSection state={state} />
         </div>
       </details>
+      <MyScoreRow state={state} />
     </div>
   );
 }
@@ -896,8 +933,22 @@ function LegendCard({ state, onClose }) {
             </VStack>
           )}
           <Text type="supporting">{legend.note}</Text>
+          {state.aerial && <Text type="supporting">{AERIAL_CREDIT}</Text>}
         </VStack>
       </Card>
+    </div>
+  );
+}
+
+// 20e: the sim credit sits bottom-left just above the timeline (the full
+// AttrLine stays in the legend card). OSM always shows; the aerial part
+// only after the drape publishes state.aerial (20d dropped the key).
+export function SimCredit({ state }) {
+  return (
+    <div className="ui-simcredit" data-testid="sim-credit">
+      {state.aerial
+        ? "항공사진 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap"
+        : "© OpenStreetMap"}
     </div>
   );
 }
@@ -917,6 +968,7 @@ function AttrLine({ state }) {
           {jeonse && " · 실거래: 국토교통부 실거래가 공개시스템(참고용) · 등기: GIS건물통합정보 · 체크리스트: 인터넷등기소·정부24·HUG/HF/SGI"}
           {safety && " · 치안: 경찰청 범죄 발생 지역별 통계 (2025년)"}
           {congestion && " · 혼잡도: 서울교통공사 지하철혼잡도정보(2026-09-30 기준, 공공누리 3유형)"}
+          {state.aerial && ` · ${AERIAL_CREDIT}`}
         </Text>
       </div>
     </div>
@@ -969,6 +1021,7 @@ export function App() {
         {state.viewChip && (
           <div className="ui-viewchip overlay">{state.viewChip}</div>
         )}
+        <AttrLine state={state} />
       </>
     );
   }
@@ -979,6 +1032,7 @@ export function App() {
       </div>
       <div className="ui-sim13-stage">
         <MapTools state={state} legendOpen={legendOpen} onLegend={toggleLegend} />
+        <SimCredit state={state} />
         <TimelineBar state={state} compact />
       </div>
       <div className="ui-sim13-drawer overlay">

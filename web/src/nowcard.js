@@ -196,7 +196,7 @@ function rideCardFor(base, run, away, minute) {
     : null;
   let now;
   if (banner) {
-    const legBits = ride.legs.map((l) => `${l.lineName} ${l.from}→${l.to} (약 ${l.minutes}분)`).join(" · 환승 · ");
+    const legBits = ride.legs.map((l) => `${l.lineName} ${l.from}→${l.to} (약 ${Math.round(l.minutes)}분)`).join(" · 환승 · ");
     now = `지하철 이동 중 · ${legBits} · ${Math.ceil(banner.minutesLeft)}분 남음`;
   } else {
     const left = Math.ceil(Math.max(0, away.end_min - m));
@@ -209,7 +209,7 @@ function rideCardFor(base, run, away, minute) {
     minutesLeft: banner ? Math.ceil(banner.minutesLeft) : Math.ceil(Math.max(0, away.end_min - m)),
     inTransfer: banner ? banner.inTransfer : false,
     legs: banner ? banner.legs : [],
-    transfers: ride ? ride.transfers.map((t) => ({ station: t.station, minutes: t.minutes })) : [],
+    transfers: ride ? ride.transfers.map((t) => ({ station: t.station, minutes: Math.round(t.minutes) })) : [],
     fallback: !ride && detail.ride_fallback ? { ...detail.ride_fallback } : null,
   };
   if (!away.cause) {
@@ -245,7 +245,7 @@ export function fatigueFor({ run, agentKey, day, minute }) {
     && m >= t.depart_min && m < t.arrive_min);
   if (trip) {
     out.delta = trip.fatigue_delta ?? null;
-    out.note = `걸어서 ${trip.minutes}분 이동`;
+    out.note = `걸어서 ${Math.round(trip.minutes)}분 이동`;
     out.criterionIds = ["C-fatigue-load"];
     return out;
   }
@@ -300,6 +300,17 @@ export function fatigueFor({ run, agentKey, day, minute }) {
   out.note = "머무는 중";
   out.criterionIds = [];
   return out;
+}
+
+// One "지금 식구들 모습" row, whole numbers only (stage 20e): minutes
+// round (the "약" stays), fatigue reads "{n}/100". Any decimal minutes
+// already baked into `line` are rounded too, so the UI never shows
+// "8.6분" or a bare "피곤한 정도 4.8".
+export function familyRowText({ label, line, fatigue }) {
+  const fixed = String(line || "").replace(/(\d+(?:\.\d+)?)분/g, (m, n) => `${Math.round(Number(n))}분`);
+  const tail = fatigue === null || fatigue === undefined || fatigue === ""
+    ? "" : ` · 피곤한 정도 ${Math.round(Number(fatigue))}/100`;
+  return `${label} · ${fixed}${tail}`;
 }
 
 // Every household member in one row (free camera).
@@ -379,18 +390,18 @@ export function simMetaFor({ household, scenario, run, homes }) {
   const assumptions = [];
   if (scenario) {
     if (scenario.workday_minutes) {
-      assumptions.push({ label: `회사에 머무는 시간 ${scenario.workday_minutes}분`, source: "가정값" });
+      assumptions.push({ label: `회사에 머무는 시간 ${Math.round(scenario.workday_minutes)}분`, source: "가정값" });
     }
     for (const m of scenario.household.members || []) {
       if (!m.work || m.work.type !== "station_ride") continue;
       const rm = m.work.ride_minutes;
       const rideSource = m.work.ride_minutes_source === "user_input" ? "고객 입력" : "가정값";
       if (Number.isFinite(rm)) {
-        assumptions.push({ label: `${m.label} 차·지하철 탄 시간 ${rm}분`, source: rideSource });
+        assumptions.push({ label: `${m.label} 차·지하철 탄 시간 ${Math.round(rm)}분`, source: rideSource });
       } else if (rm && typeof rm === "object") {
         for (const [home, v] of Object.entries(rm)) {
           if (Number.isFinite(v)) {
-            assumptions.push({ label: `${m.label} ${home} 경로 차·지하철 탄 시간 ${v}분`,
+            assumptions.push({ label: `${m.label} ${home} 경로 차·지하철 탄 시간 ${Math.round(v)}분`,
               source: rideSource });
           }
         }

@@ -15,17 +15,20 @@ export const QUALITY_SETTINGS = {
     // write-back combo is the prime suspect. AA loss at pixelRatio 2 is
     // minor; a black screen is not. The renderer also carries a
     // black-frame guard that drops high→medium if the framebuffer ever
-    // reads back uniform (see renderFrameGuard).
+    // reads back uniform (see renderFrameGuard). 20a: the painted chain
+    // carries its own MSAA (paintedSamples: 4 on WebGL2) — painted uses
+    // its own AO pass, never SAO, so the SAO black-frame rule above
+    // does not apply to it. composerSamples stays 0 for the photo chain.
     pixelRatio: 2, shadowMapSize: 2048, composer: true, composerSamples: 0,
-    sao: true, bloom: true, tiltShift: true, grain: false,
+    paintedSamples: 4, sao: true, bloom: true, tiltShift: true, grain: false,
   },
   medium: {
     pixelRatio: 1.5, shadowMapSize: 2048, composer: true, composerSamples: 0,
-    sao: false, bloom: true, tiltShift: true, grain: false,
+    paintedSamples: 4, sao: false, bloom: true, tiltShift: true, grain: false,
   },
   low: {
     pixelRatio: 1, shadowMapSize: 1024, composer: false, composerSamples: 0,
-    sao: false, bloom: false, tiltShift: false, grain: false,
+    paintedSamples: 0, sao: false, bloom: false, tiltShift: false, grain: false,
   },
 };
 

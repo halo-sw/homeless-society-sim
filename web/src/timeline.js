@@ -128,7 +128,7 @@ export function segmentTitle(seg) {
   const span = `${hhmm(seg.start)}–${end}`;
   const what = activityLabel(seg.activity);
   const where = seg.label && seg.activity !== "home" ? ` · ${seg.label}` : "";
-  const mins = seg.activity === "home" ? "" : ` ${seg.minutes}분`;
+  const mins = seg.activity === "home" ? "" : ` ${Math.round(seg.minutes)}분`;
   return `${span} ${what}${where}${mins}`;
 }
 
@@ -242,8 +242,8 @@ function stepsForOuting(outing) {
           const xfer = (ride.transfers || [])[li];
           if (xfer && li < ride.legs.length - 1) {
             steps.push({ kind: "transfer",
-              label: `${xfer.station} 환승 ${xfer.minutes}분`,
-              minute: a.start_min, minutes: xfer.minutes });
+              label: `${xfer.station} 환승 ${Math.round(xfer.minutes)}분`,
+              minute: a.start_min, minutes: Math.round(xfer.minutes) });
           }
         }
         const dw = a.detail && a.detail.dest_walk;

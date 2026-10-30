@@ -21,6 +21,14 @@ export const GLIDE_FRAME_M = 500;
 // Camera azimuth: offset direction (x east, z south-positive in the
 // x-right/z-towards-viewer sense main.js uses), unnormalized.
 export const TOUR_AZIMUTH = [0.45, 0.75];
+// Stage 20g: follow-mode wheel zoom scales with wheel delta, not event count.
+export function followZoomAfterWheel(zoom, deltaY, deltaMode) {
+  let px = Number(deltaY) || 0;
+  if (Number(deltaMode) === 1) px *= 16;
+  else if (Number(deltaMode) === 2) px *= 400;
+  const z = Number(zoom) || 1;
+  return Math.min(6, Math.max(0.5, z * Math.exp(px * 0.0015)));
+}
 // Stage 14e: painted (near-isometric) vs photo camera style.
 export const PAINTED_FOV_DEG = 10;
 export const PAINTED_PITCH_DEG = 32; // above the horizon (≈0.56 rad)
@@ -330,6 +338,25 @@ export function hostTowerIds(targetXY, footprints) {
 // of them (scores summed: the stop anchor plus the settled path end).
 // Candidates run default-first, so ties keep the 2b framing. Returns
 // {azimuth, occluders, overlapM}.
+// Stage 20e: follow-mode user offset (pure). basePose is {pos, look}
+// (arrays of 3); target is the followed [x, y, z] (defaults to look).
+// zoom multiplies the camera-to-target distance (clamped 0.5-6);
+// yawDeg rotates the offset around the target, keeping the height.
+export function applyFollowOffset(basePose, target, { zoom = 1, yaw = 0 } = {}) {
+  const z = Math.min(6, Math.max(0.5, Number(zoom) || 1));
+  const t = target || basePose.look || basePose.target || [0, 0, 0];
+  const p = basePose.pos || basePose.position || [0, 0, 0];
+  const dx = (p[0] - t[0]) * z;
+  const dy = (p[1] - t[1]) * z;
+  const dz = (p[2] - t[2]) * z;
+  const rad = ((Number(yaw) || 0) * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const rx = dx * cos - dz * sin;
+  const rz = dx * sin + dz * cos;
+  return { pos: [t[0] + rx, t[1] + dy, t[2] + rz], look: [t[0], t[1], t[2]], zoom: z, yaw: Number(yaw) || 0 };
+}
+
 export function pickStopAzimuth(targetXY, footprints, distance,
                                 candidates = STOP_AZIMUTHS,
                                 pitchDeg = TOUR_PITCH_DEG) {

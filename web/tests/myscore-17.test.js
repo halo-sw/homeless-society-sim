@@ -173,7 +173,7 @@ describe("17-2 drawer score row (SSR, no DOM)", () => {
     };
   }
 
-  it("shows the score above the hero with the default caption", () => {
+  it("shows the score last with the default caption (20e now-first drawer)", () => {
     const html = renderToString(
       React.createElement(SimDrawer, { state: stateWith(null) }));
     assert.ok(html.includes("내 기준 점수"), "title");
@@ -181,7 +181,7 @@ describe("17-2 drawer score row (SSR, no DOM)", () => {
     assert.ok(html.includes("비중 정하기"), "link to the tab");
     const rowAt = html.indexOf("myscore-row");
     const heroAt = html.indexOf("sim-hero");
-    assert.ok(rowAt !== -1 && heroAt !== -1 && rowAt < heroAt, "score above hero");
+    assert.ok(rowAt !== -1 && heroAt !== -1 && rowAt > heroAt, "score after hero (last)");
     const aAt = html.indexOf("A 내 기준 점수");
     const bAt = html.indexOf("B 내 기준 점수");
     assert.ok(aAt !== -1 && bAt !== -1 && aAt < bAt, "A/B order kept");
