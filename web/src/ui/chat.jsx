@@ -41,7 +41,7 @@ import { IntakeCard, HouseholdCard } from "./intake.jsx";
 import { CandidateCard, CandidateSkeleton } from "./candidate-card.jsx";
 import { exampleLine } from "./copy.js";
 import { TopBar } from "./topbar.jsx";
-import { OrbView } from "./orb.jsx";
+// 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
   INTAKE_STEPS, intakeState0, currentStep, prefillFromExtract,
@@ -51,7 +51,8 @@ import {
 import { selectPhotosForList } from "../places/select-photos.js";
 import { newUsageLog, recordTurn } from "../models/catalog.js";
 import { loadByoKey } from "../consult/byok.js";
-import { buildOrbData } from "../orb.js";
+import { buildChatMap, extractGreenRings } from "../chatmap.js";
+import { ChatMap } from "./chatmap.jsx";
 import { defaultOverrides, setOverride, resetOverride,
   encodeOverrides, decodeOverrides } from "../assumptions.js";
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
@@ -72,7 +73,7 @@ import { outingsFor, hhmm } from "../timeline.js";
 import {
   extractStep, searchStep, searchWithBoxes, scenarioStep, runStep,
   loadHomesIndex, loadNetwork, loadSchedule, loadPhotosManifest,
-  loadNamedPhotos, loadRegions, loadPayroll,
+  loadNamedPhotos, loadRegions, loadPayroll, loadCorridorTiles,
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
@@ -211,7 +212,7 @@ export function runReadiness(picks, candidates) {
 }
 
 export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick,
-    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example }) {
+    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
   const candidates = (data && data.candidates) || [];
   const { canRun, hint } = runReadiness(picks, candidates);
   // 13: one photo per card at most — dedup across the whole list.
@@ -240,9 +241,11 @@ export function CandidatesCard({ data, tenure, sort, onSort, picks, onTogglePick
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
         )}
         {withPhotos.map(({ candidate: c, photos }, i) => (
-          <div key={c.id}
+          <div key={c.id} id={`cand-${c.id}`}
             onMouseEnter={() => onHover && onHover(`home:${c.id}`)}
-            onMouseLeave={() => onHover && onHover(null)}>
+            onMouseLeave={() => onHover && onHover(null)}
+            style={highlightId === `home:${c.id}`
+              ? { outline: "2px solid #2f6fed", borderRadius: 12 } : undefined}>
             <VStack gap={1}>
               <CandidateCard candidate={c} tenure={tenure} destName={destName}
                 photos={photos} index={i} picked={picks.includes(c.id)}
@@ -579,7 +582,8 @@ function CardMsg({ msg, handlers, toolRows }) {
             onPreview3D={handlers.onPreview3D} onJeonse={handlers.onJeonse}
             onRun={handlers.onRun} onDetail={handlers.onDetail}
             onHover={handlers.onHover} photoDeps={handlers.photoDeps}
-            destName={handlers.destName} example={msg.example} />
+            destName={handlers.destName} example={msg.example}
+            highlightId={cardHi} />
         )}
         {msg.kind === "intake" && (
           <IntakeFlowCard intake={handlers.intake} household={handlers.household}
@@ -697,6 +701,25 @@ export function ChatScreen() {
   const [namedPhotos, setNamedPhotos] = useState(null);
   const [cardHi, setCardHi] = useState(null);
   const [orbFilter, setOrbFilter] = useState(null);
+  // 18: corridor ground tiles (real 시군구 boundaries + open water)
+  // intersecting the current pins; the map paints fine without them.
+  const [mapTiles, setMapTiles] = useState([]);
+  useEffect(() => {
+    const cands = (candidatesData && candidatesData.result
+      && candidatesData.result.candidates) || [];
+    const pts = cands.filter((c) => Number.isFinite(c.lon) && Number.isFinite(c.lat));
+    if (pts.length === 0) { setMapTiles([]); return undefined; }
+    const lons = pts.map((c) => c.lon);
+    const lats = pts.map((c) => c.lat);
+    const pad = 0.03;
+    const bbox = [Math.min(...lons) - pad, Math.min(...lats) - pad,
+      Math.max(...lons) + pad, Math.max(...lats) + pad];
+    let stale = false;
+    loadCorridorTiles(fetchJson, bbox).then((tiles) => {
+      if (!stale) setMapTiles(tiles || []);
+    });
+    return () => { stale = true; };
+  }, [candidatesData]);
   const idRef = useRef(0);
   const busyRef = useRef(false);
   const profileRef = useRef(null);
@@ -958,6 +981,22 @@ export function ChatScreen() {
       const areas = new Map();
       for (const p of picked) {
         if (!areas.has(p.scene)) areas.set(p.scene, await loadBoxArea(fetchJson, p.scene));
+      }
+      // 18: water + park rings out of the picked boxes' landuse (the run
+      // needs these area docs anyway) for the stage map's green layer.
+      try {
+        const cache = (dataRef.current && dataRef.current.greenBoxes)
+          || new Map();
+        for (const p of picked) {
+          if (!p.scene || cache.has(p.scene)) continue;
+          const area = areas.get(p.scene);
+          if (area && Array.isArray(area.landuse)) {
+            cache.set(p.scene, extractGreenRings(area.landuse));
+          }
+        }
+        if (dataRef.current) dataRef.current.greenBoxes = cache;
+      } catch {
+        // The map paints fine without the green layer.
       }
       const homes = picked.map((p) => homeForScenario(p,
         complexNameForCandidate(p, areas.get(p.scene)) || p.name));
@@ -1399,16 +1438,32 @@ export function ChatScreen() {
             })()}
           </section>
           <StageArea
-            orbData={buildOrbData({
+            map={buildChatMap({
               regions: dataRef.current?.regionsDoc || { regions: [] },
-              stations: [],
-              homes: dataRef.current?.index?.homes || [],
+              network: dataRef.current?.network || null,
+              tiles: mapTiles,
+              green: mergeGreenBoxes(dataRef.current?.greenBoxes),
               candidates: candidatesData?.result?.candidates || [],
-              manifest: dataRef.current?.manifest || null,
-              rentalCoverage: {},
+              picks,
+              workplaceStation: destName || null,
+              tenure: candidatesData?.tenure || null,
             })}
             contextLine={stageContextLine(profile, candidatesData)}
             cardHi={cardHi}
+            onPinHover={(key) => setCardHi(key)}
+            onPinClick={(id) => {
+              try {
+                const el = typeof document !== "undefined"
+                  ? document.getElementById(`cand-${id}`) : null;
+                if (el && typeof el.scrollIntoView === "function") {
+                  const reduced = typeof window !== "undefined" && window.matchMedia
+                    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                  el.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+                }
+              } catch {
+                // Hover still highlights the card; scroll is best-effort.
+              }
+            }}
             onOrbRegion={(regionId) => {
               setOrbFilter(regionId);
               toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
@@ -1444,8 +1499,23 @@ export function stageContextLine(profile, candidatesData) {
   return bits.length > 0 ? bits.join(" · ") : "";
 }
 
-function StageArea({ orbData, cardHi, onOrbRegion, contextLine }) {
-  const shapes = (orbData && orbData.shapes) || [];
+// 18: merge cached per-box green rings (water + parks) into one layer.
+export function mergeGreenBoxes(cache) {
+  const water = [];
+  const parks = [];
+  try {
+    for (const g of (cache && cache.values()) || []) {
+      if (g && Array.isArray(g.water)) water.push(...g.water);
+      if (g && Array.isArray(g.parks)) parks.push(...g.parks);
+    }
+  } catch {
+    // The map paints fine without the green layer.
+  }
+  return { water, parks };
+}
+
+function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine }) {
+  const regions = (map && map.regions) || [];
   return (
     <section className="ui-chat-stage" aria-label="중심 무대">
       <div style={{ padding: "8px 12px", background: "rgba(255,253,248,0.98)",
@@ -1453,12 +1523,13 @@ function StageArea({ orbData, cardHi, onOrbRegion, contextLine }) {
         <Text type="supporting">
           {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
           {" · "}
-          {shapes.length > 0 ? `지역 ${shapes.length}곳` : "지역을 불러오는 중…"}
+          {regions.length > 0 ? `지역 ${regions.length}곳` : "지역을 불러오는 중…"}
         </Text>
       </div>
       <div className="ui-chat-stage-body">
-        {shapes.length > 0 ? (
-          <OrbView data={orbData} onRegion={onOrbRegion} highlightKey={cardHi} />
+        {regions.length > 0 ? (
+          <ChatMap map={map} cardHi={cardHi}
+            onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />
         ) : (
           <div style={{ padding: 16 }}>
             <Card padding={3}>

@@ -568,6 +568,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-page);
 }
 .ui-chat-stage-body { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
+.ui-chatmap { position: absolute; inset: 0; }
+.ui-chatmap svg { display: block; }
 .ui-chat-drawer {
   flex: none; width: 360px; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden;
   background: var(--ui-card);
