@@ -12,6 +12,7 @@ import { createTranslator } from "../src/i18n/translate.js";
 import { phrases, patterns } from "../src/i18n/en.js";
 import { WORDS } from "../src/i18n/en-words.js";
 import { callTool, createSession } from "../src/consult/tools.js";
+import { translateTree, createState } from "../src/i18n/dom.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -79,5 +80,77 @@ describe("29a1 english trust", () => {
 
   it("live-in fallback never points below a map", () => {
     assert.ok(!localNoAnswerLine("두 집에서 살아 봐 줘").includes("지도 아래"));
+  });
+});
+
+// Stage 29a1b: the translator never touches what the customer is typing.
+// Minimal DOM fakes (same shape as i18n-24a.test.js): the dom core only
+// uses nodeType, nodeValue, childNodes, parentNode, tagName, getAttribute.
+function fakeText(value) {
+  return { nodeType: 3, nodeValue: value, parentNode: null, childNodes: [] };
+}
+function fakeEl(tag, { attrs = {}, kids = [] } = {}) {
+  const el = {
+    nodeType: 1,
+    tagName: tag,
+    parentNode: null,
+    childNodes: kids,
+    _attrs: { ...attrs },
+    getAttribute(name) {
+      return Object.hasOwn(this._attrs, name) ? this._attrs[name] : null;
+    },
+    setAttribute(name, value) {
+      this._attrs[name] = String(value);
+    },
+  };
+  for (const k of kids) k.parentNode = el;
+  return el;
+}
+
+describe("29a1b composer guard", () => {
+  const TYPED = "맞벌이 예비부부, 강남 출근";
+  const tr = () => createTranslator({
+    phrases: { [TYPED]: "MANGLED", "출퇴근 상한?": "Commute cap?" },
+    patterns: [],
+  });
+  it("typing inside contenteditable is never translated", () => {
+    const text = fakeText(TYPED);
+    const ed = fakeEl("DIV", { attrs: { contenteditable: "true" }, kids: [
+      fakeEl("P", { kids: [fakeEl("SPAN", { kids: [text] })] }),
+    ] });
+    translateTree(ed, tr(), createState());
+    assert.equal(text.nodeValue, TYPED);
+  });
+  it("the added span itself is skipped too", () => {
+    const text = fakeText(TYPED);
+    const span = fakeEl("SPAN", { kids: [text] });
+    fakeEl("DIV", { attrs: { contenteditable: "true" }, kids: [
+      fakeEl("P", { kids: [span] }),
+    ] });
+    translateTree(span, tr(), createState());
+    assert.equal(text.nodeValue, TYPED);
+  });
+  it("textarea content is never translated", () => {
+    const text = fakeText(TYPED);
+    translateTree(fakeEl("TEXTAREA", { kids: [text] }), tr(), createState());
+    assert.equal(text.nodeValue, TYPED);
+  });
+  it("a normal div is still translated", () => {
+    const text = fakeText("출퇴근 상한?");
+    translateTree(fakeEl("DIV", { kids: [fakeEl("SPAN", { kids: [text] })] }), tr(), createState());
+    assert.equal(text.nodeValue, "Commute cap?");
+  });
+});
+
+describe("29a1b name gloss", () => {
+  it("keeps digits, hyphens and brackets tight", async () => {
+    const { HomeName } = await import("../src/ui/candidate-card.jsx");
+    const el = HomeName({ name: "현대아파트(75-1)", lang: "en" });
+    assert.equal(el.props.children[1].props.children, " (Hyeondaeapateu(75-1))");
+  });
+  it("no Hangul means no gloss", async () => {
+    const { HomeName } = await import("../src/ui/candidate-card.jsx");
+    const el = HomeName({ name: "Maple 101", lang: "en" });
+    assert.equal(el.props.children[1], null);
   });
 });

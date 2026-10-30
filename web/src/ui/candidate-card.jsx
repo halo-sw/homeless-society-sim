@@ -116,7 +116,7 @@ const SRC_CLS = { official: "ui-src-official", estimate: "ui-src-estimate", said
 export function HomeName({ name, lang = LANG }) {
   const original = String(name ?? "");
   const gloss = lang === "en" && /[가-힣]/.test(original)
-    ? romanizeName(original).replace(/([^\d\s])(\d)/g, "$1 $2") : "";
+    ? romanizeName(original) : "";
   return (
     <span className="ui-home-name">
       <span data-no-i18n>{original}</span>
