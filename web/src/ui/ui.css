@@ -959,6 +959,43 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; cursor: pointer;
   color: var(--ds-ink-2); font-size: var(--ds-t-14); line-height: 1; }
+/* 31m: hiding the phone-docked card's neighbours is a hidden
+   attribute, never opacity — the flex and float displays would
+   otherwise override the UA [hidden] rule. */
+.ui-chatmap-side[hidden],
+.ui-chatmap-credit[hidden] { display: none; }
+/* 31m: the phone credit (one short line) and the docked pin card
+   (≤ 480 px only). The credit sits bottom-left, clear of the tray,
+   sized to its content; the card docks full-width above the tray,
+   over the tags. Desktop keeps the side-column credit and the
+   floating card. */
+@media (max-width: 480px) {
+  .ui-chatmap .ui-chatmap-side .ui-chatmap-credit.is-desktop { display: none; }
+  .ui-chatmap .ui-chatmap-credit.is-phone {
+    position: absolute; z-index: 5;
+    left: var(--ds-s-16);
+    bottom: calc(var(--ui-chat-tray-h, calc(var(--ds-s-48) * 2 + var(--ds-s-24))) + var(--ds-s-16));
+    width: fit-content;
+    max-width: calc(100% - var(--ds-s-16) * 2);
+    display: flex; flex-direction: column; gap: var(--ds-s-4);
+    padding: calc(var(--ds-s-4) / 2) var(--ds-s-8);
+    font-size: var(--ds-t-12); color: var(--ds-ink-2); }
+  .ui-chatmap-credit-btn { background: none; border: none; padding: 0;
+    font: inherit; color: inherit; cursor: pointer; white-space: nowrap;
+    text-align: left; }
+  .ui-chatmap-credit-full { white-space: normal; overflow-wrap: anywhere; }
+  .ui-chatmap .ui-chatmap-credit.is-phone[hidden] { display: none; }
+  .ui-chatmap .ui-chatmap-pincard.is-docked {
+    left: var(--ds-s-16) !important;
+    right: var(--ds-s-16);
+    width: auto;
+    top: auto !important;
+    bottom: calc(var(--ui-chat-tray-h, calc(var(--ds-s-48) * 2 + var(--ds-s-24))) + var(--ds-s-16)) !important;
+    transform: none; }
+}
+@media (min-width: 481px) {
+  .ui-chatmap-credit.is-phone { display: none; }
+}
 .ui-pick-name { max-width: 180px; overflow-wrap: anywhere;
   word-break: keep-all; font-size: var(--ui-t14); }
 .ui-pick-x { background: none; border: none; cursor: pointer;

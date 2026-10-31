@@ -127,12 +127,20 @@ function FitIcon() {
 }
 
 export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
-  picks, onTogglePick, hasFilters }) {
+  picks, onTogglePick, hasFilters, initialSelectedId }) {
   const mountRef = useRef(null);
   const [size, setSize] = useState(null);
   const [expanded, setExpanded] = useState(null);
   // 31f: the open pin card (pin id) and the hovered cluster.
-  const [selectedId, setSelectedId] = useState(null);
+  // 31m: initialSelectedId only seeds SSR / tests — clients open
+  // cards by clicking pins.
+  const [selectedId, setSelectedId] = useState(initialSelectedId || null);
+  // 31m: the phone credit's expanded full text.
+  const [creditOpen, setCreditOpen] = useState(false);
+  // 31m: chrome boxes measured from the DOM (stage px), set after
+  // mount — null on SSR / first render, where the guessed boxes
+  // below stand in.
+  const [chrome, setChrome] = useState(null);
   const [clusterHi, setClusterHi] = useState(null);
   // 25a: screen-space zoom/pan (zoom around W/2, H/2).
   const [vt, setVt] = useState({ zoom: 1, panX: 0, panY: 0 });
@@ -168,6 +176,62 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   }, []);
   const W = (size && size[0]) || 640;
   const H = (size && size[1]) || 420;
+  // 31m: measure the overlay chrome into stage-px obstacle boxes —
+  // the filter row and title (siblings above this mount), the
+  // legend, each right-column control (its buttons, not the
+  // wrapper), the credit, and the open pin card. Each box is padded
+  // by 4 px. Re-measured on resize and whenever the card, the
+  // credit or the filters change.
+  useEffect(() => {
+    const el = mountRef.current;
+    if (!el || typeof document === "undefined" || typeof window === "undefined") {
+      return undefined;
+    }
+    const measure = () => {
+      const stage = el.getBoundingClientRect();
+      if (!(stage.width > 0) || !(stage.height > 0)) return;
+      const sx = W / stage.width;
+      const sy = H / stage.height;
+      const toBox = (r) => ({
+        x: (r.left - stage.left) * sx - 4,
+        y: (r.top - stage.top) * sy - 4,
+        w: r.width * sx + 8,
+        h: r.height * sy + 8,
+      });
+      const boxes = [];
+      const push = (node) => {
+        if (!node || !node.getBoundingClientRect) return;
+        if (node.hasAttribute && node.hasAttribute("hidden")) return;
+        const r = node.getBoundingClientRect();
+        if (r && r.width > 0 && r.height > 0) boxes.push(toBox(r));
+      };
+      const scope = (el.closest && el.closest(".ui-chat-stage-body")) || el;
+      if (scope && scope.querySelector) {
+        push(scope.querySelector(".ui-chatmap-filters"));
+        push(scope.querySelector(".ui-stage-title"));
+      }
+      push(el.querySelector(".ui-chatmap-legend"));
+      const side = el.querySelector(".ui-chatmap-side");
+      if (side && !(side.hasAttribute && side.hasAttribute("hidden"))) {
+        for (const child of side.children || []) {
+          if (child.classList && child.classList.contains("ui-chatmap-credit")) continue;
+          push(child);
+        }
+      }
+      push(el.querySelector(".ui-chatmap-credit.is-phone"));
+      push(el.querySelector(".ui-chatmap-side .ui-chatmap-credit"));
+      push(el.querySelector(".ui-chatmap-pincard"));
+      setChrome((prev) => (
+        JSON.stringify(prev) === JSON.stringify(boxes) ? prev : boxes));
+    };
+    measure();
+    const RO = window.ResizeObserver;
+    if (!RO) return undefined;
+    const ro = new RO(measure);
+    ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
+    return () => ro.disconnect();
+  }, [W, H, selectedId, creditOpen, hasFilters, (map && map.pins && map.pins.length) || 0]);
   // 31j: the rendering language (tags build their own lines, never
   // the DOM translator) and the compact phone tag size.
   const lang = currentLang();
@@ -293,18 +357,25 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
     // 31g: home pins lay out as two-part tags, so the collision
     // boxes are the measured tag sizes. 31j: measured on the
     // rendering-language lines, in the phone size when narrow.
+    // 31m: the compact form (header + price, no commute line) rides
+    // along as alt for crowded stages.
     const sz = tagSizePx(p, m.tenure, lang, { compact });
+    const shortSz = tagSizePx(p, m.tenure, lang, { compact, short: true });
     pillItems.push({ id: p.id, kind: "pill", x, y,
-      w: sz.w, h: sz.h, rank: p.picked ? 1 : 2 });
+      w: sz.w, h: sz.h, alt: { w: shortSz.w, h: shortSz.h },
+      rank: p.picked ? 1 : 2 });
   }
-  // 31j: overlay chrome the tags must never cover — the top-left
-  // title/legend/filter stack and the right control column. Tags
-  // move with a leader line instead. (The work marker's own box is
+  // 31m: overlay chrome the tags must never cover — measured from
+  // the DOM after mount (the filter row, title, legend, right
+  // controls, credit, open pin card). Until the first measure (SSR
+  // included) the old guessed boxes stand in: the top-left stack
+  // and the right control column. (The work marker's own box is
   // already occupied: rank 0 places first.)
-  const chromeObstacles = [
+  const chromeFallback = [
     { x: 0, y: 0, w: Math.min(300, W * 0.5), h: hasFilters ? 140 : 100 },
     { x: W - 64, y: 0, w: 64, h: H },
   ];
+  const chromeObstacles = chrome || chromeFallback;
   const laid = layoutMapPills(pillItems, W, H, chromeObstacles);
   const layById = new Map(laid.map((l) => [l.id, l]));
   // Pills folded into a cluster render through the cluster instead —
@@ -507,6 +578,21 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   // live browser was available here to re-run the mouse click.)
   const tagOrder = [...pins].sort((a, b) =>
     (((a.n ?? 0) - (b.n ?? 0)) || String(a.id).localeCompare(String(b.id))));
+  // 31m: the map credit — the full string on desktop (in the side
+  // column), one short line on phones (≤ 480 px, CSS picks which
+  // shows). Both live in data-no-i18n nodes built for the language.
+  const creditFull = !basemapOn
+    ? "© OpenStreetMap contributors"
+    : provider === "usgs"
+      ? "Map: USGS The National Map"
+      : lang === "en"
+        ? "Map © MOLIT Spatial Information Open Platform (VWorld) · © OpenStreetMap contributors"
+        : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors";
+  const creditShort = !basemapOn
+    ? "© OpenStreetMap"
+    : provider === "usgs"
+      ? "© USGS"
+      : "© VWorld · © OpenStreetMap";
   return (
     <div ref={mountRef} className="ui-chatmap" style={{ width: "100%", height: "100%", position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%"
@@ -714,8 +800,12 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
             const l = layById.get(p.id);
             const [px, py] = toXYz(p.lon, p.lat);
             // 31g: the tag's three lines and its measured box.
+            // 31m: a compact placement paints without the commute
+            // line (the aria-label still names the minutes).
+            const isShort = !!(l && l.short);
             const { header, price, commute } = tagLines(p, { tenure: m.tenure, lang });
-            const sz = tagSizePx(p, m.tenure, lang, { compact });
+            const lines = isShort ? { header, price, commute: null } : { header, price, commute };
+            const sz = tagSizePx(p, m.tenure, lang, { compact, short: isShort });
             const box = (l && l.box) || { x: px - sz.w / 2, y: py - fs(12) - sz.h, w: sz.w, h: sz.h };
             const hi = cardHi === `home:${p.id}`;
             const picked = !!p.picked;
@@ -731,7 +821,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
             const tailTipY = box.y + box.h + 6;
             const zoom = hi
               ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
-            return { l, px, py, header, price, commute, box, hi, picked,
+            return { l, px, py, header: lines.header, price: lines.price,
+              commute: lines.commute, box, hi, picked,
               accent, needLeader, zoom };
           };
           // 31k: pills stay in the fixed order — never re-sorted by
@@ -902,15 +993,38 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
         // same name / price / commute lines as the candidate card,
         // with 담기·빼기 and 카드 보기. Esc, empty-map click, or
         // opening another pin closes it.
+        // 31m: is-docked marks the phone docking (CSS applies it at
+        // ≤ 480 px). On desktop the card is clamped off the measured
+        // chrome — below the top-left stack, left of the right
+        // column. While it is open on a phone, the credit and the
+        // control column hide (hidden, not opacity).
         const pin = pins.find((p) => p.id === selectedId);
         if (!pin) return null;
         const model = pinCardModel(pin, { tenure: m.tenure, picks: picks || [] });
         const lay = layById.get(pin.id);
         const anchor = lay ? { x: lay.box.x + lay.box.w / 2, y: lay.box.y }
           : (() => { const [x, y] = toXYz(pin.lon, pin.lat); return { x, y }; })();
-        const below = anchor.y < 170;
-        const left = Math.min(Math.max(anchor.x, 128), Math.max(W - 128, 128));
-        const top = below ? anchor.y + (lay ? lay.box.h : PILL_H) + 8 : anchor.y - 8;
+        const boxHit2 = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w
+          && a.y < b.y + b.h && b.y < a.y + a.h;
+        const CARD_W = 240;
+        const CARD_H = 190;
+        let cardBelow = anchor.y < 170;
+        let cardLeft = Math.min(Math.max(anchor.x, 128), Math.max(W - 128, 128));
+        let cardBox = { x: cardLeft - CARD_W / 2,
+          y: cardBelow ? anchor.y + (lay ? lay.box.h : PILL_H) + 8 : anchor.y - 8 - CARD_H,
+          w: CARD_W, h: CARD_H };
+        for (const o of chromeObstacles) {
+          if (!o || !(o.w > 0) || !(o.h > 0)) continue;
+          if (!boxHit2(cardBox, o)) continue;
+          if (o.x < W / 2) {
+            cardBelow = true;
+            cardBox = { ...cardBox, y: o.y + o.h + 8 };
+          } else {
+            cardBox = { ...cardBox, x: o.x - CARD_W - 8 };
+          }
+        }
+        cardLeft = Math.min(Math.max(cardBox.x + CARD_W / 2, 128), Math.max(W - 128, 128));
+        const cardTop = cardBelow ? cardBox.y : cardBox.y + CARD_H;
         const disc = model.picked ? (pin.letter || String(pin.n)) : String(pin.n);
         const viewCard = () => {
           setSelectedId(null);
@@ -918,9 +1032,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
           else if (onPinClick) onPinClick(pin.id);
         };
         return (
-          <div className={`ui-float ui-chatmap-pincard${below ? " is-below" : ""}`}
+          <div className={`ui-float ui-chatmap-pincard is-docked${cardBelow ? " is-below" : ""}`}
             role="dialog" aria-label={`${model.title} 후보 카드`}
-            style={{ left, top }}>
+            style={{ left: cardLeft, top: cardTop }}>
             <div className="ui-pincard-row">
               <span className="ui-pick-disc" aria-hidden="true"
                 {...(/^[AB]$/.test(disc) ? { "data-home": disc } : null)}>{disc}</span>
@@ -950,7 +1064,11 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
       {/* 31h: one bottom-right control stack — my-location, the
         zoom pair on one card, then fit. Icon buttons, same zoom
         functions as before. */}
-      <div className="ui-chatmap-side">
+      {/* 31m: on phones an open pin card docks over the bottom, so
+        the column hides with it (hidden, not opacity) and returns
+        when the card closes. */}
+      <div className="ui-chatmap-side"
+        hidden={!!(selectedId && W <= 480) || undefined}>
         {geoOk && (
           <button type="button" className="ui-float" aria-label="내 위치"
             title="내 위치" aria-busy={locating}
@@ -965,13 +1083,24 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
         <button type="button" className="ui-float" aria-label="후보 모두 보기"
           title="후보 모두 보기"
           onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}><FitIcon /></button>
-        <div className="ui-float ui-chatmap-credit">
-          {basemapOn
-            ? (provider === "usgs"
-              ? "Map: USGS The National Map"
-              : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
-            : "© OpenStreetMap contributors"}
+        <div className="ui-float ui-chatmap-credit is-desktop" data-no-i18n>
+          {creditFull}
         </div>
+      </div>
+      {/* 31m: the phone credit (≤ 480 px, CSS shows it) — one short
+        line bottom-left, clear of the tray. A tap expands the full
+        text above it; a second tap hides it. Desktop keeps the full
+        text in the side column. Hidden while a pin card is docked. */}
+      <div className="ui-float ui-chatmap-credit is-phone"
+        hidden={!!(selectedId && W <= 480) || undefined}>
+        {creditOpen && (
+          <div className="ui-chatmap-credit-full" data-no-i18n>{creditFull}</div>
+        )}
+        <button type="button" className="ui-chatmap-credit-btn"
+          aria-expanded={creditOpen}
+          onClick={() => setCreditOpen((v) => !v)}>
+          <span data-no-i18n>{creditShort}</span>
+        </button>
       </div>
     </div>
   );
