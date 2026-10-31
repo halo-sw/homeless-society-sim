@@ -88,6 +88,15 @@
   min-width: 0; overflow: hidden;
 }
 .ui-bar-right { display: flex; align-items: center; gap: var(--ui-s8); margin-left: auto; }
+/* 29h1: the header never hides the Muse status — the left group keeps its
+   width while the centre summary button shrinks with an ellipsis. */
+.ui-bar-left { flex: none; }
+.ui-bar-center > * { min-width: 0; max-width: 100%; flex-shrink: 1; }
+#ui-root .ui-bar-center button {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; max-width: 100%; flex-shrink: 1; }
+#ui-root .ui-bar-center button > span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ui-sheet-body {
   display: flex; flex-direction: column; gap: var(--ui-s16);
   padding: var(--ui-s16);
@@ -356,11 +365,14 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    the ghost bubble add their own horizontal padding on top of the
    list's own padding, so both are zeroed here. Boxes, cards and the
    source line then start at the list padding, and user bubbles meet
-   the same right edge as the chips. */
+   the same right edge as the chips.
+   User bubbles keep a 16 px inner inset. */
 .ui-chat-thread .astryx-chat-message-list > div {
   padding-left: 0; padding-right: 0; }
-.ui-chat-thread .astryx-chat-message-bubble {
+.ui-chat-thread .astryx-chat-message-bubble[data-variant="ghost"] {
   padding-left: 0; padding-right: 0; }
+.ui-chat-thread .astryx-chat-message-bubble[data-sender="user"] {
+  padding-left: var(--ds-s-16); padding-right: var(--ds-s-16); }
 /* 31d: the composer wrapper pads narrow — its outer box starts and
    ends at the same inset as the chips. */
 .ui-chat-thread > .astryx-chat-layout > :last-child {

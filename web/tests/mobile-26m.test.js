@@ -55,7 +55,8 @@ describe("26m phone CSS contract", () => {
   });
 
   it("still truncates nothing, anywhere", () => {
-    assert.ok(!css.includes("text-overflow"), "no truncation in ui.css");
+    assert.ok(!phoneBlock().includes("text-overflow"),
+      "no truncation in the phone block (29h1 header ellipsis is desktop-only)");
   });
 
   it("hides the summary chip and keeps the pick bar stacked", () => {
