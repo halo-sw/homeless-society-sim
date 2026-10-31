@@ -73,10 +73,10 @@
 | Tested | **2,403** JavaScript and **266** Python tests, CI on every pull request and push to main | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 <p align="center">
-  <img src="briefs/img/19-chat.jpg" width="760" alt="The chat screen. Left: the conversation and candidate homes as rows, each with its map number, name, real-transaction 전세 price, size, year and the estimated commute; two homes are picked as A and B. Right: a light map with roads, subway lines in their colours, the 회사 · 판교 pill, price pills for every candidate (A and B in blue) and the commute minutes. A tray under the map holds the two picked homes and the one button, 이 집들로 30일 살아 보기.">
+  <img src="briefs/img/1031-menlo.jpg" width="820" alt="The chat replaying a real Muse Spark 1.3 session for a Meta HQ commuter in Menlo Park. Left: the live-in diary (Day 1 08:00, left home and commuted 12 minutes), 'All 8 sentences checked against the record', the block 'Only living there tells you' (rode home from work after dark: A 37 times, avg 11 min, 2.9 km, by bike; B 40 times; sunset 17:00) and the sources Zillow ZORI, OSM (US), USGS. Right: a light map of Menlo Park with the Meta HQ work pin and six price pins at $4,261 with 11 to 13 minutes; A and B are picked, with a See the result button.">
 </p>
 
-<p align="center"><sub>One sentence, real candidates on a map, two picks, one button. Real GPU capture, 2026-10-30.</sub></p>
+<p align="center"><sub>Meta HQ in Menlo Park, replayed from a real Muse Spark 1.3 session: the checked diary and "Only living there tells you" on the left, six candidates with ZIP rent and door-to-work minutes on the map. Real GPU capture, 2026-10-31.</sub></p>
 
 ## Project brief
 
@@ -150,24 +150,30 @@ ithaca/
 
 <table>
   <tr>
-    <td width="50%"><img src="briefs/img/19-landing.jpg" alt="The landing page over the painted 3D city: the heading 계약 전에, 그 집에서 30일 먼저 살아 봐요, one input, three steps (말로 조건 말하기 › 지도에서 후보 2곳 담기 › 30일 살아 보고 비교) and example cards for three household types plus listing paste."></td>
-    <td width="50%"><img src="briefs/img/19-result.jpg" alt="The 30-day result card as an A | B table: 내 기준 점수 48 and 52 with neutral bars, monthly housing cost 월 66만 8천 원 and 월 64만 2천 원, one-way commute 11 and 14 minutes with 'B가 편도 평균 4분 더 걸려요', then moments from the 30 days, each with a 3D로 보기 link."></td>
+    <td width="50%"><img src="briefs/img/1031-landing.jpg" alt="The landing page: the heading Which home are you weighing?, one input, chips, and a Try it now panel with Watch a recorded month, I work at Meta HQ and Try Seoul, above three numbers: 14 seconds, 85 seconds, 8/8."></td>
+    <td width="50%"><img src="briefs/img/1031-result.jpg" alt="The 30-day result as an A | B table beside the map: 내 기준 점수 38 and 63, monthly housing cost 월 101만 7천 원 for both, one-way commute 5 minutes for both, then moments and the diary."></td>
   </tr>
   <tr>
-    <td><sub><b>Start with a sentence.</b> The page says what happens next: tell it your conditions, pick two candidates on the map, live 30 days in each and compare.</sub></td>
-    <td><sub><b>The answer first.</b> After 30 days in each home: the customer's own subjective score, monthly housing cost and the door-to-door commute side by side, then moments with evidence. No winner is named.</sub></td>
+    <td><sub><b>Start with a sentence, or watch a recorded month.</b> One input, and three ways to try it now: a recorded month that plays without a key, Meta HQ live, Seoul live, with the run's own numbers (14 seconds to find 6 homes, 85 seconds to live 30 days in two, 8/8 diary sentences checked).</sub></td>
+    <td><sub><b>The answer first.</b> After 30 days in each home: the customer's own 내 기준 점수 (computed with every weight at 보통 until they set their own), monthly housing cost and the one-way commute side by side, then moments and the checked diary. No winner is named.</sub></td>
   </tr>
   <tr>
-    <td><img src="briefs/img/19-sim.jpg" alt="Following 나 from the picked home 천사의도시Ⅱ오피스텔 to 미금역 in the 3D neighbourhood. The drawer shows 내 기준 점수 A 48 · B 52, two moments with evidence, 4분 남음 and the day's trips."></td>
-    <td><img src="briefs/img/18-share.jpg" alt="The share card for the two picked homes: names and sizes, 내 기준 점수, how they get to work, one-way commute 11 vs 14 minutes, time on trains, time walked and fatigue on arrival."></td>
+    <td><img src="briefs/img/1031-3d.jpg" alt="The 3D neighbourhood following 나 on 신분당선 강남→판교 with 15분 남음, the scene breakdown 오늘 출근 44분 = 걷기 14분 + 지하철 26분 + 기다림 4분, crowding labelled 측정 or 가정값, and the day timeline."></td>
+    <td><img src="briefs/img/1031-phone.jpg" alt="Two phone screens: the Chat tab with the checked diary, Only living there tells you and sources; the Map & homes tab with six price pins around Meta HQ, A 11 min and B 12 min, and See the result."></td>
   </tr>
   <tr>
-    <td><sub><b>Follow one person.</b> The Now card says what they are doing, why (a routine rule, a Muse decision with its reason, or customer input), which criteria applied and how tired they are.</sub></td>
-    <td><sub><b>A result you can share.</b> A and B side by side in plain words, the same numbers as the result card, with 측정 / 가정값 tags. The PNG is built in the browser and never uploaded.</sub></td>
+    <td><sub><b>Follow one person.</b> The 3D neighbourhood built from building-register data: 나 on 신분당선 from 강남 to 판교, how this scene counts toward the result (오늘 출근 44분 = 걷기 14분 + 지하철 26분 + 기다림 4분), measured vs assumed crowding, and the day's trips.</sub></td>
+    <td><sub><b>On a phone.</b> Chat and Map &amp; homes as two tabs: the checked diary, “Only living there tells you” and its sources, and map pins that show the same door-to-work minutes as the cards.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="briefs/img/1031-seoul.jpg" alt="Seoul, in Korean: a couple commuting to 강남. The diary, '살아 봐야 아는 것' and sources on the left; six 전세 candidates with real-transaction prices and commute minutes over subway lines 2 and 신분당선 on the right."></td>
+  </tr>
+  <tr>
+    <td colspan="2"><sub><b>Two countries, one engine.</b> Seoul, in Korean: a couple commuting to 강남. The diary, '살아 봐야 아는 것' and sources on the left; six 전세 candidates with real-transaction prices and commute minutes over subway lines 2 and 신분당선 on the right.</sub></td>
   </tr>
 </table>
 
-Every image is a real GPU capture of the running app, saved in [`briefs/img/`](briefs/img/).
+Every image is a real GPU capture (Apple M4 Max, Metal) of the running app on 2026-10-31, saved in [`briefs/img/`](briefs/img/).
 
 ## What it does
 
