@@ -11,6 +11,8 @@
 
 <p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
 
+<p align="center"><b>Built with Meta AI:</b> Meta Model API (<code>api.meta.ai</code>) · Muse Spark 1.3 · Muse Spark Open · Muse Code · Muse Voice</p>
+
 <p align="center">An AI household lives 30 days in each candidate home and finds the problems you only learn by living there,<br>the ones a listing photo, a map and a 30-minute viewing never show.</p>
 
 <p align="center">
@@ -62,6 +64,7 @@
   - **I work at Meta HQ** runs it live: six real apartments on a map with aerial photos, Zillow ZIP rent estimates and bike/walk minutes. Say *"Save 1 and 2"*, then *"Live in both homes"* (type it, or tap the microphone).
   - No key is needed: the site calls Muse through our relay. If Muse is unavailable, the header shows **Rule mode** and the chat says so; the engine still computes every number. Locally, `docker compose up` runs the same app ([Quick start](#quick-start)).
 - **Built by.** <img src="web/public/brand/muse-logo.png" width="18" alt=""> Every line of product code and every test was written by **Muse Code** from stage briefs ([Built by Muse](#built-by-muse)).
+- **Where the code is.** The app, engine and consult agent are in [`web/src/`](web/src/) (tests in [`web/tests/`](web/tests/)). The key-holding relay is in [`relay/`](relay/), the Python data pipeline in [`pipeline/`](pipeline/), and scenarios and recorded runs in [`scenarios/`](scenarios/). The Meta API base URL and key are defined once, in [`web/src/judge/providers.js`](web/src/judge/providers.js) ([Meta AI usage](#meta-ai-usage)).
 
 **At a glance**
 

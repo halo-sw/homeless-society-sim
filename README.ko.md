@@ -11,6 +11,8 @@
 
 <p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
 
+<p align="center"><b>Meta AI로 만들었어요:</b> Meta Model API (<code>api.meta.ai</code>) · Muse Spark 1.3 · Muse Spark Open · Muse Code · Muse Voice</p>
+
 <p align="center"><b>계약하기 전에, 그 집에서 먼저 살아 보세요.</b><br>AI 가족이 후보 집마다 30일을 먼저 살아 보고, 매물 사진과 지도, 30분짜리 집 구경으로는 안 보이는<br>"살아 봐야 아는 문제"를 찾아내요.</p>
 
 <p align="center">
@@ -62,6 +64,7 @@
   - **Meta 본사 출근으로 해 보기**는 실시간으로 돌아가요. 실제 아파트 6곳이 항공사진, Zillow ZIP 월세 추정, 자전거·걷기 분과 함께 지도에 떠요. *"1번이랑 2번 담아 줘"* → *"두 집에서 살아 봐 줘"* 라고 써 보세요(마이크를 눌러 말해도 돼요).
   - 키는 필요 없어요. 사이트가 중계 서버로 Muse를 불러요. Muse를 못 쓰면 머리글에 **규칙 모드**가 뜨고 대화에서도 알려 주며, 숫자는 그때도 엔진이 계산해요. 로컬에서는 `docker compose up`으로 같은 앱이 돌아가요([빠른 시작](#빠른-시작)).
 - **누가 만들었나요.** <img src="web/public/brand/muse-logo.png" width="18" alt=""> 제품 코드와 테스트는 한 줄도 빠짐없이 **Muse Code**가 단계별 지시서를 받아 작성했어요([Muse가 만들었어요](#muse가-만들었어요)).
+- **코드는 어디 있나요.** 앱·엔진·상담 에이전트는 [`web/src/`](web/src/), 테스트는 [`web/tests/`](web/tests/)에 있어요. 키를 지키는 중계 서버는 [`relay/`](relay/), Python 데이터 파이프라인은 [`pipeline/`](pipeline/), 시나리오와 기록된 실행은 [`scenarios/`](scenarios/)에 있어요. Meta API 주소와 키는 [`web/src/judge/providers.js`](web/src/judge/providers.js) 한 곳에서 정해요([Meta AI 사용](#meta-ai-사용)).
 
 **한눈에 보기**
 
