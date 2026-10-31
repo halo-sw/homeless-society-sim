@@ -14,29 +14,30 @@
 <p align="center"><b>계약하기 전에, 그 집에서 먼저 살아 보세요.</b><br>AI 가족이 후보 집마다 30일을 먼저 살아 보고, 매물 사진과 지도, 30분짜리 집 구경으로는 안 보이는<br>"살아 봐야 아는 문제"를 찾아내요.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
-  <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
-  <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-2403_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 2403개, Python 테스트 266개">
-  <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
+  <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-1a56db?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
+  <img src="https://img.shields.io/badge/Muse_Spark-1.3-0072f1?style=flat-square&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAYAAAAOEM1uAAAEf0lEQVR42rWXW2iXdRjHv7%2F%2Ff3MOyVJbLMPoAMrWqjmIpBhddWO7KYsiiqDDtLsgC0woo912uqi0sAzpBNqsboKKohhIlBiVItNdRB6Zmk5qzv%2F7frro%2BcXTs%2Fe%2FUdgPXp7f%2B77P%2BfR7flLFAuoGLwbeAA4Do8Dt9r3WjMb2qQrnvKzMGLgK%2BIl%2FrtPAZVHJsF%2Bk%2F2s55S4B9ptS5wK803BaAs2twG7gOPA5cOV59aQxqwOtwNdBKYAGUAL3ZAWBmtH1AH8YXmnwnRj6%2F7Ja3L6eUmoAr0nql3Qu%2FJekJOm38I6kTZLmGk322DWSlFIqKqKU6VL8r1mKYtB5rgweybDPcOcYfCB4uzD4Q7MU%2Brehzcr1ApMWyoYJ%2BdaqN68zQGcWBswHfjXlC5cKADtz6oRcvRZ4H%2FgKeNTjNFUQaAN%2BdJ4oTJkBS%2Fq89ufcM9qhkJ9ewc%2BcIRn%2FeuBk6Ax3zZSrNcuBpyT1SGpYftQkrZd0UNJCyy1J%2BiWl1PiLH5dLekxSaTTZCxg8kWVISkC7pPckXSRpStJZo13p8nm6gkCPpCecoLqkPSmll61YJCkn8pglPpI2SJpndDVJ%2BxwPSRp3xZed0GVOmGNyao535apJek5Su7O8lDRo%2B96AP2ZtpVfS%2Fca8bp7%2BJAg8anAKWCpprcP368xsCq40qxpG%2FFJKacT%2BL3V4kjRq3nvWWlBOibckTTgDJemI8%2Fbz1oaq1kRVtf%2Bdk8ABl7C7gXbz0jzgUGgdVwPdrhgKYAroBN6172cN5nN7oKKQfFtaW3UyeW17gQ%2BBLcBi931ZYHrKTplhe580uNXwdwXBN5qhe4KRRwPeoD%2BZbN8N9DdrO9mS24zBlMERYIXreYUZ0GXMD4b2sRB4yHm1NCM2B0%2FfbfLaDD7iZG6u5Xjb40t9WcipA1btyR1pO1JKeyVdKmmBoz1m7WkoH2n2bKhoJ6dcMV0naaOkVpP74EwefD14cJeFtXTe67Mw3hDC%2BD3waqD%2FzvjuDCG%2B2Xgk4BtHUwKjM41cX4aTgfC%2B3dEMhH8ngN9NSP52iykx5owpgeXGY3UoPoB100auPAgERriBIedfn8NfUzGeeYU%2FMrwFwLFQyYuBRWZU4QaVMWB%2BM%2B8tqZjvvMDhkNhDQcHSGTNphZSAKxxfgAnrDFsd%2Fyzjjpkmm5sqlMN5b7kJzCPXliYDLsALjn9PiMrPwH0OP9PvqBwgXIHcO4PAD9wUlD3%2BacDJhhyxsGbD%2BwPeYcPxuXfcwl4Dai1Njp8l0bnWHqYkPe3aUT6%2FO8JEUtpRuD6ldNJSoZB0QeDb6fhgR%2B3qlNIhoJ5SKppNuB3hvWF9b2NKaZ%2Fty5QSQKukCx1uYcqNSHrTvJcHiDZnlFesYTQvppS2AS35KjDbCF5YU261ieUZC2sZhLQYbh4eGpLW2KCAU2rc3UdwMlolfSzp8WBQ0yLpD8UxDqyouANn%2FLcD%2FsPhf27E7W5y92sYmJtvibNePw2uArYDm4DuqknDCe4AXgG2AauqKtAVVBfwhfXDvcCTTuY05f4Eau6o08a%2ByYgAAAAASUVORK5CYII%3D" alt="Muse Spark 1.3">
+  <img src="https://img.shields.io/badge/code_written_by-Muse_Code-0072f1?style=flat-square&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAYAAAAOEM1uAAAEf0lEQVR42rWXW2iXdRjHv7%2F%2Ff3MOyVJbLMPoAMrWqjmIpBhddWO7KYsiiqDDtLsgC0woo912uqi0sAzpBNqsboKKohhIlBiVItNdRB6Zmk5qzv%2F7frro%2BcXTs%2Fe%2FUdgPXp7f%2B77P%2BfR7flLFAuoGLwbeAA4Do8Dt9r3WjMb2qQrnvKzMGLgK%2BIl%2FrtPAZVHJsF%2Bk%2F2s55S4B9ptS5wK803BaAs2twG7gOPA5cOV59aQxqwOtwNdBKYAGUAL3ZAWBmtH1AH8YXmnwnRj6%2F7Ja3L6eUmoAr0nql3Qu%2FJekJOm38I6kTZLmGk322DWSlFIqKqKU6VL8r1mKYtB5rgweybDPcOcYfCB4uzD4Q7MU%2Brehzcr1ApMWyoYJ%2BdaqN68zQGcWBswHfjXlC5cKADtz6oRcvRZ4H%2FgKeNTjNFUQaAN%2BdJ4oTJkBS%2Fq89ufcM9qhkJ9ewc%2BcIRn%2FeuBk6Ax3zZSrNcuBpyT1SGpYftQkrZd0UNJCyy1J%2BiWl1PiLH5dLekxSaTTZCxg8kWVISkC7pPckXSRpStJZo13p8nm6gkCPpCecoLqkPSmll61YJCkn8pglPpI2SJpndDVJ%2BxwPSRp3xZed0GVOmGNyao535apJek5Su7O8lDRo%2B96AP2ZtpVfS%2Fca8bp7%2BJAg8anAKWCpprcP368xsCq40qxpG%2FFJKacT%2BL3V4kjRq3nvWWlBOibckTTgDJemI8%2Fbz1oaq1kRVtf%2Bdk8ABl7C7gXbz0jzgUGgdVwPdrhgKYAroBN6172cN5nN7oKKQfFtaW3UyeW17gQ%2BBLcBi931ZYHrKTplhe580uNXwdwXBN5qhe4KRRwPeoD%2BZbN8N9DdrO9mS24zBlMERYIXreYUZ0GXMD4b2sRB4yHm1NCM2B0%2FfbfLaDD7iZG6u5Xjb40t9WcipA1btyR1pO1JKeyVdKmmBoz1m7WkoH2n2bKhoJ6dcMV0naaOkVpP74EwefD14cJeFtXTe67Mw3hDC%2BD3waqD%2FzvjuDCG%2B2Xgk4BtHUwKjM41cX4aTgfC%2B3dEMhH8ngN9NSP52iykx5owpgeXGY3UoPoB100auPAgERriBIedfn8NfUzGeeYU%2FMrwFwLFQyYuBRWZU4QaVMWB%2BM%2B8tqZjvvMDhkNhDQcHSGTNphZSAKxxfgAnrDFsd%2Fyzjjpkmm5sqlMN5b7kJzCPXliYDLsALjn9PiMrPwH0OP9PvqBwgXIHcO4PAD9wUlD3%2BacDJhhyxsGbD%2BwPeYcPxuXfcwl4Dai1Njp8l0bnWHqYkPe3aUT6%2FO8JEUtpRuD6ldNJSoZB0QeDb6fhgR%2B3qlNIhoJ5SKppNuB3hvWF9b2NKaZ%2Fty5QSQKukCx1uYcqNSHrTvJcHiDZnlFesYTQvppS2AS35KjDbCF5YU261ieUZC2sZhLQYbh4eGpLW2KCAU2rc3UdwMlolfSzp8WBQ0yLpD8UxDqyouANn%2FLcD%2FsPhf27E7W5y92sYmJtvibNePw2uArYDm4DuqknDCe4AXgG2AauqKtAVVBfwhfXDvcCTTuY05f4Eau6o08a%2ByYgAAAAASUVORK5CYII%3D" alt="제품 코드는 모두 Muse Code가 작성">
+  <img src="https://img.shields.io/badge/tests-2403_JS_·_266_Python-1a56db?style=flat-square" alt="JS 테스트 2403개, Python 테스트 266개">
+  <img src="https://img.shields.io/badge/engine-deterministic-1a56db?style=flat-square" alt="결정적 엔진">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1a56db?style=flat-square" alt="MIT 라이선스"></a>
 </p>
 
 <p align="center">
-  <a href="https://halo-sw.github.io/ithaca/"><img src="https://img.shields.io/badge/바로_써_보기-live-2f5d50?style=for-the-badge" alt="바로 써 보기"></a>
+  <a href="https://halo-sw.github.io/ithaca/"><img src="https://img.shields.io/badge/바로_써_보기-live-1a56db?style=for-the-badge" alt="바로 써 보기"></a>
   &nbsp;
-  <a href="#빠른-시작"><img src="https://img.shields.io/badge/직접_실행-빠른_시작-2f5d50?style=for-the-badge" alt="직접 실행하기"></a>
+  <a href="#빠른-시작"><img src="https://img.shields.io/badge/직접_실행-빠른_시작-1a56db?style=for-the-badge" alt="직접 실행하기"></a>
   &nbsp;
-  <a href="briefs/"><img src="https://img.shields.io/badge/Muse_Code-작업_기록-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Muse Code 작업 기록"></a>
+  <a href="briefs/"><img src="https://img.shields.io/badge/Muse_Code-작업_기록-e8f0fe?style=for-the-badge&labelColor=0072f1&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAYAAAAOEM1uAAAEf0lEQVR42rWXW2iXdRjHv7%2F%2Ff3MOyVJbLMPoAMrWqjmIpBhddWO7KYsiiqDDtLsgC0woo912uqi0sAzpBNqsboKKohhIlBiVItNdRB6Zmk5qzv%2F7frro%2BcXTs%2Fe%2FUdgPXp7f%2B77P%2BfR7flLFAuoGLwbeAA4Do8Dt9r3WjMb2qQrnvKzMGLgK%2BIl%2FrtPAZVHJsF%2Bk%2F2s55S4B9ptS5wK803BaAs2twG7gOPA5cOV59aQxqwOtwNdBKYAGUAL3ZAWBmtH1AH8YXmnwnRj6%2F7Ja3L6eUmoAr0nql3Qu%2FJekJOm38I6kTZLmGk322DWSlFIqKqKU6VL8r1mKYtB5rgweybDPcOcYfCB4uzD4Q7MU%2Brehzcr1ApMWyoYJ%2BdaqN68zQGcWBswHfjXlC5cKADtz6oRcvRZ4H%2FgKeNTjNFUQaAN%2BdJ4oTJkBS%2Fq89ufcM9qhkJ9ewc%2BcIRn%2FeuBk6Ax3zZSrNcuBpyT1SGpYftQkrZd0UNJCyy1J%2BiWl1PiLH5dLekxSaTTZCxg8kWVISkC7pPckXSRpStJZo13p8nm6gkCPpCecoLqkPSmll61YJCkn8pglPpI2SJpndDVJ%2BxwPSRp3xZed0GVOmGNyao535apJek5Su7O8lDRo%2B96AP2ZtpVfS%2Fca8bp7%2BJAg8anAKWCpprcP368xsCq40qxpG%2FFJKacT%2BL3V4kjRq3nvWWlBOibckTTgDJemI8%2Fbz1oaq1kRVtf%2Bdk8ABl7C7gXbz0jzgUGgdVwPdrhgKYAroBN6172cN5nN7oKKQfFtaW3UyeW17gQ%2BBLcBi931ZYHrKTplhe580uNXwdwXBN5qhe4KRRwPeoD%2BZbN8N9DdrO9mS24zBlMERYIXreYUZ0GXMD4b2sRB4yHm1NCM2B0%2FfbfLaDD7iZG6u5Xjb40t9WcipA1btyR1pO1JKeyVdKmmBoz1m7WkoH2n2bKhoJ6dcMV0naaOkVpP74EwefD14cJeFtXTe67Mw3hDC%2BD3waqD%2FzvjuDCG%2B2Xgk4BtHUwKjM41cX4aTgfC%2B3dEMhH8ngN9NSP52iykx5owpgeXGY3UoPoB100auPAgERriBIedfn8NfUzGeeYU%2FMrwFwLFQyYuBRWZU4QaVMWB%2BM%2B8tqZjvvMDhkNhDQcHSGTNphZSAKxxfgAnrDFsd%2Fyzjjpkmm5sqlMN5b7kJzCPXliYDLsALjn9PiMrPwH0OP9PvqBwgXIHcO4PAD9wUlD3%2BacDJhhyxsGbD%2BwPeYcPxuXfcwl4Dai1Njp8l0bnWHqYkPe3aUT6%2FO8JEUtpRuD6ldNJSoZB0QeDb6fhgR%2B3qlNIhoJ5SKppNuB3hvWF9b2NKaZ%2Fty5QSQKukCx1uYcqNSHrTvJcHiDZnlFesYTQvppS2AS35KjDbCF5YU261ieUZC2sZhLQYbh4eGpLW2KCAU2rc3UdwMlolfSzp8WBQ0yLpD8UxDqyouANn%2FLcD%2FsPhf27E7W5y92sYmJtvibNePw2uArYDm4DuqknDCe4AXgG2AauqKtAVVBfwhfXDvcCTTuY05f4Eau6o08a%2ByYgAAAAASUVORK5CYII%3D" alt="Muse Code 작업 기록"></a>
   &nbsp;
-  <a href="README.md"><img src="https://img.shields.io/badge/English-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="English README"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/English-README-e8f0fe?style=for-the-badge&labelColor=1a56db" alt="English README"></a>
 </p>
 
 <p align="center"><sub>공개 사이트: <a href="https://halo-sw.github.io/ithaca/">https://halo-sw.github.io/ithaca/</a> — Muse와 VWorld 지도는 키를 서버에만 두는 작은 중계 서버를 거쳐요. 중계 서버를 못 쓰면 대화는 규칙 모드로 답하고 그렇게 표시해요.</sub></p>
 
 <p align="center">
-  <a href="#2분-안에-심사하기">2분 심사</a> ·
+  <a href="#요약">요약</a> ·
+  <a href="#프로젝트-개요">프로젝트 개요</a> ·
   <a href="#meta-ai-사용">Meta AI 사용</a> ·
   <a href="#구조">구조</a> ·
   <a href="#이렇게-작동해요">작동 방식</a> ·
@@ -50,15 +51,18 @@
   <a href="#앞으로">앞으로</a>
 </p>
 
-## 2분 안에 심사하기
+## 요약
 
-1. **공개 사이트 열기:** <https://halo-sw.github.io/ithaca/>. 브라우저 언어가 한국어가 아니면 영어로 시작해요(`?lang=ko`로 한국어).
-2. **입력 없이 먼저 보기.** 첫 화면에서 **기록된 한 달 보기**를 누르세요. 2026-10-31에 기록한 실제 Muse Spark 1.3 대화를 키 없이 한 단계씩 재생해요. Meta 본사 출근, 1 Hacker Way 근처 실제 아파트, 2곳 담기, 집마다 30일, 일기까지 보여 줘요.
-3. **직접 해 보기.** **Meta 본사 출근으로 해 보기**를 누르면 실제 아파트 6곳이 지도에 떠요. 집마다 항공사진, Zillow ZIP 월세 추정, 자전거·걷기 분이 붙어요. *"1번이랑 2번 담아 줘"* → *"두 집에서 살아 봐 줘"* 라고 하면(마이크를 누르고 말해도 돼요. Muse Voice가 받아 적어 입력창에 넣어 주면 확인하고 보내요) Muse가 두 집에서 30일씩 살고 일기를 써요. 일기 문장은 보여 주기 전에 하나하나 기록과 대조해요.
-   - **키는 필요 없어요.** 사이트가 중계 서버로 Muse를 불러서 키를 넣을 일이 없어요.
-   - **Muse를 못 쓰면**(중계 서버가 멈추거나 하루 한도에 닿으면) 머리글에 **규칙 모드**가 뜨고 대화에서도 알려 줘요. 숫자는 그때도 결정적 엔진이 계산하고, 기록된 한 달은 한 번 누르면 볼 수 있어요.
-   - **로컬에서는** `docker compose up`으로 같은 앱이 돌아가요([빠른 시작](#빠른-시작)).
-4. **증거 확인.**
+- **무엇인가요.** 계약하기 전에 AI 가족이 후보 집 두 곳에서 30일씩 먼저 살아 보고, 살아 봐야 아는 것을 보여 줘요. 날마다의 출퇴근, 돈, 해 진 뒤 귀갓길 같은 것들이에요.
+- **누구를 위한 건가요.** 첫 자취 집을 구하는 사회초년생, 결혼을 앞둔 커플, 두 집 사이에서 고민하는 어린 자녀를 둔 가족.
+- **어떻게 작동하나요.** <img src="web/public/brand/muse-logo.png" width="18" alt=""> **Muse Spark 1.3**이 대화를 이끌고 가족의 일상 선택을 이유와 함께 해요. **Muse Voice**가 말을 받아 적어요. 시간과 돈은 결정적 엔진이 1분, 1원까지 계산하고, 일기 문장은 보여 주기 전에 하나하나 실행 기록과 대조해요.
+- **써 보기.** <https://halo-sw.github.io/ithaca/>를 여세요(브라우저 언어가 한국어가 아니면 영어로 시작, `?lang=ko`로 한국어).
+  - **기록된 한 달 보기**는 2026-10-31에 기록한 실제 Muse Spark 1.3 대화를 키 없이 재생해요. Meta 본사 출근, 1 Hacker Way 근처 실제 아파트, 2곳 담기, 집마다 30일, 일기까지 보여 줘요.
+  - **Meta 본사 출근으로 해 보기**는 실시간으로 돌아가요. 실제 아파트 6곳이 항공사진, Zillow ZIP 월세 추정, 자전거·걷기 분과 함께 지도에 떠요. *"1번이랑 2번 담아 줘"* → *"두 집에서 살아 봐 줘"* 라고 써 보세요(마이크를 눌러 말해도 돼요).
+  - 키는 필요 없어요. 사이트가 중계 서버로 Muse를 불러요. Muse를 못 쓰면 머리글에 **규칙 모드**가 뜨고 대화에서도 알려 주며, 숫자는 그때도 엔진이 계산해요. 로컬에서는 `docker compose up`으로 같은 앱이 돌아가요([빠른 시작](#빠른-시작)).
+- **누가 만들었나요.** <img src="web/public/brand/muse-logo.png" width="18" alt=""> 제품 코드와 테스트는 한 줄도 빠짐없이 **Muse Code**가 단계별 지시서를 받아 작성했어요([Muse가 만들었어요](#muse가-만들었어요)).
+
+**한눈에 보기**
 
 | 주장 | 숫자 | 자세히 |
 |---|---|---|
@@ -74,15 +78,13 @@
 
 <p align="center"><sub>한 문장으로 시작해서, 지도 위 실제 후보 중 두 곳을 담고, 버튼 하나로 살아 봐요. 실제 GPU 캡처, 2026-10-30.</sub></p>
 
----
+## 프로젝트 개요
 
 **만든 이유.** 저는 직장인 Halo이고, 신혼집을 구하고 있었어요. 전세사기 소식에 두 사람의 생활 패턴까지 달라서 집 구하기가 정말 어려웠고, 이직 같은 변화가 생길 때마다 살아 보고 나서야 마주치는 것들이 많았어요. 수면의 질, 출퇴근길 혼잡도, 동네마다의 특성은 미리 알 수 없으니, 계약하기 전에 먼저 시뮬레이션을 돌려 보고 싶었어요.
 
-사람들은 인생에서 가장 비싼 결정을 사진 몇 장과 30분짜리 집 구경으로 해요. 한국의 사회초년생, 결혼을 앞둔 커플, 어린 자녀가 있는 가족에게는 가장 위험한 결정이기도 해요. 전세사기 피해자의 약 75%가 20·30대예요(2025년 3월 보도, 국토교통부 자료 인용). 이사해 본 사람이라면 누구나 살아 보고 나서야 그 집을 제대로 알게 된 경험이 있어요.
+**문제.** 사람들은 인생에서 가장 비싼 결정을 사진 몇 장과 30분짜리 집 구경으로 해요. 한국의 사회초년생, 결혼을 앞둔 커플, 어린 자녀가 있는 가족에게는 가장 위험한 결정이기도 해요. 전세사기 피해자의 약 75%가 20·30대예요(2025년 3월 보도, 국토교통부 자료 인용). 이사해 본 사람이라면 누구나 살아 보고 나서야 그 집을 제대로 알게 된 경험이 있어요.
 
-**이런 분을 위해 만들었어요:** 첫 자취 집을 구하는 사회초년생, 결혼을 앞둔 커플, 두 집 사이에서 고민하는 어린 자녀를 둔 가족.
-
-그래서 AI 가족이 먼저 들어가 살아요. 내 상황을 말하고, 실거래가에서 후보 집을 고르면, 가족이 실제 동네를 옮긴 3D 모형 위에서 A집과 B집에 각각 30일을 나란히 살아요. 일상의 선택은 Muse Spark가 하고 이유를 남겨요. 시간과 돈은 결정적 엔진이 1분, 1원까지 세요. 그다음 고객이 정한 우선순위로만 두 집을 비교하고, 모든 숫자에 출처나 "가정값" 표시를 붙여요. 앱은 보여 주고 설명할 뿐이고, 결정은 고객이 해요.
+**아이디어.** AI 가족이 먼저 들어가 살아요. 내 상황을 말하고, 실거래가에서 후보 집을 고르면, 가족이 실제 동네를 옮긴 3D 모형 위에서 A집과 B집에 각각 30일을 나란히 살아요. 일상의 선택은 Muse Spark가 하고 이유를 남겨요. 시간과 돈은 결정적 엔진이 1분, 1원까지 세요. 그다음 고객이 정한 우선순위로만 두 집을 비교하고, 모든 숫자에 출처나 "가정값" 표시를 붙여요. 앱은 보여 주고 설명할 뿐이고, 결정은 고객이 해요.
 
 > 상태(2026-10-31): 개발 중이에요. 해커톤 기간은 2026-10-27 → 11-05이고, 첫 커밋은 2026-10-28이에요. 해커톤 이전에 만든 코드는 없어요. *준비 중*이라고 적힌 항목은 아직 만들지 않았어요.
 
@@ -92,10 +94,10 @@
 
 | 모델 | 엔드포인트 | 여기서 하는 일 | 코드 | 증거 |
 |---|---|---|---|---|
-| **Muse Spark 1.3** (`muse-spark-1.3`) | `https://api.meta.ai/v1` | 가구의 일상 선택과 이유, 도구를 부르는 상담 에이전트 | [`judge/run.js`](web/src/judge/run.js) → [`providers.js`](web/src/judge/providers.js) `complete`, [`consult/agent.js`](web/src/consult/agent.js) → `completeWithTools` | [실제 호출 3건](docs/evidence/muse-spark-1.3-2026-10-31.json), [기록된 판단 154개](scenarios/decisions/compare-1029/) |
-| **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | `https://inference.baseten.co/v1` (Baseten) | 같은 가구 판단, 스위치 하나 `--provider baseten` | 같은 모듈 | [실제 호출 3건](docs/evidence/muse-spark-open-2026-10-31.json), Spark 1.3과 139곳 중 120곳 같은 선택 |
-| **Muse Code** (`muse-spark-1.3` 에이전트 모드) | Muse Code CLI | 단계별 지시서를 받아 이 저장소의 제품 코드와 테스트를 모두 작성 | — | [`briefs/`](briefs/) (단계마다 지시서 + 결과) |
-| **Muse Voice Transcribe 1.0** (`muse-voice-transcribe-1.0`) | `https://api.meta.ai/v1/asr/transcribe` | 대화창에서 글 대신 말로 입력(한국어·영어 자동 인식). 받아 적은 글은 입력창에 들어가고 고객이 확인한 뒤 보내요 | 중계 서버 `/api/voice/transcribe`를 거쳐 [`consult/voice.js`](web/src/consult/voice.js) | — |
+| <img src="web/public/brand/muse-logo.png" width="18" alt=""> **Muse Spark 1.3** (`muse-spark-1.3`) | `https://api.meta.ai/v1` | 가구의 일상 선택과 이유, 도구를 부르는 상담 에이전트 | [`judge/run.js`](web/src/judge/run.js) → [`providers.js`](web/src/judge/providers.js) `complete`, [`consult/agent.js`](web/src/consult/agent.js) → `completeWithTools` | [실제 호출 3건](docs/evidence/muse-spark-1.3-2026-10-31.json), [기록된 판단 154개](scenarios/decisions/compare-1029/) |
+| <img src="web/public/brand/muse-logo.png" width="18" alt=""> **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | `https://inference.baseten.co/v1` (Baseten) | 같은 가구 판단, 스위치 하나 `--provider baseten` | 같은 모듈 | [실제 호출 3건](docs/evidence/muse-spark-open-2026-10-31.json), Spark 1.3과 139곳 중 120곳 같은 선택 |
+| <img src="web/public/brand/muse-logo.png" width="18" alt=""> **Muse Code** (`muse-spark-1.3` 에이전트 모드) | Muse Code CLI | 단계별 지시서를 받아 이 저장소의 제품 코드와 테스트를 모두 작성 | — | [`briefs/`](briefs/) (단계마다 지시서 + 결과) |
+| <img src="web/public/brand/muse-logo.png" width="18" alt=""> **Muse Voice Transcribe 1.0** (`muse-voice-transcribe-1.0`) | `https://api.meta.ai/v1/asr/transcribe` | 대화창에서 글 대신 말로 입력(한국어·영어 자동 인식). 받아 적은 글은 입력창에 들어가고 고객이 확인한 뒤 보내요 | 중계 서버 `/api/voice/transcribe`를 거쳐 [`consult/voice.js`](web/src/consult/voice.js) | — |
 | SAM 3.1 | — | 매물 사진에서 창문 면적 | *준비 중* | — |
 
 서버 키는 `META_API_KEY`에서 읽어요(`MODEL_API_KEY`도 대신 쓸 수 있어요). 기본 주소는 [`providers.js`](web/src/judge/providers.js)의 상수 `META_API_BASE`, `BASETEN_API_BASE`이고, [`relay/handler.js`](relay/handler.js)도 같은 상수를 내보내요.
@@ -210,6 +212,8 @@ ithaca/
 상태: 채점기, 숫자·근거 검사, 재시도 루프가 `main`에 들어갔어요(16a·16b 단계, 테스트 99개). 팀이 직접 쓴 정답 기준 파일과 참조 채점 코드로 확인했어요. 자연스러운 체크리스트에서 JS 채점기는 Python 참조와 통과 여부·*필수* 커버리지가 같고, 실제 문 앞→회사 출퇴근을 쓴 리포트는 통과, 틀린 숫자를 쓴 리포트는 실패해요. 검증 과정을 화면에 보여 주는 부분은 작업 중이에요.
 
 ## Muse가 만들었어요
+
+<p><img src="web/public/brand/muse-logo.png" width="40" alt="Muse"></p>
 
 이 레포의 제품 코드, 테스트, 파이프라인 스크립트는 한 줄도 빠짐없이 **Muse**(`muse-spark-1.3`, Muse Code 에이전트 모드)가 작성했어요. 사람은 방향을 정하고 모든 화면을 확인했어요. 조율은 **Claude (Anthropic)**가 맡았어요. 단계별 지시서 작성, 데이터 내려받기, 테스트 실행, 실제 GPU 캡처, git 작업을 했어요. GitHub 기여자 목록에 `claude`가 보이는 것도 이 때문이에요. 커밋을 Claude가 만들어서 커밋마다 `Co-Authored-By: Claude` 줄이 붙고, 커밋 메시지에는 그 코드를 만든 Muse 지시서가 적혀 있어요(`Written by Muse (Muse Spark) from briefs/…`). 단계마다 지시서와 결과 기록이 [`briefs/`](briefs/)에 있고, 규칙은 [`AGENTS.md`](AGENTS.md)에 있어요. Muse가 쓰지 않은 파일도 밝혀 둬요. 영어 문구표 `web/src/i18n/en.js`·`en-table.js`·`en-words.js`는 Claude가 쓴 번역 내용이에요(번역 엔진 `translate.js`는 Muse 작성). 검증 정답 `scenarios/verify/ground_truth.json`과 기준 채점기 `tools/verify_checklist.py`는 팀이 Muse 채점기를 확인하려고 직접 만들었어요.
 
