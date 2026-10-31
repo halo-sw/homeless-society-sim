@@ -41,8 +41,7 @@ import { percent, pixel } from "@astryxdesign/core/Resizable/utils";
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
-import { CandidateCard, CandidateSkeleton, areaForList, HomeName } from "./candidate-card.jsx";
-import { aerialCreditFor } from "../aerial/drape.js";
+import { CandidateCard, CandidateSkeleton, areaForList, HomeName, listPhotoNote, listThumbKinds } from "./candidate-card.jsx";
 import { exampleLine } from "./copy.js";
 import { TopBar, usePhoneMedia } from "./topbar.jsx";
 import { EXAMPLE_PROMPTS, COVERAGE_AREAS, COVERAGE_US_LINE, LANDING_HEADING, LANDING_SUB } from "./landing.jsx";
@@ -518,8 +517,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
           <Text type="supporting">{data.emptyHint}</Text>
         )}
         {candidates.length > 0 && (
-          <Text type="supporting">
-            {`사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님) · ${aerialCreditFor(areaForList(candidates))}`}
+          <Text type="supporting" data-no-i18n>
+            <span data-no-i18n>{listPhotoNote(listThumbKinds(withPhotos), areaForList(candidates), currentLang())}</span>
           </Text>
         )}
         <div className="ui-cand-list">

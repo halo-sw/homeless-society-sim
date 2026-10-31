@@ -3,7 +3,7 @@
 // Two variants: "row" (default, the chat list — name first, ~112 px)
 // and "full" (the 19a side-panel detail — photo, name, price first).
 // SSR-safe.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
@@ -242,11 +242,155 @@ export function areaForCandidate(candidate) {
   return { country: candidate.country };
 }
 
-// 32b: the street-level photo slot. Stage 32c wires Mapillary here;
-// in this stage the slot always falls through.
-export async function streetPhotoFor(candidate) {
-  void candidate;
-  return null;
+// 32c: the street-level photo slot — the nearest Mapillary photo
+// facing the home, through our relay (/api/street, token server-side).
+// The request carries the home's lon/lat only, never the viewer's.
+// Memoised per candidate for the page session; at most 3 requests in
+// flight. Null (without fetching) when there is no relay (static site
+// without one), when the home has no coordinates, or on any failure.
+const streetMemo = new Map();
+let streetInflight = 0;
+const streetWaiters = [];
+
+function streetRelease() {
+  streetInflight = Math.max(0, streetInflight - 1);
+  const next = streetWaiters.shift();
+  if (next) next();
+}
+
+async function fetchStreetPhoto(base, lon, lat) {
+  await new Promise((resolve) => {
+    if (streetInflight < 3) resolve();
+    else streetWaiters.push(resolve);
+  });
+  streetInflight += 1;
+  try {
+    const res = await fetch(`${base}/api/street?lon=${lon}&lat=${lat}`);
+    if (!res || !res.ok) return null;
+    const json = await res.json();
+    return (json && json.photo) || null;
+  } catch {
+    return null;
+  } finally {
+    streetRelease();
+  }
+}
+
+export async function streetPhotoFor(candidate, { apiBase } = {}) {
+  const lon = Number(candidate && candidate.lon);
+  const lat = Number(candidate && candidate.lat);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  const base = apiBase === undefined ? basemapApiBase() : apiBase;
+  if (base === null || base === undefined) return null;
+  const id = candidate && candidate.id !== undefined && candidate.id !== null
+    ? `id:${candidate.id}` : `${lon},${lat}`;
+  const key = `${base}|${id}`;
+  if (!streetMemo.has(key)) {
+    streetMemo.set(key, fetchStreetPhoto(base, lon, lat));
+  }
+  return streetMemo.get(key);
+}
+
+// 32c: the Mapillary credits — the corner credit is short; the full
+// line (licence + year) rides in the title and on the opened card.
+export function streetShortCreditFor(photo) {
+  if (!photo) return "";
+  return `© ${photo.creator || "Mapillary contributor"} · Mapillary`;
+}
+
+export function streetFullCreditFor(photo) {
+  if (!photo) return "";
+  const who = photo.creator || "Mapillary contributor";
+  const year = Number.isFinite(Number(photo.captured_year))
+    ? ` · ${photo.captured_year}` : "";
+  return `${who} · Mapillary · CC BY-SA 4.0${year}`;
+}
+
+// 32c: thumbnails report a resolved street photo upward through this
+// small store, so the list note names only the kinds actually shown.
+const listStreetIds = new Set();
+
+export function reportListThumbKind(id, kind) {
+  if (kind === "street" && id !== undefined && id !== null) {
+    listStreetIds.add(String(id));
+  }
+}
+
+// 32c: the thumbnail kinds actually shown across the list, in row
+// order (hero → 3D → street → silhouette → minimap). Street comes
+// from the store above; the rest is known synchronously.
+const LIST_PHOTO_ORDER = ["hero", "scene", "street", "silhouette", "minimap"];
+
+export function listThumbKinds(entries) {
+  const kinds = [];
+  for (const { candidate, photos } of (entries || [])) {
+    const slots = (photos && photos.slots) || [];
+    const kind = thumbKindFor(candidate, {
+      hasHero: slots.some((s) => s && s.slot === "complex"),
+      hasStreet: !!candidate && listStreetIds.has(String(candidate.id)),
+      hasFootprint: !!(candidate && candidate.footprint),
+    });
+    if (!kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds.sort((a, b) => LIST_PHOTO_ORDER.indexOf(a) - LIST_PHOTO_ORDER.indexOf(b));
+}
+
+// 32c2: the Korean particle after the joined labels — 이에요 after a
+// syllable with a final consonant, 예요 otherwise (non-Hangul → 예요).
+export function listPhotoParticle(word) {
+  const ch = String(word || "").slice(-1);
+  const code = ch.codePointAt(0);
+  if (code !== undefined && code >= 0xac00 && code <= 0xd7a3) {
+    return (code - 0xac00) % 28 !== 0 ? "이에요" : "예요";
+  }
+  return "예요";
+}
+
+// 32c2: a list area counts as US by country or by its bbox centre.
+function listAreaIsUs(area) {
+  if (area && area.country === "US") return true;
+  const bbox = area && area.bbox;
+  if (Array.isArray(bbox) && bbox.length >= 4) {
+    const lon = (Number(bbox[0]) + Number(bbox[2])) / 2;
+    const lat = (Number(bbox[1]) + Number(bbox[3])) / 2;
+    if (Number.isFinite(lon) && Number.isFinite(lat) && isUsLonLat(lon, lat)) return true;
+  }
+  return false;
+}
+
+// 32c: the list note, built from the kinds actually shown — labels in
+// row order, then the credits of those kinds. Never aerial: row
+// thumbnails are never aerial since 32b.
+// 32c2: built in both languages (the DOM translator never sees it —
+// the Text showing it carries data-no-i18n).
+export function listPhotoNote(kinds, area, lang = LANG) {
+  const ko = lang !== "en";
+  const labels = ko
+    ? { hero: "단지 사진", scene: "우리 3D 모형", street: "거리 사진",
+      silhouette: "건물 모양", minimap: "지도" }
+    : { hero: "complex photo", scene: "our 3D model", street: "street photo",
+      silhouette: "building shape", minimap: "map" };
+  const seen = LIST_PHOTO_ORDER.filter((k) => (kinds || []).includes(k));
+  if (seen.length === 0) {
+    return ko ? "사진은 실제 매물 사진이 아니에요" : "Pictures are not actual listing photos";
+  }
+  const joined = seen.map((k) => labels[k]).join(ko ? "·" : " · ");
+  const sentence = ko
+    ? `사진은 ${joined}${listPhotoParticle(joined)}(실제 매물 사진 아님)`
+    : `Pictures: ${joined} (not actual listing photos)`;
+  const credits = [];
+  const us = listAreaIsUs(area);
+  if (seen.includes("scene") || seen.includes("silhouette")) {
+    credits.push(ko
+      ? (us ? "우리 자료로 만든 모형 (OSM)" : "우리 자료로 만든 모형 (GIS건물통합정보·OSM)")
+      : (us ? "Model built from our data (OSM)"
+        : "Model built from our data (GIS building data · OSM)"));
+  }
+  if (seen.includes("street")) {
+    credits.push(ko ? "거리 사진: Mapillary (CC BY-SA 4.0)"
+      : "Street photos: Mapillary (CC BY-SA 4.0)");
+  }
+  return credits.length > 0 ? `${sentence} · ${credits.join(" · ")}` : sentence;
 }
 
 // 32b: the row thumbnail order — complex photo, 3D miniature, street
@@ -345,26 +489,90 @@ export function SilhouetteThumb({ footprint = null, floors = null, year = null,
   );
 }
 
-// 32b: the street-level photo thumb. Takes an already-resolved photo when
-// the caller picked the branch; otherwise asks streetPhotoFor itself.
-export function StreetThumb({ candidate = null, photo = null }) {
+// 32c: the street-level photo thumb. Takes an already-resolved photo
+// when the caller picked the branch; otherwise asks streetPhotoFor
+// itself — but only once the thumbnail is near the viewport
+// (IntersectionObserver, SSR-safe: effects never run on the server).
+// Shows a skeleton for at most 6 s, then falls through to the
+// fallback (usually the silhouette). The corner credit names the
+// Mapillary contributor, the full credit (licence + year) rides in
+// the title, and the opened card shows that full line as a link.
+const STREET_SKELETON_MS = 6000;
+
+export function StreetThumb({ candidate = null, photo = null, fallback = null,
+  showFullCredit = false }) {
   const [resolved, setResolved] = useState(photo || null);
+  const [expired, setExpired] = useState(false);
+  const slotRef = useRef(null);
   useEffect(() => {
-    if (photo) { setResolved(photo); return undefined; }
+    if (photo) {
+      setResolved(photo);
+      return undefined;
+    }
     let live = true;
-    streetPhotoFor(candidate).then((s) => { if (live) setResolved(s || null); });
-    return () => { live = false; };
+    let io = null;
+    setResolved(null);
+    setExpired(false);
+    const timer = setTimeout(() => { if (live) setExpired(true); }, STREET_SKELETON_MS);
+    const load = () => {
+      streetPhotoFor(candidate).then((s) => {
+        if (!live) return;
+        if (s) {
+          setResolved(s);
+          reportListThumbKind(candidate && candidate.id, "street");
+        }
+      });
+    };
+    const el = slotRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      load();
+    } else {
+      io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          io = null;
+          load();
+        }
+      }, { rootMargin: "200px" });
+      io.observe(el);
+    }
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      if (io) io.disconnect();
+    };
   }, [candidate && candidate.id, photo]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!resolved) return null;
-  const src = resolved.thumb_url || resolved.url;
-  if (!src) return null;
+  useEffect(() => {
+    if (photo) setResolved(photo);
+  }, [photo]);
+  if (resolved) {
+    const src = resolved.thumb_url || resolved.url;
+    if (!src) return fallback;
+    const full = streetFullCreditFor(resolved);
+    const page = resolved.page_url || null;
+    return (
+      <figure className="ui-thumb ui-street" title={full}>
+        {page ? (
+          <a href={page} target="_blank" rel="noreferrer" title={`${full} · 원본 보기`}>
+            <img src={src} alt={`거리 사진 (${resolved.creator || "Mapillary"})`} loading="lazy" />
+          </a>
+        ) : (
+          <img src={src} alt={`거리 사진 (${resolved.creator || "Mapillary"})`} loading="lazy" />
+        )}
+        <figcaption className="ui-street-credit">{streetShortCreditFor(resolved)}</figcaption>
+        {showFullCredit && page && (
+          <a href={page} target="_blank" rel="noreferrer" title={`${full} · 원본 보기`}>
+            <Text type="supporting">{full}</Text>
+          </a>
+        )}
+      </figure>
+    );
+  }
+  if (expired) return fallback;
   return (
-    <figure className="ui-thumb">
-      <img src={src} alt={resolved.title || "거리 사진"} loading="lazy" />
-      <figcaption>
-        <Text type="supporting">거리 사진</Text>
-      </figcaption>
-    </figure>
+    <div ref={slotRef} className="ui-thumb-loading" role="img" aria-label="거리 사진 불러오는 중">
+      <Text type="supporting">거리 사진 불러오는 중…</Text>
+    </div>
   );
 }
 
@@ -461,10 +669,36 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   pickLetter = null, highlighted = false, note = "", budgetWon = null }) {
   const [slide, setSlide] = useState(0);
   const [street, setStreet] = useState(null);
+  const thumbRef = useRef(null);
+  // 32c: the street request starts only when the row thumbnail is near
+  // the viewport (SSR-safe: no IntersectionObserver on the server).
   useEffect(() => {
     let live = true;
-    streetPhotoFor(candidate).then((s) => { if (live && s) setStreet(s); });
-    return () => { live = false; };
+    let io = null;
+    const load = () => {
+      streetPhotoFor(candidate).then((s) => {
+        if (!live || !s) return;
+        setStreet(s);
+        reportListThumbKind(candidate && candidate.id, "street");
+      });
+    };
+    const el = thumbRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      load();
+    } else {
+      io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          io = null;
+          load();
+        }
+      }, { rootMargin: "200px" });
+      io.observe(el);
+    }
+    return () => {
+      live = false;
+      if (io) io.disconnect();
+    };
   }, [candidate && candidate.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const price = tenurePriceLine(candidate, tenure);
   const row = commuteRowLine(candidate, destName);
@@ -503,7 +737,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" && onDetail) onDetail(candidate);
       }}>
-      <div className="ui-cand-thumb" title={thumbTitle}>
+      <div className="ui-cand-thumb" title={thumbTitle} ref={thumbRef}>
         <RowThumb candidate={candidate} hero={hero} street={street} />
       </div>
       <div className="ui-cand-row-main">
@@ -586,7 +820,13 @@ function FullCard({ candidate, price, facts, row, hero, rest,
                   fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
               )}
               {active === "street" && (
-                <StreetThumb candidate={candidate} photo={street} />
+                <StreetThumb candidate={candidate} photo={street} showFullCredit
+                  fallback={footprint ? (
+                    <SilhouetteThumb footprint={footprint}
+                      floors={candidate.floors ?? null} year={candidate.build_year}
+                      candidate={candidate}
+                      fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+                  ) : sceneFallback} />
               )}
               {active === "silhouette" && (
                 <SilhouetteThumb footprint={footprint}

@@ -701,7 +701,14 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 /* 32b: the single estimate marker — a neutral small badge. */
 .ui-est-badge { display: inline-block; font-size: var(--ds-t-12);
   color: var(--ds-ink-2); border: 1px solid var(--ds-line);
-  border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+  border-radius: var(--ds-r-pill); padding: 0 var(--ds-s-4); white-space: nowrap; }
+/* 32c: the street photo thumb — cover crop with a corner credit. */
+.ui-street { position: relative; }
+.ui-street img { width: 100%; height: 100%; object-fit: cover; display: block;
+  border-radius: var(--ui-r-chip); }
+.ui-street-credit { position: absolute; right: var(--ds-s-4); bottom: var(--ds-s-4);
+  background: rgba(17, 20, 26, 0.72); color: #fff; font-size: var(--ds-t-12);
+  border-radius: var(--ds-r-pill); padding: 0 var(--ds-s-4); white-space: nowrap; }
 /* 32b: the building silhouette thumb with its floors/year flag. */
 .ui-silhouette { position: relative; }
 .ui-silhouette svg { width: 100%; height: 100%; display: block; }
