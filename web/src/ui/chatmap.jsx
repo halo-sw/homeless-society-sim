@@ -439,56 +439,80 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             </g>
           );
         })()}
-        {ordered.map((p) => {
-          if (clustered.has(p.id)) return null;
-          const l = layById.get(p.id);
-          const [px, py] = toXYz(p.lon, p.lat);
-          const short = shortPinPrice(p.candidate, m.tenure);
-          const pw = pinPillWidthPx(short);
-          const box = (l && l.box) || { x: px - pw / 2, y: py - fs(12) - PILL_H, w: pw, h: PILL_H };
-          const hi = cardHi === `home:${p.id}`;
-          const picked = !!p.picked;
-          const fill = picked ? MAP_COLORS.pinPicked : MAP_COLORS.pinFill;
-          const glyph = picked ? (p.letter || String(p.n)) : String(p.n);
-          const dotFill = picked ? "#ffffff" : MAP_COLORS.pinText;
-          const dotText = picked ? MAP_COLORS.pinPicked : "#ffffff";
-          const mainText = picked ? "#ffffff" : MAP_COLORS.pinText;
-          const dcx = box.x + fs(8 + 8);
-          const dcy = box.y + PILL_H / 2;
-          const txx = box.x + fs(8 + 16 + 6);
-          const tailX = box.x + box.w / 2;
-          const tailTipX = tailX;
-          const tailTipY = box.y + PILL_H + PILL_TAIL;
-          const needLeader = !!(l && l.leader);
-          const zoom = hi
-            ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
+        {(() => {
+          // 31b: two passes over the same ordered list so a close pin's
+          // dot and leader never paint over another pin's pill. Same
+          // geometry as the old single pass; the highlighted pill last.
+          const geom = (p) => {
+            const l = layById.get(p.id);
+            const [px, py] = toXYz(p.lon, p.lat);
+            const short = shortPinPrice(p.candidate, m.tenure);
+            const pw = pinPillWidthPx(short);
+            const box = (l && l.box) || { x: px - pw / 2, y: py - fs(12) - PILL_H, w: pw, h: PILL_H };
+            const hi = cardHi === `home:${p.id}`;
+            const picked = !!p.picked;
+            const fill = picked ? MAP_COLORS.pinPicked : MAP_COLORS.pinFill;
+            const glyph = picked ? (p.letter || String(p.n)) : String(p.n);
+            const dotFill = picked ? "#ffffff" : MAP_COLORS.pinText;
+            const dotText = picked ? MAP_COLORS.pinPicked : "#ffffff";
+            const mainText = picked ? "#ffffff" : MAP_COLORS.pinText;
+            const dcx = box.x + fs(8 + 8);
+            const dcy = box.y + PILL_H / 2;
+            const txx = box.x + fs(8 + 16 + 6);
+            const tailX = box.x + box.w / 2;
+            const tailTipX = tailX;
+            const tailTipY = box.y + PILL_H + PILL_TAIL;
+            const needLeader = !!(l && l.leader);
+            const zoom = hi
+              ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
+            return { l, px, py, short, box, hi, picked, fill, glyph,
+              dotFill, dotText, mainText, dcx, dcy, txx,
+              tailX, tailTipX, tailTipY, needLeader, zoom };
+          };
+          const visible = ordered.filter((p) => !clustered.has(p.id));
+          const pillOrder = [...visible].sort((a, b) =>
+            ((cardHi === `home:${a.id}`) ? 1 : 0) - ((cardHi === `home:${b.id}`) ? 1 : 0));
           return (
-            <g key={p.id}
-              onMouseEnter={() => onPinHover && onPinHover(`home:${p.id}`)}
-              onMouseLeave={() => onPinHover && onPinHover(null)}
-              onClick={() => handlePinClick(p.id)}
-              style={{ cursor: onPinClick ? "pointer" : "default" }}>
-              {needLeader && l.leader && (
-                <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
-                  stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
-              )}
-              <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />
-              <g transform={zoom}>
-                <g filter="url(#chat-pill-shadow)">
-                  <rect x={box.x} y={box.y} width={box.w} height={fs(PILL_H)} rx={fs(999)}
-                    fill={fill} stroke={picked ? "none" : "#e2ddd3"} strokeWidth={fs(1)} />
-                  <circle cx={dcx} cy={dcy} r={fs(8)} fill={dotFill} />
-                  <text x={dcx} y={dcy + fs(3.5)} fontSize={fs(10)} textAnchor="middle"
-                    fill={dotText}>{glyph}</text>
-                  <text x={txx} y={box.y + fs(16)} fontSize={fs(12)} fontWeight={600}
-                    fill={mainText}>{short}</text>
-                </g>
-                <polygon points={`${tailX - fs(4)},${box.y + PILL_H} ${tailX + fs(4)},${box.y + PILL_H} ${tailTipX},${tailTipY}`}
-                  fill={fill} />
-              </g>
-            </g>
+            <>
+              {visible.map((p) => {
+                const g = geom(p);
+                return (
+                  <g key={`pin-under-${p.id}`}>
+                    {g.needLeader && g.l.leader && (
+                      <line x1={g.l.leader[0]} y1={g.l.leader[1]} x2={g.px} y2={g.py}
+                        stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
+                    )}
+                    <circle cx={g.px} cy={g.py} r={fs(4)} fill={MAP_COLORS.pinText} />
+                  </g>
+                );
+              })}
+              {pillOrder.map((p) => {
+                const g = geom(p);
+                return (
+                  <g key={`pin-pill-${p.id}`}
+                    onMouseEnter={() => onPinHover && onPinHover(`home:${p.id}`)}
+                    onMouseLeave={() => onPinHover && onPinHover(null)}
+                    onClick={() => handlePinClick(p.id)}
+                    style={{ cursor: onPinClick ? "pointer" : "default" }}>
+                    <g transform={g.zoom}>
+                      <g filter="url(#chat-pill-shadow)">
+                        <rect x={g.box.x} y={g.box.y} width={g.box.w} height={fs(PILL_H)} rx={fs(999)}
+                          fill={g.fill} stroke={g.picked ? "none" : "#e2ddd3"} strokeWidth={fs(1)} />
+                        <circle cx={g.dcx} cy={g.dcy} r={fs(8)} fill={g.dotFill} />
+                        <text x={g.dcx} y={g.dcy + fs(3.5)} fontSize={fs(10)} textAnchor="middle"
+                          fill={g.dotText}>{g.glyph}</text>
+                        <text x={g.txx} y={g.box.y + fs(16)} fontSize={fs(12)} fontWeight={600}
+                          fill={g.mainText}>{g.short}</text>
+                      </g>
+                      <polygon points={`${g.tailX - fs(4)},${g.box.y + PILL_H} ${g.tailX + fs(4)},${g.box.y + PILL_H} ${g.tailTipX},${g.tailTipY}`}
+                        fill={g.fill} />
+                    </g>
+                  </g>
+                );
+              })}
+            </>
           );
-        })}
+        })()}
         {laid.filter((l) => l.kind === "cluster").map((l) => {
           const open = expanded === l.id;
           const cx = l.box.x + l.box.w / 2;
@@ -543,29 +567,27 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             );
           })}
       </svg>
-      <div role="note" aria-hidden={false} style={{ position: "absolute", bottom: 32, left: 12,
-        maxWidth: "calc(100% - 96px)", background: "#ffffff",
-        borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a",
-        whiteSpace: "normal" }}>
+      <div role="note" className="ui-float ui-chatmap-legend">
         {provider === "usgs"
           ? "● 후보 · ■ 회사 · 숫자는 출근 편도(추정)"
           : "● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)"}
       </div>
-      <div className="ui-chatmap-zoom">
-        <button type="button" aria-label="확대"
-          onClick={() => setVt((v) => zoomAt(v, 2, W / 2, H / 2, W / 2, H / 2))}>+</button>
-        <button type="button" aria-label="축소"
-          onClick={() => setVt((v) => zoomAt(v, 0.5, W / 2, H / 2, W / 2, H / 2))}>−</button>
-        <button type="button" className="fit" aria-label="후보 모두 보기"
-          onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}>맞추기</button>
-      </div>
-      <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 10,
-        color: MAP_COLORS.muted, background: "rgba(255,255,255,0.8)", padding: "2px 6px" }}>
-        {basemapOn
-          ? (provider === "usgs"
-            ? "Map: USGS The National Map"
-            : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
-          : "© OpenStreetMap contributors"}
+      <div className="ui-chatmap-side">
+        <div className="ui-chatmap-zoom">
+          <button type="button" className="ui-float" aria-label="확대"
+            onClick={() => setVt((v) => zoomAt(v, 2, W / 2, H / 2, W / 2, H / 2))}>+</button>
+          <button type="button" className="ui-float" aria-label="축소"
+            onClick={() => setVt((v) => zoomAt(v, 0.5, W / 2, H / 2, W / 2, H / 2))}>−</button>
+          <button type="button" className="ui-float fit" aria-label="후보 모두 보기"
+            onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}>맞추기</button>
+        </div>
+        <div className="ui-float ui-chatmap-credit">
+          {basemapOn
+            ? (provider === "usgs"
+              ? "Map: USGS The National Map"
+              : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
+            : "© OpenStreetMap contributors"}
+        </div>
       </div>
     </div>
   );

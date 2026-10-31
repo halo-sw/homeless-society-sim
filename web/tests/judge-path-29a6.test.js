@@ -49,11 +49,12 @@ describe("29a6 judge path", () => {
     assert.equal(parseChatSearch("?replay=menlo-month").replay, "menlo-month");
   });
 
-  it("landing shows the three entries (ko SSR, en translator)", async () => {
+  it("landing shows the two entries (ko SSR, en translator)", async () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
-    for (const s of ["기록된 한 달 보기", "Meta 본사 출근으로 해 보기", "서울로 해 보기"]) {
+    for (const s of ["기록된 한 달 보기", "Meta 본사 출근으로 해 보기"]) {
       assert.ok(html.includes(s), s);
     }
+    assert.ok(!html.includes("서울로 해 보기"), "31c: duplicate entry gone");
     assert.ok(html.includes("replay="), "replay link in SSR");
     const { createTranslator } = await import("../src/i18n/translate.js");
     const { phrases, patterns } = await import("../src/i18n/en.js");

@@ -102,11 +102,7 @@
   padding: var(--ui-s8) var(--ui-s12);
 }
 .ui-sim13-stage .ui-tools { top: 0; left: 0; }
-/* Small neutral mark (replaces the assistant's letter avatar). */
-.ui-mark {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: var(--ui-ink3); display: inline-block; flex: none;
-}
+/* 31a: the ui-mark avatar is gone — cards take the full message width. */
 
 /* Stage 6 layout: the sim bar docks bottom-left so the frame centre
    (followed resident) stays clear; the caption stays bottom-centre above
@@ -344,15 +340,64 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 /* 19a: chips stay above the composer on one scrollable row. */
 /* 26t: chips never shrink at any width — the row scrolls sideways. */
 .ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: nowrap;
-  overflow-x: auto; padding: var(--ui-s8) var(--ui-s12); }
+  overflow-x: auto; padding: var(--ui-s8) var(--ds-s-16); }
+/* 31a: one left edge — plain text, cards, the source line, chips and
+   the composer all start at the message list's own 16px padding. */
+.ui-chat-thread .astryx-chat-message-list {
+  padding-left: var(--ds-s-16); padding-right: var(--ds-s-16); }
+/* 31d: the left edge really is one edge — the list's inner wrapper and
+   the ghost bubble add their own horizontal padding on top of the
+   list's own padding, so both are zeroed here. Boxes, cards and the
+   source line then start at the list padding, and user bubbles meet
+   the same right edge as the chips. */
+.ui-chat-thread .astryx-chat-message-list > div {
+  padding-left: 0; padding-right: 0; }
+.ui-chat-thread .astryx-chat-message-bubble {
+  padding-left: 0; padding-right: 0; }
+/* 31d: the composer wrapper pads narrow — its outer box starts and
+   ends at the same inset as the chips. */
+.ui-chat-thread > .astryx-chat-layout > :last-child {
+  padding-left: var(--ds-s-16); padding-right: var(--ds-s-16); }
+/* 31e: the composer's inner wrapper adds its own 8px of horizontal
+   padding on top of the inset above, so the composer started right of
+   the chips. Zero the sides here (the bottom padding stays); top-level
+   so it holds at desktop and phone widths. */
+.ui-chat-thread > .astryx-chat-layout > :last-child > div {
+  padding-left: 0; padding-right: 0; }
+/* 31d: Korean wraps at spaces, never mid-word, everywhere in the
+   thread. Set explicitly on the bubble and the row-link text, where
+   the component rule would otherwise beat the inherited value; long
+   unbroken strings may still break anywhere. */
+.ui-chat-thread .ui-result-moment, .ui-chat-thread .ui-result-text,
+.ui-chat-thread .ui-moment-text, .ui-chat-thread .astryx-chat-message-bubble,
+.ui-chat-thread, .ui-chat-thread .astryx-chat-message-bubble * {
+  word-break: keep-all; overflow-wrap: anywhere; }
+/* 31d: citations are auto-height lines — a wrapped label pushes the
+   next citation down instead of drawing over the line above. */
+.ui-cites .ui-cite {
+  height: auto; line-height: var(--ds-lh-tight); align-self: flex-start; }
+/* 31e: the citation anchor itself is an inline-flex 20px box — a
+   wrapped label was centred and clipped inside it. Auto height with
+   visible overflow lets the label wrap at spaces and push the next
+   citation down. Specific enough to beat the Astryx atomic class. */
+.ui-cites a.astryx-citation,
+.ui-cites .astryx-citation {
+  height: auto; min-height: 20px; overflow: visible; align-items: flex-start; }
+/* 31a: minimum hit area in the thread — 32px here, 40px at ≤480px. */
+.ui-chat-thread button { min-height: 32px; }
 .ui-chat-chips > * { flex: none; }
 /* 29a4: source chips say what was checked and never truncate. */
 .ui-cite-label { font-size: var(--ds-t-12); color: var(--ds-ink-2); flex: none; }
+/* 31a: citations are text links — underline on hover, no pill. */
 .ui-cite { max-width: 100%; min-width: 0; }
+.ui-cites .ui-cite, .ui-cites .ui-cite * {
+  background-color: transparent; border-color: transparent; box-shadow: none; }
 .ui-cites a, .ui-cites span { max-width: 100%; }
+.ui-cites a, .ui-cites a * { text-decoration: none; }
+.ui-cites a:hover, .ui-cites a:hover * { text-decoration: underline; }
 .ui-cites a > span, .ui-cites span > span {
   white-space: normal; overflow: visible; }
-.ui-chat-thread > p { padding: var(--ui-s4) var(--ui-s12) var(--ui-s8); }
+.ui-chat-thread > p { padding: var(--ds-s-4) var(--ds-s-16) var(--ds-s-8); }
 /* 29a6c: replay banner — one compact sticky row at the top of the
    thread. The text wraps inside its own flex item; the buttons keep
    their size and never slide under the text. */
@@ -617,21 +662,21 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   display: inline-flex; align-items: center; justify-content: center;
   font-size: var(--ui-t12); font-weight: var(--ui-w600); }
 .ui-cand-disc.is-pick { background: var(--ui-accent); color: #fff; }
-.ui-cand-row-name { font-size: 15px; font-weight: var(--ui-w600);
+.ui-cand-row-name { font-size: var(--ds-t-14); font-weight: var(--ui-w600);
   flex: 1 1 0; min-width: 0;
   word-break: keep-all; overflow-wrap: anywhere; }
 /* 29a1: romanized gloss beside the Hangul home name (English mode). */
-.ui-name-gloss { color: var(--ds-ink-3); font-size: 12px; }
+.ui-name-gloss { color: var(--ds-ink-3); font-size: var(--ds-t-12); }
 .ui-cand-row-btn { flex: none; }
 /* 26p: the Pick button never shrinks (its label must never clip to
    "P..."); the name takes the free width and may break a single long
    word only when it is wider than its column. */
 .ui-cand-row-top > button { flex: none; }
-.ui-cand-row-price { font-size: 15px; font-weight: var(--ui-w600); }
+.ui-cand-row-price { font-size: var(--ds-t-14); font-weight: var(--ui-w600); }
 .ui-cand-row-facts { font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-cand-row-commute { font-size: var(--ui-t12); }
-.ui-cand-est { font-size: var(--ds-t-12); color: var(--ui-ink2); background: var(--ui-sunken);
-  border-radius: var(--ds-r-chip); padding: 1px var(--ds-s-8); white-space: nowrap; }
+/* 31a: source tags are plain meta text with the dot — never a pill. */
+.ui-cand-est { font-size: var(--ds-t-12); color: var(--ds-ink-2); white-space: nowrap; }
 /* 19c: the full card in the side panel — wide photo, name then price. */
 .ui-cand-full .ui-cand-photo { aspect-ratio: 16 / 9; }
 .ui-cand-full .ui-cand-name { font-size: 18px; }
@@ -766,20 +811,44 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   padding: 8px 12px; width: fit-content; }
 .ui-chatmap { position: absolute; inset: 0; }
 .ui-chatmap svg { display: block; touch-action: none; }
-/* 25a: zoom buttons over the map, above the credit and clear of the tray. */
-.ui-chatmap-zoom { position: absolute; right: 12px; bottom: 104px; z-index: 5;
-  display: flex; flex-direction: column; gap: 8px; }
-.ui-chatmap-zoom button { width: 32px; height: 32px; padding: 0;
-  background: #ffffff; border: none; border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  font-size: 16px; font-weight: 700; line-height: 1; color: var(--ds-ink-1);
-  cursor: pointer; }
-.ui-chatmap-zoom button.fit { width: auto; min-width: 32px; padding: 0 8px;
-  font-size: var(--ds-t-12); font-weight: 600; }
-/* 19a: the context line floats over the map instead of a header strip. */
-.ui-stage-pill { position: absolute; top: 12px; left: 12px; z-index: 5;
-  background: var(--ui-card); border-radius: var(--ds-r-pill); box-shadow: var(--ui-shadow);
-  padding: var(--ds-s-4) var(--ds-s-12); font-size: var(--ds-t-14); font-weight: 600; color: var(--ui-ink); }
+/* 31b: one floating-panel surface for everything over the map —
+   the stage title, the legend, the zoom buttons and the attribution.
+   Plain card surface (never a pill), so nothing reads as a button. */
+.ui-float { background: var(--ui-card); border-radius: var(--ds-r-card);
+  box-shadow: var(--ui-shadow); padding: var(--ds-s-8) var(--ds-s-12); }
+/* 19a: the context line floats over the map instead of a header strip.
+   Plain text on the shared surface: no pill shape, no hover. */
+.ui-stage-title { position: absolute; top: var(--ds-s-12); left: var(--ds-s-12);
+  z-index: 5; font-size: var(--ds-t-14); font-weight: 600; color: var(--ui-ink); }
+/* 31b: the legend sits directly under the stage title (top-left), so
+   the bottom tray can never cover it. Strings unchanged. */
+.ui-chatmap-legend { position: absolute; z-index: 5;
+  top: calc(var(--ds-s-12) + var(--ds-s-32) + var(--ds-s-12));
+  left: var(--ds-s-12); max-width: calc(100% - var(--ds-s-48) * 2);
+  font-size: var(--ds-t-12); color: var(--ds-ink-2); white-space: normal; }
+/* 31d: the zoom group and the credit share one right-side column —
+   zoom on top, credit under it, end-aligned. The column sits clear
+   of the bottom, so nothing in it overlaps the tray or each other. */
+.ui-chatmap-side { position: absolute; z-index: 5;
+  right: var(--ds-s-12); bottom: var(--ds-s-12);
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: var(--ds-s-8); }
+.ui-chat-main:has(.ui-picks-tray) .ui-chatmap-side {
+  bottom: calc(var(--ds-s-48) * 2 + var(--ds-s-24) + var(--ds-s-16)); }
+/* 31b: the credit sits in the side column as 12 px meta on the same surface. */
+.ui-chatmap-credit { font-size: var(--ds-t-12); color: var(--ds-ink-2); }
+/* 31b: while the pick tray floats over the stage bottom, the credit
+   lifts above it instead of sliding underneath. */
+.ui-chat-main:has(.ui-picks-tray) .ui-chatmap-credit {
+  bottom: calc(var(--ds-s-48) * 2 + var(--ds-s-24)); }
+/* 25a: zoom buttons in the side column, above the credit and clear of
+   the tray. Each button is the shared surface, 32 px tall, 14 px. */
+.ui-chatmap-zoom { display: flex; flex-direction: column; gap: var(--ds-s-8); }
+.ui-chatmap-zoom button { height: var(--ds-s-32); min-width: var(--ds-s-32);
+  padding: 0 var(--ds-s-8); border: none;
+  font-size: var(--ds-t-14); font-weight: 700; line-height: 1;
+  color: var(--ds-ink-1); cursor: pointer; }
+.ui-chatmap-zoom button.fit { width: auto; font-weight: 600; }
 /* 19a: the only run button lives in this tray over the stage bottom. */
 .ui-picks-tray { position: absolute; bottom: 16px; z-index: 5;
   left: calc(var(--ui-thread-w) + 16px); right: 16px;
@@ -797,8 +866,16 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   font-size: 12px; font-weight: 700; }
 .ui-pick-name { max-width: 180px; overflow-wrap: anywhere;
   word-break: keep-all; font-size: var(--ui-t14); }
-.ui-pick-x { background: none; border: none; cursor: pointer; padding: var(--ds-s-4) 4px;
-  color: var(--ui-ink2); font-size: 14px; line-height: 1; }
+.ui-pick-x { background: none; border: none; cursor: pointer;
+  min-width: calc(var(--ds-s-32) - var(--ds-s-4));
+  min-height: calc(var(--ds-s-32) - var(--ds-s-4));
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: var(--ds-s-4);
+  color: var(--ui-ink2); font-size: var(--ds-t-14); line-height: 1; }
+@media (max-width: 480px) {
+  .ui-pick-x { min-width: calc(var(--ds-s-32) + var(--ds-s-8));
+    min-height: calc(var(--ds-s-32) + var(--ds-s-8)); }
+}
 /* 26z: the run button keeps its full label on one line at any width.
    It never shrinks (flex: none, no width cap), so the design-system
    label span never clips; overflow: visible on the button and its
@@ -1085,14 +1162,18 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ui-result-head { display: flex; align-items: center; gap: var(--ds-s-8); min-width: 0; }
 .ui-result-head .ui-pick-disc { width: 20px; height: 20px; font-size: var(--ds-t-12); }
 .ui-result-name {
-  font-size: var(--ds-t-14); font-weight: 600; min-width: 0;
+  font-size: var(--ds-t-14); font-weight: var(--ui-w600); min-width: 0;
   word-break: keep-all; overflow-wrap: anywhere;
 }
 .ui-result-label { font-size: var(--ui-t12); color: var(--ui-ink2); }
+/* 31a: key numbers — 20/700 tabular. Row labels stay Meta. */
 .ui-result-value {
-  font-size: var(--ui-t16); font-weight: var(--ui-w600); min-width: 0;
+  font-size: var(--ds-t-20); font-weight: var(--ds-w-bold); min-width: 0;
+  font-variant-numeric: tabular-nums;
   word-break: keep-all; overflow-wrap: normal;
 }
+/* 31a: section labels — Body strong. */
+.ui-result-sect { font-size: var(--ds-t-14); font-weight: var(--ui-w600); }
 /* 29a6c: the 26m money source note is always the small second line, so
    "$4,261/mo" never joins its "(ZIP estimate)" on one row. */
 .ui-result-note { display: block; font-size: var(--ui-t12); font-weight: var(--ui-w400);
@@ -1114,16 +1195,22 @@ button.ui-tag:hover { color: var(--ui-ink); }
   font-size: var(--ds-t-12); color: var(--ui-ink2); background: var(--ui-sunken);
   border-radius: var(--ui-r-chip); padding: var(--ds-s-4) var(--ds-s-8); white-space: nowrap;
 }
-/* 살아 보니: one row per moment — when, letter disc, text, 3D link. */
-/* 26t: the 3D link keeps its full label at any width; the text takes the shrink. */
-.ui-result-moment { display: flex; align-items: center; gap: var(--ui-s8); }
+/* 31a: row links — one grid for diary and 살아 보니 lines:
+   [disc 22px] [when, Meta, no wrap] [text, Body, wraps] [›].
+   The whole row is one button; text wraps under itself only. */
+.ui-result-moment { display: grid; grid-template-columns: 22px max-content minmax(0, 1fr) auto;
+  gap: var(--ui-s8); align-items: start; width: 100%; box-sizing: border-box;
+  font: inherit; color: inherit; text-align: left;
+  background: none; border: none; border-radius: var(--ui-r-chip);
+  padding: var(--ds-s-8); cursor: pointer; }
+button.ui-result-moment:hover { background: var(--ui-sunken); }
 .ui-result-when {
   font-size: var(--ui-t12); color: var(--ui-ink2); flex: none;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.ui-result-moment .ui-pick-disc { width: 20px; height: 20px; font-size: var(--ds-t-12); }
-.ui-result-moment button { flex: none; }
-.ui-result-text { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.ui-result-moment .ui-pick-disc { width: 22px; height: 22px; font-size: var(--ds-t-12); }
+.ui-result-text { min-width: 0; overflow-wrap: anywhere; }
+.ui-result-go { color: var(--ds-ink-3); flex: none; }
 /* 24a: language toggle — a small text button, never truncated. */
 .ui-lang-toggle {
   font-size: 12px; color: var(--ui-ink2); white-space: nowrap;
@@ -1223,9 +1310,11 @@ button.ui-tag:hover { color: var(--ui-ink); }
   /* 9. 26p moments: two lines — time, disc and the right-aligned link
      on line 1, the text at full width on line 2. The ID selector wins
      over the 26m "button *" nowrap so the text may wrap again. */
-  .ui-moment, .ui-result-moment { flex-wrap: wrap; }
-  .ui-moment > :last-child, .ui-result-moment > :last-child { margin-left: auto; }
-  .ui-moment-text, .ui-result-text { flex-basis: 100%; order: 3; }
+  /* 31a: thread hit areas grow to 40px on phones. */
+  .ui-chat-thread button { min-height: 40px; }
+  .ui-moment { flex-wrap: wrap; }
+  .ui-moment > :last-child { margin-left: auto; }
+  .ui-moment-text { flex-basis: 100%; order: 3; }
   #ui-root .ui-moment-text, #ui-root .ui-result-text { white-space: normal; }
 
   /* 28b: top-bar credit keeps logo + name on phones (status hides). */
@@ -1273,16 +1362,20 @@ button.ui-tag:hover { color: var(--ui-ink); }
   padding: 96px var(--ds-s-24) 0; text-align: center; }
 .ds-lp-title { font-family: var(--ds-font-display); font-size: var(--ds-t-40);
   line-height: var(--ds-lh-display); font-weight: var(--ds-w-bold);
-  color: var(--ds-ink-1); margin: 0 0 var(--ds-s-16); }
+  color: var(--ds-ink-1); margin: 0 0 var(--ds-s-12); }
 .ds-lp-lede { font-size: var(--ds-t-16); line-height: var(--ds-lh-body);
   color: var(--ds-ink-2); margin: 0 0 var(--ds-s-24); }
 .ds-lp-chips { display: flex; gap: var(--ds-s-8); justify-content: center;
-  flex-wrap: wrap; margin: var(--ds-s-16) 0; }
+  flex-wrap: wrap; margin: var(--ds-s-12) 0 0; }
 .ds-lp-chip { background: var(--ds-surface); border: 1px solid var(--ds-line);
-  border-radius: var(--ds-r-pill); padding: var(--ds-s-8) var(--ds-s-16);
-  font-size: var(--ds-t-14); color: var(--ds-ink-1); cursor: pointer; }
+  border-radius: var(--ds-r-pill); height: var(--ds-s-32);
+  padding: 0 var(--ds-s-12); display: inline-flex; align-items: center;
+  justify-content: center; font-size: var(--ds-t-14); color: var(--ds-ink-1);
+  cursor: pointer; }
+.ds-lp-replaynote { font-size: var(--ds-t-12); color: var(--ds-ink-2);
+  margin: var(--ds-s-8) 0 0; }
 .ds-lp-cover { font-size: var(--ds-t-12); color: var(--ds-ink-3);
-  margin: var(--ds-s-16) 0 0; }
+  margin: var(--ds-s-8) 0 0; }
 .ds-lp-section { max-width: 1080px; margin: 0 auto;
   padding: 96px var(--ds-s-24) 0; }
 .ds-lp-h { font-family: var(--ds-font-display); font-size: var(--ds-t-28);
@@ -1424,20 +1517,18 @@ button.ui-tag:hover { color: var(--ui-ink); }
     var(--ds-surface) 0%, var(--ds-page) 70%);
   padding-bottom: calc(var(--ds-s-48) * 2); }
 .ds-lp-hero { position: relative; overflow: clip; }
-.ds-lp-heroeyebrow { display: inline-flex; align-items: center;
-  gap: var(--ds-s-8); background: var(--ds-surface);
-  border: 1px solid var(--ds-line); border-radius: var(--ds-r-pill);
-  padding: var(--ds-s-4) var(--ds-s-12); font-size: var(--ds-t-14);
-  color: var(--ds-ink-1); margin: 0 0 var(--ds-s-16); }
 .ds-lp-title { font-size: 56px; letter-spacing: -0.01em; }
 .ds-lp-hero .ds-lp-composer { max-width: 720px; margin: 0 auto;
   box-shadow: var(--ds-shadow-pop); border-radius: var(--ds-r-composer); }
-.ds-lp-proof { display: flex; justify-content: center; flex-wrap: wrap;
-  margin: 0 0 var(--ds-s-16); }
+.ds-lp-proof { display: grid; grid-template-columns: repeat(3, 1fr);
+  text-align: center; margin: var(--ds-s-24) 0; }
 .ds-lp-prooffact { font-size: var(--ds-t-12); color: var(--ds-ink-2);
-  padding: var(--ds-s-4) var(--ds-s-12); white-space: nowrap; }
+  padding: 0 var(--ds-s-12); min-width: 0; overflow-wrap: break-word; }
 .ds-lp-prooffact + .ds-lp-prooffact { border-left: 1px solid var(--ds-line); }
-.ds-lp-prooffact b { font-weight: var(--ds-w-bold); color: var(--ds-ink-1); }
+.ds-lp-prooffact b { display: block; font-size: var(--ds-t-20);
+  font-weight: var(--ds-w-bold); font-variant-numeric: tabular-nums;
+  color: var(--ds-ink-1); }
+.ds-lp-prooffact span { display: block; }
 .ds-lp-window { position: relative; background: var(--ds-surface);
   border: 1px solid var(--ds-line); padding: var(--ds-s-12);
   border-radius: calc(var(--ds-r-sheet) + 4px);
@@ -1516,7 +1607,7 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ds-lp-exrow + .ds-lp-exrow { border-top: 1px solid var(--ds-line); }
 .ds-lp-exprompt { font-size: var(--ds-t-16); }
 .ds-lp-judge { display: flex; flex-wrap: wrap; justify-content: center;
-  gap: var(--ds-s-8); margin-top: var(--ds-s-16); }
+  gap: var(--ds-s-8); margin-top: var(--ds-s-24); }
 .ds-lp-btn { border-radius: var(--ds-r-pill); font-size: var(--ds-t-14);
   font-weight: var(--ds-w-medium); cursor: pointer; white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1575,9 +1666,7 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ds-lp-ctatitle { font-size: 32px; }
   .ds-lp-judge { flex-direction: column; align-items: center; }
   .ds-lp-judge .ds-lp-btn { max-width: 100%; }
-  .ds-lp-proof { max-width: 300px; margin-left: auto; margin-right: auto;
-    gap: var(--ds-s-8) var(--ds-s-16); justify-content: center; text-align: center; }
-  .ds-lp-prooffact + .ds-lp-prooffact { border-left: 0; }
+  .ds-lp-prooffact { padding: 0 var(--ds-s-8); }
   .ds-lp-steps::before { top: var(--ds-s-24); bottom: var(--ds-s-24);
     left: 18px; right: auto; width: 1px; height: auto; }
   .ds-lp-step { text-align: left; display: flex; gap: var(--ds-s-16);

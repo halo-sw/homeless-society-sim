@@ -1,4 +1,5 @@
-// 30e: the three hero judge buttons render as buttons (ds-lp-judge, not ds-lp-cta).
+// 30e: the hero judge buttons render as buttons (ds-lp-judge, not ds-lp-cta).
+// 31c: two judge links only — the 서울로 duplicate is gone.
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -22,14 +23,15 @@ describe("30e landing hero judge buttons (SSR, no DOM)", () => {
     ({ LandingPage } = await import("../src/ui/landing-page.jsx"));
   });
 
-  it("the three hero links sit inside ds-lp-judge, not ds-lp-cta", () => {
+  it("the two hero links sit inside ds-lp-judge, not ds-lp-cta", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
     const judge = html.match(/<div class="ds-lp-judge">([\s\S]*?)<\/div>/);
     assert.ok(judge, "hero ds-lp-judge wrapper missing");
     const links = judge[1].match(/<a /g) || [];
-    assert.equal(links.length, 3);
+    assert.equal(links.length, 2);
     assert.ok(judge[1].includes("ds-lp-btn--primary"));
     assert.ok(judge[1].includes("ds-lp-btn--secondary"));
+    assert.ok(!html.includes("서울로 해 보기"));
   });
 
   it("ds-lp-cta appears exactly once, on the bottom section", () => {
@@ -39,11 +41,14 @@ describe("30e landing hero judge buttons (SSR, no DOM)", () => {
     assert.ok(html.includes('<section class="ds-lp-cta"'));
   });
 
-  it("the replay note stays 13px --ds-ink-2", () => {
+  it("the replay note uses a class, not an inline style", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
     assert.ok(html.includes("ds-lp-replaynote"));
-    assert.ok(html.includes("var(--ds-ink-2)"));
-    assert.ok(html.includes("13px"));
+    const note = html.match(/<p class="ds-lp-replaynote"([^>]*)>/);
+    assert.ok(note, "replay note missing");
+    assert.ok(!note[1].includes("style"));
+    const css = read("../src/ui/ui.css");
+    assert.match(css, /\.ds-lp-replaynote\s*\{[^}]*var\(--ds-ink-2\)/);
   });
 
   it("ui.css has the judge button rules and no ellipsis", () => {

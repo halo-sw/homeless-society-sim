@@ -28,7 +28,6 @@ describe("28f landing visual (SSR, no DOM)", () => {
   it("shows the hero proof, callouts and closing lines", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
     for (const s of [
-      "Muse가 대신 확인하고 30일 살아 봐요",
       "14초",
       "85초",
       "8/8",
