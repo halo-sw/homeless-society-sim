@@ -6,6 +6,7 @@ import { buildPrompt } from "./src/judge/context.js";
 import { providerConfig } from "./src/judge/providers.js";
 import { emptyUsage, judgeSingle } from "./src/judge/run.js";
 import { createConsultHandler } from "./src/consult/server.js";
+import { createTranscribeHandler } from "./src/consult/voice.js";
 import { serveTile } from "./src/aerial/proxy.js";
 
 // Serves the pipeline output (data/build/<area>/*.json) at /data/<area>/*
@@ -217,6 +218,8 @@ function consultApiPlugin() {
     configureServer(server) {
       server.middlewares.use("/api/consult",
         createConsultHandler({ dataDir: DATA_DIR, scenDir: SCEN_DIR, rawDir: RAW_DIR }));
+      server.middlewares.use("/api/voice/transcribe",
+        createTranscribeHandler({ env: process.env }));
       // 13: model status for the 모델 panel — booleans only, never keys.
       server.middlewares.use("/api/model/status", (req, res) => {
         if (req.method !== "GET") {
@@ -228,6 +231,7 @@ function consultApiPlugin() {
         res.end(JSON.stringify({
           ok: true,
           meta: { hasServerKey: Boolean(process.env.MODEL_API_KEY) },
+          voice: { hasServerKey: Boolean(process.env.MODEL_API_KEY) },
           baseten: { hasServerKey: Boolean(process.env.BASETEN_API_KEY) },
           recorded: { hasServerKey: true },
         }));

@@ -10,6 +10,7 @@
 
 import { serveTile } from "../web/src/aerial/proxy.js";
 import { createConsultHandler, httpReadText, readBody } from "../web/src/consult/server.js";
+import { VOICE_MAX_BYTES, createTranscribeHandler } from "../web/src/consult/voice.js";
 import { BYOK_HEADER } from "../web/src/consult/byok.js";
 
 const DEFAULT_ORIGINS = [
@@ -107,6 +108,32 @@ export function createRelay({ env = {}, fetchImpl = fetch, now = () => Date.now(
   const consultDay = new Map();
   const consultGlobal = [];
   const tilesHour = new Map();
+  // Voice transcribe: its own buckets (10 per 10 min, 40 per day per
+  // client, 300 per day global), one handler per relay like consult.
+  const transcribeHandler = createTranscribeHandler({ env, fetchImpl });
+  const voice10 = new Map();
+  const voiceDay = new Map();
+  const voiceGlobal = [];
+
+  // Raw (binary-safe) body read for the WAV upload: readBody() above
+  // decodes text, which would corrupt audio bytes.
+  function readRawBody(req) {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      let size = 0;
+      req.on("data", (c) => {
+        size += c.length;
+        if (size > VOICE_MAX_BYTES) {
+          reject(new Error("body too large"));
+          if (typeof req.destroy === "function") req.destroy();
+          return;
+        }
+        chunks.push(c);
+      });
+      req.on("end", () => resolve(Buffer.concat(chunks)));
+      req.on("error", reject);
+    });
+  }
 
   function corsHeaders(res, origin) {
     if (origin) {
@@ -188,10 +215,41 @@ export function createRelay({ env = {}, fetchImpl = fetch, now = () => Date.now(
       return sendJson(res, 200, {
         ok: true,
         meta: { hasServerKey: Boolean(env.MODEL_API_KEY) },
+        voice: { hasServerKey: Boolean(env.MODEL_API_KEY) },
         baseten: { hasServerKey: false },
         recorded: { hasServerKey: true },
         relay: true,
       }, cors);
+    }
+
+    if (path === "/api/voice/transcribe") {
+      if ((req.method || "GET") !== "POST") {
+        sendJson(res, 405, { ok: false, error: "method" }, cors);
+        return;
+      }
+      const over = Math.max(
+        checkBucket(voice10, client, t, 600000, 10),
+        checkBucket(voiceDay, client, t, DAY_MS, 40),
+        checkGlobal(voiceGlobal, t, DAY_MS, 300),
+      );
+      if (over > 0) {
+        sendLimited(res, over, cors);
+        return;
+      }
+      // Buffer the WAV body once and hand it to the handler parked on
+      // req.body so it is read exactly once.
+      if (req.body === undefined || req.body === null) {
+        try {
+          req.body = await readRawBody(req);
+        } catch {
+          sendJson(res, 413, { ok: false, error: "too_large" }, cors);
+          return;
+        }
+      } else if (typeof Buffer !== "undefined" && !Buffer.isBuffer(req.body)) {
+        req.body = Buffer.from(String(req.body));
+      }
+      corsHeaders(res, cors);
+      return transcribeHandler(req, res);
     }
 
     if (path === "/api/consult") {
