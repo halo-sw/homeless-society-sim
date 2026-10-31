@@ -210,3 +210,13 @@ describe("29j2 validateReportBody", () => {
     assert.throws(() => validateReportBody({ ...good(), runs: big }), /trips/);
   });
 });
+
+describe("29j3b server-first import order", () => {
+  it("importing server.js before tools.js succeeds and TOOL_DEFS has submit_report", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const out = execFileSync("node", ["--input-type=module", "-e",
+      `await import("./src/consult/server.js");\nconst { TOOL_DEFS } = await import("./src/consult/tools.js");\nif (!TOOL_DEFS.some((t) => t.function && t.function.name === "submit_report")) throw new Error("missing submit_report");\nconsole.log("server-first-ok");`],
+      { cwd: join(HERE, ".."), encoding: "utf8" });
+    assert.match(out, /server-first-ok/);
+  });
+});

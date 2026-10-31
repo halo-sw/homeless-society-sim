@@ -28,7 +28,7 @@ import { PRIORITY_GROUPS, PRIORITY_METRICS, validateWeights } from "../prioritie
 import { safetyView } from "../safety.js";
 import { educationCounts, schoolRoute } from "../education.js";
 import { glossDef, glossaryTerms } from "../ui/glossary.js";
-import { SUBMIT_REPORT_DEF } from "./report.js";
+import { SUBMIT_REPORT_DEF } from "./report-def.js";
 import { runComparisonLoop } from "../verify/compare.js";
 
 export const CONSULT_AREAS = [

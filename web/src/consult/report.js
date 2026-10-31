@@ -7,6 +7,9 @@ import { reportDigest, runComparisonLoop } from "../verify/compare.js";
 import { UNSUPPORTED_PERSONA_KO } from "../verify/loop.js";
 import { parseDiaryJson } from "./diary.js";
 import { callTool } from "./tools.js";
+import { SUBMIT_REPORT_DEF } from "./report-def.js";
+
+export { SUBMIT_REPORT_DEF } from "./report-def.js";
 
 export const REPORT_PROMPT = [
   "너는 두 집에서 30일을 살아 본 기록(digest)으로 비교 리포트를 쓴다. 최종 결과는 submit_report 도구로만 낸다(일반 답장 금지).",
@@ -24,28 +27,6 @@ export function reportPrompt(lang) {
   if (lang === "en") return `${REPORT_PROMPT}\n${REPORT_PROMPT_EN}`;
   return REPORT_PROMPT;
 }
-
-export const SUBMIT_REPORT_DEF = { type: "function", function: { name: "submit_report",
-  description: "두 집 비교 리포트를 낸다 — 최종 비교는 이 도구로만 낸다. 코드가 숫자·근거를 검증하고, 실패하면 feedback_ko로 고쳐 다시 낸다.",
-  parameters: { type: "object", additionalProperties: false,
-    properties: { sentences: { type: "array", items: { type: "object",
-      additionalProperties: false,
-      properties: {
-        id: { type: "string" },
-        home: { type: "string" },
-        item_id: { type: "string" },
-        text_ko: { type: "string" },
-        claims: { type: "array", items: { type: "object",
-          properties: {
-            field: { type: "string" },
-            value: { type: "number" },
-            unit: { type: "string" },
-            member: { type: "string" },
-          } } },
-        evidence: { type: "array", items: { type: "string" } },
-      },
-      required: ["id", "home", "item_id", "text_ko"] } } },
-    required: ["sentences"] } } };
 
 export const JUDGE_PROMPT = "문장 하나와 그 문장이 인용한 시뮬레이션 기록(events)을 보고, 기록이 문장의 내용(시간·횟수·장소·상황)을 실제로 뒷받침하는지만 판정한다. 기록에 없는 내용을 단정하면 supported=false. JSON으로만: {\"supported\": true|false, \"reason\": \"한 줄\"}.";
 
