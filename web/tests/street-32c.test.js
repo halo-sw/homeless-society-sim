@@ -143,7 +143,7 @@ describe("32c relay pick", () => {
     assert.deepEqual(bodyJson(res), { photo: null, reason: "none" });
   });
 
-  it("a hanging upstream settles null within the cap", async () => {
+  it("a hanging upstream settles unavailable within the cap", async () => {
     const handler = createStreetHandler({
       getToken: () => "SECRET-TOK",
       fetchImpl: async () => new Promise(() => {}),
@@ -153,7 +153,8 @@ describe("32c relay pick", () => {
     const start = Date.now();
     const res = await callStreet(handler, streetUrl(HOME.lon, HOME.lat));
     const elapsed = Date.now() - start;
-    assert.deepEqual(bodyJson(res), { photo: null, reason: "none" });
+    assert.deepEqual(bodyJson(res), { photo: null, reason: "unavailable" });
+    assert.equal(res.headers["cache-control"], "no-store");
     assert.ok(elapsed < 1500, `settled in ${elapsed}ms`);
   });
 
@@ -409,6 +410,76 @@ describe("32c2 list photo note per language", () => {
     assert.ok(idx !== -1, "the photo note renders");
     const tag = html.lastIndexOf("data-no-i18n", idx);
     assert.ok(tag !== -1 && idx - tag < 300, "the note node carries data-no-i18n");
+  });
+});
+
+describe("32c4 upstream failures are unavailable, never a cached none", () => {
+  function handlerWith(route) {
+    let calls = 0;
+    const handler = createStreetHandler({
+      getToken: () => "SECRET-TOK",
+      fetchImpl: async (url) => { calls += 1; return route(String(url)); },
+    });
+    return { handler, calls: () => calls };
+  }
+  const err500 = () => ({ ok: false, status: 500 });
+
+  it("both boxes 500 → unavailable, no-store, and not cached", async () => {
+    const { handler, calls } = handlerWith(() => err500());
+    const url = streetUrl(HOME.lon, HOME.lat);
+    const first = await callStreet(handler, url);
+    assert.equal(first.statusCode, 200);
+    assert.deepEqual(bodyJson(first), { photo: null, reason: "unavailable" });
+    assert.equal(first.headers["cache-control"], "no-store");
+    const second = await callStreet(handler, url);
+    assert.deepEqual(bodyJson(second), { photo: null, reason: "unavailable" });
+    assert.equal(calls(), 4, "no memory cache: both boxes fetched again");
+  });
+
+  it("both boxes empty → none, cached", async () => {
+    const { handler, calls } = handlerWith(() => okData([]));
+    const url = streetUrl(HOME.lon, HOME.lat);
+    const first = await callStreet(handler, url);
+    assert.deepEqual(bodyJson(first), { photo: null, reason: "none" });
+    assert.equal(first.headers["cache-control"], "private, max-age=600");
+    const second = await callStreet(handler, url);
+    assert.deepEqual(bodyJson(second), { photo: null, reason: "none" });
+    assert.equal(calls(), 2, "cached: the second request makes no fetch");
+  });
+
+  it("small box 500 + big box empty → unavailable, not cached", async () => {
+    const { handler, calls } = handlerWith((url) => (
+      url.includes("limit=20") ? err500() : okData([])));
+    const url = streetUrl(HOME.lon, HOME.lat);
+    const res = await callStreet(handler, url);
+    assert.deepEqual(bodyJson(res), { photo: null, reason: "unavailable" });
+    assert.equal(res.headers["cache-control"], "no-store");
+    await callStreet(handler, url);
+    assert.equal(calls(), 4, "not cached");
+  });
+
+  it("client: unavailable then a photo → the retry gets the photo", async () => {
+    const { streetPhotoFor } = await import("../src/ui/candidate-card.jsx");
+    const realFetch = globalThis.fetch;
+    const photo = { id: "retry-one",
+      thumb_url: "https://cdn.mapillary.example/retry-one.jpg" };
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { ok: true, json: async () => ({ photo: null, reason: "unavailable" }) };
+      }
+      return { ok: true, json: async () => ({ photo }) };
+    };
+    try {
+      const got = await streetPhotoFor(
+        { id: "c-32c4-retry", lon: HOME.lon, lat: HOME.lat },
+        { apiBase: "https://r32c4.example" });
+      assert.equal(calls, 2, "retried once instead of sticking on null");
+      assert.equal(got && got.id, "retry-one");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });
 
