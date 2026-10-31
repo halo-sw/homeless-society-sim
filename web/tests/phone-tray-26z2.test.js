@@ -13,12 +13,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(HERE, "..", "src", "ui", "ui.css"), "utf8");
 const src = readFileSync(join(HERE, "..", "src", "ui", "chat.jsx"), "utf8");
 
-// Every @media (max-width: 1099px) block concatenated.
+// Every @media (max-width: 900px) block concatenated (32a2: the one
+// narrow breakpoint — 1099 px is gone).
 function narrowBlocks() {
   const blocks = [];
   let i = 0;
   while (i < css.length) {
-    const at = css.indexOf("@media (max-width: 1099px)", i);
+    const at = css.indexOf("@media (max-width: 900px)", i);
     if (at < 0) break;
     let depth = 0;
     let started = false;
@@ -67,11 +68,14 @@ let renderToString;
 let PicksTray;
 let RUN_BUTTON_LABEL;
 let WORKPLACE_ASK_LABEL;
+let stageTrayVisible;
+let compactTrayVisible;
 
 before(async () => {
   React = (await import("react")).default;
   ({ renderToString } = await import("react-dom/server"));
-  ({ PicksTray, RUN_BUTTON_LABEL, WORKPLACE_ASK_LABEL } = await import("../src/ui/chat.jsx"));
+  ({ PicksTray, RUN_BUTTON_LABEL, WORKPLACE_ASK_LABEL,
+    stageTrayVisible, compactTrayVisible } = await import("../src/ui/chat.jsx"));
 });
 
 const CANDS = [
@@ -89,12 +93,17 @@ function compactHtml(gate) {
 }
 
 describe("26z2 tray stays off the phone chat pane", () => {
-  it("hides the tray at <=1099px unless the narrow pane is Map & homes", () => {
+  it("hides the tray at <=900px unless the narrow pane is Map & homes", () => {
     const narrow = narrowBlocks();
     const rule = narrow.match(
       /\.ui-chat:not\(\.ui-chat-narrow-work\)\s+\.ui-picks-tray\s*\{[^}]*\}/);
     assert.ok(rule, "narrow rule hides the tray on the chat pane");
     assert.ok(rule[0].includes("display: none"), "tray hidden, not moved");
+    assert.ok(src.includes("stageTrayVisible({ narrow, view })"),
+      "the stage tray never mounts on the narrow chat pane");
+    assert.equal(stageTrayVisible({ narrow: true, view: "chat" }), false);
+    assert.equal(stageTrayVisible({ narrow: true, view: "work" }), true);
+    assert.equal(stageTrayVisible({ narrow: false, view: "chat" }), true);
   });
 
   it("leaves the desktop tray alone", () => {
@@ -131,18 +140,24 @@ describe("26z2 compact run row above the phone chips", () => {
     const names = css.match(/\.ui-picks-compact-names\s*\{[^}]*\}/);
     assert.ok(names && names[0].includes("word-break: keep-all"),
       "names wrap at spaces");
-    const wide = css.match(/@media\s*\(min-width:\s*1100px\)\s*\{[^}]*\.ui-picks-compact[^}]*\}/);
+    const wide = css.match(/@media\s*\(min-width:\s*901px\)\s*\{[^}]*\.ui-picks-compact[^}]*\}/);
     assert.ok(wide && wide[0].includes("display: none"),
       "desktop keeps the full tray only");
   });
 
-  it("is wired into the chat column directly above the chips", () => {
+  it("is wired into the chat column above the composer chips", () => {
     assert.ok(src.includes("<PicksTray compact"), "chat column renders it");
+    assert.ok(src.includes("compactTrayVisible({ narrow, view })"),
+      "narrow chat pane only");
+    assert.equal(compactTrayVisible({ narrow: true, view: "chat" }), true);
+    assert.equal(compactTrayVisible({ narrow: true, view: "work" }), false);
+    assert.equal(compactTrayVisible({ narrow: false, view: "chat" }), false);
+    assert.ok(src.includes('drawer={suggestionDrawer}'),
+      "composer takes the drawer with the chips");
+    const iList = src.indexOf("<ThreadList>");
     const iTray = src.indexOf("<PicksTray compact");
-    const iChips = src.indexOf('className="ui-chat-chips"');
-    assert.ok(iTray >= 0 && iChips > iTray, "compact row sits above the chips");
-    assert.ok(src.includes('view !== "work"'),
-      "shown on the chat pane, not over the map");
+    assert.ok(iList >= 0 && iTray > iList,
+      "compact row follows the message list in the chat column");
   });
 
   it("still truncates nothing, anywhere", () => {

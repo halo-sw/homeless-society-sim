@@ -152,7 +152,7 @@ describe("26n row SSR", () => {
     assert.ok(!html.includes("ui-aerial-label"), "per-thumb aerial label is gone");
   });
 
-  it("the list carries the aerial credit next to the pick hint", () => {
+  it("the list note names the shown kinds next to the pick hint, never aerial", () => {
     const cands = [seoulCandidate("c1", "A집"), seoulCandidate("c2", "B집")];
     const html = renderToString(React.createElement(CandidatesCard,
       { data: { candidates: cands, total_matching: 2, sort_note: "" },
@@ -161,10 +161,11 @@ describe("26n row SSR", () => {
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "판교" }));
     assert.ok(html.includes("마음에 드는 집을 2곳 담고"), "pick hint stays");
-    assert.ok(html.includes(AERIAL_CREDIT), "Korean list credits VWorld");
+    assert.ok(html.includes("사진은 지도예요(실제 매물 사진 아님)"), "list note names the shown kind");
+    assert.ok(!html.includes(AERIAL_CREDIT), "no aerial credit in the list note since 32c");
   });
 
-  it("a US list credits USGS", () => {
+  it("a US list without scenes names no USGS credit in the note", () => {
     const cands = [{ id: "u1", name: "Menlo home", country: "US",
       lon: -122.148, lat: 37.484,
       tenures: [{ tenure: "wolse", median_won: 4200, min_won: 4200,
@@ -175,7 +176,8 @@ describe("26n row SSR", () => {
         picks: [], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "Menlo Park" }));
-    assert.ok(html.includes(USGS_CREDIT), "US list credits USGS");
+    assert.ok(html.includes("사진은 지도예요(실제 매물 사진 아님)"), "list note names the shown kind");
+    assert.ok(!html.includes(USGS_CREDIT), "no aerial credit in the list note since 32c");
   });
 });
 

@@ -45,7 +45,8 @@ describe("19c candidate rows", () => {
         onLive: noop, onJeonse: noop, onDetail: noop }));
     assert.ok(html.indexOf("시그마 3") !== -1, "name renders");
     assert.ok(html.indexOf("시그마 3") < html.indexOf("전세"), "name before price");
-    assert.ok(!html.includes("실거래 중간값"), "row drops the deal sub-label");
+    assert.ok(html.includes("실거래 중간값 · 7건 · 오피스텔 · 예산 안"),
+      "32b row meta line: basis · kind · budget fit");
     assert.ok(!/\d+\.\d+분/.test(html), "no decimal minutes in the row");
   });
 

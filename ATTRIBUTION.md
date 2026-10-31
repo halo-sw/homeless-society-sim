@@ -92,6 +92,10 @@ link to this file or the sources above.
 - Distances come from the interstation file above (lines 1–8); other legs use the engine's OSM chainage or the straight line × 1.2 and are marked 추정.
 - 신분당선 구간별 별도운임 (신사–강남, 강남–정자, 정자–광교) stays null with status 확인 필요 until filled from the operator's official page; trips touching the line show “신분당선 별도운임 확인 중” and keep the 가정값 source.
 
+## Mapillary street-level photos (stage 32c)
+- API: `https://graph.mapillary.com/images` (bbox search near the home, token server-side only, real-time relay, nothing stored). Thumbnails load from Mapillary's CDN; image bytes are never proxied or stored.
+- Licence: CC BY-SA 4.0, attribution required. Every photo shown in the app carries its creator, the year, the licence and a link to its Mapillary page. These photos show the street near the home, never a specific listing.
+
 ## Wikimedia Commons, name search (stage 13)
 - File: `scenarios/places/commons-named.json`. A manifest only, no image bytes: 884 freely licensed photos found by searching Commons for station names (117 stations) and apartment complex names (20 complexes), fetched 2026-10-29.
 - Each item keeps its author, licence, licence URL and source page; the app shows a credit per photo.

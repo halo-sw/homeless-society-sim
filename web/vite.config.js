@@ -269,9 +269,41 @@ function aerialApiPlugin() {
   };
 }
 
+// Street photo path (vite dev only): GET /api/street?lon=…&lat=…
+// answers the nearest Mapillary photo facing the home. Key rules: only
+// this middleware reads process.env.MAPILLARY_TOKEN; the token travels
+// in the upstream header only, is never logged, never echoed in errors,
+// and never reaches the browser. Nothing is written to disk.
+function streetApiPlugin() {
+  return {
+    name: "street-api",
+    async configureServer(server) {
+      // Dev-only: loaded lazily so `vite build` (which never calls
+      // configureServer) never resolves relay/. One handler for the dev
+      // server: it holds its photo cache and rate buckets. The token is
+      // read per request, never stored in the bundle.
+      const { createStreetHandler } = await import(new URL("../relay/street.js", import.meta.url).href);
+      const handler = createStreetHandler({
+        getToken: () => process.env.MAPILLARY_TOKEN || null,
+        fetchImpl: fetch,
+      });
+      // connect strips the mount prefix from req.url; the query string
+      // (lon/lat) survives, which is all the handler reads.
+      server.middlewares.use("/api/street", (req, res) => {
+        if ((req.method || "GET") !== "GET") {
+          res.statusCode = 405;
+          res.end("method not allowed");
+          return;
+        }
+        handler(req, res);
+      });
+    },
+  };
+}
+
 export default {
   // 22a: GitHub Pages serves under /ithaca/, not /.
   base: process.env.PAGES_BASE || "/",
-  plugins: [react(), areaDataPlugin(), judgeApiPlugin(), consultApiPlugin(), aerialApiPlugin()],
+  plugins: [react(), areaDataPlugin(), judgeApiPlugin(), consultApiPlugin(), aerialApiPlugin(), streetApiPlugin()],
   server: { port: 5173 },
 };

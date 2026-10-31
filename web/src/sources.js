@@ -110,6 +110,15 @@ export const SOURCES = [
     mustNot: "작가·라이선스 표시를 떼면 안 돼요. CC BY-SA는 같은 조건으로 공유해야 해요.",
   },
   {
+    id: "mapillary",
+    name: "Mapillary (거리 사진)",
+    use: "집 근처 거리 사진. 매물 자체 사진이 아니며, 사진마다 작가·촬영연도·원본 링크를 달아요.",
+    licence: "CC BY-SA 4.0 (작가 표시, 같은 조건 공유)",
+    version: "중계 서버에서 실시간 조회 (저장 안 함)",
+    url: "https://www.mapillary.com",
+    mustNot: "작가·라이선스 표시를 떼면 안 돼요. 특정 집의 안전 판단 근거로 쓰면 안 돼요.",
+  },
+  {
     id: "housing-fund",
     name: "주택도시기금 상품 안내 (버팀목·디딤돌·신생아 특례)",
     use: "도움 제도 탭의 조건 비교표. 공식 페이지 값을 옮긴 것으로 최종 판정은 안 해요.",

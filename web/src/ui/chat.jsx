@@ -34,13 +34,14 @@ import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/Segme
 import { Text } from "@astryxdesign/core/Text";
 import {
   ChatLayout, ChatMessageList, ChatMessage, ChatMessageBubble,
-  ChatComposer, ChatSystemMessage,
+  ChatComposer, ChatComposerDrawer, ChatSystemMessage,
 } from "@astryxdesign/core/Chat";
+import { useResizable, ResizeHandle } from "@astryxdesign/core/Resizable";
+import { percent, pixel } from "@astryxdesign/core/Resizable/utils";
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
-import { CandidateCard, CandidateSkeleton, areaForList, HomeName } from "./candidate-card.jsx";
-import { aerialCreditFor } from "../aerial/drape.js";
+import { CandidateCard, CandidateSkeleton, areaForList, HomeName, listPhotoNote, listThumbKinds } from "./candidate-card.jsx";
 import { exampleLine } from "./copy.js";
 import { TopBar, usePhoneMedia } from "./topbar.jsx";
 import { EXAMPLE_PROMPTS, COVERAGE_AREAS, COVERAGE_US_LINE, LANDING_HEADING, LANDING_SUB } from "./landing.jsx";
@@ -105,8 +106,9 @@ import { LIVE_API, appUrl } from "../paths.js";
 import { PoweredByMuse } from "./powered-by-muse.jsx";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
-import { agentContext, stripToolLabel, toolActionKo, viewSystemLine } from "./agent-float.js";
+import { agentContext, stripToolLabel, toolActionKo, toolActionEn, viewSystemLine } from "./agent-float.js";
 import { LANG, currentLang } from "../i18n/lang.js";
+import { translateExact } from "../i18n/translate.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const IS_DEV = ENV.DEV === true;
@@ -309,6 +311,71 @@ export function paneTabsMount({ workOpen, phone }) {
   return phone ? "shell" : "top";
 }
 
+// 32a: one breakpoint for the whole narrow layout (대화 / 지도·후보
+// tabs, stacked panes) — 900 px, shared by the CSS and this hook so
+// they can't drift. SSR-safe (false on the server).
+export const NARROW_MAX_WIDTH = 900;
+
+export function useNarrowMedia() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const q = window.matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`);
+    setNarrow(q.matches);
+    const fn = (e) => setNarrow(e.matches);
+    if (q.addEventListener) q.addEventListener("change", fn);
+    return () => { if (q.removeEventListener) q.removeEventListener("change", fn); };
+  }, []);
+  return narrow;
+}
+
+// 32a2: the tray placement predicates — the full tray lives over the
+// stage only. On the narrow layout it renders solely on the Map pane;
+// the narrow chat pane keeps the in-flow compact run row (which is
+// never .ui-picks-tray). Pure; unit-tested.
+export function compactTrayVisible({ narrow, view } = {}) {
+  return !!narrow && view !== "work";
+}
+export function stageTrayVisible({ narrow, view } = {}) {
+  return !narrow || view === "work";
+}
+
+// 32a: the thread panel width, remembered per viewer in localStorage.
+// Every read/write is guarded — the page works without storage.
+// 32a2: the live shell persists through the hook's autoSaveId instead;
+// these stay for older callers and the width-memory test.
+export const THREAD_WIDTH_KEY = "ui-chat-thread-w";
+export const THREAD_WIDTH_MIN = 320;
+export const THREAD_WIDTH_MAX = 720;
+
+export function threadWidthKey(viewer) {
+  return viewer ? `${THREAD_WIDTH_KEY}:${viewer}` : THREAD_WIDTH_KEY;
+}
+
+export function loadThreadWidth(viewer) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(threadWidthKey(viewer));
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return null;
+    return Math.min(THREAD_WIDTH_MAX, Math.max(THREAD_WIDTH_MIN, v));
+  } catch {
+    return null;
+  }
+}
+
+export function saveThreadWidth(viewer, width) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const v = Number(width);
+    if (!Number.isFinite(v)) return;
+    window.localStorage.setItem(threadWidthKey(viewer),
+      String(Math.min(THREAD_WIDTH_MAX, Math.max(THREAD_WIDTH_MIN, v))));
+  } catch {
+    // A locked-down store never breaks the page.
+  }
+}
+
 // 27f: follow the conversation — scroll the message list to the end.
 export function scrollChatToEnd(root) {
   try {
@@ -451,8 +518,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
           <Text type="supporting">{data.emptyHint}</Text>
         )}
         {candidates.length > 0 && (
-          <Text type="supporting">
-            {`사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님) · ${aerialCreditFor(areaForList(candidates))}`}
+          <Text type="supporting" data-no-i18n>
+            <span data-no-i18n>{listPhotoNote(listThumbKinds(withPhotos), areaForList(candidates), currentLang())}</span>
           </Text>
         )}
         <div className="ui-cand-list">
@@ -1129,11 +1196,16 @@ export function localNoAnswerLine(text) {
 }
 
 // 27b2: one live tool row as a busy-bubble line.
-export function liveRowLine(row) {
-  const label = toolActionKo(row.name);
-  if (row.pending) return `▸ ${label} 중…`;
+// 32a: built per language — English uses TOOL_ACTION_EN and shows the
+// summary only on an exact translation (translateExact, never
+// romanized), so a row is the label alone when the tail is unknown.
+export function liveRowLine(row, lang = currentLang()) {
+  const en = lang === "en";
+  const label = en ? toolActionEn(row.name) : toolActionKo(row.name);
+  if (row.pending) return en ? `▸ ${label}…` : `▸ ${label} 중…`;
   const mark = row.ok === false ? "✕" : "✓";
-  const tail = stripToolLabel(row.name, row.summary);
+  const tailRaw = stripToolLabel(row.name, row.summary);
+  const tail = en && tailRaw ? translateExact(tailRaw) : tailRaw;
   return tail ? `${mark} ${label} · ${tail}` : `${mark} ${label}`;
 }
 
@@ -1243,6 +1315,62 @@ export function replayChipVisible({ museFails = 0, messages = [], replayId = nul
   if (museFails > 0) return true;
   return (messages || []).some((m) => m && (m.content === STATIC_OFF_LINE
     || (typeof KEYLESS_LINE === "string" && m.content === KEYLESS_LINE)));
+}
+
+// 32a: the composer drawer element (pure over thread state) — the
+// suggestion chips with the replay entry first, wrapping, never
+// clipped. Null while folded. Rendered into ChatComposer's drawer.
+export function suggestionDrawerFor({ messages, chipsNearBottom, museFails,
+  replayId, profile, onSend, onAction, onReplay, open, onOpenChange }) {
+  const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
+  const chips = chipsForLatest(messages || [], fallback);
+  const live = chips !== fallback;
+  const showReplay = replayChipVisible({ museFails, messages, replayId });
+  const count = chips.length + (showReplay ? 1 : 0);
+  if (!((messages || []).length > 0 && chipsNearBottom && count > 0)) return null;
+  // 32a2: controlled when the shell owns the open state (starts
+  // collapsed with the count summary); uncontrolled otherwise.
+  return (
+    <ChatComposerDrawer label="이어서 해 볼 것" count={count}
+      isCollapsed={onOpenChange ? !open : undefined}
+      onCollapsedChange={onOpenChange ? (c) => onOpenChange(!c) : undefined}>
+      <div className="ui-chat-chips" role="group" aria-label="추천 질문">
+        {showReplay && (
+          <Button key="__replay__" size="sm" variant="secondary"
+            label={REPLAY_CHIP_LABEL} onClick={onReplay} />
+        )}
+        {chips.map((chip) => (
+          <Button key={chip} size="sm" variant="secondary" label={chip}
+            onClick={() => (live ? onSend(chip) : onAction(chip))} />
+        ))}
+      </div>
+    </ChatComposerDrawer>
+  );
+}
+
+// 32a: the replay notice — Banner (info) with the recorded-conversation
+// text and the Skip / Try-it-yourself actions.
+export function ReplayNotice({ replayMeta, onSkip, onExit }) {
+  const title = currentLang() === "en"
+    ? `Recorded conversation · real ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} answers from ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} · plays without a key`
+    : `기록된 대화 · ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생`;
+  return (
+    <Banner status="info" title={title}
+      endContent={(
+        <HStack gap={1}>
+          <Button size="sm" variant="ghost" label="건너뛰기" onClick={onSkip} />
+          <Button size="sm" variant="secondary" label="직접 해 보기" onClick={onExit} />
+        </HStack>
+      )} />
+  );
+}
+
+// 32a: the thread's message list — top-aligned, so a new conversation
+// starts at the top instead of bottom-aligning into empty space.
+export function ThreadList({ children }) {
+  return (
+    <ChatMessageList density="compact" align="top">{children}</ChatMessageList>
+  );
 }
 
 const US_NO_JEONSE_SUPPORT = "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.";
@@ -1440,11 +1568,42 @@ export function ChatScreen() {
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
+  // 32a2: the composer drawer starts collapsed with its count summary;
+  // a used chip folds it again.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   // 26p: phones show the pane toggle (대화 / 지도·후보) on its own row
   // under the top bar; wider screens keep it inside the bar (extra).
   // SSR-safe (false on the server), so SSR keeps the in-bar toggle.
   const phone = usePhoneMedia();
+  // 32a: the tab layout's single breakpoint (900 px) — the toggle,
+  // the stacked panes and the result/card routing all follow this.
+  const narrow = useNarrowMedia();
   const [workOpen, setWorkOpen] = useState(false);
+  // 32a: full-map mode — the thread hides so the stage fills the
+  // width. Esc returns. Not offered at ≤ 900 px (the tabs do this).
+  const [fullMap, setFullMap] = useState(false);
+  useEffect(() => {
+    if (!fullMap || typeof window === "undefined") return undefined;
+    const onKey = (e) => { if (e && e.key === "Escape") setFullMap(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullMap]);
+  // 32a2: the thread panel starts at 36% of the split container with
+  // a 380 px floor and resizes 320–720 px by mouse and keyboard. The
+  // percentage resolves once against the split container (containerRef),
+  // never the viewport; the hook persists the choice as "ithaca-thread".
+  // At ≤ 900 px the pane is full width (no width style, no handle), so
+  // nothing narrow is ever measured or saved.
+  const splitRef = useRef(null);
+  const threadResize = useResizable({
+    containerRef: splitRef,
+    defaultSize: percent(36, { min: pixel(380) }),
+    minSize: THREAD_WIDTH_MIN,
+    maxSize: THREAD_WIDTH_MAX,
+    autoSaveId: "ithaca-thread",
+  });
+  const threadWidth = threadResize.size != null
+    ? `${threadResize.size}px` : "clamp(380px, 36%, 600px)";
   const [dataTick, setDataTick] = useState(0);
   void dataTick;
   // 27g: the Muse path fills dataRef without re-rendering — refilling it
@@ -2697,15 +2856,24 @@ export function ChatScreen() {
   const trayCandidates = (candidatesData && candidatesData.result.candidates) || [];
   const trayResultReady = resultReadyFor(messages, picks, trayCandidates);
   const handleViewResult = () => {
-    // On the phone Chat / Map toggle the result lives in Chat.
-    if (phone) setView("chat");
+    // On the narrow Chat / Map toggle the result lives in Chat.
+    if (narrow) setView("chat");
     const sim = [...messages].reverse().find((m) => m && m.kind === "simulation");
     soon(() => scrollChatToSim(sim && sim.id));
   };
   // 26p: one toggle instance — its mount point moves with the viewport.
   // 29a4: paneTabsMount keeps exactly one mount point per layout.
-  const tabsMount = paneTabsMount({ workOpen, phone });
+  // 32a: the mount follows the single 900 px narrow breakpoint.
+  const tabsMount = paneTabsMount({ workOpen, phone: narrow });
   const narrowTabs = (<ChatPaneTabs view={view} onChange={setView} />);
+  // 32a: the suggestion chips ride the composer's drawer slot.
+  // 32a2: the shell owns the drawer state — collapsed until opened,
+  // folding again after any chip is used.
+  const suggestionDrawer = suggestionDrawerFor({ messages, chipsNearBottom,
+    museFails, replayId, profile, open: drawerOpen, onOpenChange: setDrawerOpen,
+    onSend: (text) => { setDrawerOpen(false); send(text); },
+    onAction: (chip) => { setDrawerOpen(false); chipAction(chip); },
+    onReplay: () => { setDrawerOpen(false); openReplay(); } });
   // 31f: scroll a candidate card into view (best-effort).
   function scrollToCandidateCard(id) {
     try {
@@ -2753,15 +2921,17 @@ export function ChatScreen() {
           {tabsMount === "shell" ? narrowTabs : null}
           </>
         )}>
-        <div className="ui-chat-main"
+        <div className="ui-chat-main" ref={splitRef}
           data-panel={chatMainPanelAttr(detail, compareOpen)}
-          data-work={chatWorkAttr(workOpen)}>
-          <section className={messages.length === 0 && !busy ? "ui-chat-thread ui-chat-thread-empty" : "ui-chat-thread"} aria-label="대화">
+          data-work={chatWorkAttr(workOpen)}
+          data-fullmap={workOpen && fullMap ? "on" : undefined}>
+          {!(workOpen && fullMap) && (
+          <section className={messages.length === 0 && !busy ? "ui-chat-thread ui-chat-thread-empty" : "ui-chat-thread"} aria-label="대화"
+            style={workOpen && !narrow ? { width: threadWidth } : undefined}>
             {replayId && replaying && (
-              <div className="ds-replay-bar">
-                <Text type="supporting" data-no-i18n>{currentLang() === "en" ? `Recorded conversation · real ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} answers from ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} · plays without a key` : `기록된 대화 · ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생`}</Text>
-                <Button size="sm" variant="ghost" label="건너뛰기" onClick={skipReplay} />
-                <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
+              <div className="ui-replay-notice">
+                <ReplayNotice replayMeta={replayMeta}
+                  onSkip={skipReplay} onExit={exitReplay} />
               </div>
             )}
             {messages.length === 0 && !busy ? (
@@ -2775,6 +2945,7 @@ export function ChatScreen() {
                 <>
                   <ChatComposer onSubmit={send} isDisabled={busy || !!replayId}
                     value={composer} onChange={setComposer}
+                    drawer={suggestionDrawer}
                     sendActions={canVoice ? (
                       <MicButton onText={appendVoiceText}
                         disabled={busy || !!replayId}
@@ -2786,7 +2957,7 @@ export function ChatScreen() {
                   ) : null}
                 </>
               )}>
-              <ChatMessageList density="compact">
+              <ThreadList>
                 {messages.map((m) => (
                   <MsgBoundary key={m.id}>
                     {m.role === "user" ? (
@@ -2809,45 +2980,27 @@ export function ChatScreen() {
                         <Text type="supporting">Muse가 생각하는 중…</Text>
                       ) : (
                         liveRows.map((row, i) => (
-                          <Text key={`${row.name}-${i}`} type="supporting">{liveRowLine(row)}</Text>
+                          <Text key={`${row.name}-${i}`} type="supporting"><span data-no-i18n>{liveRowLine(row, currentLang())}</span></Text>
                         ))
                       )}
                     </ChatMessageBubble>
                   </ChatMessage>
                 )}
-              </ChatMessageList>
+              </ThreadList>
               {replayId && !replaying && (
                 <div className="ds-replay-done">
                   <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
                 </div>
               )}
-              {/* 26z2: phone chat pane keeps the run action in flow
-                  above the chips (the full tray is hidden there). */}
-              {view !== "work" && (
+              {/* 26z2: narrow chat pane keeps the run action in flow
+                  above the chips (the full tray never renders there). */}
+              {compactTrayVisible({ narrow, view }) && (
               <PicksTray compact picks={picks}
                 candidates={(candidatesData && candidatesData.result.candidates) || []}
                 gate={runGate(profile)}
                 resultReady={trayResultReady} onViewResult={handleViewResult}
                 onRun={handleRun} onRemove={handleTogglePick} />
               )}
-              {messages.length > 0 && chipsNearBottom && (() => {
-                const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
-                const chips = chipsForLatest(messages, fallback);
-                const live = chips !== fallback;
-                const showReplay = replayChipVisible({ museFails, messages, replayId });
-                return (
-              <div className="ui-chat-chips" role="group" aria-label="추천 질문">
-                {showReplay && (
-                  <Button key="__replay__" size="sm" variant="secondary"
-                    label={REPLAY_CHIP_LABEL} onClick={openReplay} />
-                )}
-                {chips.map((chip) => (
-                  <Button key={chip} size="sm" variant="secondary" label={chip}
-                    onClick={() => (live ? send(chip) : chipAction(chip))} />
-                ))}
-              </div>
-                );
-              })()}
             </ChatLayout>
             )}
             {error && (
@@ -2855,6 +3008,10 @@ export function ChatScreen() {
                 isDismissable onDismiss={() => setError("")} />
             )}
           </section>
+          )}
+          {workOpen && !fullMap && !narrow && (
+            <ResizeHandle resizable={threadResize.props} label="대화 너비 조절" hasDivider />
+          )}
           {workOpen && (
           <MsgBoundary>
           {scene ? (
@@ -2863,7 +3020,9 @@ export function ChatScreen() {
             onClose={() => { setScene(null); setWorkOpen(false); setView("chat"); }} />
           ) : (
           <StageArea
-            onClose={() => { setWorkOpen(false); setView("chat"); }}
+            onClose={() => { setWorkOpen(false); setView("chat"); setFullMap(false); }}
+            fullMap={fullMap}
+            onToggleFull={() => setFullMap((v) => !v)}
             map={buildChatMap({
               regions: regionsForCurrency(dataRef.current?.regionsDoc
                 || { regions: [] }, currencyOf(profile)),
@@ -2883,7 +3042,7 @@ export function ChatScreen() {
             onViewCard={(id) => {
               // 31f: the pin card's 카드 보기 — on the narrow
               // layout the card lives in the 대화 tab.
-              if (phone) setView("chat");
+              if (narrow) setView("chat");
               scrollToCandidateCard(id);
             }}
             picks={picks} onTogglePick={handleTogglePick}
@@ -2896,7 +3055,7 @@ export function ChatScreen() {
           )}
           </MsgBoundary>
           )}
-          {workOpen && !scene && (
+          {workOpen && !scene && stageTrayVisible({ narrow, view }) && (
           <PicksTray picks={picks}
             candidates={(candidatesData && candidatesData.result.candidates) || []}
             gate={runGate(profile)}
@@ -3136,21 +3295,41 @@ export function SceneFrame({ scene, onBack, onClose }) {
   );
 }
 
+// 32a: the two-panels glyph for the full-map button (no new dep).
+export function TwoPanelsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"
+      fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="2.5" y="4" width="6.5" height="12" rx="1" />
+      <rect x="11" y="4" width="6.5" height="12" rx="1" />
+    </svg>
+  );
+}
+
 // 31f: StageArea passes the picks wiring through so the map pin
 // card can 담기/빼기 with the same toggle as the candidate card.
 // 31h: the filter chip row is the top line (a real DropdownMenu per
 // chip, same ✓ look as the sort menu); the stage title drops to the
 // line under it. Chips render only with a profile + onFilterChange,
 // so older callers (and the empty stage) stay as they were.
+// 32a: while the map has no candidates the filter row stays hidden,
+// so only the empty card shows; the legend hides the same way
+// (hideLegend into ChatMap). The top-right expand button toggles
+// full-map mode (Esc returns); CSS hides it at ≤ 900 px.
+// 32a2: with candidates the empty card never renders — even before
+// regions arrive — so it can't overlap the filter row and title.
 export function StageArea({ map, cardHi, onPinHover, onPinClick, onViewCard,
-  picks, onTogglePick, contextLine, onClose,
+  picks, onTogglePick, contextLine, onClose, onToggleFull, fullMap,
   profile, kindsAvailable, onFilterChange }) {
   const regions = (map && map.regions) || [];
+  const pins = (map && map.pins) || [];
+  const hasCandidates = pins.length > 0;
   const kinds = Array.isArray(kindsAvailable) ? kindsAvailable
-    : Array.from(new Set(((map && map.pins) || [])
+    : Array.from(new Set(pins
       .map((p) => p && p.candidate && p.candidate.kind).filter(Boolean)));
-  const chips = (profile && onFilterChange)
+  const chips = (profile && onFilterChange && hasCandidates)
     ? mapFilterChips(profile, { kindsAvailable: kinds }) : [];
+  const expandLabel = fullMap ? "대화 같이 보기" : "지도 크게 보기";
   return (
     <section className={chips.length > 0 ? "ui-chat-stage has-filters" : "ui-chat-stage"} aria-label="중심 무대">
       <div className="ui-chat-stage-body">
@@ -3175,15 +3354,21 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onViewCard,
         <div className="ui-float ui-stage-title" role="status">
           {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
         </div>
-        <span style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}>
+        <span className="ui-stage-headbtns">
+          <span className="ui-stage-expand">
+            <Button size="sm" variant="ghost" label={expandLabel}
+              title={expandLabel} aria-label={expandLabel}
+              icon={<TwoPanelsIcon />}
+              onClick={() => onToggleFull && onToggleFull()} />
+          </span>
           <IconButton label="작업판 닫기" variant="ghost" size="sm"
             icon={<Icon icon="close" />} onClick={() => onClose && onClose()} />
         </span>
-        {regions.length > 0 ? (
+        {regions.length > 0 || hasCandidates ? (
           <ChatMap map={map} cardHi={cardHi}
             onPinHover={onPinHover} onPinClick={onPinClick} onViewCard={onViewCard}
             picks={picks} onTogglePick={onTogglePick}
-            hasFilters={chips.length > 0} />
+            hasFilters={chips.length > 0} hideLegend={!hasCandidates} />
         ) : (
           <div style={chips.length > 0 ? { padding: 16, paddingTop: 64 } : { padding: 16 }}>
             <Card padding={3}>
