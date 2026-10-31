@@ -139,8 +139,8 @@ describe("32b SSR row card (US, scene, estimated bike commute)", () => {
 });
 
 describe("32b thumbKindFor order", () => {
-  it("US with scene goes 3D even when a street photo exists", () => {
-    assert.equal(thumbKindFor(usCandidate(), { hasStreet: true }), "scene");
+  it("US with a street photo goes street even with a scene", () => {
+    assert.equal(thumbKindFor(usCandidate(), { hasStreet: true }), "street");
   });
 
   it("hero wins over everything", () => {
@@ -201,7 +201,10 @@ describe("32b row CSS", () => {
     const main = css.match(/\.ui-cand-row-main\s*\{[^}]*\}/);
     assert.ok(main, ".ui-cand-row-main rule found");
     assert.ok(main[0].includes("keep-all"), "row text keeps words whole");
-    assert.ok(!css.includes("ellipsis"), "no ellipsis in ui.css");
-    assert.ok(!css.includes("text-overflow"), "no text-overflow in ui.css");
+    const threadRules = css.match(/\.ui-chat-thread[^{]*\{[^}]*\}/g) ?? [];
+    assert.ok(threadRules.every((r) => !r.includes("ellipsis")),
+      "no ellipsis in .ui-chat-thread rules (29h1 header ellipsis lives in .ui-bar-center)");
+    assert.ok(threadRules.every((r) => !r.includes("text-overflow")),
+      "no text-overflow in .ui-chat-thread rules (29h1 header contract in .ui-bar-center)");
   });
 });

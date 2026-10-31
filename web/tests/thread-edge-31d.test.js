@@ -41,7 +41,7 @@ describe("31d one left edge", () => {
 
   it("zeroes the ghost bubble padding under .ui-chat-thread", () => {
     const rule = padRule(
-      /\.ui-chat-thread[^{]*\.astryx-chat-message-bubble\s*\{[^}]*padding-left[^}]*\}/);
+      /\.ui-chat-thread[^{]*\.astryx-chat-message-bubble\[data-variant="ghost"\]\s*\{[^}]*padding-left[^}]*\}/);
     assert.ok(/padding-left:\s*(0|var\(--ds-s-16\));?/.test(rule),
       "ghost bubble left padding zeroed or token");
     assert.ok(/padding-right:\s*(0|var\(--ds-s-16\));?/.test(rule),

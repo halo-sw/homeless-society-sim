@@ -261,6 +261,8 @@ const seedPhrases = {
   "1번이랑 3번": "Numbers 1 and 3",
   "한 달에 얼마 들어?": "How much a month?",
   "두 집에서 살아 봐 줘": "Live in both homes",
+  "1번, 2번 담아 줘": "Save 1 and 2",
+  "다음으로 해 볼 것": "Next steps",
   "비교해 줘": "Compare them",
   "살아 봐 줘": "Live in them",
   "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘": "I work in Pangyo. Find me a jeonse home under ₩200M to live alone",

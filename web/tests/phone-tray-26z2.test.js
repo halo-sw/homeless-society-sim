@@ -152,8 +152,8 @@ describe("26z2 compact run row above the phone chips", () => {
     assert.equal(compactTrayVisible({ narrow: true, view: "chat" }), true);
     assert.equal(compactTrayVisible({ narrow: true, view: "work" }), false);
     assert.equal(compactTrayVisible({ narrow: false, view: "chat" }), false);
-    assert.ok(src.includes('drawer={suggestionDrawer}'),
-      "composer takes the drawer with the chips");
+    assert.ok(src.includes('className="ui-next-steps"'),
+      "next steps ride the thread, after the last message");
     const iList = src.indexOf("<ThreadList>");
     const iTray = src.indexOf("<PicksTray compact");
     assert.ok(iList >= 0 && iTray > iList,

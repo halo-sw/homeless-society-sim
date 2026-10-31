@@ -335,9 +335,9 @@ export function reportListThumbKind(id, kind) {
 }
 
 // 32c: the thumbnail kinds actually shown across the list, in row
-// order (hero → 3D → street → silhouette → minimap). Street comes
+// order (hero → street → 3D → silhouette → minimap). Street comes
 // from the store above; the rest is known synchronously.
-const LIST_PHOTO_ORDER = ["hero", "scene", "street", "silhouette", "minimap"];
+const LIST_PHOTO_ORDER = ["hero", "street", "scene", "silhouette", "minimap"];
 
 export function listThumbKinds(entries) {
   const kinds = [];
@@ -411,13 +411,13 @@ export function listPhotoNote(kinds, area, lang = LANG) {
   return credits.length > 0 ? `${sentence} · ${credits.join(" · ")}` : sentence;
 }
 
-// 32b: the row thumbnail order — complex photo, 3D miniature, street
-// photo, building silhouette, MiniMap. No aerial photo in the row
+// 32b: the row thumbnail order — complex photo, street photo, 3D
+// miniature, building silhouette, MiniMap. No aerial photo in the row
 // thumbnail any more (it stays an option on the opened card).
 export function thumbKindFor(candidate, { hasHero = false, hasStreet = false, hasFootprint = false } = {}) {
   if (hasHero) return "hero";
-  if (candidate && candidate.scene) return "scene";
   if (hasStreet) return "street";
+  if (candidate && candidate.scene) return "scene";
   if (hasFootprint || (candidate && candidate.footprint)) return "silhouette";
   return "minimap";
 }
@@ -684,7 +684,8 @@ function RowEstimateTag({ row }) {
 
 export function CandidateCard({ candidate, tenure, destName, photos, index,
   onLive, onJeonse, onDetail, picked = false, variant = "row",
-  pickLetter = null, highlighted = false, note = "", budgetWon = null }) {
+  pickLetter = null, highlighted = false, note = "", budgetWon = null,
+  sharedRent = false }) {
   const [slide, setSlide] = useState(0);
   const [street, setStreet] = useState(null);
   const thumbRef = useRef(null);
@@ -729,7 +730,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   const rangeTitle = currencyOf(candidate) === "USD" ? usRangeTitle(candidate)
     : price.range ? `범위 ${fmtWon(price.range[0])} – ${fmtWon(price.range[1])}` : price.sub;
   // 18: the hero is the complex photo when one exists, else the
-  // painted 3D thumbnail — never a station or street photo. Nearby
+  // street photo, then the painted 3D thumbnail — never a station photo. Nearby
   // photos stay visible as a small labelled strip with their licences.
   const slots = (photos && photos.slots) || [];
   const hero = slots.find((s) => s.slot === "complex") || null;
@@ -767,11 +768,15 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
             aria-label={pickLabel}
             onClick={() => onLive && onLive(candidate)} />
         </div>
-        <div className="ui-cand-row-price ui-num" title={rangeTitle}>{price.price}</div>
-        <div className="ui-cand-row-meta ui-num">{metaBits.join(" · ")}</div>
+        <div className="ui-cand-row-price ui-num" title={sharedRent ? row.title : rangeTitle}>{sharedRent
+          ? (<>{row.text}{row.estimate || (row.source && row.source !== "unknown") ? " " : null}<RowEstimateTag row={row} /></>)
+          : price.price}</div>
+        <div className="ui-cand-row-meta ui-num">{sharedRent ? candidate.kind : metaBits.join(" · ")}</div>
+        {!sharedRent && (
         <div className="ui-cand-row-commute ui-num" title={row.title}>
           {row.text}{row.estimate || (row.source && row.source !== "unknown") ? " " : null}<RowEstimateTag row={row} />
         </div>
+        )}
         {candidate.kind_mismatch && <Text type="supporting">{KIND_MISMATCH_KO}</Text>}
         {note && <Text type="supporting">{`살아 보기 불가 · ${note}`}</Text>}
       </div>
@@ -787,6 +792,66 @@ function usRangeTitle(candidate) {
   const src = p.source === "zillow_zori_zip" ? "Zillow ZORI" : (p.source || "Zillow");
   const month = p.month ? `, ${p.month}` : "";
   return `${zip}대표 월세 (${src}${month})`;
+}
+
+// 29h3: one ZIP rent stated once — US lists show the same Zillow ZORI
+// typical rent on every card, so when the whole list shares one ZIP
+// figure the list states it once above the cards and each row leads
+// with its commute instead. Pure.
+export function sharedZipRent(candidates, tenure) {
+  const list = (candidates || []).filter(Boolean);
+  if (list.length < 2) return null;
+  const first = list[0];
+  if (currencyOf(first) !== "USD") return null;
+  const firstEntry = ((first.tenures || []).find((t) => t.tenure === tenure))
+    || (first.tenures || [])[0] || null;
+  const zip = first.price && first.price.zip;
+  const amount = firstEntry ? firstEntry.median_won : null;
+  if (!zip || !Number.isFinite(amount)) return null;
+  for (const c of list.slice(1)) {
+    if (currencyOf(c) !== "USD") return null;
+    if (!c.price || c.price.zip !== zip) return null;
+    const entry = ((c.tenures || []).find((t) => t.tenure === tenure))
+      || (c.tenures || [])[0] || null;
+    if (!entry || entry.median_won !== amount) return null;
+  }
+  const p = first.price || {};
+  return { zip, amount, tenure: firstEntry.tenure,
+    source: p.source === "zillow_zori_zip" ? "Zillow ZORI" : (p.source || "Zillow"),
+    month: p.month || "", candidate: first };
+}
+
+// 29h3: the one line stating the shared ZIP rent (null without one).
+// The budget part reuses the first card's budget fact; other fit
+// words stay Korean-only, so en shows the budget only translated.
+export function sharedRentNote(shared, { budgetWon = null, tenure = null, lang = LANG } = {}) {
+  if (!shared) return null;
+  const en = lang === "en";
+  const monthly = (shared.tenure || tenure) === "wolse";
+  const money = en ? `${fmtMoney(shared.amount, "USD")}/mo`
+    : fmtMoney(shared.amount, "USD", { monthly });
+  const src = shared.month ? `${shared.source}, ${shared.month}` : shared.source;
+  const fact = budgetFactFor(shared.candidate,
+    tenurePriceLine(shared.candidate, tenure), budgetWon, tenure);
+  let budget = null;
+  if (fact) {
+    if (!en) {
+      budget = fact;
+    } else {
+      const under = fact.match(/^예산보다 (.+) 적어요$/);
+      const over = fact.match(/^예산보다 (.+) 많아요$/);
+      if (under) budget = `${under[1]} under budget`;
+      else if (over) budget = `${over[1]} over budget`;
+    }
+  }
+  if (en) {
+    return budget
+      ? `Typical rent in ZIP ${shared.zip}: ${money} · ${budget} · the same ZIP figure for every home here (${src})`
+      : `Typical rent in ZIP ${shared.zip}: ${money} · the same ZIP figure for every home here (${src})`;
+  }
+  return budget
+    ? `ZIP ${shared.zip} 대표 월세 ${money} · ${budget} · 이 목록의 집 모두 같은 ZIP 값이에요 (${src})`
+    : `ZIP ${shared.zip} 대표 월세 ${money} · 이 목록의 집 모두 같은 ZIP 값이에요 (${src})`;
 }
 
 function FullCard({ candidate, price, facts, row, hero, rest,

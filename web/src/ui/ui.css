@@ -88,6 +88,10 @@
   min-width: 0; overflow: hidden;
 }
 .ui-bar-right { display: flex; align-items: center; gap: var(--ui-s8); margin-left: auto; }
+/* 29h4: the header never hides the Muse status — the left group keeps its
+   width; the centre clips the summary button, which shortens itself. */
+.ui-bar-left { flex: none; }
+.ui-bar-center > * { min-width: 0; max-width: 100%; flex-shrink: 1; }
 .ui-sheet-body {
   display: flex; flex-direction: column; gap: var(--ui-s16);
   padding: var(--ui-s16);
@@ -348,6 +352,10 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    the drawer surface owns the inset. */
 .ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: wrap;
   flex: none; padding: var(--ui-s8) 0; }
+/* 29h2: the next move sits in the thread, after the last message — it
+   starts at the same left edge as the message list (no side padding). */
+.ui-next-steps { display: flex; flex-wrap: wrap; gap: var(--ui-s8); padding-top: var(--ui-s4); }
+.ui-next-steps > * { flex: none; }
 /* 31a: one left edge — plain text, cards, the source line, chips and
    the composer all start at the message list's own 16px padding. */
 .ui-chat-thread .astryx-chat-message-list {
@@ -356,11 +364,14 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    the ghost bubble add their own horizontal padding on top of the
    list's own padding, so both are zeroed here. Boxes, cards and the
    source line then start at the list padding, and user bubbles meet
-   the same right edge as the chips. */
+   the same right edge as the chips.
+   User bubbles keep a 16 px inner inset. */
 .ui-chat-thread .astryx-chat-message-list > div {
   padding-left: 0; padding-right: 0; }
-.ui-chat-thread .astryx-chat-message-bubble {
+.ui-chat-thread .astryx-chat-message-bubble[data-variant="ghost"] {
   padding-left: 0; padding-right: 0; }
+.ui-chat-thread .astryx-chat-message-bubble[data-sender="user"] {
+  padding-left: var(--ds-s-16); padding-right: var(--ds-s-16); }
 /* 31d: the composer wrapper pads narrow — its outer box starts and
    ends at the same inset as the chips. */
 .ui-chat-thread > .astryx-chat-layout > :last-child {
@@ -709,6 +720,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-street-credit { position: absolute; right: var(--ds-s-4); bottom: var(--ds-s-4);
   background: rgba(17, 20, 26, 0.72); color: #fff; font-size: var(--ds-t-12);
   border-radius: var(--ds-r-pill); padding: 0 var(--ds-s-4); white-space: nowrap; }
+/* 29h5: in the small row thumb the credit wraps inside the box (the
+   photographer's name is never cut). */
+.ui-cand-thumb .ui-street-credit {
+  left: var(--ds-s-4); right: var(--ds-s-4); max-width: calc(100% - 2 * var(--ds-s-4));
+  box-sizing: border-box; white-space: normal; overflow-wrap: anywhere;
+  line-height: var(--ds-lh-tight); border-radius: var(--ui-r-chip); text-align: center; }
 /* 32b: the building silhouette thumb with its floors/year flag. */
 .ui-silhouette { position: relative; }
 .ui-silhouette svg { width: 100%; height: 100%; display: block; }
