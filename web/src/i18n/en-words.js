@@ -55,4 +55,19 @@ export const WORDS = {
   "걸려요": "takes", "빨라요": "faster", "느려요": "slower",
   "숫자는": "numbers are", "편도(추정)": "one-way (estimate)", "자전거": "bike", "달러": "dollars",
   "많아요": "more", "적어요": "fewer", "가까워요": "closer", "멀어요": "farther",
+  // 32d: subway lines and route legs ("No. 2seon Jamsil→gangnam" before).
+  "1호선": "Line 1", "2호선": "Line 2", "3호선": "Line 3", "4호선": "Line 4", "5호선": "Line 5",
+  "6호선": "Line 6", "7호선": "Line 7", "8호선": "Line 8", "9호선": "Line 9",
+  "신분당선": "Shinbundang Line", "분당선": "Bundang Line", "경강선": "Gyeonggang Line", "수인": "Suin",
+  "잠실→강남": "Jamsil→Gangnam", "강남→잠실": "Gangnam→Jamsil",
+  "강남→판교": "Gangnam→Pangyo", "판교→강남": "Pangyo→Gangnam",
+  "최고": "max", "경비실": "security office",
+  // 32d: places the sim and the demo name on screen (titles, routes).
+  "레이크팰리스": "Lake Palace", "갤러리아팰리스": "Galleria Palace", "리센츠": "Ricenz",
+  "롯데캐슬골드": "Lotte Castle Gold", "백현마을": "Baekhyeon Village", "봇들마을": "Botdeul Village",
+  "숲안어린이공원": "Supan Children's Park", "세븐일레븐": "7-Eleven", "갤러리아점": "Galleria",
+  "판교푸르지오월드마크": "Pangyo Prugio Worldmark", "메가시티오피스텔": "Megacity Officetel",
+  "알파리움1단지": "Alpharium Complex 1", "알파리움2단지": "Alpharium Complex 2",
+  "잠실주공아파트": "Jamsil Jugong Apartments", "잠실아파트": "Jamsil Apartments",
+  "장미아파트": "Jangmi Apartments",
 };
