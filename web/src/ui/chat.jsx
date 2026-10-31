@@ -88,7 +88,7 @@ import {
   loadBoxArea, createWorkerRunner, fieldRows, sourceKo,
   profileSummary, missingChips, regionsForNames, simReadyFor,
   homeForScenario, complexNameForCandidate, stationNames,
-  runGate, profileHomeKinds, regionsForCurrency,
+  runGate, profileHomeKinds, regionsForCurrency, regionsForDoc,
 } from "../chat/engine.js";
 import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
@@ -1536,6 +1536,12 @@ export function ChatScreen() {
     return r.text();
   };
 
+  // 29g2: replay / restored transcripts never ran a search, so the map
+  // data (regions doc + subway network) was never loaded — load it from
+  // the saved document and re-render the map.
+  function loadDataFor(doc) {
+    ensureData(regionsForDoc(doc)).then(() => setDataTick((t) => t + 1)).catch(() => {});
+  }
   async function ensureData(regions) {
     const key = (regions || []).join(",") || "all";
     if (dataRef.current && dataRef.current.regionsKey === key) return dataRef.current;
@@ -2370,6 +2376,7 @@ export function ChatScreen() {
         if (m && m.kind === "candidates" && doc.candidatesData) {
           setCandidatesData(doc.candidatesData);
           setWorkOpen(true);
+          loadDataFor({ profile: doc.profile, candidatesData: doc.candidatesData });
         }
       });
       setMessages((prev) => {
@@ -2480,6 +2487,7 @@ export function ChatScreen() {
               if (m && m.kind === "candidates" && doc.candidatesData) {
                 setCandidatesData(doc.candidatesData);
                 setWorkOpen(true);
+                loadDataFor({ profile: doc.profile, candidatesData: doc.candidatesData });
               }
               if (i === doc.messages.length - 1) setReplaying(false);
             }, t));
@@ -2504,6 +2512,7 @@ export function ChatScreen() {
       if (mem.candidatesData) {
         setCandidatesData(mem.candidatesData);
         setWorkOpen(true);
+        loadDataFor({ profile: mem.profile, candidatesData: mem.candidatesData });
       }
       if (Array.isArray(mem.picks)) setPicks(mem.picks);
       if (mem.exampleId) setExampleId(mem.exampleId);
@@ -3176,7 +3185,7 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onViewCard,
             picks={picks} onTogglePick={onTogglePick}
             hasFilters={chips.length > 0} />
         ) : (
-          <div style={{ padding: 16 }}>
+          <div style={chips.length > 0 ? { padding: 16, paddingTop: 64 } : { padding: 16 }}>
             <Card padding={3}>
               <VStack gap={1}>
                 <Heading level={4}>서울·경기 동남부</Heading>
