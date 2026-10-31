@@ -1457,6 +1457,11 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   padding: var(--ds-s-8) var(--ds-s-16); }
 .ds-lp-hero { max-width: var(--ds-chat-col); margin: 0 auto;
   padding: 96px var(--ds-s-24) 0; text-align: center; }
+.ds-lp-heroeyebrow { display: inline-flex; align-items: center;
+  gap: var(--ds-s-8); background: var(--ds-surface);
+  border: 1px solid var(--ds-line); border-radius: var(--ds-r-pill);
+  padding: var(--ds-s-4) var(--ds-s-12); font-size: var(--ds-t-14);
+  color: var(--ds-ink-1); margin: 0 0 var(--ds-s-16); }
 .ds-lp-title { font-family: var(--ds-font-display); font-size: var(--ds-t-40);
   line-height: var(--ds-lh-display); font-weight: var(--ds-w-bold);
   color: var(--ds-ink-1); margin: 0 0 var(--ds-s-12); }
@@ -1469,10 +1474,6 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   padding: 0 var(--ds-s-12); display: inline-flex; align-items: center;
   justify-content: center; font-size: var(--ds-t-14); color: var(--ds-ink-1);
   cursor: pointer; }
-.ds-lp-replaynote { font-size: var(--ds-t-12); color: var(--ds-ink-2);
-  margin: var(--ds-s-8) 0 0; }
-.ds-lp-cover { font-size: var(--ds-t-12); color: var(--ds-ink-3);
-  margin: var(--ds-s-8) 0 0; }
 .ds-lp-section { max-width: 1080px; margin: 0 auto;
   padding: 96px var(--ds-s-24) 0; }
 .ds-lp-h { font-family: var(--ds-font-display); font-size: var(--ds-t-28);

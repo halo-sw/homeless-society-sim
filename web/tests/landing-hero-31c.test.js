@@ -1,5 +1,5 @@
-// 31c: landing hero — one clear order, no fake pill, two judge links,
-// proof facts as a stat row (SSR, no DOM).
+// 31l: landing hero follows main — eyebrow, one ds-lp-try panel with three
+// captioned entries, proof facts as a stat row (SSR, no DOM).
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,7 +12,7 @@ register("./jsx-loader.mjs", import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (p) => fs.readFileSync(path.join(here, p), "utf8");
 
-describe("31c landing hero order (SSR, no DOM)", () => {
+describe("31l landing hero order (SSR, no DOM)", () => {
   let React;
   let renderToStaticMarkup;
   let LandingPage;
@@ -23,27 +23,35 @@ describe("31c landing hero order (SSR, no DOM)", () => {
     ({ LandingPage } = await import("../src/ui/landing-page.jsx"));
   });
 
-  it("has no eyebrow pill", () => {
+  it("shows the eyebrow with Pre-simulation by Muse Agent", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
-    assert.ok(!html.includes("ds-lp-heroeyebrow"), "eyebrow must be gone");
+    assert.ok(html.includes("ds-lp-heroeyebrow"), "eyebrow class missing");
+    assert.ok(html.includes("Pre-simulation by Muse Agent"), "eyebrow text missing");
   });
 
-  it("ds-lp-judge holds exactly 2 links: recorded month then Meta HQ", () => {
+  it("ds-lp-try holds the three entries in order, each with a caption", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
-    const judge = html.match(/<div class="ds-lp-judge">([\s\S]*?)<\/div>/);
-    assert.ok(judge, "hero ds-lp-judge wrapper missing");
-    const links = judge[1].match(/<a /g) || [];
-    assert.equal(links.length, 2);
-    const first = judge[1].indexOf("기록된 한 달 보기");
-    const second = judge[1].indexOf("Meta 본사 출근으로 해 보기");
-    assert.ok(first !== -1 && second !== -1 && first < second, "order");
-    assert.ok(judge[1].includes("ds-lp-btn--primary"), "primary first");
-    assert.ok(judge[1].includes("ds-lp-btn--secondary"), "secondary second");
+    const panel = html.match(/<section class="ds-lp-try"([\s\S]*?)<\/section>/);
+    assert.ok(panel, "hero ds-lp-try panel missing");
+    const body = panel[1];
+    const first = body.indexOf("기록된 한 달 보기");
+    const second = body.indexOf("Meta 본사 출근으로 해 보기");
+    const third = body.indexOf("서울로 해 보기");
+    assert.ok(first !== -1 && second !== -1 && third !== -1, "all three entries present");
+    assert.ok(first < second && second < third, "order");
+    const links = body.match(/<a /g) || [];
+    assert.equal(links.length, 3);
+    const primaries = body.match(/ds-lp-btn--primary/g) || [];
+    assert.equal(primaries.length, 1);
+    assert.ok(body.indexOf("ds-lp-btn--primary") < body.indexOf("ds-lp-btn--secondary"), "first is primary");
+    const caps = body.match(/ds-lp-judgecap/g) || [];
+    assert.equal(caps.length, 3);
+    assert.ok(body.indexOf("기록된 한 달 보기") < body.indexOf("키 없이 바로 재생"), "first caption follows first entry");
   });
 
-  it("no 서울로 해 보기 anywhere", () => {
+  it("has no ds-lp-replaynote", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
-    assert.ok(!html.includes("서울로 해 보기"), "duplicate link must be gone");
+    assert.ok(!html.includes("ds-lp-replaynote"), "replay note must be gone");
   });
 
   it("ds-lp-chips still holds the 3 chips", () => {
@@ -55,13 +63,6 @@ describe("31c landing hero order (SSR, no DOM)", () => {
     for (const s of ["출근지로 집 찾기", "본 매물 붙여 넣기", "예시로 써 보기"]) {
       assert.ok(chips[1].includes(s), s);
     }
-  });
-
-  it("the replay note has a class and no inline style", () => {
-    const html = renderToStaticMarkup(React.createElement(LandingPage));
-    const note = html.match(/<p class="ds-lp-replaynote"([^>]*)>/);
-    assert.ok(note, "replay note missing");
-    assert.ok(!note[1].includes("style"), "no inline style on the note");
   });
 
   it("each proof fact renders its number and caption as separate elements", () => {
@@ -77,11 +78,11 @@ describe("31c landing hero order (SSR, no DOM)", () => {
     }
   });
 
-  it("ui.css: proof is a 3-column grid, no eyebrow, no 13px, no ellipsis", () => {
+  it("ui.css: eyebrow rule exists, proof is a 3-column grid, no 13px, no ellipsis", () => {
     const css = read("../src/ui/ui.css");
+    assert.match(css, /\.ds-lp-heroeyebrow\s*\{[^}]*display:\s*inline-flex/);
     assert.match(css, /\.ds-lp-proof\s*\{[^}]*display:\s*grid/);
-    assert.match(css, /\.ds-lp-proof\s*\{[^}]*repeat\(3,\s*1fr\)/);
-    assert.ok(!css.includes("ds-lp-heroeyebrow"), "eyebrow CSS must be gone");
+    assert.match(css, /\.ds-lp-proof\s*\{[^}]*repeat\(3,/);
     assert.ok(!css.includes("13px"), "ui.css must not contain 13px");
     assert.ok(!css.includes("ellipsis"), "ui.css must not contain ellipsis");
   });
