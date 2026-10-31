@@ -127,7 +127,7 @@ function FitIcon() {
 }
 
 export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
-  picks, onTogglePick, hasFilters, initialSelectedId }) {
+  picks, onTogglePick, hasFilters, hideLegend, initialSelectedId }) {
   const mountRef = useRef(null);
   const [size, setSize] = useState(null);
   const [expanded, setExpanded] = useState(null);
@@ -1074,12 +1074,16 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
       {/* 31g: the legend describes the tag — number·area /
         price / commute minutes; A/B are picked homes. The 분
         badges on commute paths appear only for picked homes. */}
+      {/* 32a: hidden while the map has no candidates, so only the
+        empty card shows at the top-left. */}
+      {!hideLegend && (
       <div role="note" className={hasFilters
         ? "ui-float ui-chatmap-legend has-filters" : "ui-float ui-chatmap-legend"}>
         {provider === "usgs"
           ? "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사"
           : "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철"}
       </div>
+      )}
       {(() => {
         // 31f: the pin card — anchored above its pin (below when
         // there is no room), on the shared float surface. Shows the

@@ -9,6 +9,7 @@
 // the Pages site; this relay has no data dir and no file-system data.
 
 import { serveTile } from "../web/src/aerial/proxy.js";
+import { createStreetHandler } from "./street.js";
 import { createConsultHandler, httpReadText, readBody } from "../web/src/consult/server.js";
 import { VOICE_MAX_BYTES, createTranscribeHandler } from "../web/src/consult/voice.js";
 import { BYOK_HEADER } from "../web/src/consult/byok.js";
@@ -111,6 +112,14 @@ export function createRelay({ env = {}, fetchImpl = fetch, now = () => Date.now(
   const consultDay = new Map();
   const consultGlobal = [];
   const tilesHour = new Map();
+  // 32c: street-level photos (Mapillary) — the token stays server-side
+  // (env only, never logged, never echoed, never sent to the browser).
+  // One handler per relay: it holds its photo cache and rate buckets.
+  const streetHandler = createStreetHandler({
+    getToken: () => (env && env.MAPILLARY_TOKEN) || null,
+    fetchImpl,
+    now,
+  });
   // Voice transcribe: its own buckets (10 per 10 min, 40 per day per
   // client, 300 per day global), one handler per relay like consult.
   const transcribeHandler = createTranscribeHandler({ env, fetchImpl });
@@ -207,6 +216,19 @@ export function createRelay({ env = {}, fetchImpl = fetch, now = () => Date.now(
       }
       corsHeaders(res, cors);
       return serveTile({ path, env, fetchImpl, res });
+    }
+
+    // 32c: street photo near a home. GET only; the handler answers
+    // 400 on bad lon/lat, { photo: null } when the token is missing or
+    // Mapillary has nothing usable. Coordinates are the home's only —
+    // never the viewer's — and nothing is stored or logged.
+    if (path === "/api/street") {
+      if ((req.method || "GET") !== "GET") {
+        sendJson(res, 405, { ok: false, error: "method" }, cors);
+        return;
+      }
+      corsHeaders(res, cors);
+      return streetHandler(req, res);
     }
 
     if (path === "/api/model/status") {

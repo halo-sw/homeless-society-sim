@@ -13,13 +13,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (p) => fs.readFileSync(path.join(here, p), "utf8");
 
 describe("29a6c replay bar", () => {
-  it("ui.css has the bar as one compact flex row; the text keeps min-width 0", () => {
-    const css = read("../src/ui/ui.css");
-    const at = css.indexOf(".ds-replay-bar {");
-    assert.ok(at >= 0, "ds-replay-bar class exists");
-    const block = css.slice(at, at + 600);
-    assert.ok(block.includes("display: flex"), "bar is flex");
-    assert.ok(block.includes("min-width: 0"), "text wraps inside, never under buttons");
+  it("the replay notice renders through Banner (info) with both actions", () => {
+    const src = read("../src/ui/chat.jsx");
+    assert.ok(src.includes("<ReplayNotice"), "notice component");
+    assert.ok(src.includes('status="info"'), "info Banner");
+    assert.ok(src.includes('label="건너뛰기"'), "Skip action");
+    assert.ok(src.includes('label="직접 해 보기"'), "Try-it-yourself action");
+    assert.ok(!src.includes("ds-replay-bar"), "custom strip gone from chat.jsx");
+    assert.ok(!read("../src/ui/ui.css").includes("ds-replay-bar"),
+      "strip CSS gone from ui.css");
   });
   it("banner shows while replaying; the done chip follows when finished", () => {
     const src = read("../src/ui/chat.jsx");
@@ -109,12 +111,18 @@ describe("29a6e replay bar is not the chat layout", () => {
       "no bare .ui-chat-thread > :first-child rule");
     assert.ok(css.includes(".ui-chat-thread > .astryx-chat-layout {"),
       "chat layout targeted by class");
-    const at = css.indexOf(".ds-replay-bar {");
-    assert.ok(at >= 0, "ds-replay-bar class exists");
-    const last = css.lastIndexOf(".ds-replay-bar {");
-    const block = css.slice(last, last + 300);
-    assert.ok(block.includes("flex: none"), "bar never grows");
-    assert.ok(block.includes("flex-direction: row"), "bar stays a row");
+    assert.ok(!css.includes("ds-replay-bar"),
+      "custom replay bar class gone from the stylesheet");
+  });
+  it("the replay notice is a Banner in flow, not a layout of its own", () => {
+    const src = read("../src/ui/chat.jsx");
+    assert.ok(!src.includes("ds-replay-bar"), "no custom replay bar in chat.jsx");
+    assert.ok(src.includes("ui-replay-notice"), "notice rides an in-flow wrapper");
+    const css = read("../src/ui/ui.css");
+    const m = css.match(/\.ui-chat-thread\s*>\s*\.ui-replay-notice\s*\{[^}]*\}/);
+    assert.ok(m, "wrapper rule present");
+    assert.ok(m[0].includes("position: static"), "in flow, never over content");
+    assert.ok(m[0].includes("var(--ds-s-16)"), "16 px gutters like the messages");
   });
   it("diary check line reads naturally in English", async () => {
     const { createTranslator } = await import("../src/i18n/translate.js");

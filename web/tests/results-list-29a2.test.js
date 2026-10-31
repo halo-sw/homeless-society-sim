@@ -87,7 +87,7 @@ describe("29a2 candidate list", () => {
         picks: [], onTogglePick: noop, onPreview3D: noop,
         onJeonse: noop, onRun: noop, onDetail: noop, onHover: noop,
         photoDeps: {}, destName: "강남", budgetWon: 400000000 }));
-    const notice = "사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님)";
+    const notice = "사진은 지도예요(실제 매물 사진 아님)";
     assert.equal(html.split(notice).length - 1, 1, "one photo notice line");
     assert.ok(!html.includes("ui-aerial-label"), "no per-row aerial label");
     for (const n of ["A집", "B집", "C집"]) {
