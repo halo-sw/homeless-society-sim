@@ -2,6 +2,9 @@
 // Pure, no DOM — except one env read in basemapApiBase. The tiles come
 // from our own proxy (/api/tiles/white/…); no key, no stored geocoder.
 import { tileToLonLat, tilesForBBox } from "./aerial/tiles.js";
+// 33a2: only the pure out-of-area predicate — never the key-carrying
+// upstream helpers. The proxy bounds stay server-side and unchanged.
+import { tileInBounds } from "./aerial/proxy.js";
 import { API_BASE, LIVE_API } from "./paths.js";
 
 // Web-Mercator metres per pixel at zoom 0 on the equator.
@@ -55,7 +58,10 @@ export function pickBasemapZoom(metersPerPx, lat) {
 // The tiles covering the visible stage [0, 0, W, H]. toLonLat is the
 // inverse of the current toXY. Steps z down while the cover would
 // need more than maxTiles tiles.
-export function basemapTiles({ toLonLat, W, H, lat, metersPerPx, maxTiles = 80 }) {
+// 33a2: VWorld tiles the proxy would reject (z ≥ 11 outside
+// TILE_BOUNDS) are never returned, so the client never requests
+// them. USGS has no bounds and is unclipped.
+export function basemapTiles({ toLonLat, W, H, lat, metersPerPx, maxTiles = 80, provider = "vworld" }) {
   const w = Math.max(1, Number(W) || 1);
   const h = Math.max(1, Number(H) || 1);
   const corners = [toLonLat(0, 0), toLonLat(w, 0), toLonLat(0, h), toLonLat(w, h)];
@@ -71,11 +77,50 @@ export function basemapTiles({ toLonLat, W, H, lat, metersPerPx, maxTiles = 80 }
   const out = [];
   for (let x = range.x0; x <= range.x1; x++) {
     for (let y = range.y0; y <= range.y1; y++) {
+      if (provider !== "usgs" && !tileInBounds(z, y, x)) continue;
       out.push({
         key: `${z}/${y}/${x}`,
         z, x, y,
         nw: tileToLonLat(x, y, z),
         se: tileToLonLat(x + 1, y + 1, z),
+      });
+    }
+  }
+  return out;
+}
+
+// 33a2: the low-zoom underlay for the same visible stage [0, 0, W, H]
+// at min(z, 10) — z < 11 tiles are always inside the proxy bounds, so
+// out-of-area corners show the blurrier map instead of bare ground.
+// Deduped, capped at maxTiles (steps down from min(z, 10) while over
+// budget). VWorld only: USGS has no bounds and needs no underlay.
+export function basemapUnderlayTiles({ toLonLat, W, H, z, provider = "vworld", maxTiles = 16 }) {
+  if (provider === "usgs") return [];
+  const w = Math.max(1, Number(W) || 1);
+  const h = Math.max(1, Number(H) || 1);
+  const corners = [toLonLat(0, 0), toLonLat(w, 0), toLonLat(0, h), toLonLat(w, h)];
+  const lons = corners.map((c) => c[0]);
+  const lats = corners.map((c) => c[1]);
+  const bbox = [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  let uz = Math.min(Number(z) || MIN_Z, 10);
+  if (!Number.isFinite(uz)) return [];
+  uz = Math.max(MIN_Z, uz);
+  let range = tilesForBBox(bbox, uz);
+  while ((range.x1 - range.x0 + 1) * (range.y1 - range.y0 + 1) > maxTiles && uz > MIN_Z) {
+    uz -= 1;
+    range = tilesForBBox(bbox, uz);
+  }
+  const seen = new Set();
+  const out = [];
+  for (let x = range.x0; x <= range.x1; x++) {
+    for (let y = range.y0; y <= range.y1; y++) {
+      const key = `${uz}/${y}/${x}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        key, z: uz, x, y,
+        nw: tileToLonLat(x, y, uz),
+        se: tileToLonLat(x + 1, y + 1, uz),
       });
     }
   }

@@ -31,6 +31,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import {
   ChatLayout, ChatMessageList, ChatMessage, ChatMessageBubble,
@@ -1215,6 +1216,35 @@ export function liveRowLine(row, lang = currentLang()) {
   const tailRaw = stripToolLabel(row.name, row.summary);
   const tail = en && tailRaw ? translateExact(tailRaw) : tailRaw;
   return tail ? `${mark} ${label} · ${tail}` : `${mark} ${label}`;
+}
+
+// 33a: the working card — a filled assistant bubble named Muse, a header
+// spinner plus one line per live tool row (a small spinner while pending).
+export function BusyMsg({ rows = [] }) {
+  return (
+    <ChatMessage sender="assistant">
+      <ChatMessageBubble variant="filled" name="Muse">
+        <div className="ui-busy-card">
+          <div className="ui-busy-head">
+            <Spinner size="sm" />
+            <Text>Muse가 일하는 중</Text>
+          </div>
+          {rows.length === 0 ? (
+            <Text type="supporting">Muse가 생각하는 중…</Text>
+          ) : (
+            <div className="ui-busy-rows">
+              {rows.map((row, i) => (
+                <div key={`${row.name}-${i}`} className="ui-busy-row">
+                  {row.pending ? <Spinner size="sm" /> : null}
+                  <span className="ui-busy-row-text" data-no-i18n>{liveRowLine(row, currentLang())}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </ChatMessageBubble>
+    </ChatMessage>
+  );
 }
 
 const WORK_TABS_27B2 = new Set(["compare", "priorities", "money", "worthit", "jeonse", "support"]);
@@ -3016,19 +3046,7 @@ export function ChatScreen() {
                     )}
                   </MsgBoundary>
                 ))}
-                {busy && (
-                  <ChatMessage sender="assistant">
-                    <ChatMessageBubble variant="ghost">
-                      {liveRows.length === 0 ? (
-                        <Text type="supporting">Muse가 생각하는 중…</Text>
-                      ) : (
-                        liveRows.map((row, i) => (
-                          <Text key={`${row.name}-${i}`} type="supporting"><span data-no-i18n>{liveRowLine(row, currentLang())}</span></Text>
-                        ))
-                      )}
-                    </ChatMessageBubble>
-                  </ChatMessage>
-                )}
+                {busy && <BusyMsg rows={liveRows} />}
                 {nextVisible && (
                   <div className="ui-next-steps" role="group" aria-label="다음으로 해 볼 것">
                     {nextShowReplay && <Button size="sm" variant="secondary" label={REPLAY_CHIP_LABEL} onClick={openReplay} />}

@@ -97,7 +97,7 @@ export function AssistantMsg({ msg, toolRows, lang = LANG }) {
         </ChatMessageBubble>
       )}
       {msg.content && (
-        <ChatMessageBubble variant="ghost" {...(modelText ? { "data-no-i18n": true } : null)}>
+        <ChatMessageBubble variant="filled" {...(modelText ? { "data-no-i18n": true } : null)}>
           <Markdown>{msg.content}</Markdown>
         </ChatMessageBubble>
       )}
