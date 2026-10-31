@@ -196,8 +196,8 @@ describe("evidenceIndex", () => {
 
 describe("checkEvidence", () => {
   const run = tinyRun();
-  // Synthetic supported-judge item: all real judge items are engine:none
-  // until deadline engine events land.
+  // Synthetic supported-judge item: all real judge items except C06/N03
+  // are engine:none (those two are backed by life-events trips).
   const loaded = { items: [
     { id: "J1", priority: "should", verify: "judge", engine: "supported",
       label_ko: "가상 판단 항목" },

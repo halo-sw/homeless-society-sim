@@ -3,7 +3,7 @@
 // Hand-made run (commute 25/35, errand 10, school 12, park 8,
 // clinic 15) and scripted drafts; every coverage number below is
 // computed by hand from the young_family support map
-// (supported must C01/C02/F01, should C05/F03/F05 — total weight 12).
+// (supported must C01/C02/F01, should C05/C06/F03/F05 — total weight 13).
 //
 // Stage 16b: a real-build check pins the household door-to-door C01 —
 // 43.6분 passes, the old neighbour-averaged 10.3분 fails (skipped when
@@ -57,6 +57,7 @@ const S_C05_BARE = sentence("s3", "C05", "장보기는 10분 거리예요");
 const S_F01 = sentence("s4", "F01", "등원은 12분이에요", [min(12)]);
 const S_F03 = sentence("s5", "F03", "공원은 8분 거리예요", [min(8)]);
 const S_F05 = sentence("s6", "F05", "소아과는 15분 거리예요", [min(15)]);
+const S_C06 = sentence("s7", "C06", "밤늦게 도착한 날이 있어요", [], ["t000001"]);
 
 const V1 = { persona: "young_family", home: HOME,
   sentences: [S_C01, S_C02_BAD, S_C05_BARE] };
@@ -65,9 +66,9 @@ const V2 = { persona: "young_family", home: HOME,
 const V3 = { persona: "young_family", home: HOME,
   sentences: [S_C01, S_C02_OK, S_C05_OK] };
 const V4 = { persona: "young_family", home: HOME,
-  sentences: [S_C01, S_C02_OK, S_C05_OK, S_F01] };
+  sentences: [S_C01, S_C02_OK, S_C05_OK, S_F01, S_C06] };
 const VPASS = { persona: "young_family", home: HOME,
-  sentences: [S_C01, S_C02_OK, S_C05_OK, S_F01, S_F03, S_F05] };
+  sentences: [S_C01, S_C02_OK, S_C05_OK, S_F01, S_F03, S_F05, S_C06] };
 
 describe("verifyReport", () => {
   const run = loopRun();
@@ -89,17 +90,17 @@ describe("verifyReport", () => {
   });
   it("lists engine:none items as unsupported, never failed", () => {
     const res = verifyReport(VPASS, run, "young_family", { groundTruth: GT });
-    assert.equal(res.unsupported.length, 9);
+    assert.equal(res.unsupported.length, 8);
     assert.ok(res.unsupported.every((u) => u.reason_ko.includes("미지원")));
     const mustNotes = res.feedback_ko.filter((f) => f.includes("엔진이 아직 확인할 수 없는 필수 항목"));
     assert.equal(mustNotes.length, 2); // C03, F02
   });
-  it("failed sentences are not covered (draft v1: 25 %)", () => {
+  it("failed sentences are not covered (draft v1: 23 %)", () => {
     const res = verifyReport(V1, run, "young_family", { groundTruth: GT });
     assert.equal(res.pass, false);
     assert.equal(res.failures.length, 2);
     assert.equal(res.must_coverage, 0.33);
-    assert.equal(res.weighted_coverage, 0.25);
+    assert.equal(res.weighted_coverage, 0.23);
     assert.ok(res.feedback_ko[0].includes("문장 s2"));
   });
   it("passes a newlywed report with per-member N01", () => {
@@ -110,7 +111,7 @@ describe("verifyReport", () => {
     ] };
     const res = verifyReport(report, run, "newlywed_couple", { groundTruth: GT });
     assert.equal(res.pass, true);
-    assert.equal(res.weighted_coverage, 1.0);
+    assert.equal(res.weighted_coverage, 0.83);
   });
   it("accepts a loaded ground-truth object and requires groundTruth", () => {
     const loaded = loadGroundTruth(GT, "young_family");
@@ -124,7 +125,7 @@ describe("runVerifyLoop", () => {
   const run = loopRun();
   const NEXT = { 1: V2, 2: V3, 3: V4 };
 
-  it("fixes one problem per attempt: 25 % → 50 % → 58 % → 83 % 통과", async () => {
+  it("fixes one problem per attempt: 23 % → 46 % → 54 % → 85 % 통과", async () => {
     const { result, attempts, handoff } = await runVerifyLoop({
       draft: V1, run, persona: "young_family", groundTruth: GT,
       maxRetries: GT.acceptance.max_retries,
@@ -133,13 +134,13 @@ describe("runVerifyLoop", () => {
     assert.equal(GT.acceptance.max_retries, 3);
     assert.equal(attempts.length, 4);
     assert.deepEqual(attempts.map((a) => a.summary_ko), [
-      "검증 실패: 보고한 600,000원이 계산 650,000원과 달라요 1개, 근거 없는 숫자 1개, 커버리지 25%",
-      "검증 실패: 근거 없는 숫자 1개, 커버리지 50%",
-      "검증 실패: 누락 항목 있음, 커버리지 58%",
-      "검증 통과: 커버리지 83%",
+      "검증 실패: 보고한 600,000원이 계산 650,000원과 달라요 1개, 근거 없는 숫자 1개, 커버리지 23%",
+      "검증 실패: 근거 없는 숫자 1개, 커버리지 46%",
+      "검증 실패: 누락 항목 있음, 커버리지 54%",
+      "검증 통과: 커버리지 85%",
     ]);
     assert.equal(result.pass, true);
-    assert.equal(result.weighted_coverage, 0.83);
+    assert.equal(result.weighted_coverage, 0.85);
     assert.equal(handoff, null);
   });
   it("hands off to the user after 3 failed retries", async () => {

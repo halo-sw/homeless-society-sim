@@ -27,7 +27,7 @@ export const UNSUPPORTED_MUST_KO = "엔진이 아직 확인할 수 없는 필수
 // `persona` is a persona key or loadGroundTruth's return; opts.groundTruth
 // (the parsed ground_truth.json) is required for the persona map.
 export function verifyReport(report, run, persona, opts = {}) {
-  const { groundTruth = null } = opts;
+  const { groundTruth = null, inapplicable = [], extraFailures = [] } = opts;
   if (!groundTruth) throw new Error("verifyReport needs opts.groundTruth");
   const loaded = typeof persona === "string"
     ? loadGroundTruth(groundTruth, persona)
@@ -37,17 +37,23 @@ export function verifyReport(report, run, persona, opts = {}) {
   if (personaMap[personaKey] === null) {
     return { status: "미지원", reason_ko: UNSUPPORTED_PERSONA_KO, pass: false };
   }
+  const inapSet = inapplicable instanceof Set ? inapplicable : new Set(inapplicable || []);
   const items = loaded.items || [];
   const acceptance = loaded.acceptance || groundTruth.acceptance;
   const failures = [
     ...checkNumberClaims(report, run, loaded).failures,
     ...checkEvidence(report, run, loaded).failures,
+    ...(extraFailures || []),
   ];
   const failedItems = new Set(failures.map((f) => f.item_id));
   const sentIds = new Set(
     ((report && report.sentences) || []).map((s) => s.item_id));
   const byId = new Map(items.map((it) => [it.id, it]));
-  const supported = items.filter((it) => it.engine !== "none");
+  // 29j1: inapplicable items count neither as covered nor missing.
+  const inapplicableList = items
+    .filter((it) => inapSet.has(it.id) && it.engine !== "none")
+    .map((it) => ({ item_id: it.id, reason_ko: "이 집 기록에 해당 장면이 없어요" }));
+  const supported = items.filter((it) => it.engine !== "none" && !inapSet.has(it.id));
   const unsupported = items
     .filter((it) => it.engine === "none")
     .map((it) => ({ item_id: it.id,
@@ -80,12 +86,13 @@ export function verifyReport(report, run, persona, opts = {}) {
     must_coverage: roundCoverage(mustCovRaw),
     weighted_coverage: roundCoverage(weightedRaw),
     unsupported,
+    inapplicable: inapplicableList,
     failures,
     feedback_ko: feedbackKo,
   };
 }
 
-function attemptSummary(result) {
+export function attemptSummary(result) {
   if (result.status === "미지원") return `검증 미지원: ${result.reason_ko}`;
   const pct = Math.round(result.weighted_coverage * 100);
   if (result.pass) return `검증 통과: 커버리지 ${pct}%`;

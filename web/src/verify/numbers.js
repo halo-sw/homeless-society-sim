@@ -159,7 +159,9 @@ export function engineValue(itemId, run, opts = {}) {
   const { member = null, home = null } = opts;
   if (itemId === "C02") {
     const total = monthlyTotal(home);
-    return total === null ? null : { value: total, unit: "원" };
+    if (total === null) return null;
+    if (home && home.currency === "USD") return { value: total, unit: "$" };
+    return { value: total, unit: "원" };
   }
   if (itemId === "C01") {
     const vals = [];
@@ -276,8 +278,11 @@ export function checkNumberClaims(report, run, loaded) {
       }
       if (item.id === "C02") {
         if (Number(claim.value) !== engine.value) {
+          const fmt = engine.unit === "$"
+            ? (n) => `$${Number(n).toLocaleString("en-US")}`
+            : (n) => `${fmtWon(n)}원`;
           failures.push({ sentence_id: s.id, item_id: s.item_id, kind: "number",
-            reason_ko: `보고한 ${fmtWon(claim.value)}원이 계산 ${fmtWon(engine.value)}원과 달라요` });
+            reason_ko: `보고한 ${fmt(claim.value)}이 계산 ${fmt(engine.value)}과 달라요` });
         }
         continue;
       }
