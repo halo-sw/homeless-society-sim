@@ -417,7 +417,9 @@ describe("32c3 dev-only street import", () => {
     const src = readFileSync(join(HERE, "..", "vite.config.js"), "utf8");
     const topLevel = src.split("\n").filter((line) => /^import\s.*from\s+["']\.\.\/relay\//.test(line));
     assert.deepEqual(topLevel, [], "no static import of relay/ (vite build must not resolve it)");
-    assert.match(src, /await\s+import\(\s*["']\.\.\/relay\/street\.js["']\s*\)/,
-      "street handler loads lazily inside configureServer");
+    assert.ok(!/import\(\s*["']\.\.\/relay\//.test(src),
+      "no literal-string dynamic import of relay/ (esbuild would still resolve it at bundle time)");
+    assert.match(src, /new URL\(\s*["']\.\.\/relay\/street\.js["']\s*,\s*import\.meta\.url\s*\)/,
+      "street handler loads lazily via new URL(../relay/street.js, import.meta.url)");
   });
 });

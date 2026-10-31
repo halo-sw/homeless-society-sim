@@ -282,7 +282,7 @@ function streetApiPlugin() {
       // configureServer) never resolves relay/. One handler for the dev
       // server: it holds its photo cache and rate buckets. The token is
       // read per request, never stored in the bundle.
-      const { createStreetHandler } = await import("../relay/street.js");
+      const { createStreetHandler } = await import(new URL("../relay/street.js", import.meta.url).href);
       const handler = createStreetHandler({
         getToken: () => process.env.MAPILLARY_TOKEN || null,
         fetchImpl: fetch,

@@ -28,3 +28,11 @@ If it still fails after 2 fix attempts, stop and print the last lines.
 
 ## Final message
 Changed files, one line each. Updated test files. Nothing else.
+
+## Second attempt (the first one still failed in CI)
+```
+vite.config.js:285:51: ERROR: Could not resolve "../relay/street.js"
+```
+Vite bundles the config with esbuild, which also resolves `import("<string literal>")`. Use a specifier esbuild cannot resolve at bundle time:
+- `await import(new URL("../relay/street.js", import.meta.url).href)` (Vite rewrites `import.meta.url` in the bundled config to the real file URL).
+- Update the 32c3 test so it asserts there is no `import("../relay/` with a literal string, and that `new URL("../relay/street.js", import.meta.url)` is used.
