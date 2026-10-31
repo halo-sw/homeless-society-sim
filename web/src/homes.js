@@ -33,6 +33,13 @@ export const HOME_SORT_KO = {
   deals: "거래 많은 순",
   priority: "내 우선순위 순",
 };
+// 31i: short sort-tab labels (full HOME_SORT_KO stays in title/aria-label).
+export const HOME_SORT_SHORT_KO = {
+  commute: "출근순",
+  monthly: "비용순",
+  deals: "거래순",
+  priority: "우선순위순",
+};
 
 export const SOURCE_BADGES = {
   rtms: "실거래(국토교통부 25.10–26.10)",

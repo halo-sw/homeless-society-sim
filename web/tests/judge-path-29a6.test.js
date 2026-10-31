@@ -51,8 +51,10 @@ describe("29a6 judge path", () => {
 
   it("landing shows the three entries (ko SSR, en translator)", async () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
+    const panel = html.match(/<section class="ds-lp-try"([\s\S]*?)<\/section>/);
+    assert.ok(panel, "hero ds-lp-try panel missing");
     for (const s of ["기록된 한 달 보기", "Meta 본사 출근으로 해 보기", "서울로 해 보기"]) {
-      assert.ok(html.includes(s), s);
+      assert.ok(panel[1].includes(s), s);
     }
     assert.ok(html.includes("replay="), "replay link in SSR");
     const { createTranslator } = await import("../src/i18n/translate.js");

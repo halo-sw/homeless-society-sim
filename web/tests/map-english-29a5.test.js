@@ -43,11 +43,12 @@ describe("29a5 workplace pin label", () => {
 });
 
 describe("29a5 legend placement", () => {
-  it("legend is off the top-right corner", () => {
+  it("legend floats top-left under the stage title, off the tray", () => {
     assert.ok(!chatmapSrc.includes("top: 12, right: 12"),
       "legend no longer top: 12, right: 12");
-    assert.ok(chatmapSrc.includes("bottom: 32, left: 12"),
-      "legend sits bottom-left above the attribution");
+    assert.ok(!chatmapSrc.includes("bottom: 32, left: 12"),
+      "legend no longer bottom-anchored where the tray covers it");
+    assert.ok(chatmapSrc.includes("ui-chatmap-legend"), "legend uses its class");
     assert.ok(chatmapSrc.includes('role="note"'), "legend is a note");
   });
 });

@@ -201,14 +201,16 @@ describe("18d walkthrough map: one projected space, readable pins", () => {
       assert.ok(x >= vx && x <= vx + vw, `${what} x ${x} inside ${vb[1]}`);
       assert.ok(y >= vy && y <= vy + vh, `${what} y ${y} inside ${vb[1]}`);
     };
-    // Candidate pins: the two dark dots.
+    // Candidate pins: the moved tag's 4 px ground dot (31g: only a
+    // moved tag keeps a dot; 31f colours — ink-2, or the A/B pick
+    // colour with a white ring, never work-marker black).
     const pins = [...html.matchAll(
-      /<circle cx="([\d.\-e]+)" cy="([\d.\-e]+)" r="([\d.\-e]+)" fill="#1d1b18"/g)];
-    assert.equal(pins.length, 2, "two candidate pins");
+      /<circle cx="([\d.\-e]+)" cy="([\d.\-e]+)" r="4" fill="#[0-9a-f]{6}"/g)];
+    assert.equal(pins.length, 1, "the moved tag's true-point dot");
     for (const p of pins) inside(Number(p[1]), Number(p[2]), "candidate pin");
     // Pin numbers, price tags and region label.
     for (const m of html.matchAll(
-      /<text x="([\d.\-e]+)" y="([\d.\-e]+)"[^>]*>([12AB]|전세 [^<]*|성남 분당구)<\/text>/g)) {
+      /<text x="([\d.\-e]+)" y="([\d.\-e]+)"[^>]*>([12AB]|전 [^<]*|성남 분당구)<\/text>/g)) {
       inside(Number(m[1]), Number(m[2]), `label ${m[3]}`);
     }
     // Workplace pill + 회사 label.
@@ -236,12 +238,14 @@ describe("18d walkthrough map: one projected space, readable pins", () => {
     assert.ok(sizes.length > 0, "labels carry font sizes");
     // 19b: pill number glyphs are 10 px by design; everything else ≥ 11 px.
     for (const s of sizes) assert.ok(s >= 10, `label ${s}px >= 10px`);
-    const dots = [...html.matchAll(/<circle[^>]*r="([\d.]+)"[^>]*fill="#1d1b18"/g)]
-      .map((m) => Number(m[1]));
-    assert.ok(dots.length === 2, `two true-point dots, got ${dots.length}`);
+    // 31g: only a moved tag keeps a ground dot (ink-2, or the A/B
+    // pick colour — never work-marker black).
+    const dots = [...html.matchAll(/<circle[^>]*r="([\d.]+)"[^>]*fill="#[0-9a-f]{6}"/g)]
+      .map((m) => Number(m[1])).filter((r) => r === 4);
+    assert.ok(dots.length === 1, `the moved tag's dot, got ${dots.length}`);
     for (const r of dots) assert.ok(r * 2 >= 8, `dot ${r * 2}px across`);
-    const pills = [...html.matchAll(/<rect[^>]*height="24"[^>]*rx="999"/g)];
-    assert.ok(pills.length === 2, `two price pills, got ${pills.length}`);
+    const tags = [...html.matchAll(/<g[^>]*data-layer="home-pin"/g)];
+    assert.ok(tags.length === 2, `two price tags, got ${tags.length}`);
   });
 });
 
