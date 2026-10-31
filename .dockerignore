@@ -1,0 +1,9 @@
+node_modules
+web/dist
+relay/dist
+data/raw
+data/build
+.venv
+.env
+.git
+**/__pycache__
