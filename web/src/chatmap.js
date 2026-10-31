@@ -562,10 +562,25 @@ export function tagCommuteLine(pin, lang) {
 // language — the tag measures and paints exactly these strings.
 export function tagLines(pin, opts) {
   const o = opts || {};
+  const commute = tagCommuteLine(pin, o.lang);
+  if (o.sharedRent && commute) {
+    // 29k2: every home shares one ZIP rent, so the bold line leads
+    // with the commute (English: `N min to work`); the money line
+    // is said once above the list instead.
+    const m = pin && pin.commuteMin;
+    const price = (o.lang === "en" && Number.isFinite(Number(m)))
+      ? `${Math.round(m)} min to work`
+      : commute;
+    return {
+      header: tagHeaderFor(pin, o.lang),
+      price,
+      commute: null,
+    };
+  }
   return {
     header: tagHeaderFor(pin, o.lang),
     price: tagPriceLine(pin && pin.candidate, o.tenure, o.lang),
-    commute: tagCommuteLine(pin, o.lang),
+    commute,
   };
 }
 
@@ -575,7 +590,7 @@ export function tagLines(pin, opts) {
 // is measured on the rendering-language lines.
 export function tagSizePx(pin, tenure, lang, opts) {
   const t = tagFontPx(opts);
-  const lines = tagLines(pin, { tenure, lang });
+  const lines = tagLines(pin, { tenure, lang, sharedRent: opts && opts.sharedRent });
   // 31m: { short: true } measures the compact form — header +
   // price, no commute line — for crowded stages.
   const commute = (opts && opts.short) ? null : lines.commute;

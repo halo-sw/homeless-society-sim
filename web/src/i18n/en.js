@@ -311,6 +311,8 @@ const seedPhrases = {
   "2곳까지 담을 수 있어요": "You can pick up to 2",
   "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철": "No.·area / price / commute · Ⓐ Ⓑ picked · ■ work · ━ subway",
   "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사": "No.·area / price / commute · Ⓐ Ⓑ picked · ■ work",
+  "번호·면적 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철": "No.·area / commute · Ⓐ Ⓑ picked · ■ work · ━ subway",
+  "번호·면적 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사": "No.·area / commute · Ⓐ Ⓑ picked · ■ work",
   "거래 방식": "Deal type",
   "출근 시간": "Commute",
   "집 종류": "Home type",

@@ -778,7 +778,7 @@ export function ReportCheck({ report, names, onRetry }) {
             <Text type="supporting">{((names || {})[h] || "").trim() || h}</Text>
           </HStack>
           {sentences.filter((s) => s && s.home === h).map((s) => (
-            <p key={s.id}>{s.text_ko} {sentenceTags(s)}</p>
+            <p key={s.id}>{s.text_ko}<span className="ui-check-tags">{sentenceTags(s)}</span></p>
           ))}
         </VStack>
       ))}

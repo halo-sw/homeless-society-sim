@@ -943,6 +943,8 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   top: calc(var(--ds-s-12) + var(--ds-s-32) + var(--ds-s-12));
   left: var(--ds-s-12); max-width: calc(100% - var(--ds-s-48) * 2);
   font-size: var(--ds-t-12); color: var(--ds-ink-2); white-space: normal; }
+/* 29k2: the shared-ZIP-rent line under the legend, on its own line. */
+.ui-chatmap-legend-note { display: block; }
 /* 31d: the zoom group and the credit share one right-side column —
    zoom on top, credit under it, end-aligned. The column sits clear
    of the bottom, so nothing in it overlaps the tray or each other. */
@@ -1414,6 +1416,9 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ui-check-badge { padding: var(--ui-s4) var(--ui-s8); border-radius: var(--ui-r-chip); background: var(--ui-sunken); font-weight: var(--ui-w600); }
 .ui-check-tag { font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-check-tag.is-fail { color: var(--ds-danger, var(--ui-ink-1)); font-weight: var(--ui-w600); }
+/* 29k2: a sentence's check tags get their own spaced wrap, so they
+   never glue onto the sentence text or each other. */
+.ui-check-tags { display: inline-flex; flex-wrap: wrap; gap: var(--ui-s8); margin-inline-start: var(--ui-s8); vertical-align: baseline; }
 /* 29a6c: the 26m money source note is always the small second line, so
    "$4,261/mo" never joins its "(ZIP estimate)" on one row. */
 .ui-result-note { display: block; font-size: var(--ui-t12); font-weight: var(--ui-w400);

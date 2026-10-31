@@ -10,14 +10,15 @@
 import { useEffect, useRef, useState } from "react";
 import { fitMapView, fitInsetFromChrome, layoutMapPills, layoutStationLabels, pickDongLabels,
   stationNameWidthPx, haversineKm,
-  tagSizePx, tagLines, tagFontPx, clusterSizePx,
+  tagSizePx, tagLines, tagPriceLine, tagFontPx, clusterSizePx,
   MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
 import { basemapApiBase, basemapTileUrl, basemapTiles, basemapProvider,
   viewTransform, zoomAt } from "../basemap.js";
 import { currentLang } from "../i18n/lang.js";
 import { romanizeName } from "../i18n/romanize.js";
 import { displayNameFor } from "../homes.js";
-import { pinCardModel } from "./candidate-card.jsx";
+import { pinCardModel, sharedZipRent } from "./candidate-card.jsx";
+import { fmtMoney } from "../money/currency.js";
 import { toast } from "./toast.jsx";
 import { locateResult } from "./map-filters.js";
 
@@ -67,6 +68,20 @@ function letterFillFor(letter) {
 // 31j: built per language in code (the DOM translator never sees
 // it — the tag carries data-no-i18n), so English reads
 // `Candidate 1: name · price · 5 min commute`.
+// 29k2: the legend's second line when every home shares one ZIP
+// rent — built per language in code (the node carries
+// data-no-i18n, so the DOM translator never sees it).
+export function sharedLegendNote(shared, lang) {
+  if (!shared) return null;
+  const money = lang === "en"
+    ? `${fmtMoney(shared.amount, "USD")}/mo`
+    : `${fmtMoney(shared.amount, "USD")}/월`;
+  const src = shared.month ? `${shared.source}, ${shared.month}` : shared.source;
+  return lang === "en"
+    ? `Same for every home: ZIP ${shared.zip} rent ${money} (${src})`
+    : `모든 집 같은 값: ZIP ${shared.zip} 월세 ${money} (${src})`;
+}
+
 export function pinAriaLabel(p, short, lang) {
   if (lang === "en") {
     const parts = [`Candidate ${p.n}: ${displayNameFor(p.candidate)}`];
@@ -294,7 +309,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
       let tagHM = 0;
       for (const p of ((map && map.pins) || [])) {
         try {
-          const s = tagSizePx(p, map.tenure, langM, { compact: compactM });
+          const s = tagSizePx(p, map.tenure, langM, { compact: compactM, sharedRent: !!shared });
           if (s && s.h > tagHM) tagHM = s.h;
         } catch { /* keep the tallest so far */ }
       }
@@ -345,6 +360,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   }, [W, H]);
   const m = map || {};
   const pins = m.pins || [];
+  // 29k2: one ZIP rent for every home — tags lead with the commute
+  // and the legend says the shared rent once.
+  const shared = sharedZipRent(pins.map((p) => p.candidate), m.tenure);
   const regions = m.regions || [];
   // Fit the workplace + all candidates with a margin; before any
   // candidates exist, frame the covered regions so the panel fills.
@@ -452,8 +470,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
     // rendering-language lines, in the phone size when narrow.
     // 31m: the compact form (header + price, no commute line) rides
     // along as alt for crowded stages.
-    const sz = tagSizePx(p, m.tenure, lang, { compact });
-    const shortSz = tagSizePx(p, m.tenure, lang, { compact, short: true });
+    const sz = tagSizePx(p, m.tenure, lang, { compact, sharedRent: !!shared });
+    const shortSz = tagSizePx(p, m.tenure, lang, { compact, short: true, sharedRent: !!shared });
     pillItems.push({ id: p.id, kind: "pill", x, y,
       w: sz.w, h: sz.h, alt: { w: shortSz.w, h: shortSz.h },
       rank: p.picked ? 1 : 2 });
@@ -896,9 +914,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
             // 31m: a compact placement paints without the commute
             // line (the aria-label still names the minutes).
             const isShort = !!(l && l.short);
-            const { header, price, commute } = tagLines(p, { tenure: m.tenure, lang });
+            const { header, price, commute } = tagLines(p, { tenure: m.tenure, lang, sharedRent: !!shared });
             const lines = isShort ? { header, price, commute: null } : { header, price, commute };
-            const sz = tagSizePx(p, m.tenure, lang, { compact, short: isShort });
+            const sz = tagSizePx(p, m.tenure, lang, { compact, short: isShort, sharedRent: !!shared });
             const box = (l && l.box) || { x: px - sz.w / 2, y: py - fs(12) - sz.h, w: sz.w, h: sz.h };
             const hi = cardHi === `home:${p.id}`;
             const picked = !!p.picked;
@@ -953,7 +971,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
                 // (44 px or taller, so always ≥ 32 px).
                 return (
                   <g key={`pin-pill-${p.id}`} data-layer="home-pin"
-                    {...pinButtonProps(p, g.price)}>
+                    {...pinButtonProps(p, tagPriceLine(p.candidate, m.tenure, lang))}>
                     <rect x={g.box.x - fs(4)} y={g.box.y}
                       width={g.box.w + fs(8)} height={g.box.h}
                       fill="transparent" />
@@ -1030,7 +1048,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
             if (!pin) return null;
             const cluster = laid.find((l) => l.id === expanded);
             // 31g: fanned-out members draw as the new tags.
-            const sz = tagSizePx(pin, m.tenure, lang, { compact });
+            const sz = tagSizePx(pin, m.tenure, lang, { compact, sharedRent: !!shared });
             const R = Math.max(48, 18 * arr.length);
             const ang = (-Math.PI / 2) + ((i + 0.5) * 2 * Math.PI) / arr.length;
             const bx = cluster.box.x + cluster.box.w / 2 + R * Math.cos(ang) - sz.w / 2;
@@ -1044,10 +1062,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
               ? (letterFillFor(pin.letter) || MAP_COLORS.pinPicked)
               : MAP_COLORS.pinText;
             const box = { x: bx, y: by, w: sz.w, h: sz.h };
-            const lines = tagLines(pin, { tenure: m.tenure, lang });
+            const lines = tagLines(pin, { tenure: m.tenure, lang, sharedRent: !!shared });
             return (
               <g key={`open-${mb.id}`} data-layer="home-pin"
-                {...pinButtonProps(pin, lines.price)}>
+                {...pinButtonProps(pin, tagPriceLine(pin.candidate, m.tenure, lang))}>
                 <rect x={bx - fs(4)} y={by}
                   width={sz.w + fs(8)} height={sz.h} fill="transparent" />
                 <line x1={bx + sz.w / 2} y1={by + sz.h} x2={px} y2={py}
@@ -1079,9 +1097,16 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
       {!hideLegend && (
       <div role="note" className={hasFilters
         ? "ui-float ui-chatmap-legend has-filters" : "ui-float ui-chatmap-legend"}>
-        {provider === "usgs"
-          ? "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사"
-          : "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철"}
+        {shared
+          ? (provider === "usgs"
+            ? "번호·면적 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사"
+            : "번호·면적 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철")
+          : (provider === "usgs"
+            ? "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사"
+            : "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철")}
+        {shared && (
+          <span className="ui-chatmap-legend-note" data-no-i18n>{sharedLegendNote(shared, lang)}</span>
+        )}
       </div>
       )}
       {(() => {
