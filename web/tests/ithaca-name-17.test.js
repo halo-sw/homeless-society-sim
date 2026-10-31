@@ -44,11 +44,13 @@ describe("17-1 Ithaca name", () => {
     assert.deepEqual(hits, []);
   });
 
-  it("top bar shows Ithaca with no subtitle", () => {
+  it("top bar shows the Ithaca logo with no subtitle (32e)", () => {
     const html = render(React.createElement(TopBar,
       { mode: "chat", summary: "", settings: { mode: "chat" } }));
     assert.ok(html.includes("ui-bar-title"), "title class");
-    assert.ok(html.includes(">Ithaca<"), "latin product name");
+    assert.ok(html.includes("brand/ithaca-logo.svg"), "logo image");
+    assert.ok(html.includes('alt="Ithaca"'), "logo alt name");
+    assert.ok(!html.includes(">Ithaca<"), "no bare product-name text in the bar");
   });
 
   it("landing shows the brand line, headline and tagline", () => {

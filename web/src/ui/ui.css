@@ -81,6 +81,13 @@
   font-size: var(--ui-t16); font-weight: var(--ui-w600);
   line-height: var(--ui-lh-head); white-space: nowrap;
 }
+/* 32e: the real Ithaca logo (arch + wordmark SVG) in the top bar and
+   the landing nav/footer. Heights come from the scale; the file's own
+   viewBox keeps the ≈ 4.19 : 1 ratio, so width stays auto. */
+.ds-ithaca-logo { display: block; flex: none; }
+.ui-bar-left .ds-ithaca-logo { height: var(--ds-t-20); width: auto; }
+.ds-lp-brand .ds-ithaca-logo { height: var(--ds-s-24); width: auto; }
+.ds-lp-foot-brand .ds-ithaca-logo { height: var(--ds-t-20); width: auto; }
 /* 26w3: the "Muse" word next to the logo never wraps or shrinks. */
 .ui-bar-muse { white-space: nowrap; flex: none; }
 .ui-bar-center {
@@ -1460,6 +1467,8 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   .ui-bar-left { gap: var(--ui-s8); }
   .ui-bar-center { display: none; }
   .ui-bar-title { white-space: nowrap; }
+  /* 32e: the top-bar logo steps down on phones (no scale token at 18). */
+  .ui-bar-left .ds-ithaca-logo { height: 18px; width: auto; }
   .ui-landing-brand { flex-wrap: wrap; }
   .ui-landing-brandname {
     white-space: nowrap; word-break: keep-all; overflow-wrap: break-word;
@@ -1897,8 +1906,6 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   padding: var(--ds-s-48) var(--ds-s-24); display: grid;
   grid-template-columns: 1.2fr 1fr 1fr; gap: var(--ds-s-24);
   font-size: var(--ds-t-12); color: var(--ds-ink-3); }
-.ds-lp-foot-brand span { font-weight: var(--ds-w-bold);
-  font-size: var(--ds-t-16); color: var(--ds-ink-1); }
 .ds-lp-foot-brand p { margin: var(--ds-s-8) 0 0; }
 .ds-lp-foot-links { display: flex; gap: var(--ds-s-16); flex-wrap: wrap;
   align-content: start; }
