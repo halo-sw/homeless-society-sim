@@ -123,6 +123,6 @@ describe("29a6e replay bar is not the chat layout", () => {
     const tr = createTranslator({ phrases, patterns, words: WORDS });
     assert.equal(
       tr.translate("✓ 문장 6개 모두 기록과 대조 · 1번 고쳐 씀 · 2줄은 근거가 없어 뺐어요"),
-      "✓ All 6 sentences checked against the record · rewritten 1× · 2 line(s) dropped for lack of evidence");
+      "✓ All sentences checked against the record (6) · rewritten once · dropped 2 lines with no evidence");
   });
 });

@@ -88,10 +88,10 @@ describe("consult tools", () => {
     assert.match(r.error, /unknown tool/);
   });
 
-  it("lists the four built areas only", async () => {
+  it("lists the four built areas plus us-menlo", async () => {
     const r = await callTool(fixtureSession(), "list_areas", {});
     assert.equal(r.ok, true);
-    assert.deepEqual(r.areas.map((a) => a.id), ["pangyo", "seongsu", "songpa", "songpa-jamsil"]);
+    assert.deepEqual(r.areas.map((a) => a.id), ["pangyo", "seongsu", "songpa", "songpa-jamsil", "us-menlo"]);
     assert.match(r.note, /다음 단계/);
     assert.equal(CONSULT_AREAS.length, 4);
   });

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-1421_JS_·_244_Python-2f5d50?style=flat-square" alt="1421 JavaScript and 244 Python tests">
+  <img src="https://img.shields.io/badge/tests-1772_JS_·_266_Python-2f5d50?style=flat-square" alt="1772 JavaScript and 266 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -26,9 +26,10 @@
   <a href="README.ko.md"><img src="https://img.shields.io/badge/한국어-README-e8e4da?style=for-the-badge&labelColor=2f5d50" alt="Korean README"></a>
 </p>
 
-<p align="center"><sub>Live site: <a href="https://halo-sw.github.io/ithaca/">https://halo-sw.github.io/ithaca/</a> — static build: Muse chat and the VWorld aerial photo are off there to keep keys private; runs use recorded Muse decisions or the rule judge, labelled as such.</sub></p>
+<p align="center"><sub>Live site: <a href="https://halo-sw.github.io/ithaca/">https://halo-sw.github.io/ithaca/</a> — Muse and the VWorld map tiles run through a small relay that keeps every key server-side. If the relay is unavailable, the chat answers in rule mode and says so.</sub></p>
 
 <p align="center">
+  <a href="#judge-in-2-minutes">Judge in 2 minutes</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#gallery">Gallery</a> ·
   <a href="#what-it-does">What it does</a> ·
@@ -39,6 +40,22 @@
   <a href="#limits">Limits</a> ·
   <a href="#roadmap">Roadmap</a>
 </p>
+
+## Judge in 2 minutes
+
+1. **Open the live site:** <https://halo-sw.github.io/ithaca/>. It starts in English when your browser is not set to Korean (or add `?lang=en`).
+2. **Try the Meta HQ example.** Click **Meta HQ, Menlo Park (US)**. Six real apartments near 1 Hacker Way appear on a map, each with a live aerial photo, a Zillow ZIP rent estimate and bike/walk minutes. Type *"Save 1 and 2"*, then *"Live in both homes"*. Muse runs 30 days in each home and writes a diary, and every diary sentence is checked against the run's record before you see it.
+3. **No key needed.** The site calls Muse through our relay; you never paste a key. If the relay is down or out of credit, the chat falls back to rule mode and says so; the deterministic engine still computes every number, and the bundled scenarios can replay recorded Muse decisions. The same app runs locally without any key (see [Quick start](#quick-start)).
+4. **Check the proof.**
+
+| Claim | Number | Where |
+|---|---|---|
+| Numbers never come from the model | Every minute and won is computed by the deterministic engine; replies with a number not in the tool results are rejected | [Verification](#verification) |
+| Muse's choices are stable across models | Spark 1.3 and Spark Open made the same choice at **120 of 139** shared decision points (**86 %**) | [Meta models](#meta-models) |
+| Guards hold on real runs | **154 of 154** decisions answered per model, **0** guard fallbacks | [Meta models](#meta-models) |
+| Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. Live English run on 2026-10-31 (Pangyo, 2 homes): all 8 diary sentences matched the record, after 1 rewrite | [Verification](#verification) |
+| Tested | **1,772** JavaScript and **266** Python tests, CI on every push | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+
 
 <p align="center">
   <img src="briefs/img/19-chat.jpg" width="760" alt="The chat screen. Left: the conversation and candidate homes as rows, each with its map number, name, real-transaction 전세 price, size, year and the estimated commute; two homes are picked as A and B. Right: a light map with roads, subway lines in their colours, the 회사 · 판교 pill, price pills for every candidate (A and B in blue) and the commute minutes. A tray under the map holds the two picked homes and the one button, 이 집들로 30일 살아 보기.">
@@ -52,7 +69,7 @@ People make the most expensive decision of their lives from a few photos and a 3
 
 So an AI household moves in first. Tell it about your life, pick candidate homes from real transactions, and the household lives 30 days in home A and home B, side by side, in a 3D model of the real neighbourhood. Muse Spark makes the household's everyday choices and explains each one. A deterministic engine counts every minute and every won. The app then compares the two homes on the customer's own priorities, with a source or an "assumption" label on every number. It shows, explains and lets you decide. It never decides for you.
 
-> Status (2026-10-30): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *coming soon* are not built yet.
+> Status (2026-10-31): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *coming soon* are not built yet.
 
 ## How it works
 
@@ -129,7 +146,7 @@ Status: the scorer, claim checks and retry loop are in `main` (stages 16a and 16
 
 ## Built by Muse
 
-Every line of product code, every test and every pipeline script in this repository was written by **Muse** (`muse-spark-1.3`, Muse Code agent mode). A human and an orchestrating assistant wrote the stage briefs, downloaded data, ran tests, captured screenshots on a real GPU and did the git work. Each stage has a brief and a result note in [`briefs/`](briefs/), and the rules are in [`AGENTS.md`](AGENTS.md).
+Every line of product code, every test and every pipeline script in this repository was written by **Muse** (`muse-spark-1.3`, Muse Code agent mode). A human and an orchestrating assistant wrote the stage briefs, downloaded data, ran tests, captured screenshots on a real GPU and did the git work. Two kinds of file are not Muse's, and we say so: the English phrase tables `web/src/i18n/en.js`, `en-table.js` and `en-words.js` (translation content, written by the orchestrating assistant; the translation engine `translate.js` is Muse's), and the verification ground truth `scenarios/verify/ground_truth.json` with its reference scorer `tools/verify_checklist.py` (written by the team, used to check Muse's scorer). Each stage has a brief and a result note in [`briefs/`](briefs/), and the rules are in [`AGENTS.md`](AGENTS.md).
 
 | Layer | Where | Notes |
 |---|---|---|

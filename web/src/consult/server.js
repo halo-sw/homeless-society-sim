@@ -109,6 +109,25 @@ async function loadDecisionsFs(readText, scenarioName, label) {
   return null;
 }
 
+// 26y: the Menlo Park file for US searches. Same readText reader as
+// every other data file, so the relay needs no change. Missing file
+// reads as empty — find_homes then fails honestly instead of falling
+// back to Korean homes.
+export function createUsHomesLoader(read) {
+  let cache = null;
+  return async () => {
+    if (!cache) {
+      try {
+        const doc = JSON.parse(await read("data", "homes/us-menlo.json"));
+        cache = (doc && doc.homes) || [];
+      } catch {
+        cache = [];
+      }
+    }
+    return cache;
+  };
+}
+
 // Read data/scenario files over HTTP (the public relay has no data dir).
 // base always ends in "/"; a non-2xx answer throws.
 export function httpReadText(baseUrl, fetchImpl) {
@@ -227,6 +246,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     return housingCache;
   };
   const loadHomes = createHomesLoader(read);
+  const loadUsHomes = createUsHomesLoader(read);
   let photosCache = null;
   const loadPhotos = async () => {
     if (!photosCache) {
@@ -342,7 +362,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         loadSafety: () => loadSafetyFs(read),
         loadPersona: (id) => loadPersonaFs(read, id),
         loadAssumption,
-        loadHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
+        loadHomes, loadUsHomes, loadPhotos, loadAreasIndex, loadStationBoxes, loadTransit,
         fetchImpl,
       };
       if (body.stream === true) {

@@ -3581,7 +3581,10 @@ loadAreasList().then(() => {
   const route = routeForSearch(location.search);
   const kind = bootKindFor(route);
   if (kind === "sim") bootSim();
-  else if (kind === "chat") bootChat();
+  // 26w2: the chat reuses the tour scene as its empty-state backdrop
+  // (quiet glide, no captions — bootTour("chat")); when the world
+  // cannot boot (no WebGL, no data) it falls back to today's plain chat.
+  else if (kind === "chat") bootTour("chat").catch(bootChat);
   else if (kind === "landing") bootLanding();
   else bootTour(route); // tour
 });
