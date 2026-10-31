@@ -97,24 +97,36 @@ function darkSide(run) {
       mSum += t.distance_m;
       mN += 1;
     }
-    const label = t.from && typeof t.from.label === "string" && t.from.label
-      ? t.from.label
-      : null;
-    if (label) fromCounts.set(label, (fromCounts.get(label) || 0) + 1);
-  }
-  let from = null;
-  let best = 0;
-  for (const [label, n] of fromCounts) {
-    if (n > best) {
-      best = n;
-      from = label;
+    const f = t.from || {};
+    const fid = typeof f.id === "string" && f.id ? f.id : null;
+    const label = typeof f.label === "string" && f.label ? f.label : null;
+    if (fid || label) {
+      const key = fid || `label:${label}`;
+      const prev = fromCounts.get(key) || { n: 0, label };
+      prev.n += 1;
+      if (label && !prev.label) prev.label = label;
+      fromCounts.set(key, prev);
     }
   }
+  let from = null;
+  let fromId = null;
+  let best = 0;
+  for (const [key, v] of fromCounts) {
+    if (v.n > best) {
+      best = v.n;
+      from = v.label;
+      fromId = key;
+    }
+  }
+  const fromKind = typeof fromId === "string" && fromId.startsWith("workplace:")
+    ? "work"
+    : "station";
   return {
     count,
     avgMin: minN === 0 ? null : Math.round(minSum / minN),
     avgM: mN === 0 ? null : Math.round(mSum / mN / 10) * 10,
     from,
+    fromKind,
     evidence: evTrip ? { type: "trip", id: evTrip.id } : null,
   };
 }
@@ -185,8 +197,8 @@ export function lifeEvents(runA, runB, { labels = ["A", "B"] } = {}) {
     rows.push({
       kind: "dark_walk",
       sunset: hhmm(sunsetMinFor(runA.meta)),
-      a: { count: da.count, avgMin: da.avgMin, avgM: da.avgM, from: da.from },
-      b: { count: db.count, avgMin: db.avgMin, avgM: db.avgM, from: db.from },
+      a: { count: da.count, avgMin: da.avgMin, avgM: da.avgM, from: da.from, fromKind: da.fromKind },
+      b: { count: db.count, avgMin: db.avgMin, avgM: db.avgM, from: db.from, fromKind: db.fromKind },
       source: "기록 · 해 지는 시각 가정",
       evidence: { a: da.evidence, b: db.evidence },
     });
@@ -236,6 +248,7 @@ function darkPart(side, label) {
   if (side.count === 0) return `${label} 0번`;
   if (typeof side.avgMin !== "number") return `${label} ${side.count}번`;
   const dist = fmtDist(side.avgM);
+  if (side.fromKind === "work") return `${label} ${side.count}번 · 직장에서 걸어서 평균 ${side.avgMin}분${dist ? `(${dist})` : ""}`;
   return `${label} ${side.count}번 · ${stationName(side.from)}에서 평균 ${side.avgMin}분${dist ? `(${dist})` : ""}`;
 }
 

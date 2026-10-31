@@ -201,3 +201,27 @@ describe("29c1 English", () => {
       "Walked home from work after dark: A 44 times · avg 12 min (920 m) from Jamsil Station · B 44 times · avg 17 min (1.3 km) from Pangyo Station · sunset 17:25");
   });
 });
+
+describe("29c1c dark-walk from work", () => {
+  it("prints 직장에서 걸어서 without a station name", () => {
+    const workTrip = (id, day) => ({
+      id, agent: "h1", day, depart_min: 1073, minutes: 17, distance_m: 1299,
+      from: { id: "workplace:h1", kind: "poi", label: "직장 (가정: 판교역 인근)" },
+      to: { kind: "home" }, purpose: "commute",
+    });
+    const a = { agents, decisions: [], aways: [],
+      trips: [], meta: { start_date: "2026-11-02", area: "songpa-jamsil", home: "A" } };
+    const b = { agents, decisions: [], aways: [],
+      trips: [workTrip("t-w0", 0), workTrip("t-w1", 1)],
+      meta: { start_date: "2026-11-02", area: "songpa-jamsil", home: "B" } };
+    const rows = lifeEvents(a, b, { labels: ["A", "B"] });
+    const dw = rows.find((r) => r.kind === "dark_walk");
+    assert.ok(dw, "dark_walk row present");
+    assert.equal(dw.b.fromKind, "work");
+    assert.equal(dw.b.from, "직장 (가정: 판교역 인근)");
+    const lines = lifeEventLines(rows, ["A", "B"]);
+    const line = lines.find((l) => l.startsWith("해 진 뒤 걸어서 퇴근:"));
+    assert.ok(line.includes("직장에서 걸어서 평균"), line);
+    assert.ok(!line.includes("가정: 판교역 인근)역"), line);
+  });
+});
