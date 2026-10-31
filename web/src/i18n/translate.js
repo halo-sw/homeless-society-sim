@@ -6,6 +6,9 @@ const HANGUL = /[가-힣]/;
 
 // 26t: placeholder shielding digit-group commas from the word splitter.
 const COMMA_GUARD = "\u0001";
+// 32d: placeholder shielding a colon between digits (clock times) from
+// the word splitter, mirroring COMMA_GUARD.
+const COLON_GUARD = "\u0002";
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -77,6 +80,7 @@ export function localizeNumbers(s) {
   out = out.replace(/(\d+)위/g, "#$1");
   out = out.replace(/(\d+)곳/g, "$1 places");
   out = out.replace(/(\d+)층/g, "floor $1");
+  out = out.replace(/(\d+)호선/g, "Line $1");
   out = out.replace(/(\d+)호/g, "No. $1");
   out = out.replace(/(\d+)동(?![가-힣])/g, "Bldg $1");
   out = out.replace(/(\d+)회/g, "$1 times");
@@ -186,14 +190,14 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
   const VERB_TAIL = /(줘|해|해요|요|다|까)[.?!…]*$/;
 
   function wordFallback(s) {
-    const guarded = String(localizeNumbers(s)).replace(/(\d),(\d)/g, `$1${COMMA_GUARD}$2`);
+    const guarded = String(localizeNumbers(s)).replace(/(\d),(\d)/g, `$1${COMMA_GUARD}$2`).replace(/(\d):(\d)/g, `$1${COLON_GUARD}$2`);
     const tokens = guarded.split(/([·(),:])/g)
       .flatMap((p) => String(p).split(/ +/))
       .filter((t) => t !== "");
     const mapped = tokens.map((t0) => {
       // A token like 176시간 can survive the whole-string pass (digits
       // glued to the unit); localize it on its own before giving up.
-      const tok = localizeNumbers(t0.split(COMMA_GUARD).join(","));
+      const tok = localizeNumbers(t0.split(COMMA_GUARD).join(",").split(COLON_GUARD).join(":"));
       if (!HANGUL.test(tok)) return tok;
       if (Object.hasOwn(words, tok)) return words[tok];
       if (Object.hasOwn(phrases, tok)) return phrases[tok];

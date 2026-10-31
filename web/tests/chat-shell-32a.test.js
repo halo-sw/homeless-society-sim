@@ -67,9 +67,7 @@ describe("32a liveRowLine per language", () => {
     for (const bad of ["Ikgi", "Chatgi", "Muleobom", "Sanghwang", "Peuropil"]) {
       assert.ok(!line.includes(bad), `no romanized ${bad}: ${line}`);
     }
-    assert.ok(line === "✓ Reading your situation"
-      || line.startsWith("✓ Reading your situation ·"),
-      `label alone or with an exact tail: ${line}`);
+    assert.equal(line, "✓ Reading your situation · Reading profile (1 question asked)");
   });
 
   it("EN keeps an exactly translated tail", () => {
@@ -102,8 +100,9 @@ describe("32a TOOL_ACTION_EN", () => {
 
 describe("32a translateExact", () => {
   it("returns null for unknown Korean, the table value for known", () => {
-    assert.equal(translateExact("프로필 읽기(1개 물어봄)"), null);
+    assert.equal(translateExact("상황 읽기 연습 문장"), null);
     assert.equal(translateExact("대화"), "Chat");
+    assert.equal(translateExact("프로필 읽기(1개 물어봄)"), "Reading profile (1 question asked)");
   });
 });
 
