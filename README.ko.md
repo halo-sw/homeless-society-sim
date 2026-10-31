@@ -1,11 +1,4 @@
-<h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="briefs/img/ithaca-logo-light.svg">
-    <img src="briefs/img/ithaca-logo.svg" width="480" alt="Ithaca">
-  </picture>
-</h1>
-
-<p align="center"><img src="briefs/img/ithaca-intro.jpg" width="100%" alt="Ithaca — The Pre-living Agent for Your Next Home. 언덕 위 아치와, 불 켜진 동네를 지나 바다로 내려가는 두 갈래 빛나는 길(주황 A집, 파랑 B집)을 판화풍으로 그린 밤 풍경. We walk the odyssey. You just come home."></p>
+<p align="center"><img src="briefs/img/ithaca-banner.png" width="100%" alt="Ithaca — The Pre-living Agent for Your Next Home"></p>
 
 <p align="center"><sub>(이전 이름 homeless-society-sim)</sub></p>
 

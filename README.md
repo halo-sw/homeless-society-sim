@@ -1,11 +1,4 @@
-<h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="briefs/img/ithaca-logo-light.svg">
-    <img src="briefs/img/ithaca-logo.svg" width="480" alt="Ithaca">
-  </picture>
-</h1>
-
-<p align="center"><img src="briefs/img/ithaca-intro.jpg" width="100%" alt="Ithaca — The Pre-living Agent for Your Next Home. An engraved night scene: an arch on a hill, two glowing paths (orange and blue, homes A and B) winding down through a lit neighbourhood to the sea. We walk the odyssey. You just come home."></p>
+<p align="center"><img src="briefs/img/ithaca-banner.png" width="100%" alt="Ithaca — The Pre-living Agent for Your Next Home"></p>
 
 <p align="center"><sub>(formerly homeless-society-sim)</sub></p>
 
