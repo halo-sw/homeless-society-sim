@@ -720,6 +720,12 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-street-credit { position: absolute; right: var(--ds-s-4); bottom: var(--ds-s-4);
   background: rgba(17, 20, 26, 0.72); color: #fff; font-size: var(--ds-t-12);
   border-radius: var(--ds-r-pill); padding: 0 var(--ds-s-4); white-space: nowrap; }
+/* 29h5: in the small row thumb the credit wraps inside the box (the
+   photographer's name is never cut). */
+.ui-cand-thumb .ui-street-credit {
+  left: var(--ds-s-4); right: var(--ds-s-4); max-width: calc(100% - 2 * var(--ds-s-4));
+  box-sizing: border-box; white-space: normal; overflow-wrap: anywhere;
+  line-height: var(--ds-lh-tight); border-radius: var(--ui-r-chip); text-align: center; }
 /* 32b: the building silhouette thumb with its floors/year flag. */
 .ui-silhouette { position: relative; }
 .ui-silhouette svg { width: 100%; height: 100%; display: block; }
