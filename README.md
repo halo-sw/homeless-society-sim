@@ -54,7 +54,7 @@
 
 1. **Open the live site:** <https://halo-sw.github.io/ithaca/>. It starts in English when your browser is not set to Korean (or add `?lang=en`).
 2. **Watch it work without typing.** On the first screen, click **Watch a recorded month**. It replays a real Muse Spark 1.3 session recorded on 2026-10-31, step by step and without any key: Meta HQ in Menlo Park, real apartments near 1 Hacker Way, two picked, 30 days in each, and the diary.
-3. **Try it yourself.** Click **I work at Meta HQ**. Six real apartments appear on a map, each with an aerial photo, a Zillow ZIP rent estimate and bike/walk minutes. Type *"Save 1 and 2"*, then *"Live in both homes"*. Muse runs 30 days in each home and writes a diary, and every diary sentence is checked against the run's record before you see it.
+3. **Try it yourself.** Click **I work at Meta HQ**. Six real apartments appear on a map, each with an aerial photo, a Zillow ZIP rent estimate and bike/walk minutes. Type *"Save 1 and 2"*, then *"Live in both homes"* (or tap the microphone and say it; Muse Voice writes it into the box for you to check). Muse runs 30 days in each home and writes a diary, and every diary sentence is checked against the run's record before you see it.
    - **No key needed.** The site calls Muse through our relay, so you never paste a key.
    - **If Muse is unavailable** (the relay is down or the daily limit is reached), the header shows **Rule mode** and the chat says so. The deterministic engine still computes every number, and the recorded month is one click away.
    - **Locally,** `docker compose up` runs the same app (see [Quick start](#quick-start)).
@@ -99,6 +99,8 @@ Every call goes through one module, [`web/src/judge/providers.js`](web/src/judge
 | **Muse Voice Transcribe 1.0** (`muse-voice-transcribe-1.0`) | `https://api.meta.ai/v1/asr/transcribe` | Speak instead of typing in the chat (Korean and English, detected automatically); the transcript goes into the box for the customer to check | [`consult/voice.js`](web/src/consult/voice.js) via the relay `/api/voice/transcribe` | — |
 | SAM 3.1 | — | Window area from listing photos | *coming soon* | — |
 
+The server key is read from `META_API_KEY` (`MODEL_API_KEY` still works as a fallback); the base URLs are named constants, `META_API_BASE` and `BASETEN_API_BASE`, in [`providers.js`](web/src/judge/providers.js) and re-exported by [`relay/handler.js`](relay/handler.js).
+
 Spark Open is served by Baseten as published. We compare the two served models; we did not fine-tune either one.
 
 ## Architecture
@@ -109,7 +111,7 @@ ithaca/
 ├── web/
 │   ├── src/engine/    Pure JS life engine: routines, trips with causes, paired 30-day runs (deterministic, seeded)
 │   ├── src/judge/     Muse calls: decision prompts, number guards, recorded decisions for exact replay
-│   ├── src/consult/   Consult agent: tool calls (extract_profile, find_homes, pick_homes, start_life_run, …), reply guards
+│   ├── src/consult/   Consult agent: tool calls (extract_profile, find_homes, pick_homes, start_life_run, …), reply guards, voice transcription
 │   ├── src/verify/    Report checks: ground-truth checklist, number claims, retry loop
 │   ├── src/money/     Payroll, 매매 / 전세 / 월세 formulas, real-transaction loader, public rentals
 │   ├── src/transit/   Operator schedule and ride minutes
@@ -117,7 +119,7 @@ ithaca/
 │   ├── src/ui/        React 19 + Astryx (Meta's design system)
 │   ├── scripts/       CLIs: simulate, money, judge, static server
 │   └── tests/         node:test suites
-├── relay/             Server that keeps keys off the browser: /api/consult, map tiles (Vercel or docker compose)
+├── relay/             Server that keeps keys off the browser: /api/consult, /api/voice/transcribe, map tiles (Vercel or docker compose)
 ├── scenarios/         Committed households, homes and recorded Muse decisions
 ├── tests/             Python tests for the pipeline
 ├── Dockerfile, docker-compose.yml, package.json, .env.example
@@ -137,7 +139,7 @@ ithaca/
 
 | | Step | What happens | Status |
 |---|---|---|---|
-| 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text) · voice input *coming soon* |
+| 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text and voice) |
 | 2 | **Get real candidate homes** | Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi, with ride times from the operator's schedule and public rentals from the LH · 마이홈 API. They appear on a map with the subway lines, the workplace and the commute minutes. | built |
 | 3 | **The household lives there for 30 days** | The household commutes, shops, walks in the park and visits clinics on the real walking graph, in both homes at once. Runs are paired over 10 seeds, so the gap between homes comes from the homes and not from chance. | built |
 | 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. | built (scorer, claim checks, retry loop) · on-screen view *in progress* |
@@ -179,6 +181,7 @@ Every image is a real GPU capture of the running app, saved in [`briefs/img/`](b
 | **전세 safety check** | 전세-to-sale ratio, building-register signals, the official six-step checklist with links, and a mock deposit-loss simulation. Signals and next steps, never a verdict. | 실거래가, 건축물대장, 인터넷등기소, HUG |
 | **Support programmes** | 버팀목, 디딤돌, 신혼부부·청년·신생아 products compared with the customer's numbers condition by condition, with the official link and date. Never says "eligible". | 주택도시기금 product pages (checked 2026-10-29) |
 | **Check a real listing** | Paste a listing's text. The agent extracts only the values in the text and shows where the price sits among last year's real deals, then can live in it as home C. | 실거래가; private listing sites are never scraped |
+| **Only living there tells you** | Under the result, what a listing never shows, counted from the 30-day record: walks (or bike rides) home after sunset, with how often, the average minutes and distance, where they start (work or the station) and that month's sunset time; on the subway, the mornings you got a seat (only where congestion is measured); and arrivals home after 22:00. A row appears only when the record has something to say. | The run's own trips and measured congestion, sunset tables for Seoul and Menlo Park |
 | **Consult agent** | A floating chat with 20+ tools sets up the scenario, runs it, compares, explains, cites every source and moves the 3D view to the moment it is talking about. | Muse Spark 1.3 |
 | **Plain words** | Every figure says what it means in everyday Korean and has "어떻게 계산했나요?". A test scans the UI for bare jargon. | [`docs/copy-guide.md`](docs/copy-guide.md) |
 
@@ -191,7 +194,7 @@ Each model has one job. Numbers never come from a model.
 | **Muse Spark 1.3** | The household's everyday choices with reasons, the consult agent, and (as Muse Code) the coding agent that wrote this repository | built |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026` on Baseten) | The same household decisions on an open-weight model; one switch (`--provider meta\|baseten`). Compared with Spark 1.3 below | built (comparison) |
 | Muse Spark as a judge | Checks that each report sentence is backed by a cited simulation event | *in progress* |
-| Muse Voice Transcribe | Spoken intake: say your household and workplace instead of typing | *coming soon* |
+| **Muse Voice Transcribe 1.0** | Spoken intake: tap the microphone and say your household and workplace; the transcript goes into the box, never sent on its own | built |
 | SAM 3.1 | Measure rooms and window area from listing photos and floor plans | *coming soon* |
 
 ## Verification
@@ -201,6 +204,7 @@ The agent's work is checked by code before the customer sees it.
 - **Ground truth.** A checklist of what must be covered for each household type: 9 common items (commute time, monthly housing cost and noise are *must*; daylight, groceries, the walk home at night, storage, defects and the morning rush are *should*) plus 5–6 items per household type.
 - **Two kinds of check.** *Deterministic* items (commute minutes, housing cost, distance to daycare or a park) must match the engine's value within a stated tolerance. *Judge* items (noise, safety, storage) must cite at least one simulation event.
 - **Pass rule.** Every *must* item covered, and weighted coverage ≥ 80 % (*must* weighs 3, *should* 1). A failed report goes back to the agent with the reasons, up to 3 times, and then to the customer.
+- **Says only what it did.** If a reply says the 30-day run has started but the agent never called the tool that starts it, the claim is caught and the run is started for real, so the words and the screen agree.
 - **Honest gaps.** An item the engine cannot back yet is shown as 미지원 and never counted as a pass. Today two household types have full scenarios (dual-income family with a young child, newlywed couple). Remote worker, three-generation family and dog owner are scored for the checklist only.
 - **Field study** *(coming soon)*. Compare the simulator's findings with the real homes and real regrets of 10–20 residents and report the match rate.
 
@@ -285,7 +289,7 @@ Raw and built data are never committed; the scripts above regenerate them. Real-
 **What it deliberately does not do.** No price forecasts (price paths appear only as customer-chosen scenarios labelled as assumptions). No buy-or-don't-buy or sign-or-don't-sign advice. No eligibility verdicts for loans or support programmes. No "safe / unsafe" verdict on a property or landlord. No composite safety or school-quality score, no demographic profiling, no default "best home" ranking (the only score is the customer's own subjective 내 기준 점수) and no straight-line commute claims. When a value is assumed, the app says so. Nothing here is legal or financial advice.
 
 **Known issues.**
-- Only two household types have full scenarios. The engine has no events yet for noise, late returns, deliveries, storage or the morning rush, so those checklist items show as 미지원.
+- Only two household types have full scenarios. The engine has no events yet for noise, deliveries, storage or elevator waits, so those checklist items show as 미지원.
 - 신분당선 has no public congestion data, so it uses a stated 70 % assumption.
 - `?q=high` renders black on Apple GPUs (ANGLE Metal). The app detects this and falls back to medium.
 - Some payroll rates and ownership costs (취득세, 중개수수료, 재산세…) are marked `needs_confirmation` and listed as "아직 계산에 넣지 않은 것" until filled from official pages.
@@ -301,12 +305,13 @@ Deadline: 2026-11-05 11:00 KST.
 | Date | Plan |
 |---|---|
 | 10-30 ✓ | Verification loop (16), 내 기준 점수 up front, painted look, the customer's own homes end to end with a candidate map (17–18) |
-| 10-31 → 11-02 | Verification on screen, English UI and subtitles |
+| 10-31 ✓ | English UI, recorded-month replay for judges, Menlo Park (Meta HQ) homes, voice input, "Only living there tells you", link previews |
+| 11-01 → 11-02 | Verification on screen, demo video draft |
 | 11-03 | Polish, then feature freeze at night |
 | 11-04 | 3-minute video and final README |
 | 11-05 | Submit by 09:00 KST |
 
-**Coming soon** (not in this submission): voice intake, measuring rooms and windows from listing photos and floor plans (SAM 3.1), household agents on Spark Open, a field study with real residents, life events such as elevator waits and noise between floors, and scenarios for remote workers, three-generation families and dog owners.
+**Coming soon** (not in this submission): measuring rooms and windows from listing photos and floor plans (SAM 3.1), household agents on Spark Open, a field study with real residents, life events such as elevator waits and noise between floors, and scenarios for remote workers, three-generation families and dog owners.
 
 <details>
 <summary><b>Example output</b> (demo couple; inputs are placeholders)</summary>
@@ -363,6 +368,16 @@ Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 an
 | 20a–20g | The 3D view, rebuilt from user feedback: no crawling when the camera moves (full-res pass, MSAA/FXAA, gentle Kuwahara, one road layer); names on buildings, complexes and daily places with a 건축물대장 hover card; the hero says how this scene counts toward the result ("오늘 출근 44분 = 걷기 14분 + 지하철 26분 + 기다림 4분"); real VWorld aerial photos on the ground and roofs through a no-store dev proxy, credit on screen; follow mode you can zoom and orbit, 동네 전체 / 따라가기, the route and destination on the ground, now-first panel, whole numbers | [`20a`](briefs/20a-no-shimmer.md) … [`20g`](briefs/20g-wheel-delta.md) |
 | 21a–21c | A first-time user's own sentence works end to end: 강남역으로 parsed (으로 before 로), housing kind honoured (오피스텔), nothing asked twice and one question at a time, no run without a workplace (station autocomplete, or 출근 안 해요), no false "같아요", commute sentence from the shown numbers, lot-number names readable, map pills never stack, station names, the map fits close candidates | [`21a`](briefs/21a-first-user-flow.md) … [`21c`](briefs/21c-map-fit.md) |
 | 22a–22c | Public site on GitHub Pages: base-aware data URLs and links, a static mode with no /api calls (model and VWorld keys never reach the browser), runtime data shipped as a release asset (never committed), and a fix for the chat's run worker that was not bundled in production builds | [`22a`](briefs/22a-github-pages.md) … [`22c`](briefs/22c-chat-worker-build.md) |
+| 23–25 | A relay that keeps every key server-side (Vercel or docker compose); the English UI (i18n core, whole-sentence translation, units); a light basemap | [`23a`](briefs/23a-relay.md) … [`25a`](briefs/25a-map-basemap.md) |
+| 26a–26z2 | A US area around Meta HQ in Menlo Park: scene, real homes, chat search, bike commutes in the engine, US map sources and heights; phone layout, aerial thumbnails, the Ithaca name, English Muse replies | [`26a`](briefs/26a-us-area.md) … [`26z2`](briefs/26z2-phone-tray.md) |
+| 27a–27j2 | Chat first: a streaming agent, Muse writes the diary, map pins, neighbourhood scenes, Muse recovers after a failed tool call | [`27a`](briefs/27a-chat-first.md) … [`27j2`](briefs/27j2-reply-counter.md) |
+| 28a–28g | Design tokens, Powered by Muse, the landing page | [`28a`](briefs/28a-design-doc.md) … [`28g`](briefs/28g-landing-finish.md) |
+| 29a1–29a14 | Judge path: a recorded month that replays without a key, English trust pass, the landing's try panel, US sources (Zillow ZORI, OSM US), internal ids kept out of answers, map pins that match the card, link previews | [`29a1`](briefs/29a1-english-trust.md) … [`29a14`](briefs/29a14-og-image.md) |
+| 29b–29b2 | Voice input with Muse Voice Transcribe 1.0 through the relay | [`29b`](briefs/29b-voice-input.md), [`29b2`](briefs/29b2-mic-style.md) |
+| 29c1–29c1d | "Only living there tells you": walks and bike rides home after sunset, seated mornings, late arrivals | [`29c1`](briefs/29c1-life-events.md) … [`29c1d`](briefs/29c1d-dark-bike.md) |
+| 29g1–29g3, 29m1 | No false "it has started", replay loads the map data, `META_API_KEY` with named endpoint constants | [`29g1`](briefs/29g1-start-claim-guard.md), [`29g2`](briefs/29g2-replay-map-data.md), [`29m1`](briefs/29m1-meta-api-key.md) |
+| 30a–30h | Docker workspace, honest rule mode without a key, CI for docker, the landing's judge buttons, theme module | [`30a`](briefs/30a-docker-workspace.md) … [`30h`](briefs/30h-theme-module.md) |
+| 31a–31n | Chat hierarchy and the map: markers, controls, filters, candidate tabs, hit testing, phone polish, map fit | [`31a`](briefs/31a-chat-hierarchy.md) … [`31n`](briefs/31n-map-fit-chrome.md) |
 
 </details>
 
