@@ -77,6 +77,18 @@ function toolCallIdOf(message) {
   return (hit && hit.id) || "submit_report_1";
 }
 
+export function wireToolCalls(calls) {
+  return (calls || []).map((c) => ({ id: c.id, type: "function",
+    function: { name: c.name,
+      arguments: typeof c.args === "string" ? c.args : JSON.stringify(c.args || {}) } }));
+}
+
+function assistantEntry(message) {
+  const wired = wireToolCalls(message && message.tool_calls);
+  if (wired.length > 0) return { role: "assistant", content: message.content || "", tool_calls: wired };
+  return { role: "assistant", content: (message && message.content) || "" };
+}
+
 export async function writeReport({ call, provider, runs, labels, homes,
   names = {}, persona, groundTruth, lang = "ko", onAttempt = null }) {
   const digest = reportDigest({ runs, labels, homes, persona, groundTruth, names });
@@ -108,8 +120,7 @@ export async function writeReport({ call, provider, runs, labels, homes,
     assistantMessage = (retry && retry.message) || { content: "", tool_calls: [] };
     args = toolArgsOf(assistantMessage) || { sentences: [] };
   }
-  messages.push({ role: "assistant", content: assistantMessage.content || "",
-    tool_calls: assistantMessage.tool_calls || [] });
+  messages.push(assistantEntry(assistantMessage));
   let lastToolCallId = toolCallIdOf(assistantMessage);
   const judge = makeJudge({ call, provider });
   const revise = async (report, result, attempt) => {
@@ -118,8 +129,7 @@ export async function writeReport({ call, provider, runs, labels, homes,
     const res = await call({ provider, messages: [...messages], tools, maxTokens: 8000 });
     takeUsage(res);
     assistantMessage = (res && res.message) || { content: "", tool_calls: [] };
-    messages.push({ role: "assistant", content: assistantMessage.content || "",
-      tool_calls: assistantMessage.tool_calls || [] });
+    messages.push(assistantEntry(assistantMessage));
     lastToolCallId = toolCallIdOf(assistantMessage);
     const next = toolArgsOf(assistantMessage) || { sentences: [] };
     return { persona, sentences: next.sentences || [] };

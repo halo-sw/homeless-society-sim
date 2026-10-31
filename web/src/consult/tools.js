@@ -1353,6 +1353,7 @@ async function submit_report(session, args) {
       weighted_coverage: result.weighted_coverage ?? null,
       must_coverage: result.must_coverage ?? null,
       feedback_ko: result.feedback_ko ?? [],
+      failures: (result.failures || []).map(({ sentence_id, item_id, home, kind, reason_ko }) => ({ sentence_id, item_id, home, kind, reason_ko })),
       by_home } };
 }
 

@@ -138,6 +138,19 @@ describe("29j2 writeReport revise loop", () => {
     const dumped = JSON.stringify(second.messages);
     assert.match(dumped, /feedback_ko/);
     assert.match(dumped, /C01/);
+    for (const m of second.messages) {
+      if (m && m.tool_calls) {
+        assert.ok(Array.isArray(m.tool_calls) && m.tool_calls.length > 0,
+          "assistant message must not carry an empty tool_calls array");
+        for (const tc of m.tool_calls) {
+          assert.equal(tc.type, "function");
+          assert.equal(typeof tc.function.arguments, "string");
+        }
+      }
+    }
+    const toolMsgs = second.messages.filter((m) => m && m.role === "tool");
+    assert.ok(toolMsgs.length > 0);
+    for (const tm of toolMsgs) assert.equal(tm.tool_call_id, "call_1");
   });
 
   it("a judge that always rejects hands off after 4 attempts", async () => {
@@ -152,6 +165,10 @@ describe("29j2 writeReport revise loop", () => {
     assert.equal(out.attempts.length, 4);
     assert.ok(out.handoff && typeof out.handoff.question_ko === "string"
       && out.handoff.question_ko.length > 0);
+    assert.ok(Array.isArray(out.result.failures) && out.result.failures.length > 0);
+    for (const f of out.result.failures) {
+      assert.ok(f.home && f.sentence_id);
+    }
   });
 
   it("pet_owner is unsupported with no model call", async () => {
