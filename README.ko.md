@@ -108,7 +108,7 @@ Spark Open은 Baseten이 공개한 그대로 서빙해요. 서빙된 두 모델�
 
 **Spark 1.3과 Spark Open.** 같은 가족으로 돌렸을 때 둘 다 판단 154개에 모두 답했고 가드 대체는 0건이었어요. 같은 판단 지점 139곳 중 120곳(86 %)에서 같은 선택을 했어요. 전체 표: [docs/model-comparison.ko.md](docs/model-comparison.ko.md).
 
-**Muse Code가 썼어요.** 이 레포의 제품 코드, 테스트, 파이프라인 스크립트는 한 줄도 빠짐없이 **Muse**(`muse-spark-1.3`, Muse Code 에이전트 모드)가 작성했어요. 사람은 방향을 정하고 모든 화면을 확인했어요. 조율은 **Claude (Anthropic)**가 맡았어요. 단계별 지시서 작성, 데이터 내려받기, 테스트 실행, 실제 GPU 캡처, git 작업을 했어요. GitHub 기여자 목록에 `claude`가 보이는 것도 이 때문이에요. 커밋을 Claude가 만들어서 커밋마다 `Co-Authored-By: Claude` 줄이 붙고, 커밋 메시지에는 그 코드를 만든 Muse 지시서가 적혀 있어요(`Written by Muse (Muse Spark) from briefs/…`). 단계마다 지시서와 결과 기록이 [`briefs/`](briefs/)에 있고, 규칙은 [`AGENTS.md`](AGENTS.md)에 있어요. Muse가 쓰지 않은 파일도 밝혀 둬요. 영어 문구표 `web/src/i18n/en.js`·`en-table.js`·`en-words.js`는 Claude가 쓴 번역 내용이에요(번역 엔진 `translate.js`는 Muse 작성). 검증 정답 `scenarios/verify/ground_truth.json`과 기준 채점기 `tools/verify_checklist.py`는 팀이 Muse 채점기를 확인하려고 직접 만들었어요.
+**Muse Code가 썼어요.** 제품 코드, 테스트, 파이프라인 스크립트는 한 줄도 빠짐없이 Muse Code(muse-spark-1.3 에이전트 모드)가 [`briefs/`](briefs/)의 단계별 지시서를 받아 작성했어요. 방향은 사람이 정했고, 화면은 모두 사람이 확인했어요. Claude(Anthropic)는 진행을 도왔어요. 지시서를 쓰고, 테스트를 돌리고, 커밋을 했기 때문에 커밋마다 `Co-Authored-By: Claude` 줄이 붙어 있어요. Muse가 쓰지 않은 파일은 두 종류예요. 영어 문구 표(Claude가 작성)와 검증 기준표(팀이 작성)예요. 자세한 내용은 [AGENTS.md](AGENTS.md)에 있어요.
 
 **코드는 어디 있나요.** 앱·엔진·상담 에이전트는 [`web/src/`](web/src/), 테스트는 [`web/tests/`](web/tests/)에 있어요. 키를 지키는 중계 서버는 [`relay/`](relay/), Python 데이터 파이프라인은 [`pipeline/`](pipeline/), 시나리오와 기록된 실행은 [`scenarios/`](scenarios/)에 있어요. 폴더 구조와 도식: [docs/architecture.ko.md](docs/architecture.ko.md).
 
