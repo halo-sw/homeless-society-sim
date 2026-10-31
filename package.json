@@ -1,0 +1,12 @@
+{
+  "name": "ithaca-root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm --prefix web test",
+    "test:py": "python -m pytest -q",
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "relay": "node relay/server.mjs"
+  }
+}
