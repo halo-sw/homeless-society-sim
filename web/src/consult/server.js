@@ -9,6 +9,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { providerConfig, completeWithTools } from "../judge/providers.js";
 import { writeDiary } from "./diary.js";
+import { writeReport } from "./report.js";
 import { judgeHome } from "../judge/run.js";
 import { runTurn } from "./agent.js";
 import { BYOK_HEADER, resolveProxyKey, redactSecrets } from "./byok.js";
@@ -22,6 +23,33 @@ export const CONSULT_BODY_MAX = 1048576; // 1 MB (scenario + history)
 // One NDJSON line for the streaming consult response.
 export function ndjsonLine(ev) {
   return `${JSON.stringify(ev)}\n`;
+}
+
+export function validateReportBody(body) {
+  const labels = body && body.labels;
+  if (!Array.isArray(labels) || labels.length < 2 || labels.length > 3
+      || !labels.every((l) => l === "A" || l === "B" || l === "C")) {
+    throw new Error("labels must be an array of 2–3 of \"A\"|\"B\"|\"C\"");
+  }
+  for (const label of labels) {
+    const run = body.runs && body.runs[label];
+    if (!run || typeof run !== "object") {
+      throw new Error(`runs.${label} must be an object`);
+    }
+    for (const [key, max] of [["trips", 3000], ["aways", 3000], ["decisions", 2000]]) {
+      if (!Array.isArray(run[key]) || run[key].length > max) {
+        throw new Error(`runs.${label}.${key} must be an array of at most ${max}`);
+      }
+    }
+    const home = body.homes && body.homes[label];
+    if (!home || typeof home !== "object" || Array.isArray(home)) {
+      throw new Error(`homes.${label} must be an object`);
+    }
+  }
+  if (!body.persona || typeof body.persona !== "string") {
+    throw new Error("persona must be a string");
+  }
+  return true;
 }
 
 export function readBody(req, max = CONSULT_BODY_MAX) {
@@ -276,6 +304,7 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
     }
     return transitCache;
   };
+  let groundTruthCache = null;
   const assumptionCache = new Map();
   const ASSUMPTION_ALLOWLIST = new Set([
     "kr-payroll.json", "kr-ownership-costs.json", "kr-jeonse-checklist.json",
@@ -334,6 +363,44 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
           digests: body.digests,
           lang: diaryLang,
         });
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(out));
+        return;
+      }
+      if (body.task === "report") {
+        validateReportBody(body);
+        if (!groundTruthCache) {
+          groundTruthCache = JSON.parse(await read("scen", "verify/ground_truth.json"));
+        }
+        const call = (args) => completeWithTools(
+          { ...args, fetchImpl: fetchImpl || fetch, apiKey });
+        const reportLang = typeof body.lang === "string" && body.lang !== ""
+          ? body.lang
+          : (body.context && body.context.lang) || "ko";
+        const reportArgs = {
+          call, provider,
+          runs: body.runs, labels: body.labels, homes: body.homes,
+          names: body.names || {},
+          persona: body.persona, groundTruth: groundTruthCache,
+          lang: reportLang,
+        };
+        if (body.stream === true) {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/x-ndjson");
+          res.flushHeaders?.();
+          const out = await writeReport({
+            ...reportArgs,
+            onAttempt: (a) => {
+              try {
+                res.write(ndjsonLine({ type: "attempt", ...a }));
+              } catch { /* a slow reader must not break the report */ }
+            },
+          });
+          res.write(ndjsonLine({ type: "done", ...out }));
+          res.end();
+          return;
+        }
+        const out = await writeReport(reportArgs);
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(out));
         return;
