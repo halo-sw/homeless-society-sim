@@ -279,8 +279,11 @@ export function extractGreenRings(landuse) {
   return { water: [...water.values()], parks: [...parks.values()] };
 }
 
-function commuteMinutesOf(candidate) {
+// Door-to-work minutes (commute.work) when known, else the walk + ride sum.
+export function commuteMinutesOf(candidate) {
   const c = (candidate && candidate.commute) || {};
+  const workMin = c.work && c.work.minutes;
+  if (Number.isFinite(workMin)) return Math.round(workMin * 10) / 10;
   const walk = (c.walk && c.walk.known ? c.walk.minutes : 0) || 0;
   const ride = (c.ride && c.ride.known ? c.ride.minutes : 0) || 0;
   const total = Math.round((walk + ride) * 10) / 10;

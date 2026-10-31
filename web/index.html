@@ -23,6 +23,9 @@
       </div>
       <div id="panel-root"></div>
     </div>
+    <script>
+(function(){var l="ko",q=location.search||"",m=q.match(/[?&]lang=(en|ko)\b/);if(m){l=m[1];}else{var s=null;try{s=localStorage.getItem("ithaca.lang");}catch(e){}if(s==="en"||s==="ko"){l=s;}else{var n=(navigator&&navigator.language)||"";if(n!==""&&n.indexOf("ko")!==0){l="en";}}}document.documentElement.lang=l;if(l==="en"){document.getElementById("loading").textContent="Loading the area…";}})();
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
