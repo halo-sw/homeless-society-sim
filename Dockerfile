@@ -2,8 +2,9 @@
 # web-build mirrors .github/workflows/pages.yml (vite build with
 # PAGES_BASE=/, VITE_STATIC=1, runtime-data.tgz, committed scenarios);
 # `web` serves dist on 8080; `relay` runs relay/server.mjs on 8787.
-# The relay handler imports only node builtins and web/src files, so the
-# relay stage needs no node_modules.
+# The relay handler reaches only node builtins, web/src files and
+# scenarios/criteria/kr-default.json, so the relay stage needs no
+# node_modules.
 
 FROM node:22-slim AS web-build
 ARG VITE_API_BASE=http://localhost:8787
@@ -35,6 +36,7 @@ FROM node:22-slim AS relay
 WORKDIR /srv
 COPY relay/ ./relay/
 COPY web/src/ ./web/src/
+COPY scenarios/ ./scenarios/
 EXPOSE 8787
 ENV PORT=8787
 CMD ["node", "relay/server.mjs"]
