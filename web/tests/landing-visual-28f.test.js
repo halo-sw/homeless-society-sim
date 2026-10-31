@@ -28,7 +28,7 @@ describe("28f landing visual (SSR, no DOM)", () => {
   it("shows the hero proof, callouts and closing lines", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
     for (const s of [
-      "Muse가 대신 확인하고 30일 살아 봐요",
+      "Pre-simulation by Muse Agent",
       "14초",
       "85초",
       "8/8",
@@ -63,11 +63,11 @@ describe("28f landing visual (SSR, no DOM)", () => {
     const heroBand = landingCss.match(/\.ds-lp-heroband\s*\{[^}]*\}/);
     assert.ok(heroBand && heroBand[0].includes("radial-gradient"), ".ds-lp-heroband has the radial-gradient wash");
     assert.ok(!/\.ds-lp-hero\s*\{[^}]*radial-gradient/.test(landingCss), "wash is not painted on the 760px hero column");
-    const from480 = landingCss.slice(landingCss.indexOf("@media (max-width: 480px)"));
+    const from720 = landingCss.slice(landingCss.indexOf("@media (max-width: 720px)"));
     assert.ok(
-      /\.ds-lp-nav-right\s*\{[^}]*margin-left:\s*auto/.test(from480)
-        || /\.ds-lp-nav-inner\s*\{[^}]*justify-content:\s*space-between/.test(from480),
-      "480px block pins the nav right group to the right edge",
+      /\.ds-lp-links\s*\{\s*display:\s*none;\s*\}/.test(from720)
+        && /\.ds-lp-nav-right\s*\{[^}]*margin-left:\s*auto/.test(from720),
+      "720px block hides the nav links and pins the nav right group right",
     );
   });
 });

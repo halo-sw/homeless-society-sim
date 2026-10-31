@@ -183,8 +183,10 @@ const seedPhrases = {
   "지도·동네·비교는 말할 때만 열려요": "Maps, neighbourhoods and comparisons only open when you say so",
   "30일 살아 보고 전해요": "Lives 30 days there and reports back",
   "일기 문장은 모두 기록과 대조해요": "Every diary sentence is checked against the record",
-  // landing-page.jsx (28f)
-  "Muse가 대신 확인하고 30일 살아 봐요": "Muse checks it for you and lives 30 days there",
+  // landing-page.jsx (29a10)
+  "바로 해 보기": "Try it now",
+  "키 없이 바로 재생": "Plays instantly, no key",
+  "Muse 실시간 · 하루 한도": "Live Muse · daily limit",
   "14초": "14 seconds",
   "후보 6곳 찾기": "Finding 6 candidate homes",
   "85초": "85 seconds",
