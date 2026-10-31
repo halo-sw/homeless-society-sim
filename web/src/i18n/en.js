@@ -43,6 +43,11 @@ const seedPhrases = {
   "예시": "Example",
   "매물 글 붙여 넣기로 시작하기": "Start by pasting a listing",
   "매물 글 붙여 넣기": "Paste a listing",
+  "말로 입력하기": "Speak instead",
+  "녹음 멈추기": "Stop recording",
+  "받아 적는 중…": "Writing it down…",
+  "Muse Voice가 받아 적었어요 · 확인하고 보내 주세요": "Muse Voice wrote this down · check it, then send",
+  "음성 입력이 안 됐어요. 글로 써 주세요.": "Voice input didn't work. Please type instead.",
   "본 매물 글을 붙여 넣으면 실거래와 비교해 드려요": "Paste a listing to compare it with actual transaction prices",
 
   // topbar.jsx

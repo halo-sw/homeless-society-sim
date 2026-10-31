@@ -85,7 +85,7 @@ Every call goes through one module, [`web/src/judge/providers.js`](web/src/judge
 | **Muse Spark 1.3** (`muse-spark-1.3`) | `https://api.meta.ai/v1` | The household's everyday choices with reasons; the consult agent with tool calls | [`judge/run.js`](web/src/judge/run.js) → [`providers.js`](web/src/judge/providers.js) `complete`; [`consult/agent.js`](web/src/consult/agent.js) → `completeWithTools` | [3 real calls](docs/evidence/muse-spark-1.3-2026-10-31.json), [154 recorded decisions](scenarios/decisions/compare-1029/) |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | `https://inference.baseten.co/v1` (Baseten) | The same household decisions; one switch `--provider baseten` | same module | [3 real calls](docs/evidence/muse-spark-open-2026-10-31.json), 120 of 139 same choices as Spark 1.3 |
 | **Muse Code** (agent mode on `muse-spark-1.3`) | Muse Code CLI | Wrote every line of product code and every test in this repository from stage briefs | — | [`briefs/`](briefs/) (brief + result per stage) |
-| Muse Voice Transcribe | — | Spoken intake | *coming soon* | — |
+| **Muse Voice Transcribe 1.0** (`muse-voice-transcribe-1.0`) | `https://api.meta.ai/v1/asr/transcribe` | Speak instead of typing in the chat (Korean and English, detected automatically); the transcript goes into the box for the customer to check | [`consult/voice.js`](web/src/consult/voice.js) via the relay `/api/voice/transcribe` | — |
 | SAM 3.1 | — | Window area from listing photos | *coming soon* | — |
 
 Spark Open is served by Baseten as published. We compare the two served models; we did not fine-tune either one.

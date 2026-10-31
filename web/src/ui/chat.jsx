@@ -96,7 +96,9 @@ import { recordingUrl, validateRecording, replaySchedule, RECORDINGS } from "../
 import { ruleTurnPlan } from "../chat/intent.js";
 import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { shouldCallMuse, isNoKeyError, KEYLESS_LINE,
-  getMuseLive, subscribeMuseLive, setMuseLive, refreshMuseLive } from "./muse-status.js";
+  getMuseLive, getMuseStatus, subscribeMuseLive, setMuseLive, refreshMuseLive } from "./muse-status.js";
+import { voiceSupported, voiceKeyReady } from "./voice.js";
+import { MicButton, VOICE_DONE_NOTE, VOICE_ERROR_NOTE } from "./voice-button.jsx";
 import { LIVE_API, appUrl } from "../paths.js";
 import { PoweredByMuse } from "./powered-by-muse.jsx";
 import { recordedReplyFor } from "./demotour.js";
@@ -1336,10 +1338,35 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
+  // 29b: voice input caption under the composer (done / error, 4 s).
+  const [voiceNote, setVoiceNote] = useState("");
+  const voiceNoteTimer = useRef(null);
+  function flashVoiceNote(text) {
+    setVoiceNote(text || "");
+    if (voiceNoteTimer.current) clearTimeout(voiceNoteTimer.current);
+    if (text) {
+      voiceNoteTimer.current = setTimeout(() => setVoiceNote(""), 4000);
+    }
+  }
+  // 29b: the transcript goes into the composer for the customer to
+  // check — never auto-sent. Append with a space when text exists.
+  function appendVoiceText(text) {
+    const t = String(text || "").trim();
+    if (!t) return;
+    setComposer((prev) => (prev && String(prev).trim() ? `${prev} ${t}` : t));
+    flashVoiceNote(VOICE_DONE_NOTE);
+  }
+  function voiceNoteFor(kind) {
+    flashVoiceNote(kind === "done" ? VOICE_DONE_NOTE : VOICE_ERROR_NOTE);
+  }
   // 29a6: recorded replay — keyless step-by-step playback, never the consult client.
   const [replayId, setReplayId] = useState(null);
   const [replayMeta, setReplayMeta] = useState(null);
   const [replaying, setReplaying] = useState(false);
+  // 29b: mic button only with a recorder, a server voice key, and an
+  // idle composer — never in replay mode or while busy.
+  const canVoice = !busy && !replayId && voiceSupported()
+    && voiceKeyReady(getMuseStatus());
   const replayTimers = useRef([]);
   const replayDoc = useRef(null);
   // 29a4: suggestion chips fold while the customer reads up-thread.
@@ -2580,14 +2607,24 @@ export function ChatScreen() {
             {messages.length === 0 && !busy ? (
               <ChatEmpty onSend={(text) => send(text)}
                 onListing={() => chipAction("매물 글 붙여 넣기")}
-                onExample={handleExample} />
+                onExample={handleExample} replayId={replayId} />
             ) : (
             <ChatLayout
               density="compact"
               composer={(
-                <ChatComposer onSubmit={send} isDisabled={busy || !!replayId}
-                  value={composer} onChange={setComposer}
-                  placeholder={busy ? "Muse가 일하는 중…" : "이어서 말씀해 보세요…"} />
+                <>
+                  <ChatComposer onSubmit={send} isDisabled={busy || !!replayId}
+                    value={composer} onChange={setComposer}
+                    sendActions={canVoice ? (
+                      <MicButton onText={appendVoiceText}
+                        disabled={busy || !!replayId}
+                        onNotice={voiceNoteFor} />
+                    ) : null}
+                    placeholder={busy ? "Muse가 일하는 중…" : "이어서 말씀해 보세요…"} />
+                  {voiceNote ? (
+                    <Text type="supporting">{voiceNote}</Text>
+                  ) : null}
+                </>
               )}>
               <ChatMessageList density="compact">
                 {messages.map((m) => (
@@ -2773,8 +2810,26 @@ function webglAvailable() {
   }
 }
 
-export function ChatEmpty({ onSend, onListing, onExample }) {
+export function ChatEmpty({ onSend, onListing, onExample, replayId }) {
   const [value, setValue] = useState("");
+  // 29b: voice input for the empty-state composer (same rules as main).
+  const [emptyVoiceNote, setEmptyVoiceNote] = useState("");
+  const emptyVoiceTimer = useRef(null);
+  function flashEmptyVoiceNote(text) {
+    setEmptyVoiceNote(text || "");
+    if (emptyVoiceTimer.current) clearTimeout(emptyVoiceTimer.current);
+    if (text) {
+      emptyVoiceTimer.current = setTimeout(() => setEmptyVoiceNote(""), 4000);
+    }
+  }
+  function appendEmptyVoiceText(text) {
+    const t = String(text || "").trim();
+    if (!t) return;
+    setValue((prev) => (prev && String(prev).trim() ? `${prev} ${t}` : t));
+    flashEmptyVoiceNote(VOICE_DONE_NOTE);
+  }
+  const canEmptyVoice = !replayId && voiceSupported()
+    && voiceKeyReady(getMuseStatus());
   // 26w: while the chat is empty the landing glide plays behind this
   // screen (quiet, no captions); the first message unmounts it and the
   // glide pauses again so the customer orbits freely.
@@ -2823,7 +2878,15 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
         <p className="ui-chat-empty-label">어떤 집을 고민 중이세요?</p>
         <ChatComposer onSubmit={(text) => onSend && onSend(text)}
           value={value} onChange={setValue}
+          sendActions={canEmptyVoice ? (
+            <MicButton onText={appendEmptyVoiceText} disabled={false}
+              onNotice={(kind) => flashEmptyVoiceNote(
+                kind === "done" ? VOICE_DONE_NOTE : VOICE_ERROR_NOTE)} />
+          ) : null}
           placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
+        {emptyVoiceNote ? (
+          <Text type="supporting">{emptyVoiceNote}</Text>
+        ) : null}
         <PoweredByMuse size="sm" live={LIVE_API} showStatus />
         <div className="ui-chat-empty-row">
           {EMPTY_STARTERS.map((s) => (
