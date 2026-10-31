@@ -123,7 +123,9 @@ describe("31d side column and SourceDot", () => {
     assert.ok(chatmapSrc.includes("ui-chatmap-side"), "side column markup");
     assert.ok(chatmapSrc.includes("ui-chatmap-zoom"), "zoom class kept");
     assert.ok(chatmapSrc.includes("ui-chatmap-credit"), "credit class kept");
-    assert.ok(chatmapSrc.indexOf("ui-chatmap-zoom") < chatmapSrc.indexOf("ui-chatmap-credit"),
+    // 31m: the measure effect names the credit selectors, so pin the
+    // rendered side-column credit (is-desktop) instead of the bare name.
+    assert.ok(chatmapSrc.indexOf("ui-chatmap-zoom") < chatmapSrc.indexOf("ui-chatmap-credit is-desktop"),
       "zoom on top, credit under it");
     const col = padRule(/\.ui-chatmap-side\s*\{[^}]*\}/);
     assert.ok(col.includes("flex-direction: column"), "column stacks");

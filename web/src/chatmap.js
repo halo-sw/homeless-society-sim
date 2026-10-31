@@ -130,6 +130,39 @@ export function densifyPts(pts, maxKm = 2.5) {
 // `inset` ({top,right,bottom,left} px) fits the data into the inner
 // rectangle so pills and trays never clip; empty inset keeps 1:1.
 export const MAP_FIT_MARGIN = 0.08;
+// 31n: the smallest free band the measured fit leaves (stage px).
+export const MAP_FIT_MIN_FREE = 120;
+
+// 31n: fit inset from measured chrome (all stage px in, stage px
+// out). top is the top-left stack bottom (filter row / title /
+// legend), bottom the tray cover over the stage (or the credit
+// height when the tray is off the map), right the control-column
+// width, tagH the tallest tag height. The top reserves one tag
+// above the topmost pin (+ 8); the other sides add 16 px; left is
+// always 16. When the chrome would leave less than 120 px free,
+// the vertical (or horizontal) insets shrink proportionally so the
+// pins still show.
+export function fitInsetFromChrome({ W, H, top, bottom, right, tagH }) {
+  const w = Math.max(1, Number(W) || 1);
+  const h = Math.max(1, Number(H) || 1);
+  let t = Math.max(0, Number(top) || 0) + Math.max(0, Number(tagH) || 0) + 8;
+  let b = Math.max(0, Number(bottom) || 0) + 16;
+  let r = Math.max(0, Number(right) || 0) + 16;
+  let l = 16;
+  if (t + b > h - MAP_FIT_MIN_FREE) {
+    const free = Math.max(0, h - MAP_FIT_MIN_FREE);
+    const sum = t + b;
+    if (sum > 0) { t = (t / sum) * free; b = (b / sum) * free; }
+    else { t = 0; b = 0; }
+  }
+  if (l + r > w - MAP_FIT_MIN_FREE) {
+    const free = Math.max(0, w - MAP_FIT_MIN_FREE);
+    const sum = l + r;
+    if (sum > 0) { l = (l / sum) * free; r = (r / sum) * free; }
+    else { l = 0; r = 0; }
+  }
+  return { top: t, right: r, bottom: b, left: l };
+}
 // Closest the map ever zooms: a ~1.2 km wide view keeps a few
 // streets and stations visible around tight candidate clusters.
 export const MAP_MIN_VIEW_KM = 1.2;
@@ -540,12 +573,15 @@ export function tagLines(pin, opts) {
 export function tagSizePx(pin, tenure, lang, opts) {
   const t = tagFontPx(opts);
   const lines = tagLines(pin, { tenure, lang });
+  // 31m: { short: true } measures the compact form — header +
+  // price, no commute line — for crowded stages.
+  const commute = (opts && opts.short) ? null : lines.commute;
   const w = Math.max(t.minW, Math.ceil(Math.max(
     tagLineWidthPx(lines.header, t.header),
     tagLineWidthPx(lines.price, t.price),
-    lines.commute ? tagLineWidthPx(lines.commute, t.commute) : 0,
+    commute ? tagLineWidthPx(commute, t.commute) : 0,
   )) + t.pad);
-  return { w, h: TAG_HEADER_H + (lines.commute ? 46 : 26) };
+  return { w, h: TAG_HEADER_H + (commute ? 46 : 26) };
 }
 
 // 31g: count-circle diameter — 36 px, 44 px when the count ≥ 100.
@@ -677,9 +713,14 @@ export function layoutPinLabels(points, W, H) {
 // Returns [{ id, kind, x, y, w, h, box, leader, count, members }] in
 // placement order — members lists the folded pill ids of a cluster
 // (kind "cluster"), leader is the box landing point ([lx, ly]) when the
-// pill sits off its anchor, else null. 31j: obstacles are stage-px
-// boxes treated as already occupied (the work marker's box, overlay
-// chrome) — rank 0 places before them, every tag after them.
+// pill sits off its anchor, else null. 31n: obstacles are stage-px
+// boxes treated as already occupied (overlay chrome: the top
+// stack, the control column, the tray, the open pin card) —
+// every pill including rank 0 avoids them.
+// 31m: each tag tries the full tag, then the compact form (the
+// item's alt size — header + price, no commute line), then folds;
+// a compact placement reports short: true. Rank 1 still forces
+// its home slot when neither fits; rank 0 is unchanged.
 const PILL_GAP = 12;
 const PILL_PAD = 2;
 
@@ -723,18 +764,11 @@ export function layoutMapPills(items, W, H, obstacles) {
   const taken = [];
   const out = [];
   const spill = [];
-  const placeOne = (p) => {
-    const tw = p.w;
-    const th = p.h;
-    let box = pillSlots(p.x, p.y, tw, th)
-      .map((b) => clampPill(b, w, h))
-      .find((b) => !taken.some((q) => boxHit(b, q))) || null;
-    if (!box) box = spiralPill(p.x, p.y, tw, th, taken, w, h);
-    if (!box) {
-      // Rank 0/1 always win: keep the default slot above the anchor.
-      if ((p.rank ?? 2) <= 1) box = clampPill({ ...pillSlots(p.x, p.y, tw, th)[0] }, w, h);
-      else return null;
-    }
+  const tryBox = (x, y, tw, th) => pillSlots(x, y, tw, th)
+    .map((b) => clampPill(b, w, h))
+    .find((b) => !taken.some((q) => boxHit(b, q)))
+    || spiralPill(x, y, tw, th, taken, w, h);
+  const finish = (p, tw, th, box, short) => {
     taken.push(box);
     // The default slot sits centred above the anchor with its tail
     // bridging the gap, so it needs no leader — only a pill moved by
@@ -742,25 +776,57 @@ export function layoutMapPills(items, W, H, obstacles) {
     const home = clampPill({ ...pillSlots(p.x, p.y, tw, th)[0] }, w, h);
     const moved = box.x !== home.x || box.y !== home.y
       || box.w !== home.w || box.h !== home.h;
-    return { id: p.id, kind: p.kind || "pill", x: p.x, y: p.y,
+    const laid = { id: p.id, kind: p.kind || "pill", x: p.x, y: p.y,
       w: tw, h: th, box, leader: moved ? nearestOnBox(box, p.x, p.y) : null,
       count: 0, members: null };
+    // 31m: the compact form reports short so the tag paints
+    // without its commute line.
+    if (short) laid.short = true;
+    return laid;
   };
-  // 31j: rank 0 (the work marker) always wins its home slot
-  // first; obstacles — the work marker's box, the top-left
-  // title/legend/filter stack, the right control column — then
-  // constrain every tag after it, which moves with a leader line
-  // instead of covering them.
+  const forcedHome = (p, tw, th) => finish(p, tw, th,
+    clampPill({ ...pillSlots(p.x, p.y, tw, th)[0] }, w, h), false);
+  // 31m: the compact fallback size (header + price, no commute
+  // line) when the item carries one that differs from the full.
+  const altOf = (p) => {
+    const a = p.alt;
+    if (!a || !(a.w > 0) || !(a.h > 0)) return null;
+    if (a.w === p.w && a.h === p.h) return null;
+    return { w: a.w, h: a.h };
+  };
+  const placeOne = (p) => {
+    const tw = p.w;
+    const th = p.h;
+    let box = tryBox(p.x, p.y, tw, th);
+    if (box) return finish(p, tw, th, box, false);
+    // 31m: no room for the full tag — try the compact form in
+    // the same slots, then the spiral, before folding.
+    const alt = altOf(p);
+    if (alt) {
+      const ab = tryBox(p.x, p.y, alt.w, alt.h);
+      if (ab) return finish(p, alt.w, alt.h, ab, true);
+    }
+    // Rank 0/1 always win: keep the default slot above the anchor.
+    if ((p.rank ?? 2) <= 1) return forcedHome(p, tw, th);
+    return null;
+  };
+  // 31n: the measured chrome (the top-left filter/title/legend
+  // stack, the right control column, the tray, the open pin card)
+  // is already occupied before rank 0 places, so the work marker
+  // takes the first free slot or spiral position with its leader
+  // line when its home slot is covered — and every tag after it
+  // moves with a leader line instead of covering chrome. Invalid
+  // obstacles are ignored.
+  for (const o of obstacles || []) {
+    if (!o || !Number.isFinite(o.x) || !Number.isFinite(o.y)
+      || !(o.w > 0) || !(o.h > 0)) continue;
+    taken.push({ x: o.x, y: o.y, w: o.w, h: o.h });
+  }
   for (const p of list) {
     if ((p.rank ?? 2) !== 0) continue;
     const laid = placeOne(p);
     if (laid) out.push(laid);
     else spill.push(p);
-  }
-  for (const o of obstacles || []) {
-    if (!o || !Number.isFinite(o.x) || !Number.isFinite(o.y)
-      || !(o.w > 0) || !(o.h > 0)) continue;
-    taken.push({ x: o.x, y: o.y, w: o.w, h: o.h });
   }
   for (const p of list) {
     if ((p.rank ?? 2) === 0) continue;
