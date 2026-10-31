@@ -6,7 +6,7 @@ import { register } from "node:module";
 
 register("./jsx-loader.mjs", import.meta.url);
 
-import { lifeEvents, lifeEventLines } from "../src/engine/life-events.js";
+import { lifeEvents, lifeEventLines, sunsetMinFor } from "../src/engine/life-events.js";
 import { createTranslator } from "../src/i18n/translate.js";
 import { phrases, patterns } from "../src/i18n/en.js";
 import { WORDS } from "../src/i18n/en-words.js";
@@ -122,6 +122,63 @@ describe("29c1 result card lifeEvents block (SSR, no DOM)", () => {
   });
 });
 
+describe("29c1b dark_walk and seated without data", () => {
+  const homeTrip = (id, day, depart_min, minutes, label, distance_m) => ({
+    id, agent: "h1", day, depart_min, minutes, distance_m,
+    from: { kind: "poi", label }, to: { kind: "home" }, purpose: "commute",
+  });
+  const novMeta = (home) => ({ start_date: "2026-11-02", area: "songpa-jamsil", home });
+  const darkA = () => ({ agents, decisions: [], aways: [],
+    trips: [homeTrip("t-da0", 0, 1068, 12, "잠실", 923),
+      homeTrip("t-da1", 1, 1068, 12, "잠실", 923),
+      homeTrip("t-da2", 2, 1068, 12, "잠실", 923)],
+    meta: novMeta("A") });
+  const darkB = () => ({ agents, decisions: [], aways: [],
+    trips: [homeTrip("t-db0", 0, 1073, 17, "판교", 1299),
+      homeTrip("t-db1", 1, 1073, 17, "판교", 1299),
+      homeTrip("t-early", 2, 948, 12, "판교", 900)],
+    meta: novMeta("B") });
+
+  it("sunsetMinFor picks the month table", () => {
+    assert.equal(sunsetMinFor({ start_date: "2026-11-02", area: "songpa-jamsil" }), 1045);
+    assert.equal(sunsetMinFor({ start_date: "2026-11-02", area: "us-menlo" }), 1020);
+    assert.equal(sunsetMinFor({}), 1045);
+  });
+
+  it("counts after-dark walks home with station averages", () => {
+    const rows = lifeEvents(darkA(), darkB(), { labels: ["A", "B"] });
+    const dw = rows.find((r) => r.kind === "dark_walk");
+    assert.ok(dw, "dark_walk row present");
+    assert.equal(dw.a.count, 3);
+    assert.equal(dw.b.count, 2);
+    assert.equal(dw.sunset, "17:25");
+    assert.equal(dw.source, "기록 · 해 지는 시각 가정");
+    const lines = lifeEventLines(rows, ["A", "B"]);
+    const line = lines.find((l) => l.startsWith("해 진 뒤 걸어서 퇴근:"));
+    assert.ok(line.includes("잠실역에서 평균 12분(920m)"), line);
+    assert.ok(line.includes("판교역에서 평균 17분(1.3km)"), line);
+    assert.ok(!rows.find((r) => r.kind === "late_home"), "no late_home");
+  });
+
+  it("seated prints no-data instead of 0/0", () => {
+    const b = { agents, decisions: [], aways: [workAway(0, 80, "가정값")],
+      trips: [], meta: { home: "B" } };
+    const rows = lifeEvents(runA(), b, { labels: ["A", "B"] });
+    const lines = lifeEventLines(rows, ["A", "B"]);
+    assert.ok(lines.some((l) => l.includes("B 혼잡도 자료 없음")), lines.join("\n"));
+    assert.ok(!lines.join("\n").includes("0/0일"), "no 0/0 anywhere");
+  });
+
+  it("orders dark_walk, seated, late_home", () => {
+    const a = { ...darkA(), aways: [workAway(0, 20)],
+      trips: [...darkA().trips, { ...trip("t-late-a", 5, 1340, 10, "home") }] };
+    const b = { ...darkB(), aways: [workAway(0, 90)],
+      trips: [...darkB().trips, { ...trip("t-late-b", 5, 1350, 10, "home") }] };
+    const rows = lifeEvents(a, b, { labels: ["A", "B"] });
+    assert.deepEqual(rows.map((r) => r.kind), ["dark_walk", "seated", "late_home"]);
+  });
+});
+
 describe("29c1 English", () => {
   it("translates the two sample lines whole", () => {
     const { translate } = createTranslator({ phrases, patterns, words: WORDS });
@@ -132,5 +189,15 @@ describe("29c1 English", () => {
     assert.equal(
       translate("밤 10시 이후 귀가: A 4번(역에서 걸어 평균 9분, 가장 늦게 23:40) · B 0번"),
       "Home after 10 pm: A 4 times (avg 9 min walk from the station, latest 23:40) · B 0 times");
+  });
+
+  it("translates the 29c1b no-data and dark-walk lines", () => {
+    const { translate } = createTranslator({ phrases, patterns, words: WORDS });
+    assert.equal(
+      translate("앉아서 간 출근: A 0/44일 · B 혼잡도 자료 없음 (실측 34% 이하일 때)"),
+      "Got a seat on the way to work: A 0/44 days · B no crowding data (measured ≤ 34%)");
+    assert.equal(
+      translate("해 진 뒤 걸어서 퇴근: A 44번 · 잠실역에서 평균 12분(920m) · B 44번 · 판교역에서 평균 17분(1.3km) · 해 지는 시각 17:25 기준"),
+      "Walked home from work after dark: A 44 times · avg 12 min (920 m) from Jamsil Station · B 44 times · avg 17 min (1.3 km) from Pangyo Station · sunset 17:25");
   });
 });
