@@ -127,12 +127,125 @@ ithaca/
 └── briefs/            One brief + result per Muse Code stage
 ```
 
-**Flow.**
+### System map
+
+Where each part runs. The browser never holds a model key: every Muse call goes through the relay.
+
+```mermaid
+flowchart TB
+  subgraph BR["Browser · React 19 + Astryx"]
+    CHAT["Chat thread<br/>ui/chat.jsx"]
+    MAP["Map · candidate cards · 3D<br/>ui/ · render/"]
+    WK["sim-worker.js<br/>30-day engine · 10 paired seeds"]
+    RC["ReportCheck<br/>timeline · reasons · 미지원"]
+  end
+  subgraph RL["Relay · relay/handler.js on Vercel or docker · keys stay here"]
+    SV["consult/server.js<br/>POST /api/consult"]
+    AG["agent.js · runTurn<br/>up to 6 tool rounds"]
+    GD["guards.js<br/>numbers · verdict words"]
+    TL["tools.js + tools-money.js + tools-search.js<br/>42 chat tools"]
+    DY["diary.js<br/>task: diary"]
+    RP["report.js · writeReport<br/>task: report, streamed as NDJSON"]
+    VF["verify/<br/>compare · numbers · evidence · loop"]
+    VO["voice.js<br/>/api/voice/transcribe"]
+    STR["street.js<br/>/api/street"]
+  end
+  subgraph MM["Meta models"]
+    SP["Muse Spark 1.3<br/>api.meta.ai/v1"]
+    VT["Muse Voice Transcribe 1.0"]
+    OP["Muse Spark Open on Baseten<br/>household decisions, judge CLI"]
+  end
+  subgraph DT["Data · committed or release data-v1"]
+    KR["Seoul: 실거래가 · 건축물대장 · OSM<br/>서울교통공사 times and congestion"]
+    US["Menlo Park: Zillow ZORI · OSM US"]
+    GT["scenarios/verify/ground_truth.json"]
+  end
+  CHAT -- "messages + context" --> SV
+  SV --> AG
+  AG <--> SP
+  AG --> TL
+  AG --> GD
+  TL --> KR
+  TL --> US
+  SV -- "reply + ui_actions" --> CHAT
+  CHAT --> MAP
+  CHAT -- "start_life_run" --> WK
+  WK -- "run record" --> CHAT
+  CHAT -- "task: diary" --> DY
+  CHAT -- "task: report + slim runs" --> RP
+  DY <--> SP
+  RP <--> SP
+  RP --> VF
+  VF --> GT
+  RP -- "attempt and done lines" --> RC
+  VO <--> VT
+```
+
+### Agent flow: one chat turn
+
+The browser owns the conversation; the relay runs one turn and sends back the reply plus the screen actions (`ui_actions`) that move the map, open cards or start the run.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as Customer
+  participant B as Browser chat.jsx
+  participant S as Relay /api/consult
+  participant A as agent.js runTurn
+  participant M as Muse Spark 1.3
+  participant T as Tools (42)
+  participant G as guards.js
+  U->>B: "강남 출근, 전세 4억 이하"
+  B->>S: messages + scenario + context (picks, report_status)
+  S->>A: runTurn
+  loop up to 6 tool rounds
+    A->>M: messages + tool definitions
+    M-->>A: tool_calls
+    A->>T: extract_profile, find_homes, pick_homes, start_life_run ...
+    T-->>A: results from the engine, money formulas and real data
+  end
+  M-->>A: reply text
+  A->>G: checkConsultReply(reply, tool results)
+  alt a number not in any tool result, or a verdict word
+    A->>M: retry once with a correction note
+    M-->>A: corrected reply
+    Note over A,M: still failing: answer with the tool numbers only
+  end
+  A->>A: fixStartClaim: said "started" without the tool, so start it for real
+  A-->>S: reply + ui_actions + next-step chips
+  S-->>B: JSON
+  B->>U: bubble, cards, map pins, next step
+```
+
+### From one sentence to a checked comparison
+
+```mermaid
+flowchart TD
+  A["Say it in your own words<br/>text or voice"] --> B["extract_profile<br/>내가 말한 값 · 물어볼 값"]
+  B --> C["find_homes<br/>real deals or rents · door-to-work minutes"]
+  C --> D["pick_homes<br/>A and B · C from a pasted listing"]
+  D --> E["start_life_run"]
+  E --> F["sim-worker: 30 days in both homes<br/>trips with causes · Muse choices · 10 seeds"]
+  F --> G["Diary<br/>every line checked against the record"]
+  F --> H["Comparison report<br/>task: report"]
+  H --> I{"Household type<br/>has a checklist?"}
+  I -- "no: remote worker · three generations · dog owner" --> UN["미지원 label<br/>result opens, nothing counted as a pass"]
+  I -- yes --> J["Verify loop<br/>see Verification"]
+  J -- pass --> P["통과"]
+  J -- "4 tries without a pass" --> Q["Handoff bubble<br/>확인했어요 · 다시 검증하기"]
+  Q -- "확인했어요" --> P2["확인 요청, confirmed by the customer"]
+  P --> R["Result unlocked<br/>open_panel result · 결과 보기"]
+  P2 --> R
+  UN --> R
+```
+
+**Flow in words.**
 1. **Profile.** The browser sends the chat to `/api/consult` (the dev server or the relay). The agent calls Muse with tools; tool results come from `web/src/engine` and `web/src/money`.
 2. **Number check.** The reply guard (`web/src/consult/guards.js`) rejects a reply whose numbers are not in the tool results.
 3. **30-day run.** The engine runs both homes in a browser worker (`web/src/sim-worker.js`).
 4. **Diary.** Muse writes the diary from the run's record, and `web/src/consult/diary.js` checks every line against that record.
-5. **Household decisions.** Muse makes them through the judge CLI (`web/scripts/judge.mjs`), and they replay exactly from the recorded files.
+5. **Checked comparison.** Muse hands in the two-home comparison only through the `submit_report` tool; code and a Muse judge check it, and the result opens only after it passes, the customer confirms a handoff, or the household type is marked 미지원 (see [Verification](#verification)).
+6. **Household decisions.** Muse makes them through the judge CLI (`web/scripts/judge.mjs`), and they replay exactly from the recorded files.
 
 `npm test` at the root runs the JS suites, and `npm run test:py` runs the Python ones. CI runs both on every pull request and every push to `main`.
 
@@ -143,7 +256,7 @@ ithaca/
 | 1 | **Say it in your own words** | "맞벌이 예비부부, 강남 출근, 전세 4억 이하, 59㎡ 이상". The consult agent turns this into a household profile. Every value the customer said is marked "내가 말한 값", and every gap is marked "물어볼 값". | built (text and voice) |
 | 2 | **Get real candidate homes** | Candidates come from real transactions in 11 areas of south-east Seoul and Gyeonggi, with ride times from the operator's schedule and public rentals from the LH · 마이홈 API. They appear on a map with the subway lines, the workplace and the commute minutes. | built |
 | 3 | **The household lives there for 30 days** | The household commutes, shops, walks in the park and visits clinics on the real walking graph, in both homes at once. Runs are paired over 10 seeds, so the gap between homes comes from the homes and not from chance. | built |
-| 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. | built (scorer, claim checks, retry loop) · on-screen view *in progress* |
+| 4 | **The report is checked before you see it** | The agent's checklist and report are scored against a ground-truth checklist. Numbers must match the engine, and every sentence must cite a simulation event. A failed report goes back to the agent up to 3 times, then to the customer. Each try and its reason show in the chat while it runs. | built (scorer, claim checks, Muse judge, retry loop, on-screen timeline) |
 | 5 | **Compare with evidence** | Time, fatigue, money for 매매 / 전세 / 월세 / public rental, 전세 warning signs, support programmes, official safety and education figures, all weighted by the customer's own priorities. Each home gets a 0–100 **내 기준 점수**: a subjective score from the customer's own weights, with the formula one tap away. | built |
 
 ## Gallery
@@ -200,7 +313,7 @@ Each model has one job. Numbers never come from a model.
 |---|---|---|
 | **Muse Spark 1.3** | The household's everyday choices with reasons, the consult agent, and (as Muse Code) the coding agent that wrote this repository | built |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026` on Baseten) | The same household decisions on an open-weight model; one switch (`--provider meta\|baseten`). Compared with Spark 1.3 below | built (comparison) |
-| Muse Spark as a judge | Checks that each report sentence is backed by a cited simulation event | *in progress* |
+| **Muse Spark 1.3 as a judge** | Reads each report sentence next to the simulation records it cites and answers supported or not, with a reason; a separate call from the writer | built |
 | **Muse Voice Transcribe 1.0** | Spoken intake: tap the microphone and say your household and workplace; the transcript goes into the box, never sent on its own | built |
 | SAM 3.1 | Measure rooms and window area from listing photos and floor plans | *coming soon* |
 
@@ -208,14 +321,45 @@ Each model has one job. Numbers never come from a model.
 
 The agent's work is checked by code before the customer sees it.
 
-- **Ground truth.** A checklist of what must be covered for each household type: 9 common items (commute time, monthly housing cost and noise are *must*; daylight, groceries, the walk home at night, storage, defects and the morning rush are *should*) plus 5–6 items per household type.
-- **Two kinds of check.** *Deterministic* items (commute minutes, housing cost, distance to daycare or a park) must match the engine's value within a stated tolerance. *Judge* items (noise, safety, storage) must cite at least one simulation event.
-- **Pass rule.** Every *must* item covered, and weighted coverage ≥ 80 % (*must* weighs 3, *should* 1). A failed report goes back to the agent with the reasons, up to 3 times, and then to the customer.
+```mermaid
+flowchart TD
+  S0["writeReport<br/>digest per home: engine values, evidence ids, checklist"] --> S1["Muse Spark 1.3<br/>must answer with the submit_report tool"]
+  S1 -- "no tool call" --> S1R["asked once more"]
+  S1R --> S1
+  S1 -- "submit_report(sentences)" --> H["submit_report handler<br/>runComparisonLoop"]
+  H --> V["verifyComparison<br/>home A and home B, separately<br/>sentence = id · home · item_id · text_ko · claims · evidence"]
+  subgraph CK["Checks per sentence"]
+    direction TB
+    N["Numbers<br/>claims vs engineValue within tolerance<br/>C01 commute · C02 monthly cost · C05 groceries · N01 both commutes"]
+    E["Evidence ids<br/>must exist in that home's record index"]
+    J["Muse judge<br/>judge(sentence, cited records) → supported, reason<br/>C06 walk home after dark · N03 late home"]
+    X["No engine data yet<br/>C03 noise · C04 daylight · C07–C09<br/>shown as 미지원, never counted"]
+  end
+  V --> N
+  V --> E
+  V --> J
+  V --> X
+  N --> R{"0 failures · must 100%<br/>weighted coverage ≥ 80%<br/>in both homes?"}
+  E --> R
+  J --> R
+  R -- yes --> OK["통과"]
+  R -- "no, tries left" --> FB["feedback_ko<br/>one line per failed sentence"]
+  FB --> RW["Muse rewrites only the flagged sentences<br/>and calls submit_report again"]
+  RW --> V
+  R -- "no, after 1 + 3 tries" --> HO["handoff.question_ko<br/>chat bubble + 확인했어요"]
+  V -. "onAttempt, streamed" .-> TLN["On screen<br/>1차 반려 (88%) → … → 4차 통과 (100%)<br/>with each rejection reason"]
+```
+
+- **Ground truth.** [`scenarios/verify/ground_truth.json`](scenarios/verify/ground_truth.json) lists what must be covered for each household type: 9 common items (commute time, monthly housing cost and noise are *must*; daylight, groceries, the walk home at night, storage, defects and the morning rush are *should*) plus 5–6 items per household type.
+- **One way in.** The comparison reaches the customer only through the `submit_report` tool. The chat agent never sees that tool, and `open_panel("result")` is refused until the report has passed, been confirmed by the customer, or been marked 미지원.
+- **Two kinds of check.** *Deterministic* items must match the engine's value within a stated tolerance (commute minutes, monthly cost in won or dollars, minutes to groceries, each partner's commute). *Judge* items must cite a record from that home's run, and Muse, as a separate judge call, reads the sentence next to the cited records and answers `supported` with a reason. Two judge items are backed by engine trips today: the walk home after dark (C06: `dark_walk`, `late_home`) and getting home late (N03: `late_home`).
+- **Pass rule.** Zero failures, every *must* item covered, and weighted coverage ≥ 80 % (*must* weighs 3, *should* 1), in both homes. A failed report goes back to Muse with one line per failed sentence, up to 3 times. Then the customer gets the open question in the chat with **확인했어요** and **다시 검증하기**.
+- **Shown while it happens.** Each try streams to the chat as it finishes: `1차 반려 (88%) → 2차 반려 (88%) → 3차 반려 (88%) → 4차 통과 (100%)`, with the reason under every rejection (for example, the judge refused "걸어서" because the cited record has no travel mode, and a departure time that did not match the record). Each sentence carries its tag: 숫자 확인, 근거 n개 or 확인 필요.
 - **Says only what it did.** If a reply says the 30-day run has started but the agent never called the tool that starts it, the claim is caught and the run is started for real, so the words and the screen agree.
-- **Honest gaps.** An item the engine cannot back yet is shown as 미지원 and never counted as a pass. Today two household types have full scenarios (dual-income family with a young child, newlywed couple). Remote worker, three-generation family and dog owner are scored for the checklist only.
+- **Honest gaps.** An item the engine cannot back yet (noise, daylight, storage, defects, the morning rush) is shown as 미지원 and never counted as a pass. Newlywed couples, families with a young child and single first-jobbers get the checked comparison. For remote workers, three-generation families and dog owners the result opens with a 미지원 label and no model call is made for the report.
 - **Field study** *(coming soon)*. Compare the simulator's findings with the real homes and real regrets of 10–20 residents and report the match rate.
 
-Status: the scorer, claim checks and retry loop are in `main` (stages 16a and 16b, 99 tests), checked against the ground-truth file and the reference scorer written by the team. On natural checklists the JS scorer gives the same pass and *must* coverage as the Python reference, and a report that quotes the true door-to-door commute passes while a wrong one fails. The on-screen view of the loop is in progress.
+Status: built and on screen (stages 16a–16b for the scorer and claim checks, 29j1–29j4 for `submit_report`, the Muse judge, the two-home loop and the on-screen timeline). First live run on 2026-11-01, Seoul newlywed couple, real Muse Spark 1.3: three rejections with their reasons, then a pass at 100 % on the fourth try, about 100 seconds for the four tries.
 
 ## Built by Muse
 
@@ -385,6 +529,8 @@ Assumed inputs: gross salaries of 6,000만 and 5,000만 원, cash of 2억 원 an
 | 29b–29b2 | Voice input with Muse Voice Transcribe 1.0 through the relay | [`29b`](briefs/29b-voice-input.md), [`29b2`](briefs/29b2-mic-style.md) |
 | 29c1–29c1d | "Only living there tells you": walks and bike rides home after sunset, seated mornings, late arrivals | [`29c1`](briefs/29c1-life-events.md) … [`29c1d`](briefs/29c1d-dark-bike.md) |
 | 29g1–29g3, 29m1 | No false "it has started", replay loads the map data, `META_API_KEY` with named endpoint constants | [`29g1`](briefs/29g1-start-claim-guard.md), [`29g2`](briefs/29g2-replay-map-data.md), [`29m1`](briefs/29m1-meta-api-key.md) |
+| 29h1–29h5 | Chat insets, the next step as chips in the thread, one shared ZIP rent said once, street photos first with their credit, no ellipsis in the header | [`29h1`](briefs/29h1-chat-insets.md) … [`29h5`](briefs/29h5-street-credit-fit.md) |
+| 29j1–29j4 | Checked comparison: C06/N03 backed by engine trips, the Muse judge, `submit_report` with the two-home verify loop, the on-screen timeline with each rejection reason, handoff and 미지원 | [`29j1`](briefs/29j1-verify-core-judge.md) … [`29j4`](briefs/29j4-report-voice-reasons.md) |
 | 30a–30h | Docker workspace, honest rule mode without a key, CI for docker, the landing's judge buttons, theme module | [`30a`](briefs/30a-docker-workspace.md) … [`30h`](briefs/30h-theme-module.md) |
 | 31a–31n | Chat hierarchy and the map: markers, controls, filters, candidate tabs, hit testing, phone polish, map fit | [`31a`](briefs/31a-chat-hierarchy.md) … [`31n`](briefs/31n-map-fit-chrome.md) |
 

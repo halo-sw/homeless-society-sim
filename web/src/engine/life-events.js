@@ -62,6 +62,38 @@ function seatedSide(run, ids) {
   return { measured, seated, evidence };
 }
 
+// 29j1: shared trip predicates for darkSide/lateSide/lifeEventTrips.
+function darkArrive(t) {
+  if (typeof t.arrive_min === "number" && Number.isFinite(t.arrive_min)) {
+    return t.arrive_min;
+  }
+  if (typeof t.depart_min === "number" && typeof t.minutes === "number"
+    && Number.isFinite(t.depart_min) && Number.isFinite(t.minutes)) {
+    return t.depart_min + t.minutes;
+  }
+  return null;
+}
+
+function isDarkTrip(t, hh, sunset) {
+  if (!t || !hh.has(t.agent)) return false;
+  if (!t.to || t.to.kind !== "home") return false;
+  if (t.purpose !== "commute") return false;
+  const arr = darkArrive(t);
+  return arr !== null && arr >= sunset;
+}
+
+function lateArrive(t) {
+  if (typeof t.depart_min !== "number" || typeof t.minutes !== "number") return null;
+  return t.depart_min + t.minutes;
+}
+
+function isLateTrip(t, hh) {
+  if (!t || !hh.has(t.agent)) return false;
+  if (!t.to || t.to.kind !== "home") return false;
+  const arr = lateArrive(t);
+  return arr !== null && arr >= LATE_MIN;
+}
+
 // 29c1b: commute walks home that arrive after sunset — the walk you only
 // learn by living there. Arrive from arrive_min when present, else
 // depart_min + minutes.
@@ -77,17 +109,7 @@ function darkSide(run) {
   let evTrip = null;
   let bikeN = 0;
   for (const t of run.trips || []) {
-    if (!hh.has(t.agent)) continue;
-    if (!t.to || t.to.kind !== "home") continue;
-    if (t.purpose !== "commute") continue;
-    let arr = null;
-    if (typeof t.arrive_min === "number" && Number.isFinite(t.arrive_min)) {
-      arr = t.arrive_min;
-    } else if (typeof t.depart_min === "number" && typeof t.minutes === "number"
-      && Number.isFinite(t.depart_min) && Number.isFinite(t.minutes)) {
-      arr = t.depart_min + t.minutes;
-    }
-    if (arr === null || arr < sunset) continue;
+    if (!isDarkTrip(t, hh, sunset)) continue;
     count += 1;
     evTrip = t;
     if (t.mode === "bike") bikeN += 1;
@@ -166,11 +188,8 @@ function lateSide(run) {
   let latest = -1;
   let evTrip = null;
   for (const t of run.trips || []) {
-    if (!hh.has(t.agent)) continue;
-    if (!t.to || t.to.kind !== "home") continue;
-    if (typeof t.depart_min !== "number" || typeof t.minutes !== "number") continue;
+    if (!isLateTrip(t, hh)) continue;
     const arr = t.depart_min + t.minutes;
-    if (arr < LATE_MIN) continue;
     count += 1;
     if (arr > latest) {
       latest = arr;
@@ -229,6 +248,48 @@ export function lifeEvents(runA, runB, { labels = ["A", "B"] } = {}) {
     });
   }
   return rows;
+}
+
+// 29j1: judge-worthy trips of one run, in run order. kind "dark_walk"
+// uses the darkSide filter (household commute home after sunset);
+// kind "late_home" uses the lateSide filter (home at/after 22:00).
+export function lifeEventTrips(run, kind) {
+  const hh = householdKeys(run);
+  const out = [];
+  if (kind === "dark_walk") {
+    const sunset = sunsetMinFor(run.meta);
+    for (const t of run.trips || []) {
+      if (!isDarkTrip(t, hh, sunset)) continue;
+      out.push({
+        id: t.id,
+        agent: t.agent,
+        day: t.day,
+        depart_min: t.depart_min,
+        arrive_min: darkArrive(t),
+        minutes: t.minutes,
+        mode: t.mode,
+        from_label: (t.from && t.from.label) || null,
+      });
+    }
+    return out;
+  }
+  if (kind === "late_home") {
+    for (const t of run.trips || []) {
+      if (!isLateTrip(t, hh)) continue;
+      out.push({
+        id: t.id,
+        agent: t.agent,
+        day: t.day,
+        depart_min: t.depart_min,
+        arrive_min: lateArrive(t),
+        minutes: t.minutes,
+        mode: t.mode,
+        from_label: (t.from && t.from.label) || null,
+      });
+    }
+    return out;
+  }
+  return out;
 }
 
 function seatedPart(side, label) {

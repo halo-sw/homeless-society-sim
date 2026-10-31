@@ -92,13 +92,14 @@ import {
   homeForScenario, complexNameForCandidate, stationNames,
   runGate, profileHomeKinds, regionsForCurrency, regionsForDoc,
 } from "../chat/engine.js";
-import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.js";
+import { buildCustomMoneyDoc, buildUsRentMoneyDoc, verifyHomeFor } from "../chat/custom-money.js";
+import { personaFor, slimRunForReport } from "../verify/compare.js";
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { recordingUrl, validateRecording, replaySchedule, RECORDINGS } from "../chat/recording.js";
 import { ruleTurnPlan } from "../chat/intent.js";
-import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
+import { postConsultStream, postDiary, postReportStream, loadScenario } from "./consult-client.js";
 import { shouldCallMuse, isNoKeyError, KEYLESS_LINE,
   getMuseLive, getMuseStatus, subscribeMuseLive, setMuseLive, refreshMuseLive } from "./muse-status.js";
 import { voiceSupported, voiceKeyReady } from "./voice.js";
@@ -706,6 +707,158 @@ export function DiarySection({ diary, customId, onScene }) {
   );
 }
 
+// 29j3: the verified comparison on screen. report is the sim message's
+// data.report ({ status, persona, attempts, report, handoff, result }).
+export const PERSONA_KO = { remote_worker: "재택근무",
+  multigen_family: "삼대 가족", pet_owner: "반려동물과 사는 가족" };
+
+// Pure gate for the 3D result: only open it once the comparison report
+// is verified (older payloads without a report stay open).
+export function reportUnlocked(messages) {
+  const sim = [...(messages || [])].reverse()
+    .find((m) => m && m.kind === "simulation");
+  const rep = sim && sim.data && sim.data.report;
+  if (!rep) return true;
+  if (rep.status === "off" || rep.status === "pass"
+    || rep.status === "unsupported") return true;
+  if (rep.status === "handoff") return rep.confirmed === true;
+  return false;
+}
+
+export function latestReportStatus(messages) {
+  const sim = [...(messages || [])].reverse()
+    .find((m) => m && m.kind === "simulation");
+  const rep = sim && sim.data && sim.data.report;
+  if (!rep || !rep.status) return undefined;
+  if (rep.status === "handoff") {
+    return rep.confirmed === true ? "handoff" : "checking";
+  }
+  return rep.status;
+}
+
+function reportStepLabel(attempt, pass, coverage) {
+  return `${attempt}차 ${pass ? "통과" : "반려"} (${Math.round(coverage * 100)}%)`;
+}
+
+export function ReportCheck({ report, names, onRetry }) {
+  if (!report) return null;
+  const status = report.status;
+  if (!status || status === "off") return null;
+  const attempts = Array.isArray(report.attempts) ? report.attempts : [];
+  const result = report.result || null;
+  const finalReport = report.report || null;
+  const sentences = (finalReport && Array.isArray(finalReport.sentences))
+    ? finalReport.sentences : [];
+  const failedIds = new Set((result && Array.isArray(result.failures)
+    ? result.failures : []).map((f) => f && f.sentence_id));
+  const homesInOrder = [];
+  for (const s of sentences) {
+    if (s && s.home !== undefined && !homesInOrder.includes(s.home)) {
+      homesInOrder.push(s.home);
+    }
+  }
+  const sentenceTags = (s) => {
+    const tags = [];
+    if (s && Array.isArray(s.claims) && s.claims.length > 0) {
+      tags.push(<span key="num" className="ui-check-tag">숫자 확인</span>);
+    }
+    if (s && Array.isArray(s.evidence) && s.evidence.length > 0) {
+      tags.push(<span key="ev" className="ui-check-tag">근거 {s.evidence.length}개</span>);
+    }
+    if (status === "handoff" && s && failedIds.has(s.id)) {
+      tags.push(<span key="fail" className="ui-check-tag is-fail">확인 필요</span>);
+    }
+    return tags;
+  };
+  const sentenceList = (
+    <VStack gap={2}>
+      {homesInOrder.map((h) => (
+        <VStack gap={1} key={h}>
+          <HStack gap={1} vAlign="center">
+            <span className="ui-pick-disc" data-home={h} aria-hidden="true">{h}</span>
+            <Text type="supporting">{((names || {})[h] || "").trim() || h}</Text>
+          </HStack>
+          {sentences.filter((s) => s && s.home === h).map((s) => (
+            <p key={s.id}>{s.text_ko} {sentenceTags(s)}</p>
+          ))}
+        </VStack>
+      ))}
+    </VStack>
+  );
+  const timeline = attempts.length > 0 && (
+    <VStack gap={1}>
+      <span className="ui-result-sect">비교 리포트 검증</span>
+      <div className="ui-check-steps">
+        {attempts.map((a, i) => (
+          <span key={a.attempt ?? i}>
+            {i > 0 && <span aria-hidden="true"> → </span>}
+            <span title={a.summary_ko || ""}
+              className={`ui-check-step${a.pass ? " is-pass" : " is-fail"}`}>
+              {reportStepLabel(a.attempt ?? (i + 1), a.pass,
+                a.weighted_coverage ?? 0)}
+            </span>
+          </span>
+        ))}
+        {status === "checking" && (
+          <span>
+            {attempts.length > 0 && <span aria-hidden="true"> → </span>}
+            <span className="ui-check-step">{attempts.length + 1}차 확인 중…</span>
+          </span>
+        )}
+      </div>
+      {attempts.map((a, i) => (!a.pass ? (
+        <span key={`reason-${a.attempt ?? i}`} className="ui-check-reason"
+          {...(currentLang() === "ko" ? { "data-no-i18n": true } : null)}>
+          {`${a.attempt ?? (i + 1)}차 반려 · ${String(a.summary_ko || "").replace(/^검증 실패:\s*/, "")}`}
+        </span>
+      ) : null))}
+    </VStack>
+  );
+  if (status === "checking" && attempts.length === 0) {
+    return (
+      <Text type="supporting">Muse가 비교 리포트를 쓰고, 코드가 숫자와 근거를 확인하는 중…</Text>
+    );
+  }
+  if (status === "checking") return (<VStack gap={2}>{timeline}</VStack>);
+  if (status === "failed") {
+    return (
+      <VStack gap={2}>
+        {timeline}
+        <Text type="supporting">리포트 검증을 하지 못했어요 (연결 문제).</Text>
+        <Button size="sm" variant="secondary" label="다시 검증하기"
+          onClick={() => onRetry && onRetry()} />
+      </VStack>
+    );
+  }
+  if (status === "unsupported") {
+    return (
+      <VStack gap={2}>
+        {timeline}
+        <p><span className="ui-check-badge">미지원</span>{` 이 가족 유형(${(PERSONA_KO[report.persona] || report.persona || "")})은 아직 시뮬레이션 시나리오가 없어 비교 리포트를 검증할 수 없어요.`}</p>
+      </VStack>
+    );
+  }
+  if (status === "handoff") {
+    return (
+      <VStack gap={2}>
+        {timeline}
+        {sentenceList}
+        <Text type="supporting">{(result && result.feedback_ko && result.feedback_ko[0]) || ""}</Text>
+      </VStack>
+    );
+  }
+  if (status === "pass") {
+    return (
+      <VStack gap={2}>
+        {timeline}
+        {sentenceList}
+        <Text type="supporting">Muse가 쓰고, 코드가 숫자를 다시 계산하고, Muse가 근거 기록을 한 번 더 판정했어요.</Text>
+      </VStack>
+    );
+  }
+  return (<VStack gap={2}>{timeline}</VStack>);
+}
+
 export function ResultSummary({ data }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
@@ -827,7 +980,7 @@ export function plainRunError(message) {
   return "30일 살아 보기를 끝내지 못했어요. 다시 시도해 주세요.";
 }
 
-export function SimulationCard({ data, example, onRetry, onScene }) {
+export function SimulationCard({ data, example, onRetry, onScene, onReportRetry }) {
   if (!data) return null;
   if (data.status === "running") {
     const p = data.progress || { done: 0, total: 1, label: "" };
@@ -911,6 +1064,7 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
             })}
           </VStack>
         )}
+        <ReportCheck report={data.report} names={names} onRetry={onReportRetry} />
         <DiarySection diary={data.diary} customId={data.customId} onScene={onScene} />
         {calcs.length > 0 && (
           <details className="ui-section">
@@ -1157,8 +1311,22 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         {msg.kind === "simulation" && (
           <div data-sim-card={msg.id} id={`sim-card-${msg.id}`}>
             <SimulationCard data={data} example={msg.example}
-              onRetry={handlers.onRun} onScene={handlers.onScene} />
+              onRetry={handlers.onRun} onScene={handlers.onScene}
+              onReportRetry={() => handlers.onReportRetry(msg.id)} />
           </div>
+        )}
+        {msg.kind === "handoff" && (
+          <VStack gap={2}>
+            <Text>{(data && data.question_ko) || ""}</Text>
+            {!(data && data.done) && (
+              <HStack gap={1}>
+                <Button size="sm" label="확인했어요"
+                  onClick={() => handlers.onHandoffConfirm(msg.id)} />
+                <Button size="sm" variant="secondary" label="다시 검증하기"
+                  onClick={() => handlers.onReportRetry(data && data.simId)} />
+              </HStack>
+            )}
+          </VStack>
         )}
         {msg.kind === "listing" && (
           <ListingCard onAsk={handlers.onAsk} />
@@ -1721,6 +1889,8 @@ export function ChatScreen() {
   const profileRef = useRef(null);
   useEffect(() => { profileRef.current = profile; }, [profile]);
   const dataRef = useRef(null); // {index, network, schedule, manifest, regionsKey}
+  // 29j3: slim report inputs per sim message id (for 다시 검증하기).
+  const reportInputsRef = useRef({});
   const stateRef = useRef({ messages, toolRows, profile, candidatesData, picks, exampleId, scenario });
   stateRef.current = { messages, toolRows, profile, candidatesData, picks, exampleId, scenario,
     intake, household, overrides, usageLog };
@@ -2085,6 +2255,75 @@ export function ChatScreen() {
     liveResearch(next);
   }
 
+  // 29j3: run → report. Fires the verify step without blocking the
+  // result card or the diary; attempt lines stream into the timeline.
+  async function requestReport(simId, inputs) {
+    const { persona, labels, slim, homes, names } = inputs;
+    if (!LIVE_API) {
+      setMessages((prev) => prev.map((m) => (m.id === simId
+        ? { ...m, data: { ...m.data, report: { status: "off" } } } : m)));
+      return;
+    }
+    setMessages((prev) => prev.map((m) => (m.id === simId
+      ? { ...m, data: { ...m.data, report: { status: "checking", persona, attempts: [] } } } : m)));
+    let byoKey = "";
+    try {
+      byoKey = loadByoKey(typeof sessionStorage !== "undefined" ? sessionStorage : null, provider);
+    } catch { /* no storage — server key path */ }
+    try {
+      const done = await postReportStream({ provider, persona, labels,
+        runs: slim, homes, names, lang: LANG, byoKey }, (ev) => {
+        if (ev && ev.type === "attempt") {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== simId || !m.data || !m.data.report
+              || m.data.report.status !== "checking") return m;
+            return { ...m,
+              data: { ...m.data,
+                report: { ...m.data.report,
+                  attempts: [...m.data.report.attempts, ev] } } };
+          }));
+        }
+      });
+      setMessages((prev) => prev.map((m) => (m.id === simId
+        ? { ...m, data: { ...m.data, report: { ...done, persona, attempts: done.attempts } } } : m)));
+      if (done && done.status === "handoff") {
+        pushMsg({ role: "assistant", kind: "handoff",
+          data: { question_ko: done.handoff.question_ko, simId } });
+      }
+    } catch {
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== simId || !m.data) return m;
+        return { ...m,
+          data: { ...m.data,
+            report: { ...((m.data && m.data.report) || {}), status: "failed" } } };
+      }));
+    }
+  }
+
+  function onReportRetry(simId) {
+    const inputs = reportInputsRef.current[simId];
+    if (!inputs) return;
+    setMessages((prev) => prev.map((m) => (m && m.kind === "handoff"
+      && m.data && m.data.simId === simId
+      ? { ...m, data: { ...m.data, done: true } } : m)));
+    requestReport(simId, inputs);
+  }
+
+  function onHandoffConfirm(handoffId) {
+    const hm = stateRef.current.messages.find((m) => m && m.id === handoffId);
+    const simId = hm && hm.data && hm.data.simId;
+    setMessages((prev) => prev.map((m) => {
+      if (m.id === handoffId) return { ...m, data: { ...m.data, done: true } };
+      if (simId && m.id === simId && m.data && m.data.report) {
+        return { ...m, data: { ...m.data,
+          report: { ...m.data.report, confirmed: true } } };
+      }
+      return m;
+    }));
+    pushMsg({ role: "assistant", kind: "text",
+      content: "확인해 주셔서 고마워요. 확인이 필요한 문장은 표시해 둔 채로 결과를 열어 둘게요." });
+  }
+
   async function handleRun(idsOverride = null) {
     setWorkOpen(true);
     const st = stateRef.current;
@@ -2250,6 +2489,18 @@ export function ChatScreen() {
       // 18d: the finished result replaces the progress in the same
       // card — keep it in view.
       soon(() => scrollChatToSim(simId));
+      // 29j3: the comparison report goes through the verify step
+      // without blocking the result card or the diary.
+      {
+        const persona = personaFor(st.profile, { noCommute });
+        const reportHomes = Object.fromEntries(
+          labels.map((l) => [l, verifyHomeFor(moneyDoc, l)]));
+        const slim = Object.fromEntries(
+          labels.map((l) => [l, slimRunForReport(runs[l])]));
+        reportInputsRef.current[simId] = { persona, labels,
+          slim, homes: reportHomes, names: payload.names };
+        requestReport(simId, reportInputsRef.current[simId]);
+      }
       // 27d: the diary follows without blocking the result card.
       if (LIVE_API) {
         try {
@@ -2328,10 +2579,13 @@ export function ChatScreen() {
       .filter((m) => m.role === "user" && m.kind === "text"
         && typeof m.content === "string" && m.content)
       .map((m) => m.content).slice(-6), text];
+    // 29j3: Muse sees whether the comparison report is verified.
+    const reportStatus = latestReportStatus(st.messages);
     const ctx = { ...agentContext(store.getState()), lang: LANG,
       candidates: liveCands,
       picks: st.picks.map((id, i) => ({ label: "ABC"[i], id })),
-      work_open: workOpen, profile: st.profile || null, customer_text };
+      work_open: workOpen, profile: st.profile || null, customer_text,
+      ...(reportStatus === undefined ? {} : { report_status: reportStatus }) };
     try {
       let byoKey = "";
       try {
@@ -2423,7 +2677,15 @@ export function ChatScreen() {
         else if (eff.type === "run") await handleRun(lastPickIds);
         else if (eff.type === "say") {
           pushMsg({ role: "assistant", kind: "text", content: eff.text });
-        } else if (eff.type === "scene") store.set({ pendingScene: eff });
+        } else if (eff.type === "scene") {
+          // 29j3: the 3D result opens only after the comparison
+          // report is verified.
+          if (eff.panel === "result"
+            && !reportUnlocked(stateRef.current.messages)) {
+            pushMsg({ role: "assistant", kind: "text",
+              content: "비교 리포트를 검증하는 중이에요. 통과하면 결과를 열게요." });
+          } else store.set({ pendingScene: eff });
+        }
       }
       // 13: per-turn usage into the 모델 panel log.
       setUsageLog((log) => recordTurn(log, {
@@ -2893,6 +3155,8 @@ export function ChatScreen() {
     onPreview3D: handlePreview3D,
     onJeonse: handleJeonse,
     onRun: handleRun,
+    onReportRetry,
+    onHandoffConfirm,
     onAsk: (text) => send(text),
     onIntakeAnswer: handleIntakeAnswer,
     onIntakeSkip: handleIntakeSkip,
@@ -2931,6 +3195,13 @@ export function ChatScreen() {
   const trayCandidates = (candidatesData && candidatesData.result.candidates) || [];
   const trayResultReady = resultReadyFor(messages, picks, trayCandidates);
   const handleViewResult = () => {
+    // 29j3: the 3D result opens only after the comparison report is
+    // verified.
+    if (!reportUnlocked(messages)) {
+      pushMsg({ role: "assistant", kind: "text",
+        content: "비교 리포트를 검증하는 중이에요. 통과하면 결과를 열게요." });
+      return;
+    }
     // On the narrow Chat / Map toggle the result lives in Chat.
     if (narrow) setView("chat");
     const sim = [...messages].reverse().find((m) => m && m.kind === "simulation");

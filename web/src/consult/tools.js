@@ -28,6 +28,8 @@ import { PRIORITY_GROUPS, PRIORITY_METRICS, validateWeights } from "../prioritie
 import { safetyView } from "../safety.js";
 import { educationCounts, schoolRoute } from "../education.js";
 import { glossDef, glossaryTerms } from "../ui/glossary.js";
+import { SUBMIT_REPORT_DEF } from "./report-def.js";
+import { runComparisonLoop } from "../verify/compare.js";
 
 export const CONSULT_AREAS = [
   { id: "pangyo", label: "판교" },
@@ -247,6 +249,7 @@ export const TOOL_DEFS = [
   { type: "function", function: { name: "start_life_run",
     description: "고객이 '살아 봐 줘'처럼 요청했을 때만, 찜한 집들로 30일 살아 보기를 시작한다.",
     parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  SUBMIT_REPORT_DEF,
 ];
 
 for (const def of MONEY_TOOL_DEFS) TOOL_DEFS.push(def);
@@ -1286,6 +1289,12 @@ function open_panel(session, args) {
   if (a.time !== undefined && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(a.time)) {
     return fail(`time must be "HH:MM" (got ${JSON.stringify(a.time)})`);
   }
+  if (a.panel === "result") {
+    const st = session.context && session.context.report_status;
+    if (!["pass", "handoff", "unsupported"].includes(st)) {
+      return fail(`the result opens only after the comparison report is verified (report_status: ${st || "none"}) — tell the customer the report is still being checked`);
+    }
+  }
   const ui = { action: "panel", panel: a.panel };
   if (a.home !== undefined) ui.home = a.home;
   if (a.candidate_id !== undefined) ui.candidate_id = a.candidate_id;
@@ -1307,11 +1316,52 @@ function start_life_run(session, args) {
   return { ok: true, ui: { action: "run" } };
 }
 
+async function submit_report(session, args) {
+  const ctx = session.report;
+  if (!ctx) {
+    return fail("submit_report runs only in the report step after a 30-day run (the runs are not in this conversation)");
+  }
+  const sentences = args && args.sentences;
+  if (!Array.isArray(sentences) || sentences.length > 40
+      || !sentences.every((s) => s && typeof s === "object")) {
+    return fail("sentences must be an array of at most 40 objects");
+  }
+  const { result, attempts, handoff } = await runComparisonLoop({
+    draft: { persona: ctx.persona, sentences },
+    revise: ctx.revise,
+    runs: ctx.runs, labels: ctx.labels, homes: ctx.homes,
+    persona: ctx.persona, groundTruth: ctx.groundTruth,
+    judge: ctx.judge, onAttempt: ctx.onAttempt,
+  });
+  const status = result.status === "미지원" ? "unsupported"
+    : result.pass ? "pass" : handoff ? "handoff" : "fail";
+  session.reportStatus = status;
+  const by_home = {};
+  for (const label of ctx.labels) {
+    const r = (result.by_home && result.by_home[label]) || {};
+    by_home[label] = { unsupported: r.unsupported ?? null,
+      inapplicable: r.inapplicable ?? null };
+  }
+  return { ok: true, status,
+    report: attempts.length > 0 ? attempts[attempts.length - 1].report : null,
+    attempts: attempts.map(({ attempt, summary_ko, result: r }) => ({ attempt,
+      summary_ko, pass: !!r.pass,
+      weighted_coverage: r.weighted_coverage ?? null,
+      must_coverage: r.must_coverage ?? null })),
+    handoff,
+    result: { pass: !!result.pass,
+      weighted_coverage: result.weighted_coverage ?? null,
+      must_coverage: result.must_coverage ?? null,
+      feedback_ko: result.feedback_ko ?? [],
+      failures: (result.failures || []).map(({ sentence_id, item_id, home, kind, reason_ko }) => ({ sentence_id, item_id, home, kind, reason_ko })),
+      by_home } };
+}
+
 const HANDLERS = {
   get_scenario, update_scenario, list_areas, list_complexes, find_places,
   neighborhood,
   list_stations, run_simulation, compare, get_day, explain_decision, set_view,
-  open_panel, pick_homes, start_life_run,
+  open_panel, pick_homes, start_life_run, submit_report,
   list_criteria, explain_criterion, get_journey, get_fatigue,
   apply_persona, get_priorities, set_priorities, get_safety, get_education,
   define_term,

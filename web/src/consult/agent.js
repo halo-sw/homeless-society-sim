@@ -10,6 +10,10 @@ import { costUsd } from "../judge/run.js";
 import {
   TOOL_DEFS, MAX_TOOL_ROUNDS, createSession, callTool,
 } from "./tools.js";
+
+export function chatToolDefs() {
+  return TOOL_DEFS.filter((t) => t.function.name !== "submit_report");
+}
 import { checkConsultReply, numbersOnlyAnswer, actionConfirmation, isMostlyKorean } from "./guards.js";
 import { isRunRequest } from "../chat/intent.js";
 
@@ -330,6 +334,14 @@ export function formatAgentContext(ctx) {
       (p && typeof p === "object" ? `${p.label}=${p.id}` : String(p)));
     line += ` 찜: ${labels.join(", ")}.`;
   }
+  if (ctx.report_status) {
+    const word = ctx.report_status === "pass" ? "통과"
+      : ctx.report_status === "handoff" ? "확인 요청"
+      : ctx.report_status === "unsupported" ? "미지원"
+      : ctx.report_status === "checking" ? "검증 중"
+      : ctx.report_status === "fail" ? "실패" : ctx.report_status;
+    line += ` 비교 리포트 검증: ${word}.`;
+  }
   return line;
 }
 
@@ -413,7 +425,7 @@ export async function runTurn(opts) {
   for (;;) {
     rounds++;
     const res = await complete({
-      provider, messages: requestMessages(), tools: TOOL_DEFS,
+      provider, messages: requestMessages(), tools: chatToolDefs(),
       maxTokens: 2000,
     });
     usage.prompt_tokens += (res.usage && res.usage.prompt_tokens) || 0;

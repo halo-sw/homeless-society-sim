@@ -113,7 +113,8 @@
       "label_ko": "야간 귀갓길 안전",
       "label_en": "Night-time walk-home safety",
       "evidence_events": [
-        "late_return"
+        "dark_walk",
+        "late_home"
       ],
       "keywords": [
         "귀갓길",
@@ -123,8 +124,8 @@
         "safety",
         "night"
       ],
-      "engine": "none",
-      "engine_source": "no event kind: late_return"
+      "engine": "supported",
+      "engine_source": "life-events: household commute trips arriving home after sunset (dark_walk) and trips arriving home at/after 22:00 (late_home); evidence = trip ids"
     },
     {
       "id": "C07",
@@ -452,7 +453,7 @@
           "label_ko": "늦은 귀가 시 대중교통 막차",
           "label_en": "Late-night transit availability",
           "evidence_events": [
-            "late_return"
+            "late_home"
           ],
           "keywords": [
             "막차",
@@ -460,8 +461,8 @@
             "late-night",
             "last train"
           ],
-          "engine": "none",
-          "engine_source": "no event kind: late_return"
+          "engine": "partial",
+          "engine_source": "life-events: household trips arriving home at/after 22:00 (late_home); evidence = trip ids. No last-train timetable in the engine."
         },
         {
           "id": "N04",
