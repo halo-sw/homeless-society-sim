@@ -1515,10 +1515,15 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ds-lp-exrow { border: 0; border-radius: 0; background: transparent; }
 .ds-lp-exrow + .ds-lp-exrow { border-top: 1px solid var(--ds-line); }
 .ds-lp-exprompt { font-size: var(--ds-t-16); }
+.ds-lp-judge { display: flex; flex-wrap: wrap; justify-content: center;
+  gap: var(--ds-s-8); margin-top: var(--ds-s-16); }
 .ds-lp-btn { border-radius: var(--ds-r-pill); font-size: var(--ds-t-14);
   font-weight: var(--ds-w-medium); cursor: pointer; white-space: nowrap;
-  display: inline-flex; align-items: center; }
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 40px; padding: 0 var(--ds-s-16); text-decoration: none; }
 .ds-lp-btn--sm { height: 32px; padding: 0 var(--ds-s-12); }
+.ds-lp-btn--primary { background: var(--ds-action); color: var(--ds-surface);
+  border: 1px solid var(--ds-action); }
 .ds-lp-btn--ghost { background: transparent; border: 1px solid var(--ds-line);
   color: var(--ds-ink-2); }
 .ds-lp-btn--secondary { background: var(--ds-sunken);
@@ -1568,6 +1573,8 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ds-lp-h { font-size: 26px; }
   .ds-lp-title { font-size: 32px; }
   .ds-lp-ctatitle { font-size: 32px; }
+  .ds-lp-judge { flex-direction: column; align-items: center; }
+  .ds-lp-judge .ds-lp-btn { max-width: 100%; }
   .ds-lp-proof { max-width: 300px; margin-left: auto; margin-right: auto;
     gap: var(--ds-s-8) var(--ds-s-16); justify-content: center; text-align: center; }
   .ds-lp-prooffact + .ds-lp-prooffact { border-left: 0; }
