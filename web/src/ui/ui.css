@@ -747,6 +747,27 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   display: flex; flex-direction: column; gap: 16px; }
 .ui-chat-empty-label { font-size: 14px; font-weight: 600;
   color: var(--ui-ink); margin: 0; }
+/* 29b2: mic button reads as part of the composer, not a browser default. */
+.ui-voice-mic { display: inline-flex; align-items: center;
+  justify-content: center; gap: var(--ds-s-4); height: 32px; min-width: 32px;
+  padding: 0 var(--ds-s-8); margin-right: var(--ds-s-4); border: 0;
+  border-radius: var(--ds-r-pill); background: transparent;
+  color: var(--ds-ink-2); font-size: var(--ds-t-12);
+  font-variant-numeric: tabular-nums; cursor: pointer; white-space: nowrap; }
+.ui-voice-mic:hover:not(:disabled) { background: var(--ds-sunken);
+  color: var(--ds-ink-1); }
+.ui-voice-mic:focus-visible { outline: 2px solid var(--ds-ink-1);
+  outline-offset: 2px; }
+.ui-voice-mic:disabled { cursor: default; color: var(--ds-ink-3); }
+.ui-voice-mic-rec { background: var(--ds-sunken); color: var(--ds-ink-1);
+  padding: 0 var(--ds-s-12); }
+.ui-voice-dot { width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ds-danger, var(--ds-error, #c8433a));
+  animation: ui-voice-pulse 1.2s infinite; }
+@keyframes ui-voice-pulse { 50% { opacity: .35 } }
+@media (prefers-reduced-motion: reduce) {
+  .ui-voice-dot { animation: ui-voice-pulse 0s; }
+}
 .ui-chat-empty-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .ui-chat-empty-row > * { flex: none; }
 .ui-chat-empty-cards { display: grid; gap: 12px;

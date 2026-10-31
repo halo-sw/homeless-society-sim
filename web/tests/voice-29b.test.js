@@ -190,3 +190,23 @@ describe("29b MicButton", () => {
     assert.equal(voiceSupported({}), false);
   });
 });
+
+describe("29b2 mic button composer styling", () => {
+  it("ui.css rules cover the mic, rec state, dot and reduced motion", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(new URL("../src/ui/ui.css", import.meta.url), "utf8");
+    assert.ok(css.includes(".ui-voice-mic"));
+    assert.ok(css.includes("height: 32px"));
+    assert.ok(css.includes(".ui-voice-mic-rec"));
+    assert.ok(css.includes(".ui-voice-dot"));
+    const blocks = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\}/g) || [];
+    assert.ok(blocks.some((block) => block.includes("ui-voice-pulse")));
+  });
+
+  it("voice-button.jsx dot has no glyph or hard-coded color", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/ui/voice-button.jsx", import.meta.url), "utf8");
+    assert.ok(!src.includes("●"));
+    assert.ok(!src.includes("#d33"));
+  });
+});

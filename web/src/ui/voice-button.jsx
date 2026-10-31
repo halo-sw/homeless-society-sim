@@ -115,8 +115,7 @@ export function MicButton({ onText, disabled, onNotice }) {
       <button type="button" className="ui-voice-mic ui-voice-mic-rec"
         aria-label="녹음 멈추기" title="녹음 멈추기" aria-pressed="true"
         onClick={() => { finish().catch(() => {}); }}>
-        <span className="ui-voice-dot" aria-hidden="true"
-          style={{ color: "var(--ds-danger, #d33)" }}>●</span>
+        <span className="ui-voice-dot" aria-hidden="true" />
         <span data-no-i18n>{formatElapsed(elapsedSec)}</span>
       </button>
     );
