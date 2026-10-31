@@ -3,8 +3,9 @@
 // Two variants: "row" (default, the chat list — name first, ~112 px)
 // and "full" (the 19a side-panel detail — photo, name, price first).
 // SSR-safe.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { TENURE_KO } from "../profile.js";
 import { fmtWon } from "../money/format.js";
@@ -21,38 +22,61 @@ export function tenurePriceLine(candidate, tenure) {
   const t = (candidate.tenures || []).find((x) => x.tenure === tenure)
     || candidate.tenures?.[0] || null;
   if (!t || t.median_won === null || t.median_won === undefined) {
-    return { price: "가격 미정", sub: "실거래 없음", deals: 0, fit: "unknown" };
+    return { price: "가격 미정", basis: "실거래 없음", sub: "실거래 없음",
+      deals: 0, fit: "unknown" };
   }
-  // 26c: a USD row shows its dollar rent with the ZIP estimate source
-  // ("월세 월 $4,261 · ZIP 94025 추정 (Zillow)"); no deal counts.
+  // 32b: price is the amount only (one line); the source basis rides
+  // separately so the row can set it in small type below.
+  // 26c: a USD amount is the dollar rent ("월세 월 $4,261"); no deal counts.
   if (currencyOf(candidate) === "USD" || currencyOf(t) === "USD") {
     const label = TENURE_KO[t.tenure] || t.tenure;
     const zip = candidate.price && candidate.price.zip;
-    return { price: `${label} ${fmtMoney(t.median_won, "USD", { monthly: t.tenure === "wolse" })}`
-        + (zip ? ` · ZIP ${zip} 추정 (Zillow)` : ""),
-      sub: "", deals: 0, fit: t.budget_fit, thin: t.thin_deal || null,
+    const basis = zip ? `ZIP ${zip} 추정 (Zillow)` : "";
+    return { price: `${label} ${fmtMoney(t.median_won, "USD", { monthly: t.tenure === "wolse" })}`,
+      basis, sub: basis, deals: 0, fit: t.budget_fit, thin: t.thin_deal || null,
       range: [t.min_won, t.max_won], usd: true };
   }
   const label = TENURE_KO[t.tenure] || t.tenure;
   const deals = t.deals || 0;
-  const sub = `실거래 중간값 · ${deals}건`;
+  const basis = `실거래 중간값 · ${deals}건`;
   if (t.tenure === "wolse" && t.deposit_median_won !== null) {
     return { price: `${label} ${fmtWon(t.deposit_median_won)}/${fmtWon(t.median_won)}`,
-      sub, deals, fit: t.budget_fit, thin: t.thin_deal || null,
+      basis, sub: basis, deals, fit: t.budget_fit, thin: t.thin_deal || null,
       range: [t.min_won, t.max_won] };
   }
-  return { price: `${label} ${fmtWon(t.median_won)}`, sub, deals,
+  return { price: `${label} ${fmtWon(t.median_won)}`, basis, sub: basis, deals,
     fit: t.budget_fit, thin: t.thin_deal || null, range: [t.min_won, t.max_won] };
 }
 
-// 26c: a work estimate (Meta HQ) reads "…까지 자전거 12분 · 걷기 37분
-// · 추정 (속도 가정)" with the used mode first.
-function usWorkLine(work) {
+// 32b: the pre-split joined string — the result table and the pin card
+// keep their text through this helper.
+export function tenurePriceJoined(candidate, tenure) {
+  const p = tenurePriceLine(candidate, tenure);
+  return p.basis ? `${p.price} · ${p.basis}` : p.price;
+}
+
+// 32b: the short work line (used mode first) carries no workplace name
+// and no estimate words — the name repeats the list title, and the one
+// estimate marker is a Badge. The full sentence lives in the line's title.
+function usWorkShort(work) {
   const bike = Math.round(work.bike_minutes);
   const walk = Math.round(work.walk_minutes);
   const first = work.mode === "walk" ? `걷기 ${walk}분` : `자전거 ${bike}분`;
   const second = work.mode === "walk" ? `자전거 ${bike}분` : `걷기 ${walk}분`;
-  return `${work.name}까지 ${first} · ${second} · 추정 (속도 가정)`;
+  return `${first} · ${second}`;
+}
+
+function usWorkRow(work, workName) {
+  const short = usWorkShort(work);
+  const name = typeof work.name === "string" ? work.name : "";
+  const known = typeof workName === "string" && workName !== ""
+    && (name === workName || name.startsWith(workName));
+  return {
+    text: known || !name ? short : `${name}까지 ${short}`,
+    estimate: true,
+    source: "estimate",
+    title: name ? `${name}까지 ${short} · 추정 (가정 속도)` : `${short} · 추정 (가정 속도)`,
+  };
 }
 
 export function commuteShortLine(candidate, destName) {
@@ -95,7 +119,7 @@ export function pinCardModel(pin, { tenure, picks } = {}) {
   const picked = ids.includes(String(pin && pin.id));
   return {
     title: displayNameFor(candidate),
-    price: tenurePriceLine(candidate, tenure).price,
+    price: tenurePriceJoined(candidate, tenure),
     commute: commuteRowLine(candidate).text,
     picked,
     canPick: picked || ids.length < PIN_CARD_MAX_PICKS,
@@ -105,7 +129,7 @@ export function pinCardModel(pin, { tenure, picks } = {}) {
 export function commuteRowLine(candidate, destName) {
   const c = candidate.commute;
   if (!c) return { text: "출퇴근 정보를 확인 중이에요", estimate: false, source: "unknown" };
-  if (c.work) return { text: usWorkLine(c.work), estimate: true, source: "estimate" };
+  if (c.work) return usWorkRow(c.work, destName);
   const walkKnown = !!(c.walk && c.walk.known);
   const rideKnown = !!(c.ride && c.ride.known
     && Number.isFinite(c.ride.minutes) && c.ride.minutes > 0);
@@ -218,27 +242,164 @@ export function areaForCandidate(candidate) {
   return { country: candidate.country };
 }
 
-function RowThumb({ candidate, hero }) {
+// 32b: the street-level photo slot. Stage 32c wires Mapillary here;
+// in this stage the slot always falls through.
+export async function streetPhotoFor(candidate) {
+  void candidate;
+  return null;
+}
+
+// 32b: the row thumbnail order — complex photo, 3D miniature, street
+// photo, building silhouette, MiniMap. No aerial photo in the row
+// thumbnail any more (it stays an option on the opened card).
+export function thumbKindFor(candidate, { hasHero = false, hasStreet = false, hasFootprint = false } = {}) {
+  if (hasHero) return "hero";
+  if (candidate && candidate.scene) return "scene";
+  if (hasStreet) return "street";
+  if (hasFootprint || (candidate && candidate.footprint)) return "silhouette";
+  return "minimap";
+}
+
+// 32b: the credit for our own model views (3D miniature, silhouette).
+export function modelCreditFor(candidate) {
+  const us = (candidate && candidate.country === "US")
+    || (candidate && Number.isFinite(candidate.lon) && Number.isFinite(candidate.lat)
+      && isUsLonLat(candidate.lon, candidate.lat));
+  return us ? "우리 자료로 만든 모형 (OSM)" : "우리 자료로 만든 모형 (GIS건물통합정보·OSM)";
+}
+
+// 32b: the nearest building footprint ring (lon/lat pairs) for the home —
+// the same lookup the 3D thumb uses (the area's buildings for the home's
+// lon/lat). Returns { ring, building } or null.
+export function silhouetteFootprintFor(area, home) {
+  const buildings = (area && area.buildings) || [];
+  if (!home || !Number.isFinite(home.lon) || !Number.isFinite(home.lat)) return null;
+  let best = null;
+  let bestD = Infinity;
+  for (const b of buildings) {
+    const geom = b && b.geometry;
+    if (!geom || !geom.coordinates) continue;
+    const polys = geom.type === "Polygon" ? [geom.coordinates]
+      : geom.type === "MultiPolygon" ? geom.coordinates : [];
+    for (const poly of polys) {
+      const ring = poly[0] || [];
+      if (ring.length < 4) continue;
+      let minLon = Infinity;
+      let minLat = Infinity;
+      let maxLon = -Infinity;
+      let maxLat = -Infinity;
+      for (const [lon, lat] of ring) {
+        if (lon < minLon) minLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lon > maxLon) maxLon = lon;
+        if (lat > maxLat) maxLat = lat;
+      }
+      if (minLon === Infinity) continue;
+      const d = Math.hypot((minLon + maxLon) / 2 - home.lon, (minLat + maxLat) / 2 - home.lat);
+      if (d < bestD) { bestD = d; best = { ring, building: b }; }
+    }
+  }
+  if (!best || bestD > 0.005) return null;
+  return best;
+}
+
+function silhouettePoints(ring) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [lon, lat] of ring) {
+    if (lon < minX) minX = lon;
+    if (lat < minY) minY = lat;
+    if (lon > maxX) maxX = lon;
+    if (lat > maxY) maxY = lat;
+  }
+  const w = Math.max(maxX - minX, 1e-9);
+  const h = Math.max(maxY - minY, 1e-9);
+  const pad = 8;
+  return ring.map(([lon, lat]) => `${(pad + ((lon - minX) / w) * (100 - pad * 2)).toFixed(2)},${(pad + ((maxY - lat) / h) * (100 - pad * 2)).toFixed(2)}`).join(" ");
+}
+
+// 32b: the building silhouette — the home's own footprint from above,
+// north up, scaled to fit, with a floors/year label when known.
+export function SilhouetteThumb({ footprint = null, floors = null, year = null,
+  candidate = null, fallback = null }) {
+  const ring = Array.isArray(footprint) ? footprint : null;
+  if (!ring || ring.length < 3) return fallback;
+  const bits = [Number.isFinite(floors) && floors > 0 ? `${Math.round(floors)}층` : null,
+    Number.isFinite(year) && year > 0 ? `${Math.round(year)}년` : null].filter(Boolean);
+  const credit = modelCreditFor(candidate);
+  return (
+    <figure className="ui-thumb ui-silhouette" title={credit}>
+      <svg viewBox="0 0 100 100" role="img" aria-label={`건물 모양 (${credit})`}>
+        <polygon points={silhouettePoints(ring)}
+          fill="var(--ds-ink-1)" fillOpacity={0.12}
+          stroke="var(--ds-ink-1)" strokeWidth={1.5} strokeLinejoin="round" />
+      </svg>
+      {bits.length > 0 && (
+        <figcaption className="ui-silhouette-flag">
+          <Text type="supporting">{bits.join(" · ")}</Text>
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+// 32b: the street-level photo thumb. Takes an already-resolved photo when
+// the caller picked the branch; otherwise asks streetPhotoFor itself.
+export function StreetThumb({ candidate = null, photo = null }) {
+  const [resolved, setResolved] = useState(photo || null);
+  useEffect(() => {
+    if (photo) { setResolved(photo); return undefined; }
+    let live = true;
+    streetPhotoFor(candidate).then((s) => { if (live) setResolved(s || null); });
+    return () => { live = false; };
+  }, [candidate && candidate.id, photo]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!resolved) return null;
+  const src = resolved.thumb_url || resolved.url;
+  if (!src) return null;
+  return (
+    <figure className="ui-thumb">
+      <img src={src} alt={resolved.title || "거리 사진"} loading="lazy" />
+      <figcaption>
+        <Text type="supporting">거리 사진</Text>
+      </figcaption>
+    </figure>
+  );
+}
+
+function RowThumb({ candidate, hero, street = null, footprint = null }) {
   if (hero) {
     return (
       <img src={hero.thumb_url} alt={hero.title || "단지 사진"} loading="lazy"
         title={`${hero.credit} · 원본 보기`} />
     );
   }
-  const sceneBranch = candidate.scene ? (
-    <SceneThumb boxId={candidate.scene}
-      home={{ lon: candidate.lon, lat: candidate.lat }}
-      fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
-  ) : (
-    <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
-  );
-  if (aerialLiveFor(candidate)) {
+  const kind = thumbKindFor(candidate, { hasStreet: !!street,
+    hasFootprint: !!(footprint || (candidate && candidate.footprint)) });
+  if (kind === "scene") {
     return (
-      <AerialThumb lon={candidate.lon} lat={candidate.lat} width={96} height={96}
-        fallback={sceneBranch} name={candidate.name} />
+      <SceneThumb boxId={candidate.scene}
+        home={{ lon: candidate.lon, lat: candidate.lat }}
+        fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
     );
   }
-  return sceneBranch;
+  if (kind === "street") {
+    return (
+      <StreetThumb candidate={candidate} photo={street} />
+    );
+  }
+  if (kind === "silhouette") {
+    return (
+      <SilhouetteThumb footprint={footprint || candidate.footprint}
+        floors={candidate.floors ?? null} year={candidate.build_year}
+        candidate={candidate}
+        fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+    );
+  }
+  return (
+    <MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />
+  );
 }
 
 // 19c: the supporting walk/ride breakdown for the full card.
@@ -281,13 +442,36 @@ function RowSourceTag({ row }) {
   );
 }
 
+// 32b: an estimated commute carries exactly one marker — a neutral small
+// 추정 badge (a plain span: the Badge component repeats its label in a
+// title, which would count the word twice). Other sources keep the
+// plain meta tag.
+function RowEstimateTag({ row }) {
+  if (!row) return null;
+  if (row.estimate) {
+    return (
+      <span className="ui-cand-est"><span className="ui-est-badge">추정</span></span>
+    );
+  }
+  return <RowSourceTag row={row} />;
+}
+
 export function CandidateCard({ candidate, tenure, destName, photos, index,
   onLive, onJeonse, onDetail, picked = false, variant = "row",
   pickLetter = null, highlighted = false, note = "", budgetWon = null }) {
   const [slide, setSlide] = useState(0);
+  const [street, setStreet] = useState(null);
+  useEffect(() => {
+    let live = true;
+    streetPhotoFor(candidate).then((s) => { if (live && s) setStreet(s); });
+    return () => { live = false; };
+  }, [candidate && candidate.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const price = tenurePriceLine(candidate, tenure);
   const row = commuteRowLine(candidate, destName);
   const facts = factsFor(candidate, price, budgetWon, tenure);
+  // 32b: the row meta line — basis · kind · budget fit.
+  const metaBits = [price.basis, candidate.kind,
+    budgetFactFor(candidate, price, budgetWon, tenure)].filter(Boolean);
   const pickLabel = pickAriaLabel(candidate);
   // 26c: one ZIP rent, so the title names its source vintage.
   const rangeTitle = currencyOf(candidate) === "USD" ? usRangeTitle(candidate)
@@ -301,11 +485,15 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
   if (variant === "full") return (
     <FullCard candidate={candidate} price={price} facts={facts} row={row}
       hero={hero} rest={rest} slide={slide} setSlide={setSlide}
-      picked={picked} rangeTitle={rangeTitle} pickLabel={pickLabel}
+      street={street} picked={picked} rangeTitle={rangeTitle} pickLabel={pickLabel}
       onLive={onLive} onJeonse={onJeonse} />
   );
   const disc = picked ? (pickLetter || String((index ?? 0) + 1)) : String((index ?? 0) + 1);
   const rowClick = rowClickHandler(onDetail, candidate);
+  const thumbKind = thumbKindFor(candidate, { hasHero: !!hero, hasStreet: !!street,
+    hasFootprint: !!(candidate && candidate.footprint) });
+  const thumbTitle = thumbKind === "scene" || thumbKind === "silhouette"
+    ? modelCreditFor(candidate) : undefined;
   return (
     <article className={`ui-cand-row${picked ? " is-picked" : ""}${highlighted ? " is-hi" : ""}`}
       role="button" tabIndex={0}
@@ -315,8 +503,8 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" && onDetail) onDetail(candidate);
       }}>
-      <div className="ui-cand-thumb">
-        <RowThumb candidate={candidate} hero={hero} />
+      <div className="ui-cand-thumb" title={thumbTitle}>
+        <RowThumb candidate={candidate} hero={hero} street={street} />
       </div>
       <div className="ui-cand-row-main">
         <div className="ui-cand-row-top">
@@ -328,9 +516,9 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
             onClick={() => onLive && onLive(candidate)} />
         </div>
         <div className="ui-cand-row-price ui-num" title={rangeTitle}>{price.price}</div>
-        <div className="ui-cand-row-facts ui-num">{facts.join(" · ")}</div>
-        <div className="ui-cand-row-commute ui-num">
-          {row.text}{row.source && row.source !== "unknown" ? " " : null}<RowSourceTag row={row} />
+        <div className="ui-cand-row-meta ui-num">{metaBits.join(" · ")}</div>
+        <div className="ui-cand-row-commute ui-num" title={row.title}>
+          {row.text}{row.estimate || (row.source && row.source !== "unknown") ? " " : null}<RowEstimateTag row={row} />
         </div>
         {candidate.kind_mismatch && <Text type="supporting">{KIND_MISMATCH_KO}</Text>}
         {note && <Text type="supporting">{`살아 보기 불가 · ${note}`}</Text>}
@@ -350,10 +538,21 @@ function usRangeTitle(candidate) {
 }
 
 function FullCard({ candidate, price, facts, row, hero, rest,
-  slide, setSlide, picked, rangeTitle, pickLabel, onLive, onJeonse }) {
+  slide, setSlide, street = null, picked, rangeTitle, pickLabel, onLive, onJeonse }) {
   const shot = rest.length > 0 ? rest[slide % rest.length] : null;
   const hasCoords = Number.isFinite(candidate.lon) && Number.isFinite(candidate.lat);
-  const showHero = !!(hero || candidate.scene || hasCoords);
+  const footprint = (candidate && candidate.footprint) || null;
+  // 32b: the hero view switch — only the available views, aerial stays
+  // as the last option. Default is the first available in row order.
+  const views = [];
+  if (candidate.scene) views.push({ value: "scene", label: "3D" });
+  if (street) views.push({ value: "street", label: "거리 사진" });
+  if (footprint) views.push({ value: "silhouette", label: "건물 모양" });
+  if (hasCoords) views.push({ value: "aerial", label: "항공" });
+  const [view, setView] = useState(null);
+  const active = views.some((v) => v.value === view) ? view
+    : (views[0] ? views[0].value : null);
+  const showHero = !!(hero || views.length > 0);
   const sceneFallback = candidate.scene ? (
     <SceneThumb boxId={candidate.scene}
       home={{ lon: candidate.lon, lat: candidate.lat }}
@@ -370,13 +569,36 @@ function FullCard({ candidate, price, facts, row, hero, rest,
             <a href={hero.page_url} target="_blank" rel="noreferrer" title={`${hero.credit} · 원본 보기`}>
               <img src={hero.thumb_url} alt={hero.title || "단지 사진"} loading="lazy" />
             </a>
-          ) : hasCoords ? (
-            <AerialThumb lon={candidate.lon} lat={candidate.lat} width={320} height={180}
-              fallback={sceneFallback} name={candidate.name} />
-          ) : (
-            <SceneThumb boxId={candidate.scene}
-              home={{ lon: candidate.lon, lat: candidate.lat }}
-              fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+          ) : null}
+          {views.length > 0 && (
+            <div className="ui-cand-view">
+              {views.length > 1 && (
+                <SegmentedControl label="미리보기 선택" value={active}
+                  onChange={(v) => setView(v)} size="sm">
+                  {views.map((v) => (
+                    <SegmentedControlItem key={v.value} value={v.value} label={v.label} />
+                  ))}
+                </SegmentedControl>
+              )}
+              {active === "scene" && (
+                <SceneThumb boxId={candidate.scene}
+                  home={{ lon: candidate.lon, lat: candidate.lat }}
+                  fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+              )}
+              {active === "street" && (
+                <StreetThumb candidate={candidate} photo={street} />
+              )}
+              {active === "silhouette" && (
+                <SilhouetteThumb footprint={footprint}
+                  floors={candidate.floors ?? null} year={candidate.build_year}
+                  candidate={candidate}
+                  fallback={<MiniMap lon={candidate.lon} lat={candidate.lat} name={candidate.name} />} />
+              )}
+              {active === "aerial" && (
+                <AerialThumb lon={candidate.lon} lat={candidate.lat} width={320} height={180}
+                  fallback={sceneFallback} name={candidate.name} />
+              )}
+            </div>
           )}
           {hero && <span className="ui-cand-label">{hero.label}</span>}
         </div>
