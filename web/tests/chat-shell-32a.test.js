@@ -141,7 +141,7 @@ describe("32a SSR chat shell", () => {
     assert.ok(html.includes("astryx-chat-message-list"), "list renders");
   });
 
-  it("suggestions render inside the composer drawer, not a sibling row", () => {
+  it("next steps render in the thread, after the last message", () => {
     const noop = () => {};
     const el = suggestionDrawerFor({ messages: [{ role: "assistant", content: "a" }],
       chipsNearBottom: true, museFails: 0, replayId: null, profile: null,
@@ -159,7 +159,8 @@ describe("32a SSR chat shell", () => {
     assert.ok(at > chatSrc.indexOf("function suggestionDrawerFor")
       && at < chatSrc.indexOf("function ReplayNotice"),
       "the chip row lives inside the drawer builder only");
-    assert.ok(chatSrc.includes("drawer={suggestionDrawer}"), "composer takes the drawer");
+    assert.ok(chatSrc.includes('className="ui-next-steps"'), "in-thread row");
+    assert.ok(!chatSrc.includes("drawer={suggestionDrawer}"), "no drawer on the composer");
   });
 
   it("the replay notice renders through Banner with both actions", () => {
@@ -300,16 +301,13 @@ describe("32a2 thread width source", () => {
       "no ResizeHandle while narrow");
   });
 
-  it("the drawer starts collapsed and folds after a chip is used", () => {
-    assert.ok(chatSrc.includes("open: drawerOpen, onOpenChange: setDrawerOpen"),
-      "shell owns the drawer state");
-    assert.ok(chatSrc.includes("isCollapsed={onOpenChange ? !open : undefined}"),
-      "controlled collapse with an uncontrolled fallback");
-    for (const fn of ["onSend: (text) => { setDrawerOpen(false);",
-      "onAction: (chip) => { setDrawerOpen(false);",
-      "onReplay: () => { setDrawerOpen(false);"]) {
-      assert.ok(chatSrc.includes(fn), `folds after use: ${fn.slice(0, 12)}`);
-    }
+  it("the next move shows in the thread once the turn lands", () => {
+    assert.ok(chatSrc.includes('className="ui-next-steps"'),
+      "in-thread row replaces the drawer");
+    assert.ok(chatSrc.includes("aria-label=\"다음으로 해 볼 것\""),
+      "labelled next-steps group");
+    assert.ok(chatSrc.includes("nextVisible") && chatSrc.includes("!(replayId && replaying)"),
+      "hidden while busy, empty, or replaying");
   });
 
   it("tray placement never puts the full tray on the narrow chat pane", () => {

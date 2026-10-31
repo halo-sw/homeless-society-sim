@@ -1304,6 +1304,44 @@ export function chipsForLatest(messages, fallback) {
   return fallback;
 }
 
+// 29h2: the next move, from the thread's state. Stage chip first, then
+// Muse's suggestions on the latest assistant text, at most 4, no repeats.
+export function nextStepChips({ messages = [], picks = [], currency = null } = {}) {
+  const list = Array.isArray(messages) ? messages : [];
+  let stage = null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (!m || m.role !== "assistant") continue;
+    if (m.kind === "simulation" && m.data && m.data.status === "done") {
+      stage = ["출근길 보여 줘", "한 달에 얼마 들어?", "동네 걸어 보기"];
+      break;
+    }
+    if (m.kind === "candidates") {
+      const cands = m.data && m.data.result && m.data.result.candidates;
+      if (Array.isArray(cands) && cands.length >= 2) {
+        stage = (Array.isArray(picks) ? picks : []).length >= 2
+          ? ["두 집에서 살아 봐 줘"]
+          : ["1번, 2번 담아 줘"];
+        break;
+      }
+    }
+  }
+  const rule = chatChipsFor(currency);
+  if (!stage) return { chips: [...chipsForLatest(list, rule)], live: chipsForLatest(list, rule) !== rule };
+  const extra = chipsForLatest(list, []);
+  const chips = [...stage];
+  for (const s of extra) {
+    if (!chips.includes(s)) chips.push(s);
+    if (chips.length >= 4) break;
+  }
+  return { chips: chips.slice(0, 4), live: true };
+}
+
+// 29h2: the user's bubble shows the words in the page's language.
+export function sendTextFor(c) {
+  return currentLang() === "en" ? (translateExact(c) || c) : c;
+}
+
 // 30g: the "기록된 대화 보기" replay entry lives as the first suggestion
 // chip (above the composer), never below it. Same condition the old
 // bottom fallback used: Muse failed, or the off/keyless notice is on
@@ -1568,9 +1606,6 @@ export function ChatScreen() {
   const [usageLog, setUsageLog] = useState(() => newUsageLog());
   const [provider, setProvider] = useState("meta");
   const [view, setView] = useState("chat");
-  // 32a2: the composer drawer starts collapsed with its count summary;
-  // a used chip folds it again.
-  const [drawerOpen, setDrawerOpen] = useState(false);
   // 26p: phones show the pane toggle (대화 / 지도·후보) on its own row
   // under the top bar; wider screens keep it inside the bar (extra).
   // SSR-safe (false on the server), so SSR keeps the in-bar toggle.
@@ -2301,12 +2336,14 @@ export function ChatScreen() {
         }
       }
       const bubble = turnBubble(out);
+      // 29h2: cards first, then Muse's words — the turn ends on the
+      // next move, never on a wall of cards.
+      appendToolCards(out.messages);
       // 26t: deterministic fallbacks (numbers-only, action confirmation)
       // stay translatable — only model-written text is fromModel.
       pushMsg({ role: "assistant", kind: "text", content: bubble.content || "",
         tool_calls: bubble.tool_calls, suggestions: [...suggestions],
         fromModel: !out.fallback });
-      appendToolCards(out.messages);
       // 27g: the Muse path never ran ensureData, so the map stayed on its
       // placeholder after Muse found homes. Fill it now (no await — the
       // workOpen effect re-renders when it lands).
@@ -2866,14 +2903,13 @@ export function ChatScreen() {
   // 32a: the mount follows the single 900 px narrow breakpoint.
   const tabsMount = paneTabsMount({ workOpen, phone: narrow });
   const narrowTabs = (<ChatPaneTabs view={view} onChange={setView} />);
-  // 32a: the suggestion chips ride the composer's drawer slot.
-  // 32a2: the shell owns the drawer state — collapsed until opened,
-  // folding again after any chip is used.
-  const suggestionDrawer = suggestionDrawerFor({ messages, chipsNearBottom,
-    museFails, replayId, profile, open: drawerOpen, onOpenChange: setDrawerOpen,
-    onSend: (text) => { setDrawerOpen(false); send(text); },
-    onAction: (chip) => { setDrawerOpen(false); chipAction(chip); },
-    onReplay: () => { setDrawerOpen(false); openReplay(); } });
+  // 29h2: the next move lives in the thread, after the last message —
+  // stage chip first, then Muse's suggestions. Rule chips go to
+  // chipAction; everything else is sent as a message.
+  const nextCur = profile && profile.currency && profile.currency.value;
+  const next = nextStepChips({ messages, picks, currency: nextCur });
+  const nextShowReplay = replayChipVisible({ museFails, messages, replayId });
+  const nextVisible = !busy && messages.length > 0 && !(replayId && replaying);
   // 31f: scroll a candidate card into view (best-effort).
   function scrollToCandidateCard(id) {
     try {
@@ -2945,7 +2981,6 @@ export function ChatScreen() {
                 <>
                   <ChatComposer onSubmit={send} isDisabled={busy || !!replayId}
                     value={composer} onChange={setComposer}
-                    drawer={suggestionDrawer}
                     sendActions={canVoice ? (
                       <MicButton onText={appendVoiceText}
                         disabled={busy || !!replayId}
@@ -2985,6 +3020,13 @@ export function ChatScreen() {
                       )}
                     </ChatMessageBubble>
                   </ChatMessage>
+                )}
+                {nextVisible && (
+                  <div className="ui-next-steps" role="group" aria-label="다음으로 해 볼 것">
+                    {nextShowReplay && <Button size="sm" variant="secondary" label={REPLAY_CHIP_LABEL} onClick={openReplay} />}
+                    {next.chips.map((c) => <Button key={c} size="sm" variant="secondary" label={c}
+                      onClick={() => (next.live ? send(sendTextFor(c)) : chipAction(c))} />)}
+                  </div>
                 )}
               </ThreadList>
               {replayId && !replaying && (

@@ -357,6 +357,10 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    the drawer surface owns the inset. */
 .ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: wrap;
   flex: none; padding: var(--ui-s8) 0; }
+/* 29h2: the next move sits in the thread, after the last message — it
+   starts at the same left edge as the message list (no side padding). */
+.ui-next-steps { display: flex; flex-wrap: wrap; gap: var(--ui-s8); padding-top: var(--ui-s4); }
+.ui-next-steps > * { flex: none; }
 /* 31a: one left edge — plain text, cards, the source line, chips and
    the composer all start at the message list's own 16px padding. */
 .ui-chat-thread .astryx-chat-message-list {
