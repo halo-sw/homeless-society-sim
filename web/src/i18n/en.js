@@ -375,6 +375,8 @@ const seedPhrases = {
   "레이크 해모로": "Lake Haemoro",
   // 33a: the working card header.
   "Muse가 일하는 중": "Muse is working",
+  // README check: the listing card button.
+  "예시로 채우기": "Fill with an example",
   "출근 중": "Commuting",
   // 29j3: the verified comparison on screen.
   "비교 리포트 검증": "Report check",
