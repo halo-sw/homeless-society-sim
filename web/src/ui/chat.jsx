@@ -56,6 +56,7 @@ import { newUsageLog, recordTurn } from "../models/catalog.js";
 import { loadByoKey } from "../consult/byok.js";
 import { buildChatMap, extractGreenRings } from "../chatmap.js";
 import { ChatMap } from "./chatmap.jsx";
+import { mapFilterChips, filterPatch } from "./map-filters.js";
 import { defaultOverrides, setOverride, resetOverride,
   encodeOverrides, decodeOverrides } from "../assumptions.js";
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
@@ -73,7 +74,7 @@ import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
-import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint, displayNameFor } from "../homes.js";
+import { HOME_SORTS, HOME_SORT_KO, HOME_SORT_SHORT_KO, applyKindPreference, usEmptyHint, displayNameFor } from "../homes.js";
 import { chipSourceIds } from "../sources.js";
 import { META_HQ_EXAMPLE } from "../places-us.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
@@ -419,17 +420,21 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
         </HStack>
         {candidates.length > 0 && (
-          <HStack gap={1} vAlign="center" wrap="wrap">
-            <DropdownMenu
-              button={{ label: HOME_SORT_KO[sort] || HOME_SORT_KO.commute, variant: "secondary", size: "sm" }}
-              menuWidth={220}
-              items={HOME_SORTS.map((s) => ({
-                label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
-                onClick: () => onSort && onSort(s),
-              }))} />
+          <div className="ui-cand-sortrow">
+            <div className="ui-cand-tabs" role="group" aria-label="정렬">
+              {HOME_SORTS.map((s) => (
+                <button key={s} type="button"
+                  className={`ui-cand-tab${s === sort ? " is-on" : ""}`}
+                  aria-pressed={s === sort ? "true" : "false"}
+                  aria-label={HOME_SORT_KO[s]} title={HOME_SORT_KO[s]}
+                  onClick={() => onSort && onSort(s)}>
+                  {HOME_SORT_SHORT_KO[s]}
+                </button>
+              ))}
+            </div>
             <Button size="sm" variant="secondary" label="지도에서 보기"
               onClick={() => onOpenWork && onOpenWork()} />
-          </HStack>
+          </div>
         )}
         {data && (
           <Text type="supporting">
@@ -563,7 +568,7 @@ export function diaryCheckLine(check) {
 export function SceneRowLink({ disc, when, text, url, title, onScene, noI18n }) {
   const cells = (
     <>
-      <span className="ui-pick-disc" aria-hidden="true">{disc}</span>
+      <span className="ui-pick-disc" aria-hidden="true"{...(/^[AB]$/.test(disc) ? { "data-home": disc } : null)}>{disc}</span>
       <span className="ui-result-when">{when}</span>
       <span className="ui-result-text" {...(noI18n ? { "data-no-i18n": true } : null)}>{text}</span>
     </>
@@ -640,7 +645,7 @@ export function ResultSummary({ data }) {
       <span aria-hidden="true" />
       {labels.map((l) => (
         <span key={l} className="ui-result-head">
-          <span className="ui-pick-disc" aria-hidden="true">{l}</span>
+          <span className="ui-pick-disc" aria-hidden="true"{...(/^[AB]$/.test(l) ? { "data-home": l } : null)}>{l}</span>
           <span className="ui-result-name"><HomeName name={(names[l] || "").trim() || l} /></span>
         </span>
       ))}
@@ -835,7 +840,7 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
               {calcs.map(({ label, mh }) => (
                 <VStack gap={1} key={label}>
                   <HStack gap={1} vAlign="center">
-                    <span className="ui-pick-disc" aria-hidden="true">{label}</span>
+                    <span className="ui-pick-disc" aria-hidden="true"{...(/^[AB]$/.test(label) ? { "data-home": label } : null)}>{label}</span>
                     <Text type="supporting">{(names[label] || "").trim() || label}</Text>
                   </HStack>
                   <HowCalculated tenure={mh.tenure} housing={mh.housingDoc}
@@ -1423,7 +1428,6 @@ export function ChatScreen() {
   const [overrides, setOverrides] = useState(() => defaultOverrides());
   const [namedPhotos, setNamedPhotos] = useState(null);
   const [cardHi, setCardHi] = useState(null);
-  const [orbFilter, setOrbFilter] = useState(null);
   // 18: corridor ground tiles (real 시군구 boundaries + open water)
   // intersecting the current pins; the map paints fine without them.
   const [mapTiles, setMapTiles] = useState([]);
@@ -1643,6 +1647,26 @@ export function ChatScreen() {
     store.set({ chatSummary: profileSummary(merged) });
     liveResearch(merged);
     pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
+  }
+
+  // 31h: map filter chips re-run the search through the same intake
+  // path (patch → applyIntakePatch → store → liveResearch, so the
+  // 조건 바뀜 toast confirms it). A null patch value clears its
+  // field — applyIntakePatch skips nulls, so cleared keys are
+  // deleted from the merged profile after the merge.
+  function handleFilterChange(patch) {
+    const clean = {};
+    const clears = [];
+    for (const [key, value] of Object.entries(patch || {})) {
+      if (value === null || value === undefined) clears.push(key);
+      else clean[key] = value;
+    }
+    const merged = applyIntakePatch(profileRef.current, clean);
+    for (const key of clears) delete merged[key];
+    profileRef.current = merged;
+    setProfile(merged);
+    store.set({ chatSummary: profileSummary(merged) });
+    liveResearch(merged);
   }
 
   function handleIntakeSkip(step) {
@@ -2627,6 +2651,20 @@ export function ChatScreen() {
   // 29a4: paneTabsMount keeps exactly one mount point per layout.
   const tabsMount = paneTabsMount({ workOpen, phone });
   const narrowTabs = (<ChatPaneTabs view={view} onChange={setView} />);
+  // 31f: scroll a candidate card into view (best-effort).
+  function scrollToCandidateCard(id) {
+    try {
+      const el = typeof document !== "undefined"
+        ? document.getElementById(`cand-${id}`) : null;
+      if (el && typeof el.scrollIntoView === "function") {
+        const reduced = typeof window !== "undefined" && window.matchMedia
+          && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        el.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+      }
+    } catch {
+      // Hover still highlights the card; scroll is best-effort.
+    }
+  }
 
   return (
     <div className={`ui-chat overlay${view === "work" ? " ui-chat-narrow-work" : ""}`}>
@@ -2776,23 +2814,20 @@ export function ChatScreen() {
             contextLine={stageContextLine(profile, candidatesData)}
             cardHi={cardHi}
             onPinHover={(key) => setCardHi(key)}
-            onPinClick={(id) => {
-              try {
-                const el = typeof document !== "undefined"
-                  ? document.getElementById(`cand-${id}`) : null;
-                if (el && typeof el.scrollIntoView === "function") {
-                  const reduced = typeof window !== "undefined" && window.matchMedia
-                    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-                  el.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
-                }
-              } catch {
-                // Hover still highlights the card; scroll is best-effort.
-              }
+            onPinClick={(id) => scrollToCandidateCard(id)}
+            onViewCard={(id) => {
+              // 31f: the pin card's 카드 보기 — on the narrow
+              // layout the card lives in the 대화 tab.
+              if (phone) setView("chat");
+              scrollToCandidateCard(id);
             }}
-            onOrbRegion={(regionId) => {
-              setOrbFilter(regionId);
-              toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
-            }} />
+            picks={picks} onTogglePick={handleTogglePick}
+            profile={profile}
+            kindsAvailable={Array.from(new Set(
+              ((candidatesData && candidatesData.result
+                && candidatesData.result.candidates) || [])
+                .map((c) => c && c.kind).filter(Boolean)))}
+            onFilterChange={handleFilterChange} />
           )}
           </MsgBoundary>
           )}
@@ -3010,11 +3045,42 @@ export function SceneFrame({ scene, onBack, onClose }) {
   );
 }
 
-export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine, onClose }) {
+// 31f: StageArea passes the picks wiring through so the map pin
+// card can 담기/빼기 with the same toggle as the candidate card.
+// 31h: the filter chip row is the top line (a real DropdownMenu per
+// chip, same ✓ look as the sort menu); the stage title drops to the
+// line under it. Chips render only with a profile + onFilterChange,
+// so older callers (and the empty stage) stay as they were.
+export function StageArea({ map, cardHi, onPinHover, onPinClick, onViewCard,
+  picks, onTogglePick, contextLine, onClose,
+  profile, kindsAvailable, onFilterChange }) {
   const regions = (map && map.regions) || [];
+  const kinds = Array.isArray(kindsAvailable) ? kindsAvailable
+    : Array.from(new Set(((map && map.pins) || [])
+      .map((p) => p && p.candidate && p.candidate.kind).filter(Boolean)));
+  const chips = (profile && onFilterChange)
+    ? mapFilterChips(profile, { kindsAvailable: kinds }) : [];
   return (
-    <section className="ui-chat-stage" aria-label="중심 무대">
+    <section className={chips.length > 0 ? "ui-chat-stage has-filters" : "ui-chat-stage"} aria-label="중심 무대">
       <div className="ui-chat-stage-body">
+        {chips.length > 0 && (
+          <div className="ui-chatmap-filters" role="group" aria-label="지도 조건">
+            {chips.map((chip) => (
+              <DropdownMenu key={chip.key} menuWidth={220}
+                renderTrigger={(props) => (
+                  <button type="button" {...props}
+                    className={chip.set ? "ui-chatmap-chip is-set" : "ui-float ui-chatmap-chip"}>
+                    {chip.label}
+                    <span aria-hidden="true" className="ui-chatmap-chev">▾</span>
+                  </button>
+                )}
+                items={chip.options.map((o) => ({
+                  label: `${o.selected ? "✓ " : ""}${o.label}`,
+                  onClick: () => onFilterChange(filterPatch(chip.key, o.value, profile)),
+                }))} />
+            ))}
+          </div>
+        )}
         <div className="ui-float ui-stage-title" role="status">
           {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
         </div>
@@ -3024,7 +3090,9 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, co
         </span>
         {regions.length > 0 ? (
           <ChatMap map={map} cardHi={cardHi}
-            onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />
+            onPinHover={onPinHover} onPinClick={onPinClick} onViewCard={onViewCard}
+            picks={picks} onTogglePick={onTogglePick}
+            hasFilters={chips.length > 0} />
         ) : (
           <div style={{ padding: 16 }}>
             <Card padding={3}>
@@ -3093,6 +3161,22 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
   const [workText, setWorkText] = useState("");
   const [workError, setWorkError] = useState("");
   const workRef = useRef(null);
+  const trayRef = useRef(null);
+  // 31j: the map credit clears the tray's real height — measure it
+  // and publish it as --ui-chat-tray-h on the chat root.
+  useEffect(() => {
+    const el = trayRef.current;
+    if (!el || typeof window === "undefined" || !window.ResizeObserver) return undefined;
+    const set = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      const host = (el.closest && el.closest(".ui-chat-main")) || document.documentElement;
+      if (host && host.style) host.style.setProperty("--ui-chat-tray-h", `${h}px`);
+    };
+    set();
+    const ro = new window.ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   if (picked.length === 0) return null;
   const needWorkplace = !!(gate && !gate.ok);
   // 31b: the run already finished for these picks — offer the result
@@ -3148,12 +3232,13 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
     }
   };
   return (
-    <div className="ui-picks-tray" role="group" aria-label="고른 집">
+    <div className="ui-picks-tray" role="group" aria-label="고른 집" ref={trayRef}>
       <div className="ui-picks-tray-row">
         <div className="ui-picks-tray-chips">
           {picked.map((c, i) => (
             <span key={c.id} className="ui-pick-chip">
-              <span className="ui-pick-disc" aria-hidden="true">
+              <span className="ui-pick-disc" aria-hidden="true"
+                data-home={/^[AB]$/.test(PICK_LETTERS[i] || "") ? PICK_LETTERS[i] : undefined}>
                 {PICK_LETTERS[i] || "·"}
               </span>
               <span className="ui-pick-name"><HomeName name={displayNameFor(c)} /></span>

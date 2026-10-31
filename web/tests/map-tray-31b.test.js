@@ -114,9 +114,9 @@ describe("31b legend and attribution leave inline styles", () => {
   });
 
   it("keeps both legend strings and both credit strings", () => {
-    assert.ok(chatmapSrc.includes("● 후보 · ■ 회사 · 숫자는 출근 편도(추정)"),
+    assert.ok(chatmapSrc.includes("번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사"),
       "us legend string");
-    assert.ok(chatmapSrc.includes("● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)"),
+    assert.ok(chatmapSrc.includes("번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철"),
       "kr legend string");
     assert.ok(chatmapSrc.includes(
       "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors"),
@@ -144,14 +144,20 @@ describe("31b one floating-panel style", () => {
     assert.ok(!rule[0].includes("999"), "never pill-shaped");
   });
 
-  it("gives the zoom buttons the shared surface at one height and size", () => {
-    assert.ok(chatmapSrc.includes('className="ui-float"'), "zoom uses .ui-float");
+  it("31h: gives the control-stack icon buttons one card size from tokens", () => {
+    assert.ok(chatmapSrc.includes('className="ui-float"'), "cards use .ui-float");
     const btn = css.match(/\.ui-chatmap-zoom button\s*\{[^}]*\}/);
     assert.ok(btn, "zoom button rule present");
-    assert.ok(btn[0].includes("var(--ds-s-32)"), "32 px tall from a token");
-    assert.ok(btn[0].includes("var(--ds-t-14)"), "14 px from a token");
+    assert.ok(btn[0].includes("calc(var(--ds-s-32) + var(--ds-s-8))"),
+      "40 px control buttons from tokens");
     assert.ok(!/#[0-9a-fA-F]{3,8}/.test(btn[0]), "no raw hex in the zoom rule");
     assert.ok(!/\d+px/.test(btn[0]), "no raw px in the zoom rule");
+    const icon = css.match(/\.ui-chatmap-side button svg\s*\{[^}]*\}/);
+    assert.ok(icon, "control icon rule present");
+    assert.ok(icon[0].includes("var(--ds-t-20)"), "20 px icons from a token");
+    const div = css.match(/\.ui-chatmap-zoom button \+ button\s*\{[^}]*\}/);
+    assert.ok(div, "zoom divider rule present");
+    assert.ok(div[0].includes("var(--ds-line)"), "divider on the line token");
   });
 
   it("renames the stage pill to plain floating text", () => {
@@ -162,25 +168,34 @@ describe("31b one floating-panel style", () => {
 });
 
 describe("31b pin z-order", () => {
-  it("paints every pill rect after every location circle and leader line", async () => {
+  it("paints every tag after every location circle and leader line", async () => {
     const html = await mapHtml();
     const dots = indices(html, 'r="4"');
     const leaders = indices(html, "<line");
-    const pills = indices(html, 'rx="999"');
-    assert.ok(dots.length >= 3, `location dots rendered (saw ${dots.length})`);
-    assert.ok(leaders.length >= 1, "close pills grow leaders");
-    assert.ok(pills.length >= 3, `pin pills rendered (saw ${pills.length})`);
-    assert.ok(Math.max(...dots, ...leaders) < Math.min(...pills),
-      "no dot or leader paints over a pill");
+    const tags = indices(html, 'data-layer="home-pin"');
+    assert.equal(tags.length, 5, "one tag per pin");
+    assert.ok(dots.length >= 1, `moved tags mark their spots (saw ${dots.length})`);
+    assert.ok(leaders.length >= 1, "close tags grow leaders");
+    assert.ok(Math.max(...dots, ...leaders) < Math.min(...tags),
+      "no dot or leader paints over a tag");
   });
 
-  it("renders the highlighted pill last", async () => {
+  it("renders the highlighted tag last", async () => {
     const html = await mapHtml({ cardHi: "home:h-3" });
-    const pills = indices(html, 'rx="999"');
-    assert.equal(pills.length, 5, "one pill per pin");
-    const zoom = html.indexOf("scale(1.08)");
-    assert.ok(zoom > 0, "highlighted pill scales");
-    assert.ok(pills[pills.length - 1] > zoom, "highlighted pill paints last");
+    const plain = await mapHtml();
+    const labelsOf = (src) => [...src.matchAll(
+      /data-layer="home-pin"[^>]*aria-label="([^"]*)"/g)].map((m) => m[1]);
+    assert.equal(labelsOf(html).length, 5, "one interactive tag per pin");
+    assert.deepEqual(labelsOf(html), labelsOf(plain),
+      "interactive tags keep the order of the render without cardHi");
+    const tops = html.match(/<g[^>]*data-layer="home-pin-top"[^>]*>/g) || [];
+    assert.equal(tops.length, 1, "one top-layer copy");
+    assert.ok(tops[0].includes('aria-hidden="true"'), "hidden from assistive tech");
+    assert.ok(!tops[0].includes("role="), "top-layer copy is non-interactive");
+    assert.ok(html.indexOf('data-layer="home-pin-top"') >
+      html.lastIndexOf('data-layer="home-pin"'),
+      "top-layer copy comes after every interactive home tag");
+    assert.ok(html.indexOf("scale(1.08)") > 0, "highlighted tag lifts");
   });
 });
 

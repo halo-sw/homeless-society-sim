@@ -122,7 +122,8 @@ describe("19g-3 workplace station keeps its dot, loses its label", () => {
       workPin: { lon: 127.1, lat: 37.4005, name: "판교" },
       stations: [
         { line: "수인분당", name: "판교", lon: 127.1, lat: 37.4006 },
-        { line: "수인분당", name: "야탑", lon: 127.1005, lat: 37.4002 },
+        // 31g: south of the pin so its label clears the taller tag.
+        { line: "수인분당", name: "야탑", lon: 127.1005, lat: 37.3990 },
       ],
       regions: [], tenure: "jeonse" } }));
     assert.ok(html.includes("회사 · 판교"), "work pill still names the station");

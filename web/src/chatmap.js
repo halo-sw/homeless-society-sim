@@ -22,7 +22,23 @@ export const MAP_COLORS = {
   pinFill: "#ffffff",
   pinText: "#1d1b18",
   pinPicked: "#2f6fed",
-  pinHi: "#2f6fed",
+  // 31f: A/B pick colours — these mirror the --ds-home-a /
+  // --ds-home-b tokens (the SVG cannot read CSS vars reliably in
+  // tests). A picked pill is filled with its letter's colour.
+  pinA: "#b3541e",
+  pinB: "#2f6fed",
+  // 31f: hover/highlight is no longer blue — it is a 2 px ink
+  // outline plus the lift, so it never reads as "picked B".
+  pinHi: "#1d1b18",
+  // 31f: default-pill border (mirrors --ds-line) and the unpicked
+  // ground dot (mirrors --ds-ink-2, so it differs from the black
+  // work marker).
+  pinLine: "#ddd6c8",
+  pinDot: "#5c564c",
+  // 31g: the commute line on a home tag (mirrors --ds-accent) and
+  // the count-circle fill (a soft translucent tint of it).
+  commute: "#2f6fed",
+  cluster: "rgba(47,111,237,0.18)",
   pickedRing: "#2f9e44",
   road: "#ffffff",
   roadCasing: "#e2ddd3",
@@ -426,6 +442,117 @@ export function pinPillWidthPx(short) {
   return 8 + 16 + 6 + tw + 8;
 }
 
+// 31g: the two-part home tag. Header text is `{n} · {area}㎡` (the
+// picked letter instead of n for A/B); the area mirrors what the
+// candidate card shows for 면적 (sizeLabel, else the tenure bucket
+// centre, else area_m2).
+// 31j: the same lines in English, built here (never by the DOM
+// translator) and measured in the rendering language, so the tag
+// fits its text. Phone tags (stage width ≤ 480 px) use the compact
+// type sizes below.
+export const TAG_HEADER_H = 18;
+
+function tagLineWidthPx(text, px) {
+  let tw = 0;
+  for (const ch of String(text || "")) tw += ch.codePointAt(0) > 0xff ? px : Math.round(px * 0.58);
+  return tw;
+}
+
+// 31j: tag type sizes — header / price / commute px, total side
+// padding, and the minimum tag width. Phone tags are compact.
+export function tagFontPx(opts) {
+  const c = !!(opts && opts.compact);
+  return c
+    ? { header: 10, price: 13, commute: 11, pad: 12, minW: 56, padX: 6 }
+    : { header: 11, price: 14, commute: 12, pad: 16, minW: 64, padX: 8 };
+}
+
+export function tagAreaM2(candidate) {
+  const c = candidate || {};
+  if (Number.isFinite(Number(c.area_m2)) && Number(c.area_m2) > 0) return Number(c.area_m2);
+  const first = (c.tenures || [])[0] || null;
+  if (first && Number.isFinite(Number(first.bucket_center_m2))) return Number(first.bucket_center_m2);
+  const m = String(c.sizeLabel || "").match(/[\d.]+/);
+  if (m && Number.isFinite(Number(m[0]))) return Number(m[0]);
+  return null;
+}
+
+// 31j: a missing or 0 area reads as just the number/letter —
+// never `3 · 0m²`. English headers use `30 m²`.
+export function tagHeaderFor(pin, lang) {
+  const p = pin || {};
+  const glyph = (p.picked && p.letter) ? p.letter : String(p.n ?? "");
+  const area = tagAreaM2(p.candidate);
+  if (!Number.isFinite(Number(area)) || Number(area) <= 0) return glyph;
+  const a = Number(area);
+  return lang === "en" ? `${glyph} · ${a} m²` : `${glyph} · ${a}㎡`;
+}
+
+const TENURE_FIRST = { jeonse: "전", wolse: "월", monthly: "월", sale: "매", maemae: "매" };
+
+// 31j: English tenure initials over the same short Korean-unit
+// price (`J 2억 7,000`, `M 60 / 1,000`, `S 3억`). USD stays `$4,261`.
+const TENURE_FIRST_EN = { jeonse: "J", wolse: "M", monthly: "M", sale: "S", maemae: "S" };
+const TENURE_KO_TO_EN = { 전: "J", 월: "M", 매: "S" };
+
+export function tagPriceLine(candidate, tenure, lang) {
+  const short = shortPinPrice(candidate, tenure);
+  if (!short || short === "가격 미정" || short.startsWith("$")) return short;
+  if (lang === "en") {
+    const pre = String(short).match(/^[전월매]\s*/);
+    if (pre) {
+      const initial = TENURE_KO_TO_EN[pre[0].trim()];
+      return `${initial} ${String(short).slice(pre[0].length)}`;
+    }
+    const list = (candidate && candidate.tenures) || [];
+    const entry = list.find((t) => t.tenure === tenure) || list[0] || null;
+    const initial = TENURE_FIRST_EN[tenure || (entry && entry.tenure)];
+    return initial ? `${initial} ${short}` : short;
+  }
+  if (/^[전월매]/.test(short)) return short;
+  const list = (candidate && candidate.tenures) || [];
+  const entry = list.find((t) => t.tenure === tenure) || list[0] || null;
+  const first = TENURE_FIRST[tenure || (entry && entry.tenure)];
+  return first ? `${first} ${short}` : short;
+}
+
+export function tagCommuteLine(pin, lang) {
+  const m = pin && pin.commuteMin;
+  if (m === null || m === undefined || !Number.isFinite(Number(m))) return null;
+  return lang === "en" ? `${Math.round(m)} min` : `출근 ${Math.round(m)}분`;
+}
+
+// 31j: one place for a tag's three lines in the rendering
+// language — the tag measures and paints exactly these strings.
+export function tagLines(pin, opts) {
+  const o = opts || {};
+  return {
+    header: tagHeaderFor(pin, o.lang),
+    price: tagPriceLine(pin && pin.candidate, o.tenure, o.lang),
+    commute: tagCommuteLine(pin, o.lang),
+  };
+}
+
+// 31g: measured tag size — the widest of the header / price /
+// commute lines + padding (minimum 64 px, 56 px compact). The
+// body shrinks away when there is no commute line. 31j: the width
+// is measured on the rendering-language lines.
+export function tagSizePx(pin, tenure, lang, opts) {
+  const t = tagFontPx(opts);
+  const lines = tagLines(pin, { tenure, lang });
+  const w = Math.max(t.minW, Math.ceil(Math.max(
+    tagLineWidthPx(lines.header, t.header),
+    tagLineWidthPx(lines.price, t.price),
+    lines.commute ? tagLineWidthPx(lines.commute, t.commute) : 0,
+  )) + t.pad);
+  return { w, h: TAG_HEADER_H + (lines.commute ? 46 : 26) };
+}
+
+// 31g: count-circle diameter — 36 px, 44 px when the count ≥ 100.
+export function clusterSizePx(count) {
+  return Number(count) >= 100 ? 44 : 36;
+}
+
 // Price-tag layout (18f — pure, stage px in, boxes out). Pins closer
 // than PIN_FAN_PX fan out around their true point (thin leader back
 // to it); each tag tries right, left, above, below, and otherwise
@@ -550,7 +677,9 @@ export function layoutPinLabels(points, W, H) {
 // Returns [{ id, kind, x, y, w, h, box, leader, count, members }] in
 // placement order — members lists the folded pill ids of a cluster
 // (kind "cluster"), leader is the box landing point ([lx, ly]) when the
-// pill sits off its anchor, else null.
+// pill sits off its anchor, else null. 31j: obstacles are stage-px
+// boxes treated as already occupied (the work marker's box, overlay
+// chrome) — rank 0 places before them, every tag after them.
 const PILL_GAP = 12;
 const PILL_PAD = 2;
 
@@ -586,7 +715,7 @@ export function clusterPillWidthPx(count) {
   return pinPillWidthPx(`+${count}`);
 }
 
-export function layoutMapPills(items, W, H) {
+export function layoutMapPills(items, W, H, obstacles) {
   const w = Math.max(1, Number(W) || 1);
   const h = Math.max(1, Number(H) || 1);
   const list = (items || []).map((p, i) => ({ ...p, _i: i }));
@@ -617,7 +746,24 @@ export function layoutMapPills(items, W, H) {
       w: tw, h: th, box, leader: moved ? nearestOnBox(box, p.x, p.y) : null,
       count: 0, members: null };
   };
+  // 31j: rank 0 (the work marker) always wins its home slot
+  // first; obstacles — the work marker's box, the top-left
+  // title/legend/filter stack, the right control column — then
+  // constrain every tag after it, which moves with a leader line
+  // instead of covering them.
   for (const p of list) {
+    if ((p.rank ?? 2) !== 0) continue;
+    const laid = placeOne(p);
+    if (laid) out.push(laid);
+    else spill.push(p);
+  }
+  for (const o of obstacles || []) {
+    if (!o || !Number.isFinite(o.x) || !Number.isFinite(o.y)
+      || !(o.w > 0) || !(o.h > 0)) continue;
+    taken.push({ x: o.x, y: o.y, w: o.w, h: o.h });
+  }
+  for (const p of list) {
+    if ((p.rank ?? 2) === 0) continue;
     const laid = placeOne(p);
     if (laid) out.push(laid);
     else spill.push(p);
@@ -646,8 +792,9 @@ export function layoutMapPills(items, W, H) {
       k += 1;
       const cx = members.reduce((s, p) => s + p.x, 0) / members.length;
       const cy = members.reduce((s, p) => s + p.y, 0) / members.length;
-      const cw = clusterPillWidthPx(members.length);
-      const ch = members[0].h || TAG_H_PX;
+      // 31g: clusters are count circles, not pills.
+      const cw = clusterSizePx(members.length);
+      const ch = cw;
       const cluster = { id: `cluster:${k}`, kind: "cluster",
         x: cx, y: cy, w: cw, h: ch, rank: 2 };
       const laid = placeOne(cluster) || { id: cluster.id, kind: "cluster",

@@ -29,7 +29,7 @@
   --ds-w-regular: 400; --ds-w-medium: 500; --ds-w-bold: 700;
   --ds-lh-tight: 1.25; --ds-lh-body: 1.6; --ds-lh-display: 1.3;
   --ds-s-4: 4px; --ds-s-8: 8px; --ds-s-12: 12px; --ds-s-16: 16px;
-  --ds-s-24: 24px; --ds-s-32: 32px; --ds-s-48: 48px;
+  --ds-s-24: 24px; --ds-s-32: 32px; --ds-s-40: 40px; --ds-s-48: 48px;
   --ds-r-chip: 8px; --ds-r-card: 12px; --ds-r-sheet: 16px;
   --ds-r-pill: 999px; --ds-r-composer: 20px;
   --ds-shadow-card: 0 1px 2px rgb(29 27 24 / 6%);
@@ -672,7 +672,22 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
    "P..."); the name takes the free width and may break a single long
    word only when it is wider than its column. */
 .ui-cand-row-top > button { flex: none; }
-.ui-cand-row-price { font-size: var(--ds-t-14); font-weight: var(--ui-w600); }
+/* 31i: the row price is the largest text on the card (name stays 14/600).
+   Spacing comes from the .ui-cand-row-main column gap. */
+.ui-cand-row-price { font-size: var(--ds-t-20); font-weight: var(--ds-w-bold); }
+/* 31i: sort as text tabs — tabs left, map button right, wrap before overflow. */
+.ui-cand-sortrow { display: flex; align-items: center; justify-content: space-between;
+  gap: var(--ds-s-8); flex-wrap: wrap; }
+.ui-cand-tabs { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; }
+.ui-cand-tab { appearance: none; background: none; border: none; cursor: pointer;
+  font-family: inherit; font-size: var(--ds-t-14); font-weight: var(--ds-w-regular);
+  color: var(--ds-ink-2); min-height: var(--ds-s-32);
+  padding: var(--ds-s-4) var(--ds-s-8); white-space: nowrap; }
+.ui-cand-tab + .ui-cand-tab { border-left: 1px solid var(--ds-line); }
+.ui-cand-tab.is-on { font-weight: var(--ds-w-bold); color: var(--ds-ink-1); }
+@media (max-width: 480px) {
+  .ui-cand-tab { min-height: var(--ds-s-40); }
+}
 .ui-cand-row-facts { font-size: var(--ui-t12); color: var(--ui-ink2); }
 .ui-cand-row-commute { font-size: var(--ui-t12); }
 /* 31a: source tags are plain meta text with the dot — never a pill. */
@@ -832,23 +847,71 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chatmap-side { position: absolute; z-index: 5;
   right: var(--ds-s-12); bottom: var(--ds-s-12);
   display: flex; flex-direction: column; align-items: flex-end;
-  gap: var(--ds-s-8); }
+  gap: var(--ds-s-8);
+  width: fit-content;
+  pointer-events: none; }
 .ui-chat-main:has(.ui-picks-tray) .ui-chatmap-side {
-  bottom: calc(var(--ds-s-48) * 2 + var(--ds-s-24) + var(--ds-s-16)); }
+  bottom: calc(var(--ui-chat-tray-h, calc(var(--ds-s-48) * 2 + var(--ds-s-24))) + var(--ds-s-16)); }
 /* 31b: the credit sits in the side column as 12 px meta on the same surface. */
 .ui-chatmap-credit { font-size: var(--ds-t-12); color: var(--ds-ink-2); }
 /* 31b: while the pick tray floats over the stage bottom, the credit
    lifts above it instead of sliding underneath. */
 .ui-chat-main:has(.ui-picks-tray) .ui-chatmap-credit {
   bottom: calc(var(--ds-s-48) * 2 + var(--ds-s-24)); }
-/* 25a: zoom buttons in the side column, above the credit and clear of
-   the tray. Each button is the shared surface, 32 px tall, 14 px. */
-.ui-chatmap-zoom { display: flex; flex-direction: column; gap: var(--ds-s-8); }
-.ui-chatmap-zoom button { height: var(--ds-s-32); min-width: var(--ds-s-32);
-  padding: 0 var(--ds-s-8); border: none;
-  font-size: var(--ds-t-14); font-weight: 700; line-height: 1;
+/* 31h: filter chips — the top line, left-aligned, one line that
+   scrolls sideways instead of wrapping. The row stops clear of the
+   close button; with chips the title drops to the line under it. */
+.ui-chatmap-filters { position: absolute; z-index: 6;
+  top: var(--ds-s-12); left: var(--ds-s-12);
+  right: calc(var(--ds-s-40) + var(--ds-s-12));
+  display: flex; gap: var(--ds-s-8); flex-wrap: nowrap;
+  overflow-x: auto; scrollbar-width: none;
+  width: fit-content; max-width: calc(100% - var(--ds-s-40) - var(--ds-s-12));
+  pointer-events: none; }
+.ui-chatmap-filters::-webkit-scrollbar { display: none; }
+.ui-chatmap-chip { flex: none; display: inline-flex; align-items: center;
+  gap: var(--ds-s-4); height: var(--ds-s-32);
+  padding-top: 0; padding-bottom: 0;
+  padding-left: var(--ds-s-12); padding-right: var(--ds-s-12);
+  border: none; border-radius: var(--ds-r-pill);
+  font-size: var(--ds-t-14); font-weight: 600; line-height: 1;
+  color: var(--ds-ink-1); cursor: pointer; white-space: nowrap; }
+.ui-chatmap-chip.is-set { background: var(--ds-action);
+  color: var(--ds-surface); box-shadow: var(--ui-shadow); }
+.ui-chatmap-chev { font-size: var(--ds-t-12); }
+@media (max-width: 480px) {
+  .ui-chatmap-chip { height: calc(var(--ds-s-32) + var(--ds-s-8)); }
+}
+/* 31h: with the chip row on top, the title and the legend each move
+   down one line, keeping their order. */
+.ui-chat-stage.has-filters .ui-stage-title {
+  top: calc(var(--ds-s-12) + var(--ds-s-32) + var(--ds-s-8)); }
+.ui-chatmap-legend.has-filters {
+  top: calc(var(--ds-s-12) + var(--ds-s-32) + var(--ds-s-8)
+    + var(--ds-s-32) + var(--ds-s-8)); }
+/* 31h: one bottom-right control stack — my-location, the zoom pair
+   on one card, then fit. Icon buttons on the shared surface; the
+   zoom pair splits one card with a divider. */
+.ui-chatmap-side > button { width: calc(var(--ds-s-32) + var(--ds-s-8));
+  height: calc(var(--ds-s-32) + var(--ds-s-8));
+  padding: 0; border: none; display: flex; align-items: center;
+  justify-content: center; color: var(--ds-ink-1); cursor: pointer; }
+.ui-chatmap-side > button[aria-busy="true"] { opacity: 0.55; }
+.ui-chatmap-side button svg { width: var(--ds-t-20);
+  height: var(--ds-t-20); flex: none; }
+.ui-chatmap-zoom { padding: 0; display: flex; flex-direction: column; }
+.ui-chatmap-zoom button { width: calc(var(--ds-s-32) + var(--ds-s-8));
+  height: calc(var(--ds-s-32) + var(--ds-s-8));
+  padding: 0; border: none; background: none;
+  display: flex; align-items: center; justify-content: center;
   color: var(--ds-ink-1); cursor: pointer; }
-.ui-chatmap-zoom button.fit { width: auto; font-weight: 600; }
+.ui-chatmap-zoom button + button { border-top: 1px solid var(--ds-line); }
+/* 31k: the overlay wrappers are click-through — only their own
+   controls catch clicks. The credit is text and stays inert. */
+.ui-chatmap-side > button,
+.ui-chatmap-side .ui-chatmap-zoom,
+.ui-chatmap-side .ui-chatmap-zoom button,
+.ui-chatmap-filters .ui-chatmap-chip { pointer-events: auto; }
 /* 19a: the only run button lives in this tray over the stage bottom. */
 .ui-picks-tray { position: absolute; bottom: 16px; z-index: 5;
   left: calc(var(--ui-thread-w) + 16px); right: 16px;
@@ -864,6 +927,38 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-ink); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; }
+/* 31f: A and B wear their own colours everywhere; discs without a
+   letter stay ink. */
+.ui-pick-disc[data-home="A"] { background: var(--ds-home-a); color: var(--ds-surface); }
+.ui-pick-disc[data-home="B"] { background: var(--ds-home-b); color: var(--ds-surface); }
+.ui-cand-disc[data-home="A"] { background: var(--ds-home-a); color: var(--ds-surface); }
+.ui-cand-disc[data-home="B"] { background: var(--ds-home-b); color: var(--ds-surface); }
+/* 31f: the map pin card — the shared float surface anchored above
+   (or below) its pin. The name wraps, never ellipsizes. */
+.ui-chatmap-pincard { position: absolute; z-index: 6; width: calc(var(--ds-s-48) * 5);
+  transform: translate(-50%, -100%);
+  display: flex; flex-direction: column; gap: var(--ds-s-8); }
+.ui-chatmap-pincard.is-below { transform: translate(-50%, 0); }
+.ui-pincard-row { display: flex; align-items: center; gap: var(--ds-s-8); }
+.ui-pincard-title { flex: 1 1 auto; min-width: 0;
+  font-size: var(--ds-t-14); font-weight: 700; color: var(--ui-ink);
+  overflow-wrap: anywhere; }
+.ui-pincard-price { font-size: var(--ds-t-14); font-weight: 600; color: var(--ui-ink); }
+.ui-pincard-commute { font-size: var(--ds-t-12); color: var(--ds-ink-2); }
+.ui-pincard-actions { display: flex; gap: var(--ds-s-8); }
+.ui-pincard-btn { flex: 1 1 0; border: 1px solid var(--ds-line);
+  border-radius: var(--ds-r-chip); background: var(--ui-card);
+  padding: var(--ds-s-8) var(--ds-s-12);
+  font-size: var(--ds-t-12); font-weight: 700; color: var(--ui-ink);
+  cursor: pointer; }
+.ui-pincard-btn.ghost { border-color: transparent; }
+.ui-pincard-btn:disabled { opacity: 0.5; cursor: default; }
+.ui-pincard-meta { font-size: var(--ds-t-12); color: var(--ds-ink-2); }
+.ui-pincard-x { flex: none; min-width: calc(var(--ds-s-32) - var(--ds-s-4));
+  min-height: calc(var(--ds-s-32) - var(--ds-s-4));
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  color: var(--ds-ink-2); font-size: var(--ds-t-14); line-height: 1; }
 .ui-pick-name { max-width: 180px; overflow-wrap: anywhere;
   word-break: keep-all; font-size: var(--ui-t14); }
 .ui-pick-x { background: none; border: none; cursor: pointer;
