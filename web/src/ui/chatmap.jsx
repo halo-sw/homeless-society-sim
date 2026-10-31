@@ -8,7 +8,7 @@
 // highlights its card back; clicking a pin scrolls to its card;
 // clicking a region still filters. SSR renders the container only.
 import { useEffect, useRef, useState } from "react";
-import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
+import { fitMapView, fitInsetFromChrome, layoutMapPills, layoutStationLabels, pickDongLabels,
   stationNameWidthPx, haversineKm,
   tagSizePx, tagLines, tagFontPx, clusterSizePx,
   MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
@@ -141,6 +141,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   // mount — null on SSR / first render, where the guessed boxes
   // below stand in.
   const [chrome, setChrome] = useState(null);
+  // 31n: the fit inset measured from the same chrome (stage px) —
+  // null on SSR / first render, where CHATMAP_INSET stands in.
+  const [fitPad, setFitPad] = useState(null);
   const [clusterHi, setClusterHi] = useState(null);
   // 25a: screen-space zoom/pan (zoom around W/2, H/2).
   const [vt, setVt] = useState({ zoom: 1, panX: 0, panY: 0 });
@@ -179,14 +182,24 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   // 31m: measure the overlay chrome into stage-px obstacle boxes —
   // the filter row and title (siblings above this mount), the
   // legend, each right-column control (its buttons, not the
-  // wrapper), the credit, and the open pin card. Each box is padded
-  // by 4 px. Re-measured on resize and whenever the card, the
-  // credit or the filters change.
+  // wrapper), the tray over the stage bottom, the credit, and the
+  // open pin card. Each box is padded by 4 px. Re-measured on
+  // resize and whenever the card, the credit, the picks or the
+  // filters change.
+  // 31n: the same pass also builds the fit inset from the measured
+  // chrome — the top-left stack bottom + one tag, the tray cover
+  // (or the credit height when the tray is off the map) + 16, the
+  // control-column width + 16. The inset only re-fits when a side
+  // moves more than 8 px, so no measure loop can form.
   useEffect(() => {
     const el = mountRef.current;
     if (!el || typeof document === "undefined" || typeof window === "undefined") {
       return undefined;
     }
+    const chatRoot = (el.closest && (el.closest(".ui-chat") || el.closest(".ui-chat-main"))) || null;
+    const trayNode = (chatRoot && chatRoot.querySelector
+      ? chatRoot.querySelector(".ui-picks-tray")
+      : document.querySelector(".ui-picks-tray")) || null;
     const measure = () => {
       const stage = el.getBoundingClientRect();
       if (!(stage.width > 0) || !(stage.height > 0)) return;
@@ -198,24 +211,76 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
         w: r.width * sx + 8,
         h: r.height * sy + 8,
       });
-      const boxes = [];
-      const push = (node) => {
-        if (!node || !node.getBoundingClientRect) return;
-        if (node.hasAttribute && node.hasAttribute("hidden")) return;
+      const visible = (node) => {
+        if (!node || !node.getBoundingClientRect) return null;
+        if (node.hasAttribute && node.hasAttribute("hidden")) return null;
         const r = node.getBoundingClientRect();
-        if (r && r.width > 0 && r.height > 0) boxes.push(toBox(r));
+        if (!r || !(r.width > 0) || !(r.height > 0)) return null;
+        return r;
+      };
+      const overlapRaw = (r) => {
+        const ix0 = Math.max(r.left, stage.left);
+        const ix1 = Math.min(r.right, stage.right);
+        const iy0 = Math.max(r.top, stage.top);
+        const iy1 = Math.min(r.bottom, stage.bottom);
+        if (!(ix1 > ix0) || !(iy1 > iy0)) return null;
+        return {
+          x: (ix0 - stage.left) * sx,
+          y: (iy0 - stage.top) * sy,
+          w: (ix1 - ix0) * sx,
+          h: (iy1 - iy0) * sy,
+        };
+      };
+      const boxes = [];
+      let stackBottom = 0;
+      const pushTop = (node) => {
+        const r = visible(node);
+        if (!r) return;
+        const b = toBox(r);
+        boxes.push(b);
+        stackBottom = Math.max(stackBottom, b.y + b.h);
+      };
+      const push = (node) => {
+        const r = visible(node);
+        if (r) boxes.push(toBox(r));
       };
       const scope = (el.closest && el.closest(".ui-chat-stage-body")) || el;
       if (scope && scope.querySelector) {
-        push(scope.querySelector(".ui-chatmap-filters"));
-        push(scope.querySelector(".ui-stage-title"));
+        pushTop(scope.querySelector(".ui-chatmap-filters"));
+        pushTop(scope.querySelector(".ui-stage-title"));
       }
-      push(el.querySelector(".ui-chatmap-legend"));
+      pushTop(el.querySelector(".ui-chatmap-legend"));
+      let colW = 0;
       const side = el.querySelector(".ui-chatmap-side");
       if (side && !(side.hasAttribute && side.hasAttribute("hidden"))) {
+        const sr = visible(side);
+        if (sr) {
+          const so = overlapRaw(sr);
+          if (so) colW = Math.max(colW, so.w);
+        }
         for (const child of side.children || []) {
           if (child.classList && child.classList.contains("ui-chatmap-credit")) continue;
           push(child);
+        }
+      }
+      // 31n: the tray's visible box over the stage is an obstacle
+      // for the tag layout too.
+      let trayCover = 0;
+      const tr = visible(trayNode);
+      if (tr) {
+        const to = overlapRaw(tr);
+        if (to) {
+          trayCover = to.h;
+          boxes.push({ x: to.x - 4, y: to.y - 4, w: to.w + 8, h: to.h + 8 });
+        }
+      }
+      let creditH = 0;
+      for (const sel of [".ui-chatmap-credit.is-phone",
+        ".ui-chatmap-side .ui-chatmap-credit"]) {
+        const cr = visible(el.querySelector(sel));
+        if (cr) {
+          const co = overlapRaw(cr);
+          if (co) creditH = Math.max(creditH, co.h);
         }
       }
       push(el.querySelector(".ui-chatmap-credit.is-phone"));
@@ -223,6 +288,29 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
       push(el.querySelector(".ui-chatmap-pincard"));
       setChrome((prev) => (
         JSON.stringify(prev) === JSON.stringify(boxes) ? prev : boxes));
+      // 31n: the tallest tag sets the room above the topmost pin.
+      const langM = currentLang();
+      const compactM = W <= 480;
+      let tagHM = 0;
+      for (const p of ((map && map.pins) || [])) {
+        try {
+          const s = tagSizePx(p, map.tenure, langM, { compact: compactM });
+          if (s && s.h > tagHM) tagHM = s.h;
+        } catch { /* keep the tallest so far */ }
+      }
+      if (!(tagHM > 0)) tagHM = 56;
+      const inset = fitInsetFromChrome({ W, H,
+        top: stackBottom,
+        bottom: trayCover > 0 ? trayCover : creditH,
+        right: colW, tagH: tagHM });
+      setFitPad((prev) => {
+        if (prev && Math.abs(prev.top - inset.top) <= 8
+          && Math.abs(prev.right - inset.right) <= 8
+          && Math.abs(prev.bottom - inset.bottom) <= 8
+          && Math.abs(prev.left - inset.left) <= 8) return prev;
+        if (prev && JSON.stringify(prev) === JSON.stringify(inset)) return prev;
+        return inset;
+      });
     };
     measure();
     const RO = window.ResizeObserver;
@@ -230,8 +318,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
     const ro = new RO(measure);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
+    if (trayNode) ro.observe(trayNode);
     return () => ro.disconnect();
-  }, [W, H, selectedId, creditOpen, hasFilters, (map && map.pins && map.pins.length) || 0]);
+  }, [W, H, selectedId, creditOpen, hasFilters, (map && map.pins && map.pins.length) || 0,
+    (map && map.tenure) || "", ((picks && picks.length) || 0)]);
   // 31j: the rendering language (tags build their own lines, never
   // the DOM translator) and the compact phone tag size.
   const lang = currentLang();
@@ -279,7 +369,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   // 25a: T applies the zoom/pan in screen space; every layer below
   // draws through toXYz, so pins, lines and labels always land inside
   // the frame while their sizes stay constant in px.
-  const fit = fitMapView(focus, W, H, MAP_FIT_MARGIN, CHATMAP_INSET);
+  // 31n: the fit uses the measured chrome inset (the fit button
+  // below resets to this same fit); CHATMAP_INSET is the SSR /
+  // first-render fallback.
+  const fit = fitMapView(focus, W, H, MAP_FIT_MARGIN, fitPad || CHATMAP_INSET);
   const { midLat } = fit;
   const T = viewTransform({ ...vt, cx: W / 2, cy: H / 2 });
   const toXYz = (lon, lat) => T.apply(fit.toXY(lon, lat));
@@ -367,10 +460,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   }
   // 31m: overlay chrome the tags must never cover — measured from
   // the DOM after mount (the filter row, title, legend, right
-  // controls, credit, open pin card). Until the first measure (SSR
-  // included) the old guessed boxes stand in: the top-left stack
-  // and the right control column. (The work marker's own box is
-  // already occupied: rank 0 places first.)
+  // controls, tray, credit, open pin card). Until the first measure
+  // (SSR included) the old guessed boxes stand in: the top-left
+  // stack and the right control column. 31n: the chrome is already
+  // occupied before rank 0 places, so the work marker moves too.
   const chromeFallback = [
     { x: 0, y: 0, w: Math.min(300, W * 0.5), h: hasFilters ? 140 : 100 },
     { x: W - 64, y: 0, w: 64, h: H },
@@ -1080,6 +1173,9 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
           <button type="button" aria-label="축소" title="축소"
             onClick={() => setVt((v) => zoomAt(v, 0.5, W / 2, H / 2, W / 2, H / 2))}><MinusIcon /></button>
         </div>
+        {/* 31n: "후보 모두 보기" resets to the same measured fit
+          above (fitMapView with fitPad): clearing the zoom/pan
+          re-frames every pin inside the chrome-free rectangle. */}
         <button type="button" className="ui-float" aria-label="후보 모두 보기"
           title="후보 모두 보기"
           onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}><FitIcon /></button>
