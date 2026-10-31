@@ -68,6 +68,7 @@ import { fmtMoney, currencyOf } from "../money/currency.js";
 import { monthlyHousingOf } from "../money/monthly.js";
 import { myScore, priorityValues } from "../priorities.js";
 import { pickMoments } from "../engine/moments.js";
+import { lifeEvents, lifeEventLines } from "../engine/life-events.js";
 import { oneWayByLabel, oneWayDelta, oneWaySentence } from "../verify/numbers.js";
 import { ShareDialog } from "./share.jsx";
 import { JeonseTab } from "./jeonse.jsx";
@@ -851,6 +852,14 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
               ))}
             </div>
           </details>
+        )}
+        {Array.isArray(data.lifeEvents) && data.lifeEvents.length > 0 && (
+          <VStack gap={1}>
+            <span className="ui-result-sect">살아 봐야 아는 것</span>
+            {lifeEventLines(data.lifeEvents, labels).map((line, i) => (
+              <Text key={i} type="supporting">{line}</Text>
+            ))}
+          </VStack>
         )}
         <details className="ui-section">
           <summary className="ui-section-head">자세히 보기</summary>
@@ -1962,6 +1971,15 @@ export function ChatScreen() {
       } catch {
         momentTexts = [];
       }
+      // 29c1: seated commutes + late walks home off the same runs.
+      let lifeRows = [];
+      try {
+        if (labels.length >= 2 && runs[labels[0]] && runs[labels[1]]) {
+          lifeRows = lifeEvents(runs[labels[0]], runs[labels[1]], { labels });
+        }
+      } catch {
+        lifeRows = [];
+      }
       compare.anchors = anchors;
       // 18d: the one customer-facing 출퇴근 편도 per home, straight off
       // the runs (door-to-door minutes per one-way commute = C01). The
@@ -1978,7 +1996,8 @@ export function ChatScreen() {
       }
       const payload = { status: "done", compare, moments, labels, customId,
         names: Object.fromEntries(picked.map((p, i) => [labels[i], displayNameFor(p)])),
-        moneyDoc, moneyMissing, anchors, momentTexts, extraLine, noCommute };
+        moneyDoc, moneyMissing, anchors, momentTexts, extraLine, noCommute,
+        lifeEvents: lifeRows };
       // The chat drawer tabs read the same custom docs as the sim.
       store.set({ compare });
       if (moneyDoc) {

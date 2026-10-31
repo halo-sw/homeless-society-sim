@@ -234,6 +234,7 @@ const seedPhrases = {
   "Muse가 생각하는 중…": "Muse is thinking…",
   "Muse가 기록을 읽고 일기를 쓰는 중…": "Muse is reading the record and writing the diary…",
   "살아 본 일기": "Live-in diary",
+  "살아 봐야 아는 것": "Only living there tells you",
   "30일 살아 보기 맡기기": "Hand off the 30-day live-in",
   "30일 살아 보기 맡김": "30-day live-in handed off",
   "3D 장면": "3D scene",
@@ -332,6 +333,16 @@ const seedPhrases = {
 const seedPatterns = [
   // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
   { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
+  // 29c1: seated-commute and late-walk-home card lines (whole-string).
+  { ko: "앉아서 간 출근: {0} {1}/{2}일 · {3} {4}/{5}일 (실측 혼잡도 {6}% 이하)", en: "Got a seat on the way to work: {0} {1}/{2} days · {3} {4}/{5} days (measured crowding ≤ {6}%)" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(역에서 걸어 평균 {2}분, 가장 늦게 {3}) · {4} {5}번(역에서 걸어 평균 {6}분, 가장 늦게 {7})", en: "Home after 10 pm: {0} {1} times (avg {2} min walk from the station, latest {3}) · {4} {5} times (avg {6} min walk from the station, latest {7})" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(역에서 걸어 평균 {2}분, 가장 늦게 {3}) · {4} {5}번", en: "Home after 10 pm: {0} {1} times (avg {2} min walk from the station, latest {3}) · {4} {5} times" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번(역에서 걸어 평균 {4}분, 가장 늦게 {5})", en: "Home after 10 pm: {0} {1} times · {2} {3} times (avg {4} min walk from the station, latest {5})" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(역에서 걸어 평균 {2}분) · {3} {4}번", en: "Home after 10 pm: {0} {1} times (avg {2} min walk from the station) · {3} {4} times" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번(역에서 걸어 평균 {4}분)", en: "Home after 10 pm: {0} {1} times · {2} {3} times (avg {4} min walk from the station)" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(가장 늦게 {2}) · {3} {4}번", en: "Home after 10 pm: {0} {1} times (latest {2}) · {3} {4} times" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번(가장 늦게 {4})", en: "Home after 10 pm: {0} {1} times · {2} {3} times (latest {4})" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번", en: "Home after 10 pm: {0} {1} times · {2} {3} times" },
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
   // 31a: diary show-all button and the scene row aria prefix.
   { ko: "일기 {0}줄 모두 보기", en: "Show all {0} diary lines" },

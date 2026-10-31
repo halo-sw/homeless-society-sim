@@ -43,7 +43,7 @@ const relDiff = (a, b) => {
   return m > 0 ? Math.abs(a - b) / m : -1;
 };
 
-function householdKeys(run) {
+export function householdKeys(run) {
   if (Array.isArray(run.agents)) {
     const hh = run.agents.filter((a) => a.household).map((a) => a.key);
     if (hh.length > 0) return new Set(hh);
@@ -76,7 +76,7 @@ function tripEvidence(run, ids, agent, day, purposes = []) {
   return any ? { type: "trip", id: any.id } : null;
 }
 
-function awayEvidence(run, ids, away, purposes = []) {
+export function awayEvidence(run, ids, away, purposes = []) {
   const did = away.cause && away.cause.decision_id;
   if (did && ids.has(did)) return { type: "decision", id: did };
   return tripEvidence(run, ids, away.agent, away.day, purposes);
