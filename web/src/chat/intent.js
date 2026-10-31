@@ -18,6 +18,11 @@ const JOIN_RE = /\d\s*(and|&|,|·)\s*#?\d/i;
 
 const RUN_RE = /(live\s+in\s+(both\s+homes?|them)|live\s+30\s*days?|run\s+it|compare\s+them|살아\s*봐|비교해)/i;
 
+export function isRunRequest(text) {
+  const s = String(text || "");
+  return RUN_RE.test(s) && !PROFILE_RE.test(s);
+}
+
 export function readChatIntent(text, { candidateCount } = {}) {
   const s = String(text || "");
   if (PROFILE_RE.test(s)) return null;
