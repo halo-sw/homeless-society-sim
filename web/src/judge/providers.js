@@ -21,8 +21,9 @@
 // "bad_json". usage carries reasoning_tokens when reported; it is part
 // of completion_tokens, not on top of it.
 //
-// Keys come from the environment (never from code or logs): MODEL_API_KEY
-// for meta, BASETEN_API_KEY for baseten. Nothing in this module prints,
+// Keys come from the environment (never from code or logs): META_API_KEY
+// (MODEL_API_KEY still works as a fallback) for meta, BASETEN_API_KEY
+// for baseten. Nothing in this module prints,
 // logs or returns a key; error messages carry status + a short body
 // snippet only. Node-side only — keys never reach the browser.
 
@@ -37,21 +38,39 @@ export const DEFAULT_MAX_TOKENS = 2000;
 export const META_DEFAULT_EFFORT = "low";
 export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
+export const META_API_BASE = "https://api.meta.ai/v1";
+export const BASETEN_API_BASE = "https://inference.baseten.co/v1";
+
 export const PROVIDERS = {
   meta: {
     label: "Muse Spark 1.3",
-    baseUrl: "https://api.meta.ai/v1",
+    baseUrl: META_API_BASE,
     model: "muse-spark-1.3",
-    keyEnv: "MODEL_API_KEY",
+    keyEnv: "META_API_KEY",
+    keyEnvFallback: ["MODEL_API_KEY"],
   },
   baseten: {
     // NOTE: base URL + auth scheme to be confirmed by the orchestrator.
     label: "Muse Spark Open",
-    baseUrl: "https://inference.baseten.co/v1",
+    baseUrl: BASETEN_API_BASE,
     model: "meta-models/muse-spark-open-1026",
     keyEnv: "BASETEN_API_KEY",
   },
 };
+
+export function envKey(cfg, env) {
+  const source = env || {};
+  const names = [cfg.keyEnv, ...((cfg && cfg.keyEnvFallback) || [])];
+  for (const name of names) {
+    const value = source[name];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return "";
+}
+
+export function metaApiKey(env = process.env) {
+  return envKey(PROVIDERS.meta, env || {});
+}
 
 export function providerConfig(name) {
   const cfg = PROVIDERS[name];
@@ -212,9 +231,12 @@ export async function completeWithTools({
   pool = sharedPool,
 } = {}) {
   const cfg = providerConfig(provider);
-  const key = apiKey || (typeof process !== "undefined" && process.env ? process.env[cfg.keyEnv] : "");
+  const key = apiKey || (typeof process !== "undefined" && process.env ? envKey(cfg, process.env) : "");
   if (!key) {
-    fail("missing_key", `judge: provider ${provider} needs ${cfg.keyEnv} in the environment (no key, no call)`);
+    const keyNames = (cfg.keyEnvFallback && cfg.keyEnvFallback.length)
+      ? `${cfg.keyEnv} (or ${cfg.keyEnvFallback.join(", ")})`
+      : cfg.keyEnv;
+    fail("missing_key", `judge: provider ${provider} needs ${keyNames} in the environment (no key, no call)`);
   }
   const fetch = fetchImpl || globalThis.fetch;
   if (typeof fetch !== "function") fail("no_fetch", "judge: no fetch implementation available");
@@ -299,9 +321,12 @@ export async function complete({
   pool = sharedPool,
 } = {}) {
   const cfg = providerConfig(provider);
-  const key = apiKey || (typeof process !== "undefined" && process.env ? process.env[cfg.keyEnv] : "");
+  const key = apiKey || (typeof process !== "undefined" && process.env ? envKey(cfg, process.env) : "");
   if (!key) {
-    fail("missing_key", `judge: provider ${provider} needs ${cfg.keyEnv} in the environment (no key, no call)`);
+    const keyNames = (cfg.keyEnvFallback && cfg.keyEnvFallback.length)
+      ? `${cfg.keyEnv} (or ${cfg.keyEnvFallback.join(", ")})`
+      : cfg.keyEnv;
+    fail("missing_key", `judge: provider ${provider} needs ${keyNames} in the environment (no key, no call)`);
   }
   const fetch = fetchImpl || globalThis.fetch;
   if (typeof fetch !== "function") fail("no_fetch", "judge: no fetch implementation available");

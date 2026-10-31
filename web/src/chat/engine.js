@@ -170,6 +170,28 @@ export function regionsForCurrency(doc, currency) {
   return { ...(doc || {}), regions };
 }
 
+// 29g2: regions to load for a saved or recorded document (replay /
+// transcript restore). The live path derives this from the search;
+// replays never run a search, so derive it from the saved doc:
+// a USD profile or any US candidate means exactly us-menlo,
+// otherwise the unique non-empty candidate regions, or null.
+export function regionsForDoc({ profile, candidatesData } = {}) {
+  const cands = (candidatesData && candidatesData.result && candidatesData.result.candidates)
+    || candidatesData?.candidates
+    || (Array.isArray(candidatesData) ? candidatesData : [])
+    || [];
+  if (currencyOf(profile) === "USD") return ["us-menlo"];
+  if ((cands || []).some((c) => c && (c.region === "us-menlo" || currencyOf(c) === "USD"))) {
+    return ["us-menlo"];
+  }
+  const seen = [];
+  for (const c of cands || []) {
+    const r = c && c.region;
+    if (typeof r === "string" && r !== "" && !seen.includes(r)) seen.push(r);
+  }
+  return seen.length > 0 ? seen : null;
+}
+
 // 18: payroll rule table for the custom-run money doc (same file
 // money.mjs reads). Null when unserved — the builder then refuses and
 // the card says so honestly.

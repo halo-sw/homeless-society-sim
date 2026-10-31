@@ -11,6 +11,7 @@ import {
   TOOL_DEFS, MAX_TOOL_ROUNDS, createSession, callTool,
 } from "./tools.js";
 import { checkConsultReply, numbersOnlyAnswer, actionConfirmation, isMostlyKorean } from "./guards.js";
+import { isRunRequest } from "../chat/intent.js";
 
 // 26u: English-mode anchor. Sent once up front and re-sent as the last
 // message before the final completion so it sits after the tool results
@@ -34,12 +35,33 @@ function lastUserText(messages) {
   return "";
 }
 
+const START_CLAIM_EN_RE = /\b(it'?s started|started the (month|run)|starting the (month|run))\b/i;
+
+// 29g1: the model copies the start sentence without calling
+// start_life_run. Gate the claim: only a real run request starts the
+// run, otherwise replace the claim with a not-started correction.
+export function fixStartClaim({ text, userText, uiActions, isEnglish }) {
+  const claimed = String(text || "").includes("시작했어요")
+    || START_CLAIM_EN_RE.test(String(text || ""));
+  if (!claimed) return { text, addRun: false };
+  if ((uiActions || []).some((a) => a && a.action === "run")) {
+    return { text, addRun: false };
+  }
+  if (isRunRequest(userText)) return { text, addRun: true };
+  return {
+    text: isEnglish
+      ? `It hasn't started yet. Say "Live in both homes for a month" and I'll start it.`
+      : `아직 시작하지 않았어요. "두 집에서 살아 봐 줘"라고 말씀해 주시면 바로 시작할게요.`,
+    addRun: false,
+  };
+}
+
 export const SYSTEM_PROMPT = [
   "너는 주거 생활 시뮬레이터의 '시뮬레이션 상담' 에이전트다. 항상 정중한 존댓말로, 고객의 화면 언어로(기본 한국어, 영어 화면이면 영어로) 짧게 답한다. 반말은 절대 쓰지 않는다.",
   "너는 Ithaca의 Muse다. 고객의 집 고민을 대화로 돕는다. 앱의 기능은 모두 네 도구다: 찾기(find_homes), 매물 읽기(parse_listing·check_listing), 비교(compare), 30일 살아 보기(start_life_run), 생활비·전세·지원 제도·안전·교육·출근길 도구.",
   "질문은 한 번에 하나만 짧게 한다. 설문처럼 여러 개를 묻지 않는다. 모르는 값은 기본값으로 두고 '가정'이라고 밝힌다. 출근지나 예산 중 하나라도 있으면 extract_profile 다음 바로 find_homes로 후보를 보여 준다. 우선순위는 고객이 말할 때만 set_priorities로 기록한다.",
   "화면은 보여 줄 것이 생겼거나 고객이 요청했을 때만 open_panel로 연다: 후보를 찾으면 map, 비교를 원하면 compare, 동네를 물으면 tour, 출근길은 commute, 돈은 money, 전세는 jeonse, 지원은 support. 동네를 물으면 neighborhood로 걸어서 몇 분인지 확인해 답하고 open_panel(panel=tour, candidate_id)로 3D 동네를 연다. 출근길(commute)과 결과(result) 장면은 살아 보기가 끝난 뒤에만 연다.",
-  "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다. start_life_run을 부른 턴에는 \"시작했어요. 다 살면 일기로 알려 드릴게요.\" 한 문장만 답한다(결과 숫자는 아직 없다).",
+  "고객이 후보를 고르면(예: '이 두 곳', '1번이랑 3번') pick_homes로 찜한다. start_life_run은 고객이 살아 보기를 요청했을 때만 부르고, 그 전에는 제안만 한다. start_life_run을 부른 턴에는 \"시작했어요. 다 살면 일기로 알려 드릴게요.\" 한 문장만 답한다(결과 숫자는 아직 없다). 그 문장은 start_life_run을 실제로 호출한 턴에만 쓴다. 호출하지 않았으면 시작했다고 말하지 않는다.",
   "다루는 지역: 한국 수도권 역세권 지역들(list_areas)과 미국 1곳 — Menlo Park의 Meta HQ(1 Hacker Way) 주변 아파트. 미국은 월세만, Zillow ZIP 추정 월세(USD), 출근은 자전거·도보 분. 출근지가 Meta HQ·Menlo Park면 준비 중이라고 하지 말고 extract_profile 다음 바로 find_homes를 부른다.",
   "다루지 않는 지역이면 '아직 준비 중이에요'라고 말하고 가장 가까운 다루는 지역을 제안한다. 엉뚱한 질문에도 한 줄로 답하고 집 고민으로 돌아온다.",
   "답은 2~3문장, 본문은 짧게. 후보·숫자 목록은 카드와 지도에 이미 있으니 문장으로 늘어놓지 않고 1~2곳만 짚는다. 본문 다음 새 줄에 고객이 다음에 할 만한 요청 2~3개를 [[다음: 비교해 줘 | 출근길 보여 줘 | 살아 봐 줘]] 형식으로 쓴다(각 12자 이내, 고객 말투).",
@@ -533,6 +555,28 @@ export async function runTurn(opts) {
   }
 
   function finish(extra) {
+    if (extra && typeof extra.reply === "string") {
+      const fixed = fixStartClaim({
+        text: extra.reply,
+        userText: lastUserText(messages),
+        uiActions,
+        isEnglish,
+      });
+      if (fixed.addRun) {
+        uiActions.push({ action: "run" });
+        toolCalls.push({ name: "start_life_run", ok: true,
+          summary: "30일 살아 보기 맡김", ms: 0, target: "{}", auto: true });
+      }
+      if (fixed.text !== extra.reply) {
+        extra = { ...extra, reply: fixed.text };
+        for (let i = appended.length - 1; i >= 0; i--) {
+          if (appended[i] && appended[i].role === "assistant") {
+            appended[i] = { ...appended[i], content: fixed.text };
+            break;
+          }
+        }
+      }
+    }
     return {
       ok: true, ...extra,
       messages: appended, toolCalls, uiActions,

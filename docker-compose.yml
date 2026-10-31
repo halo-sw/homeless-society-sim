@@ -26,6 +26,7 @@ services:
         required: false
     environment:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      META_API_KEY: ${META_API_KEY:-}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       VWORLD_KEY: ${VWORLD_KEY:-}
       HOUSING_API_KEY: ${HOUSING_API_KEY:-}

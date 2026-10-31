@@ -14,7 +14,7 @@ What it serves:
 
 Env (names only, set on the deploy, never in code):
 
-- `MODEL_API_KEY`, `VWORLD_KEY`, `HOUSING_API_KEY`
+- `META_API_KEY` (`MODEL_API_KEY` also works), `VWORLD_KEY`, `HOUSING_API_KEY`
 - `ALLOWED_ORIGINS` (comma list)
 - `DATA_BASE_URL` (public data root)
 

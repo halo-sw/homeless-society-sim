@@ -234,6 +234,7 @@ const seedPhrases = {
   "Muse가 생각하는 중…": "Muse is thinking…",
   "Muse가 기록을 읽고 일기를 쓰는 중…": "Muse is reading the record and writing the diary…",
   "살아 본 일기": "Live-in diary",
+  "살아 봐야 아는 것": "Only living there tells you",
   "30일 살아 보기 맡기기": "Hand off the 30-day live-in",
   "30일 살아 보기 맡김": "30-day live-in handed off",
   "3D 장면": "3D scene",
@@ -342,9 +343,39 @@ const seedPhrases = {
   "오늘 Muse 사용 한도에 닿았어요. 기록된 대화로 보시거나 내일 다시 와 주세요.": "You have reached today's Muse usage limit. Watch the recorded conversation or come back tomorrow.",
 };
 
+// 29c1b: "920m"/"1.3km" reads with a space in English ("920 m"/"1.3 km").
+const spaceDist = (s) => String(s).replace(/(\d)(k?m)$/, "$1 $2");
 const seedPatterns = [
   // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
   { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
+  // 29c1: seated-commute and late-walk-home card lines (whole-string).
+  { ko: "앉아서 간 출근: {0} {1}/{2}일 · {3} {4}/{5}일 (실측 혼잡도 {6}% 이하)", en: "Got a seat on the way to work: {0} {1}/{2} days · {3} {4}/{5} days (measured crowding ≤ {6}%)" },
+  // 29c1b: one home with no measured boarding legs, and the after-dark walk.
+  { ko: "앉아서 간 출근: {0} {1}/{2}일 · {3} 혼잡도 자료 없음 (실측 {4}% 이하일 때)", en: "Got a seat on the way to work: {0} {1}/{2} days · {3} no crowding data (measured ≤ {4}%)" },
+  { ko: "앉아서 간 출근: {0} 혼잡도 자료 없음 · {1} {2}/{3}일 (실측 {4}% 이하일 때)", en: "Got a seat on the way to work: {0} no crowding data · {1} {2}/{3} days (measured ≤ {4}%)" },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · {2}역에서 평균 {3}분({4}) · {5} {6}번 · {7}역에서 평균 {8}분({9}) · 해 지는 시각 {10} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · avg ${c[3]} min (${spaceDist(c[4])}) from ${c[2]} Station · ${c[5]} ${c[6]} times · avg ${c[8]} min (${spaceDist(c[9])}) from ${c[7]} Station · sunset ${c[10]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · {2} {3}번 · {4}역에서 평균 {5}분({6}) · 해 지는 시각 {7} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · ${c[2]} ${c[3]} times · avg ${c[5]} min (${spaceDist(c[6])}) from ${c[4]} Station · sunset ${c[7]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · {2}역에서 평균 {3}분({4}) · {5} {6}번 · 해 지는 시각 {7} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · avg ${c[3]} min (${spaceDist(c[4])}) from ${c[2]} Station · ${c[5]} ${c[6]} times · sunset ${c[7]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · {2}역에서 평균 {3}분({4}) · {5} {6}번 · 직장에서 걸어서 평균 {7}분({8}) · 해 지는 시각 {9} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · avg ${c[3]} min (${spaceDist(c[4])}) from ${c[2]} Station · ${c[5]} ${c[6]} times · avg ${c[7]} min (${spaceDist(c[8])}) walking from work · sunset ${c[9]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · 직장에서 걸어서 평균 {2}분({3}) · {4} {5}번 · {6}역에서 평균 {7}분({8}) · 해 지는 시각 {9} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) walking from work · ${c[4]} ${c[5]} times · avg ${c[7]} min (${spaceDist(c[8])}) from ${c[6]} Station · sunset ${c[9]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · 직장에서 걸어서 평균 {2}분({3}) · {4} {5}번 · 직장에서 걸어서 평균 {6}분({7}) · 해 지는 시각 {8} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) walking from work · ${c[4]} ${c[5]} times · avg ${c[6]} min (${spaceDist(c[7])}) walking from work · sunset ${c[8]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · {2} {3}번 · 직장에서 걸어서 평균 {4}분({5}) · 해 지는 시각 {6} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · ${c[2]} ${c[3]} times · avg ${c[4]} min (${spaceDist(c[5])}) walking from work · sunset ${c[6]}` },
+  { ko: "해 진 뒤 걸어서 퇴근: {0} {1}번 · 직장에서 걸어서 평균 {2}분({3}) · {4} {5}번 · 해 지는 시각 {6} 기준", en: (c) => `Walked home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) walking from work · ${c[4]} ${c[5]} times · sunset ${c[6]}` },
+  { ko: "해 진 뒤 자전거로 퇴근: {0} {1}번 · 직장에서 자전거로 평균 {2}분({3}) · {4} {5}번 · 직장에서 자전거로 평균 {6}분({7}) · 해 지는 시각 {8} 기준", en: (c) => `Rode home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) by bike from work · ${c[4]} ${c[5]} times · avg ${c[6]} min (${spaceDist(c[7])}) by bike from work · sunset ${c[8]}` },
+  { ko: "해 진 뒤 퇴근: {0} {1}번 · 직장에서 걸어서 평균 {2}분({3}) · {4} {5}번 · 직장에서 자전거로 평균 {6}분({7}) · 해 지는 시각 {8} 기준", en: (c) => `Came home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) walking from work · ${c[4]} ${c[5]} times · avg ${c[6]} min (${spaceDist(c[7])}) by bike from work · sunset ${c[8]}` },
+  { ko: "해 진 뒤 퇴근: {0} {1}번 · 직장에서 자전거로 평균 {2}분({3}) · {4} {5}번 · 직장에서 걸어서 평균 {6}분({7}) · 해 지는 시각 {8} 기준", en: (c) => `Came home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) by bike from work · ${c[4]} ${c[5]} times · avg ${c[6]} min (${spaceDist(c[7])}) walking from work · sunset ${c[8]}` },
+  { ko: "해 진 뒤 퇴근: {0} {1}번 · {2}역에서 평균 {3}분({4}) · {5} {6}번 · 직장에서 자전거로 평균 {7}분({8}) · 해 지는 시각 {9} 기준", en: (c) => `Came home from work after dark: ${c[0]} ${c[1]} times · avg ${c[3]} min (${spaceDist(c[4])}) from ${c[2]} Station · ${c[5]} ${c[6]} times · avg ${c[7]} min (${spaceDist(c[8])}) by bike from work · sunset ${c[9]}` },
+  { ko: "해 진 뒤 퇴근: {0} {1}번 · 직장에서 자전거로 평균 {2}분({3}) · {4} {5}번 · {6}역에서 평균 {7}분({8}) · 해 지는 시각 {9} 기준", en: (c) => `Came home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) by bike from work · ${c[4]} ${c[5]} times · avg ${c[7]} min (${spaceDist(c[8])}) from ${c[6]} Station · sunset ${c[9]}` },
+  { ko: "해 진 뒤 퇴근: {0} {1}번 · {2} {3}번 · 직장에서 자전거로 평균 {4}분({5}) · 해 지는 시각 {6} 기준", en: (c) => `Came home from work after dark: ${c[0]} ${c[1]} times · ${c[2]} ${c[3]} times · avg ${c[4]} min (${spaceDist(c[5])}) by bike from work · sunset ${c[6]}` },
+  { ko: "해 진 뒤 퇴근: {0} {1}번 · 직장에서 자전거로 평균 {2}분({3}) · {4} {5}번 · 해 지는 시각 {6} 기준", en: (c) => `Came home from work after dark: ${c[0]} ${c[1]} times · avg ${c[2]} min (${spaceDist(c[3])}) by bike from work · ${c[4]} ${c[5]} times · sunset ${c[6]}` },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(역에서 걸어 평균 {2}분, 가장 늦게 {3}) · {4} {5}번(역에서 걸어 평균 {6}분, 가장 늦게 {7})", en: "Home after 10 pm: {0} {1} times (avg {2} min walk from the station, latest {3}) · {4} {5} times (avg {6} min walk from the station, latest {7})" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(역에서 걸어 평균 {2}분, 가장 늦게 {3}) · {4} {5}번", en: "Home after 10 pm: {0} {1} times (avg {2} min walk from the station, latest {3}) · {4} {5} times" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번(역에서 걸어 평균 {4}분, 가장 늦게 {5})", en: "Home after 10 pm: {0} {1} times · {2} {3} times (avg {4} min walk from the station, latest {5})" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(역에서 걸어 평균 {2}분) · {3} {4}번", en: "Home after 10 pm: {0} {1} times (avg {2} min walk from the station) · {3} {4} times" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번(역에서 걸어 평균 {4}분)", en: "Home after 10 pm: {0} {1} times · {2} {3} times (avg {4} min walk from the station)" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번(가장 늦게 {2}) · {3} {4}번", en: "Home after 10 pm: {0} {1} times (latest {2}) · {3} {4} times" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번(가장 늦게 {4})", en: "Home after 10 pm: {0} {1} times · {2} {3} times (latest {4})" },
+  { ko: "밤 10시 이후 귀가: {0} {1}번 · {2} {3}번", en: "Home after 10 pm: {0} {1} times · {2} {3} times" },
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
   // 31a: diary show-all button and the scene row aria prefix.
   { ko: "일기 {0}줄 모두 보기", en: "Show all {0} diary lines" },

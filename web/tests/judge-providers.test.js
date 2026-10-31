@@ -307,13 +307,16 @@ describe("tool-call completions (consult)", () => {
     assert.equal(err.code, "truncated");
     assert.deepEqual(err.usage, { prompt_tokens: 1, completion_tokens: 2 });
     const saved = process.env.MODEL_API_KEY;
+    const savedMeta = process.env.META_API_KEY;
     delete process.env.MODEL_API_KEY;
+    delete process.env.META_API_KEY;
     try {
       await assert.rejects(
         completeWithTools({ provider: "meta", messages: [], apiKey: "" }),
-        /needs MODEL_API_KEY/);
+        /needs META_API_KEY \(or MODEL_API_KEY\)/);
     } finally {
       if (saved !== undefined) process.env.MODEL_API_KEY = saved;
+      if (savedMeta !== undefined) process.env.META_API_KEY = savedMeta;
     }
   });
 });
