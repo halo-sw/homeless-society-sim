@@ -1486,8 +1486,7 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
 .ds-pbm-status[data-live="1"] .ds-pbm-dot { background: var(--ui-ok); }
 
 /* 28d landing */
-.ds-lp { --ds-lp-poster-bg: #0d131b;
-  position: absolute; inset: 0; overflow-y: auto; overflow-x: clip;
+.ds-lp { position: absolute; inset: 0; overflow-y: auto; overflow-x: clip;
   pointer-events: auto; background: var(--ds-page); color: var(--ds-ink-1);
   font-family: var(--ds-font-sans); box-sizing: border-box;
   word-break: keep-all; overflow-wrap: anywhere; }
@@ -1672,10 +1671,6 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   letter-spacing: 0.04em; color: var(--ds-ink-3);
   margin: 0 0 var(--ds-s-12); }
 .ds-lp-h { font-size: 36px; line-height: 1.25; text-wrap: balance; }
-.ds-lp-poster { background: var(--ds-lp-poster-bg);
-  display: flex; justify-content: center; overflow: hidden; }
-.ds-lp-posterimg { display: block; width: 100%; max-width: 1536px;
-  height: auto; max-height: min(620px, 68vh); object-fit: contain; }
 .ds-lp-heroband { background: radial-gradient(ellipse at 50% 30%,
     var(--ds-surface) 0%, var(--ds-page) 70%);
   padding-bottom: calc(var(--ds-s-48) * 2); }
@@ -1838,7 +1833,6 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   align-content: start; justify-content: flex-end; align-items: center; }
 @media (max-width: 720px) {
   .ds-lp-judge { grid-template-columns: 1fr; }
-  .ds-lp-posterimg { max-height: none; }
 }
 @media (max-width: 480px) {
   .ds-lp-band .ds-lp-section { padding: 64px var(--ds-s-16); }

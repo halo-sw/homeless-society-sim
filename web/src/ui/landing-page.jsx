@@ -167,15 +167,7 @@ export function LandingPage() {
         </div>
       </nav>
       <div className="ds-lp-notice">{NOTICE}</div>
-      <section className="ds-lp-poster" aria-label="Ithaca">
-        <img
-          className="ds-lp-posterimg"
-          src={assetUrl("landing/ithaca-intro.jpg")}
-          alt="Ithaca — The Pre-living Agent for Your Next Home. We walk the odyssey. You just come home."
-          width={1536} height={1024}
-          decoding="async" fetchpriority="high"
-          data-no-i18n />
-      </section>
+
       <div className="ds-lp-heroband">
       <header className="ds-lp-hero">
         <p className="ds-lp-heroeyebrow">
