@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-2225_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 2225개, Python 테스트 266개">
+  <img src="https://img.shields.io/badge/tests-2403_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 2403개, Python 테스트 266개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
@@ -59,7 +59,7 @@
 | 모델이 바뀌어도 판단이 같아요 | Spark 1.3과 Spark Open이 같은 판단 지점 **139곳 중 120곳(86 %)** 에서 같은 선택 | [Meta 모델](#meta-모델) |
 | 가드가 실제 실행에서 버텨요 | 모델마다 판단 **154개 모두** 답함, 가드 대체 **0건** | [Meta 모델](#meta-모델) |
 | 일기 문장을 검사해요 | 문장마다 실행 기록의 사실을 인용해야 하고, 기록에 없는 숫자는 돌려보내 다시 쓰게 해요. 2026-10-31 실제 영어 실행(판교, 집 2곳): 일기 8문장 모두 기록과 일치(1번 고쳐 씀) | [검증](#검증) |
-| 테스트 | JavaScript **2,225**개, Python **266**개, PR과 main 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| 테스트 | JavaScript **2,403**개, Python **266**개, PR과 main 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 <p align="center">
   <img src="briefs/img/19-chat.jpg" width="760" alt="대화 화면. 왼쪽은 대화와 후보 집 목록이에요. 줄마다 지도 번호, 이름, 실거래 전세 가격, 면적·연식, 예상 출퇴근 시간이 있고, 두 집이 A·B로 담겨 있어요. 오른쪽은 도로와 노선 색 지하철이 그려진 밝은 지도에 회사 · 판교 표시, 후보마다 가격 말풍선(A·B는 파란색), 출퇴근 분이 있어요. 지도 아래 줄에 담은 두 집과 버튼 하나, 이 집들로 30일 살아 보기가 있어요.">
@@ -68,6 +68,8 @@
 <p align="center"><sub>한 문장으로 시작해서, 지도 위 실제 후보 중 두 곳을 담고, 버튼 하나로 살아 봐요. 실제 GPU 캡처, 2026-10-30.</sub></p>
 
 ---
+
+**만든 이유.** 저는 직장인 Halo이고, 신혼집을 구하고 있었어요. 전세사기 소식에 두 사람의 생활 패턴까지 달라서 집 구하기가 정말 어려웠고, 이직 같은 변화가 생길 때마다 살아 보고 나서야 마주치는 것들이 많았어요. 수면의 질, 출퇴근길 혼잡도, 동네마다의 특성은 미리 알 수 없으니, 계약하기 전에 먼저 시뮬레이션을 돌려 보고 싶었어요.
 
 사람들은 인생에서 가장 비싼 결정을 사진 몇 장과 30분짜리 집 구경으로 해요. 한국의 사회초년생, 결혼을 앞둔 커플, 어린 자녀가 있는 가족에게는 가장 위험한 결정이기도 해요. 전세사기 피해자의 약 75%가 20·30대예요(2025년 3월 보도, 국토교통부 자료 인용). 이사해 본 사람이라면 누구나 살아 보고 나서야 그 집을 제대로 알게 된 경험이 있어요.
 

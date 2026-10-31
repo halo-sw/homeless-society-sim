@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-2225_JS_·_266_Python-2f5d50?style=flat-square" alt="2225 JavaScript and 266 Python tests">
+  <img src="https://img.shields.io/badge/tests-2403_JS_·_266_Python-2f5d50?style=flat-square" alt="2403 JavaScript and 266 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -59,7 +59,7 @@
 | Muse's choices are stable across models | Spark 1.3 and Spark Open made the same choice at **120 of 139** shared decision points (**86 %**) | [Meta models](#meta-models) |
 | Guards hold on real runs | **154 of 154** decisions answered per model, **0** guard fallbacks | [Meta models](#meta-models) |
 | Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. Live English run on 2026-10-31 (Pangyo, 2 homes): all 8 diary sentences matched the record, after 1 rewrite | [Verification](#verification) |
-| Tested | **2,225** JavaScript and **266** Python tests, CI on every pull request and push to main | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| Tested | **2,403** JavaScript and **266** Python tests, CI on every pull request and push to main | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 
 <p align="center">
@@ -69,6 +69,8 @@
 <p align="center"><sub>One sentence, real candidates on a map, two picks, one button. Real GPU capture, 2026-10-30.</sub></p>
 
 ---
+
+**Why I built this.** I'm Halo, an office worker, and I have been looking for a home to start married life in. Between the deposit-fraud news and two people with very different daily routines, it was hard, and every change, like a new job, brings things you only meet after moving in. I can't know in advance how well I'll sleep, how crowded my commute will be, or what a neighbourhood is really like, so I wanted to simulate it first.
 
 People make the most expensive decision of their lives from a few photos and a 30-minute viewing. For a first-job worker, a couple about to marry or a young family in Korea, that decision is also the riskiest: about 75 % of the victims of deposit fraud (전세사기) are in their 20s and 30s (press report of March 2025 citing Ministry of Land data). Everyone who has moved knows the feeling of finding out what a home is really like only after moving in.
 
