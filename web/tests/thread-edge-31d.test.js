@@ -54,9 +54,7 @@ describe("31d one left edge", () => {
   });
 
   it("never truncates thread text", () => {
-    const threadRules = css.match(/\.ui-chat-thread[^{]*\{[^}]*\}/g) ?? [];
-    assert.ok(threadRules.every((r) => !r.includes("ellipsis")),
-      "no ellipsis in .ui-chat-thread rules (29h1 header ellipsis lives in .ui-bar-center)");
+    assert.ok(!css.includes("ellipsis"), "no ellipsis in ui.css");
   });
 });
 

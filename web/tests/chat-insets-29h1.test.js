@@ -43,10 +43,11 @@ describe("29h1 header keeps the Muse status", () => {
     assert.ok(m.some((r) => /flex:\s*none/.test(r)), ".ui-bar-left has flex: none");
   });
 
-  it("lets the centre summary button shrink with an ellipsis", () => {
-    const m = css.match(/#ui-root\s+\.ui-bar-center\s+button\s*\{[^}]*\}/);
-    assert.ok(m, "#ui-root .ui-bar-center button rule present");
-    assert.ok(/text-overflow:\s*ellipsis/.test(m[0]), "button ellipsizes");
-    assert.ok(/flex-shrink:\s*1/.test(m[0]), "button shrinks");
+  it("clips without ellipsis and lets the centre shrink", () => {
+    assert.ok(!css.includes("ellipsis"), "no ellipsis in ui.css");
+    assert.ok(!css.includes("text-overflow"), "no truncation in ui.css");
+    const m = css.match(/\.ui-bar-center\s*>\s*\*\s*\{[^}]*\}/);
+    assert.ok(m, ".ui-bar-center > * rule present");
+    assert.ok(/flex-shrink:\s*1/.test(m[0]), "centre child shrinks");
   });
 });

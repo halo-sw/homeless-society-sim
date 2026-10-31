@@ -88,15 +88,10 @@
   min-width: 0; overflow: hidden;
 }
 .ui-bar-right { display: flex; align-items: center; gap: var(--ui-s8); margin-left: auto; }
-/* 29h1: the header never hides the Muse status — the left group keeps its
-   width while the centre summary button shrinks with an ellipsis. */
+/* 29h4: the header never hides the Muse status — the left group keeps its
+   width; the centre clips the summary button, which shortens itself. */
 .ui-bar-left { flex: none; }
 .ui-bar-center > * { min-width: 0; max-width: 100%; flex-shrink: 1; }
-#ui-root .ui-bar-center button {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  min-width: 0; max-width: 100%; flex-shrink: 1; }
-#ui-root .ui-bar-center button > span {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ui-sheet-body {
   display: flex; flex-direction: column; gap: var(--ui-s16);
   padding: var(--ui-s16);
