@@ -1399,6 +1399,14 @@ button.ui-tag:hover { color: var(--ui-ink); }
 }
 /* 31a: section labels — Body strong. */
 .ui-result-sect { font-size: var(--ds-t-14); font-weight: var(--ui-w600); }
+/* 29j3: the report-check timeline and badges. */
+.ui-check-steps { display: flex; flex-wrap: wrap; gap: var(--ui-s8); align-items: center; }
+.ui-check-step { padding: var(--ui-s4) var(--ui-s8); border-radius: var(--ui-r-chip); background: var(--ui-sunken); }
+.ui-check-step.is-pass { color: var(--ds-success, var(--ui-ink-1)); }
+.ui-check-step.is-fail { color: var(--ds-danger, var(--ui-ink-1)); }
+.ui-check-badge { padding: var(--ui-s4) var(--ui-s8); border-radius: var(--ui-r-chip); background: var(--ui-sunken); font-weight: var(--ui-w600); }
+.ui-check-tag { font-size: var(--ui-t12); color: var(--ui-ink2); }
+.ui-check-tag.is-fail { color: var(--ds-danger, var(--ui-ink-1)); font-weight: var(--ui-w600); }
 /* 29a6c: the 26m money source note is always the small second line, so
    "$4,261/mo" never joins its "(ZIP estimate)" on one row. */
 .ui-result-note { display: block; font-size: var(--ui-t12); font-weight: var(--ui-w400);

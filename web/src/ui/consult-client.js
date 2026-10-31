@@ -158,6 +158,60 @@ export async function postConsultStream({ provider, messages, scenario, context 
   return out;
 }
 
+// 29j3: report-step stream (attempt lines then a done line).
+export async function postReportStream({ provider, persona, labels, runs, homes, names, lang, byoKey = "" }, onEvent) {
+  if (!LIVE_API) return { off: true };
+  const headers = { "Content-Type": "application/json" };
+  if (byoKey) headers["x-model-key"] = byoKey;
+  const r = await fetch(apiUrl("/api/consult"), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ task: "report", stream: true, provider,
+      persona, labels, runs, homes, names, lang }),
+  });
+  if (r.status !== 200) {
+    let payload = null;
+    try {
+      payload = await r.json();
+    } catch {
+      throw new Error(`상담 서버 응답 오류 (HTTP ${r.status})`);
+    }
+    const err = new Error((payload && payload.error) || `상담 서버 오류 (HTTP ${r.status})`);
+    err.httpStatus = r.status;
+    throw err;
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done = null;
+  for (;;) {
+    const { done: finished, value } = await reader.read();
+    if (finished) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { events, rest } = parseNdjson("", buffer);
+    buffer = rest;
+    for (const ev of events) {
+      if (!ev || typeof ev.type !== "string") continue;
+      if (ev.type === "error") throw new Error(ev.error || "상담 서버 오류");
+      if (onEvent) onEvent(ev);
+      if (ev.type === "done") { done = ev; break; }
+    }
+    if (done) break;
+  }
+  if (!done) {
+    const { events } = parseNdjson("", buffer + "\n");
+    for (const ev of events) {
+      if (!ev || typeof ev.type !== "string") continue;
+      if (ev.type === "error") throw new Error(ev.error || "상담 서버 오류");
+      if (onEvent) onEvent(ev);
+      if (ev.type === "done") { done = ev; break; }
+    }
+  }
+  if (!done) throw new Error("상담 응답이 끊겼어요");
+  const { type, ...out } = done;
+  return out;
+}
+
 export async function fetchModelStatus() {
   if (!LIVE_API) return { off: true };
   const r = await fetch(apiUrl("/api/model/status"));

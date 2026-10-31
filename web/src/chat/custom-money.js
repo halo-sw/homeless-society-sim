@@ -396,3 +396,22 @@ export function buildUsRentMoneyDoc({ picked, labels } = {}) {
     homes,
   };
 }
+
+// 29j3: minimal home facts the report verifier reads (pure).
+export function verifyHomeFor(moneyDoc, label) {
+  if (!moneyDoc || !label) return {};
+  const entry = (moneyDoc.homes || {})[label];
+  if (!entry) return {};
+  if (moneyDoc.us_rent) {
+    if (!Number.isFinite(entry.rent_usd_month)) return {};
+    return { monthly_won: entry.rent_usd_month, currency: "USD" };
+  }
+  const tenure = moneyDoc.default_tenure ? moneyDoc.default_tenure[label] : null;
+  if (!tenure) return {};
+  const monthly = entry.by_tenure?.[tenure]?.housing?.monthly_won;
+  if (!Number.isFinite(monthly)) return {};
+  const out = { monthly_won: monthly };
+  const maint = moneyDoc.assumptions?.maintenance_won_month;
+  if (Number.isFinite(maint)) out.maintenance_won_month = maint;
+  return out;
+}

@@ -372,11 +372,32 @@ const seedPhrases = {
   "마이크로 하우징": "Micro Housing",
   "레이크 해모로": "Lake Haemoro",
   "출근 중": "Commuting",
+  // 29j3: the verified comparison on screen.
+  "비교 리포트 검증": "Report check",
+  "미지원": "Not supported",
+  "확인했어요": "Got it",
+  "다시 검증하기": "Check again",
+  "숫자 확인": "Numbers checked",
+  "확인 필요": "Needs a look",
+  "재택근무": "Remote work",
+  "삼대 가족": "Three-generation family",
+  "반려동물과 사는 가족": "Family living with a pet",
+  "Muse가 비교 리포트를 쓰고, 코드가 숫자와 근거를 확인하는 중…": "Muse is writing the comparison report while code checks the numbers and evidence…",
+  "Muse가 쓰고, 코드가 숫자를 다시 계산하고, Muse가 근거 기록을 한 번 더 판정했어요.": "Muse wrote it, code recomputed the numbers, and Muse judged the evidence record once more.",
+  "리포트 검증을 하지 못했어요 (연결 문제).": "Couldn't verify the report (connection trouble).",
+  "확인해 주셔서 고마워요. 확인이 필요한 문장은 표시해 둔 채로 결과를 열어 둘게요.": "Thanks for checking. I'll keep the result open with the sentences that need a look marked.",
+  "비교 리포트를 검증하는 중이에요. 통과하면 결과를 열게요.": "Still verifying the comparison report. I'll open the result once it passes.",
 };
 
 // 29c1b: "920m"/"1.3km" reads with a space in English ("920 m"/"1.3 km").
 const spaceDist = (s) => String(s).replace(/(\d)(k?m)$/, "$1 $2");
 const seedPatterns = [
+  // 29j3: report-check timeline steps and evidence counts.
+  { ko: "{0}차 반려 ({1}%)", en: "Try {0}: sent back ({1}%)" },
+  { ko: "{0}차 통과 ({1}%)", en: "Try {0}: passed ({1}%)" },
+  { ko: "{0}차 확인 중…", en: "Checking try {0}…" },
+  { ko: "근거 {0}개", en: "{0} records cited" },
+  { ko: "이 가족 유형({0})은 아직 시뮬레이션 시나리오가 없어 비교 리포트를 검증할 수 없어요.", en: "This family type ({0}) has no simulation scenario yet, so the comparison report can't be verified." },
   // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
   { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
   // 29c1: seated-commute and late-walk-home card lines (whole-string).
