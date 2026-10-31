@@ -155,9 +155,18 @@ export function reportDigest({ runs, labels, homes, persona, groundTruth, names 
       for (const label of labels) {
         if (it.id === "N01") {
           const per = {};
+          const agents = (runs[label] && runs[label].agents) || [];
           for (const m of householdMembers(runs[label])) {
-            per[m] = engineValue(it.id, runs[label],
+            const v = engineValue(it.id, runs[label],
               { member: m, home: homes[label] });
+            if (v === null || v === undefined) {
+              per[m] = v;
+              continue;
+            }
+            const a = agents.find((x) => x && typeof x === "object"
+              && (String(x.key) === m || String(x.id) === m
+                || String(x.agent) === m));
+            per[m] = { ...v, label_ko: (a && a.label) || null };
           }
           values[label] = per;
         } else {

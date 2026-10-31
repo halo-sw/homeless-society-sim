@@ -32,16 +32,36 @@ export function evidenceIndex(run) {
   return ids;
 }
 
-import { lifeEventTrips } from "../engine/life-events.js";
+import { lifeEventTrips, sunsetMinFor } from "../engine/life-events.js";
 import { hhmm } from "../timeline.js";
 
-function tripTextKo(t) {
+// 29k1: the record says how (walk/bike/transit) and when —
+// dark_walk trips append the after-sunset scene (with that run's
+// sunset time), late_home trips the after-22:00 scene.
+function tripTextKo(t, scene = [], sunset = null) {
   const day = (t.day ?? 0) + 1;
   const arr = hhmm(t.arrive_min ?? t.depart_min ?? 0);
   const move = t.mode === "bike" ? "자전거" : "걸어서";
   const mins = typeof t.minutes === "number" ? ` ${t.minutes}분` : "";
   const from = t.from_label ? ` (${t.from_label}에서)` : "";
-  return `${day}일 ${arr} 집 도착 · ${move}${mins}${from}`;
+  let tail = "";
+  if (scene.includes("dark_walk")) {
+    tail += sunset ? ` · 해 진 뒤(일몰 ${sunset})` : " · 해 진 뒤";
+  }
+  if (scene.includes("late_home")) tail += " · 밤 10시 넘어";
+  return `${day}일 ${arr} 집 도착 · ${move}${mins}${from}${tail}`;
+}
+
+// 29k1: which life-event scenes (dark_walk and/or late_home) a trip
+// id belongs to, reusing the judge candidate predicates — no new rules.
+function tripScenes(run, id) {
+  const scene = [];
+  for (const kind of ["dark_walk", "late_home"]) {
+    if (lifeEventTrips(run, kind).some((t) => t && t.id === id)) {
+      scene.push(kind);
+    }
+  }
+  return scene;
 }
 
 // 29j1: candidate engine events backing one judge item of one run.
@@ -51,13 +71,15 @@ export function judgeCandidates(run, itemId) {
   const kinds = itemId === "C06" ? ["dark_walk", "late_home"]
     : itemId === "N03" ? ["late_home"] : [];
   if (kinds.length === 0) return [];
+  const sunset = hhmm(sunsetMinFor(run && run.meta));
   const seen = new Set();
   const out = [];
   for (const k of kinds) {
     for (const t of lifeEventTrips(run, k)) {
       if (!t || seen.has(t.id)) continue;
       seen.add(t.id);
-      out.push({ ...t, text_ko: tripTextKo(t) });
+      const scene = tripScenes(run, t.id);
+      out.push({ ...t, scene, text_ko: tripTextKo(t, scene, sunset) });
     }
   }
   return out;
@@ -67,6 +89,7 @@ export function judgeCandidates(run, itemId) {
 // (via the evidenceIndex away id) and decisions; unknown ids skipped.
 export function citedEvents(run, ids) {
   const out = [];
+  const sunset = hhmm(sunsetMinFor(run && run.meta));
   const tripsById = new Map(((run && run.trips) || []).map((t) => [t && t.id, t]));
   const awaysById = new Map();
   for (const a of ((run && run.aways) || [])) {
@@ -79,6 +102,16 @@ export function citedEvents(run, ids) {
   for (const id of ids || []) {
     const t = tripsById.get(id);
     if (t) {
+      // Walk is the engine default (walking trips carry no mode);
+      // trips with parts are transit rides.
+      const mode = t.mode
+        ?? (Array.isArray(t.parts) && t.parts.length ? "transit" : "walk");
+      const scene = tripScenes(run, t.id);
+      const entry = scene.length > 0
+        ? lifeEventTrips(run, scene[0]).find((e) => e && e.id === t.id)
+        : null;
+      const view = entry || { ...t,
+        from_label: (t.from && t.from.label) || null };
       out.push({
         id: t.id, type: "trip",
         day: (t.day ?? 0) + 1,
@@ -88,7 +121,9 @@ export function citedEvents(run, ids) {
           : (t.depart_min ?? 0) + (t.minutes ?? 0)),
         purpose: t.purpose,
         minutes: t.minutes,
-        mode: t.mode,
+        mode,
+        scene,
+        text_ko: tripTextKo({ ...view, mode }, scene, sunset),
         from_label: (t.from && t.from.label) || null,
         to_kind: (t.to && t.to.kind) || null,
       });

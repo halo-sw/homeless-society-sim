@@ -14,10 +14,14 @@ export { SUBMIT_REPORT_DEF } from "./report-def.js";
 export const REPORT_PROMPT = [
   "너는 두 집에서 30일을 살아 본 기록(digest)으로 비교 리포트를 쓴다. 최종 결과는 submit_report 도구로만 낸다(일반 답장 금지).",
   "문장 하나 = 집 하나(home: A/B/C) × 항목 하나(item_id). digest에 있는 항목만, 집마다 빠짐없이(must 먼저).",
-  "숫자는 digest values의 숫자만. 숫자를 쓰면 claims에 {field, value, unit}: 시간 항목은 field:\"minutes\", unit:\"분\", N01은 구성원마다 member(m1, m2…) 필수, C02는 field:\"monthly_total\", unit은 digest의 unit(원 또는 $).",
+  "숫자는 digest values의 숫자만. 숫자를 쓰면 claims에 {field, value, unit}: 시간 항목은 field:\"minutes\", unit:\"분\", N01은 digest N01 values의 구성원 키를 그대로 member에 쓰고(예: h1, h2), 문장에서는 그 label_ko로 부른다(나, 배우자). 남편·아내처럼 기록에 없는 호칭은 쓰지 않는다. C02는 field:\"monthly_total\", unit은 digest의 unit(원 또는 $).",
+  "기록에 없는 느낌·평가·습관은 덧붙이지 않는다(예: \"여유 있게\", \"필요할 때마다\", \"매일 같은 경로\"). 숫자 하나와 그 뜻만 쓴다.",
+  "문장을 \"30일 동안…\"으로 시작하지 않는다. 리포트 제목이 이미 30일 기록이라고 말한다.",
+  "결정적 항목(values가 있는 항목)은 숫자 없이 쓰면 실패한다. 숫자를 빼서 고치지 말고 digest 값으로 고친다.",
   "events가 있는 항목(judge)은 그 event의 id를 evidence에 1개 이상 달고, 그 기록이 말하는 것만 쓴다. engine:\"none\" 항목과 events가 비어 있는 항목은 쓰지 않는다.",
   "추천·계약·\"낫다\" 같은 판단은 하지 않는다.",
-  "고객에게 쓰는 존댓말(해요체)로, 한 문장에 한 가지, 40~70자. 항목 이름(label_ko)을 그대로 읽지 말고 생활 말로 쓴다. 예: \"회사까지 편도 평균 8.2분 걸렸어요\", \"월세·관리비를 더하면 한 달 1,109,367원이에요\".",
+  "고객에게 쓰는 존댓말(해요체)로, 한 문장에 한 가지, 70자 이하로 짧게. 글자 수를 채우려고 \"이렇게 기록됐어요\" 같은 말을 덧붙이지 않는다. 항목 이름(label_ko)을 그대로 읽지 말고 생활 말로 쓴다. 예: \"회사까지 편도 평균 8.2분 걸렸어요\", \"장 보러 다닌 길은 평균 1.2분이었어요\".",
+  "값의 뜻: C01 = 문 앞에서 회사까지 편도, 집안 사람 평균. C05 = 이번 달 실제로 장 보러 다닌 길의 평균 시간(가장 가까운 가게까지가 아님). N01 = 구성원마다 편도 평균. C02 = 월세·관리비를 더한 한 달 금액.",
   "문장 속 숫자는 천 단위 쉼표를 쓴다(1,109,367원). claims의 value는 쉼표 없는 숫자 그대로.",
   "events가 있는 항목은 인용한 기록의 날짜·시각·분을 문장에 그대로 쓴다. 예: \"12일째 19:42, 해가 진 뒤 걸어서 13분 만에 집에 왔어요\". 여러 기록을 묶어 \"n번\"이라고 쓰면 그 n개의 id를 모두 evidence에 단다.",
   "feedback_ko를 받으면 지적된 문장만 고치고, 통과한 문장은 그대로 다시 낸다.",
@@ -26,10 +30,23 @@ export const REPORT_PROMPT = [
 export const REPORT_PROMPT_EN =
   "Write every sentence and its text_ko field in plain English. "
   + "The digest, homes, item ids, numbers and every other rule above stay the same. "
-  + "Use a plain, friendly voice, one point per sentence. Write numbers with "
-  + "thousands commas (1,109,367). For items with events, cite the record's "
+  + "Use a plain, friendly voice, one point per sentence, short; never pad "
+  + "a sentence to a length. Write numbers with "
+  + "thousands commas (1,109,367). Meanings: C01 = door-to-door one-way "
+  + "commute averaged over the household; C05 = mean time of this month's "
+  + "actual grocery trips (not to the nearest shop); N01 = one-way mean per "
+  + "member; C02 = one month's rent plus fees. For items with events, cite "
+  + "the record's "
   + "day, time and minutes in the sentence. When you get feedback_ko, fix only "
-  + "the flagged sentences and repeat the passed ones unchanged.";
+  + "the flagged sentences and repeat the passed ones unchanged. "
+  + "For N01 use the digest N01 member keys as member (e.g. h1, h2) and "
+  + "call each member by their label_ko in the sentence, as the customer "
+  + "sees them; never use terms of address the record does not state. "
+  + "Add no feelings, judgements or habits the record does not state. "
+  + "Write one number and what it means. Do not start a sentence with "
+  + "the 30-day period; the title already says it. A deterministic item "
+  + "(one with values) fails without its number: fix with the digest "
+  + "value, never by dropping the number.";
 
 export function reportPrompt(lang) {
   if (lang === "en") return `${REPORT_PROMPT}\n${REPORT_PROMPT_EN}`;

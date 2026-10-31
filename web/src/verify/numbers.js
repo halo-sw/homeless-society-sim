@@ -75,6 +75,25 @@ export function householdMembers(run) {
   return out;
 }
 
+// 29k1: resolve a claim member (agent key, member id or label —
+// "h1", "m1", "나") to the household agent key the engine trips
+// carry. String comparison against run.agents, like householdMembers.
+// Returns null when no agent matches.
+export function memberKeyFor(run, member) {
+  if (member === null || member === undefined) return null;
+  const want = String(member);
+  for (const a of (run && run.agents) || []) {
+    if (!a || typeof a !== "object") continue;
+    for (const k of [a.key, a.id, a.label]) {
+      if (k !== undefined && k !== null && String(k) === want) {
+        const key = a.key ?? a.id ?? a.agent;
+        return key === undefined || key === null ? null : String(key);
+      }
+    }
+  }
+  return null;
+}
+
 export function meanMinutes(trips, purpose, member = null, onlyAgents = null) {
   const set = (onlyAgents === null || onlyAgents === undefined)
     ? null : new Set(onlyAgents);
@@ -175,7 +194,7 @@ export function engineValue(itemId, run, opts = {}) {
   }
   if (itemId === "N01") {
     if (member === null || member === undefined) return null;
-    const v = commuteOneWayMinutes(run, member);
+    const v = commuteOneWayMinutes(run, memberKeyFor(run, member) ?? member);
     return v === null ? null : { value: v, unit: "분" };
   }
   const purpose = ITEM_PURPOSE[itemId];
@@ -258,9 +277,18 @@ export function checkNumberClaims(report, run, loaded) {
     }
     if (item.engine === "none" || item.verify !== "deterministic") continue;
     const claims = s.claims || [];
-    if (claims.length === 0 && textNumbers(s.text_ko).length > 0) {
+    // 29k1: a claim-less sentence on a checkable deterministic item
+    // fails even without digits (dropping the number is not a fix).
+    // N01 is probed with the first household member.
+    if (claims.length === 0) {
+      const numbered = textNumbers(s.text_ko).length > 0;
+      const probe = item.id === "N01"
+        ? (householdMembers(run)[0] ?? null) : null;
+      const engine = engineValue(item.id, run,
+        { member: probe, home: report.home });
+      if (!engine) continue;
       failures.push({ sentence_id: s.id, item_id: s.item_id, kind: "number",
-        reason_ko: "근거 없는 숫자" });
+        reason_ko: numbered ? "근거 없는 숫자" : "숫자 없이 쓴 문장이에요" });
       continue;
     }
     for (const claim of claims) {

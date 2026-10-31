@@ -116,7 +116,11 @@ describe("29j1 judgeCandidates and citedEvents", () => {
     const cands = judgeCandidates(run, "C06");
     assert.deepEqual(cands.map((t) => t.id), ["e-dark", "e-late"]);
     assert.equal(cands[0].text_ko,
-      "12일 18:30 집 도착 · 자전거 13분 (Meta HQ (1 Hacker Way)에서)");
+      "12일 18:30 집 도착 · 자전거 13분 (Meta HQ (1 Hacker Way)에서) · 해 진 뒤(일몰 17:25)");
+    assert.deepEqual(cands[0].scene, ["dark_walk"]);
+    assert.ok(cands[1].scene.includes("dark_walk")
+      && cands[1].scene.includes("late_home"));
+    assert.match(cands[1].text_ko, /밤 10시 넘어/);
     assert.deepEqual(judgeCandidates(run, "N03").map((t) => t.id), ["e-late"]);
     assert.deepEqual(judgeCandidates(run, "C03"), []);
   });
