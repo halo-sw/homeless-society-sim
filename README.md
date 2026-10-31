@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-1772_JS_·_266_Python-2f5d50?style=flat-square" alt="1772 JavaScript and 266 Python tests">
+  <img src="https://img.shields.io/badge/tests-1783_JS_·_266_Python-2f5d50?style=flat-square" alt="1783 JavaScript and 266 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -28,6 +28,8 @@
 
 <p align="center">
   <a href="#judge-in-2-minutes">Judge in 2 minutes</a> ·
+  <a href="#meta-ai-usage">Meta AI usage</a> ·
+  <a href="#architecture">Architecture</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#gallery">Gallery</a> ·
   <a href="#what-it-does">What it does</a> ·
@@ -52,7 +54,7 @@
 | Muse's choices are stable across models | Spark 1.3 and Spark Open made the same choice at **120 of 139** shared decision points (**86 %**) | [Meta models](#meta-models) |
 | Guards hold on real runs | **154 of 154** decisions answered per model, **0** guard fallbacks | [Meta models](#meta-models) |
 | Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. Live English run on 2026-10-31 (Pangyo, 2 homes): all 8 diary sentences matched the record, after 1 rewrite | [Verification](#verification) |
-| Tested | **1,772** JavaScript and **266** Python tests, CI on every push | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| Tested | **1,783** JavaScript and **266** Python tests, CI on every pull request and push to main | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 
 <p align="center">
@@ -68,6 +70,52 @@ People make the most expensive decision of their lives from a few photos and a 3
 So an AI household moves in first. Tell it about your life, pick candidate homes from real transactions, and the household lives 30 days in home A and home B, side by side, in a 3D model of the real neighbourhood. Muse Spark makes the household's everyday choices and explains each one. A deterministic engine counts every minute and every won. The app then compares the two homes on the customer's own priorities, with a source or an "assumption" label on every number. It shows, explains and lets you decide. It never decides for you.
 
 > Status (2026-10-31): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *coming soon* are not built yet.
+
+## Meta AI usage
+
+Every call goes through one module, [`web/src/judge/providers.js`](web/src/judge/providers.js). It speaks OpenAI-style chat completions over `fetch`, and keys come from the server environment only (see [`.env.example`](.env.example)).
+
+| Model | Endpoint | What it does here | Code | Evidence |
+|---|---|---|---|---|
+| **Muse Spark 1.3** (`muse-spark-1.3`) | `https://api.meta.ai/v1` | The household's everyday choices with reasons; the consult agent with tool calls | [`judge/run.js`](web/src/judge/run.js) → [`providers.js`](web/src/judge/providers.js) `complete`; [`consult/agent.js`](web/src/consult/agent.js) → `completeWithTools` | [3 real calls](docs/evidence/muse-spark-1.3-2026-10-31.json), [154 recorded decisions](scenarios/decisions/compare-1029/) |
+| **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | `https://inference.baseten.co/v1` (Baseten) | The same household decisions; one switch `--provider baseten` | same module | [3 real calls](docs/evidence/muse-spark-open-2026-10-31.json), 120 of 139 same choices as Spark 1.3 |
+| **Muse Code** (agent mode on `muse-spark-1.3`) | Muse Code CLI | Wrote every line of product code and every test in this repository from stage briefs | — | [`briefs/`](briefs/) (brief + result per stage) |
+| Muse Voice Transcribe | — | Spoken intake | *coming soon* | — |
+| SAM 3.1 | — | Window area from listing photos | *coming soon* | — |
+
+Spark Open is served by Baseten as published. We compare the two served models; we did not fine-tune either one.
+
+## Architecture
+
+```text
+ithaca/
+├── pipeline/          Python: OSM extract, building register join, walking graph, subway network, terrain, 3D boxes
+├── web/
+│   ├── src/engine/    Pure JS life engine: routines, trips with causes, paired 30-day runs (deterministic, seeded)
+│   ├── src/judge/     Muse calls: decision prompts, number guards, recorded decisions for exact replay
+│   ├── src/consult/   Consult agent: tool calls (extract_profile, find_homes, pick_homes, start_life_run, …), reply guards
+│   ├── src/verify/    Report checks: ground-truth checklist, number claims, retry loop
+│   ├── src/money/     Payroll, 매매 / 전세 / 월세 formulas, real-transaction loader, public rentals
+│   ├── src/transit/   Operator schedule and ride minutes
+│   ├── src/render/    three.js scene: facades, terrain, roads, trees, vehicles, pedestrians, trains
+│   ├── src/ui/        React 19 + Astryx (Meta's design system)
+│   ├── scripts/       CLIs: simulate, money, judge, static server
+│   └── tests/         node:test suites
+├── relay/             Server that keeps keys off the browser: /api/consult, map tiles (Vercel or docker compose)
+├── scenarios/         Committed households, homes and recorded Muse decisions
+├── tests/             Python tests for the pipeline
+├── Dockerfile, docker-compose.yml, package.json, .env.example
+└── briefs/            One brief + result per Muse Code stage
+```
+
+**Flow.**
+1. **Profile.** The browser sends the chat to `/api/consult` (the dev server or the relay). The agent calls Muse with tools; tool results come from `web/src/engine` and `web/src/money`.
+2. **Number check.** The reply guard (`web/src/consult/guards.js`) rejects a reply whose numbers are not in the tool results.
+3. **30-day run.** The engine runs both homes in a browser worker (`web/src/sim-worker.js`).
+4. **Diary.** Muse writes the diary from the run's record, and `web/src/consult/diary.js` checks every line against that record.
+5. **Household decisions.** Muse makes them through the judge CLI (`web/scripts/judge.mjs`), and they replay exactly from the recorded files.
+
+`npm test` at the root runs the JS suites, and `npm run test:py` runs the Python ones. CI runs both on every pull request and every push to `main`.
 
 ## How it works
 
@@ -171,7 +219,18 @@ Where they differ, it is mostly which shop to stop at after work (15 of 19). Wit
 
 ## Quick start
 
-Requirements: Node 20+, Python 3.12, and about 6 GB of disk for raw data.
+**Fastest: Docker.** No key is needed.
+
+```bash
+cp .env.example .env    # optional: fill in MODEL_API_KEY for live Muse
+docker compose up       # web on http://localhost:8080, relay on :8787
+```
+
+- The image builds the same static site as the public one and adds the prebuilt runtime data from the [`data-v1` release](https://github.com/halo-sw/ithaca/releases/tag/data-v1).
+- Without a key, the header shows **Rule mode** and the chat says so once. The engine still computes every number.
+- `npm test` at the root runs the JS tests.
+
+**From source.** Requirements: Node 20+, Python 3.12, and about 6 GB of disk for raw data.
 
 ```bash
 # 1. Python pipeline

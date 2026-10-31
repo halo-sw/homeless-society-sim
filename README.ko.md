@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-1772_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 1421개, Python 테스트 244개">
+  <img src="https://img.shields.io/badge/tests-1783_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 1783개, Python 테스트 266개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
@@ -28,6 +28,8 @@
 
 <p align="center">
   <a href="#2분-안에-심사하기">2분 심사</a> ·
+  <a href="#meta-ai-사용">Meta AI 사용</a> ·
+  <a href="#구조">구조</a> ·
   <a href="#이렇게-작동해요">작동 방식</a> ·
   <a href="#갤러리">갤러리</a> ·
   <a href="#하는-일">하는 일</a> ·
@@ -52,7 +54,7 @@
 | 모델이 바뀌어도 판단이 같아요 | Spark 1.3과 Spark Open이 같은 판단 지점 **139곳 중 120곳(86 %)** 에서 같은 선택 | [Meta 모델](#meta-모델) |
 | 가드가 실제 실행에서 버텨요 | 모델마다 판단 **154개 모두** 답함, 가드 대체 **0건** | [Meta 모델](#meta-모델) |
 | 일기 문장을 검사해요 | 문장마다 실행 기록의 사실을 인용해야 하고, 기록에 없는 숫자는 돌려보내 다시 쓰게 해요. 2026-10-31 실제 영어 실행(판교, 집 2곳): 일기 8문장 모두 기록과 일치(1번 고쳐 씀) | [검증](#검증) |
-| 테스트 | JavaScript **1,772**개, Python **266**개, 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| 테스트 | JavaScript **1,783**개, Python **266**개, PR과 main 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 <p align="center">
   <img src="briefs/img/19-chat.jpg" width="760" alt="대화 화면. 왼쪽은 대화와 후보 집 목록이에요. 줄마다 지도 번호, 이름, 실거래 전세 가격, 면적·연식, 예상 출퇴근 시간이 있고, 두 집이 A·B로 담겨 있어요. 오른쪽은 도로와 노선 색 지하철이 그려진 밝은 지도에 회사 · 판교 표시, 후보마다 가격 말풍선(A·B는 파란색), 출퇴근 분이 있어요. 지도 아래 줄에 담은 두 집과 버튼 하나, 이 집들로 30일 살아 보기가 있어요.">
@@ -67,6 +69,52 @@
 그래서 AI 가족이 먼저 들어가 살아요. 내 상황을 말하고, 실거래가에서 후보 집을 고르면, 가족이 실제 동네를 옮긴 3D 모형 위에서 A집과 B집에 각각 30일을 나란히 살아요. 일상의 선택은 Muse Spark가 하고 이유를 남겨요. 시간과 돈은 결정적 엔진이 1분, 1원까지 세요. 그다음 고객이 정한 우선순위로만 두 집을 비교하고, 모든 숫자에 출처나 "가정값" 표시를 붙여요. 앱은 보여 주고 설명할 뿐이고, 결정은 고객이 해요.
 
 > 상태(2026-10-31): 개발 중이에요. 해커톤 기간은 2026-10-27 → 11-05이고, 첫 커밋은 2026-10-28이에요. 해커톤 이전에 만든 코드는 없어요. *준비 중*이라고 적힌 항목은 아직 만들지 않았어요.
+
+## Meta AI 사용
+
+모든 호출은 모듈 하나, [`web/src/judge/providers.js`](web/src/judge/providers.js)를 거쳐요. OpenAI 방식 chat completions를 `fetch`로 부르고, 키는 서버 환경 변수에서만 읽어요([`.env.example`](.env.example) 참고).
+
+| 모델 | 엔드포인트 | 여기서 하는 일 | 코드 | 증거 |
+|---|---|---|---|---|
+| **Muse Spark 1.3** (`muse-spark-1.3`) | `https://api.meta.ai/v1` | 가구의 일상 선택과 이유, 도구를 부르는 상담 에이전트 | [`judge/run.js`](web/src/judge/run.js) → [`providers.js`](web/src/judge/providers.js) `complete`, [`consult/agent.js`](web/src/consult/agent.js) → `completeWithTools` | [실제 호출 3건](docs/evidence/muse-spark-1.3-2026-10-31.json), [기록된 판단 154개](scenarios/decisions/compare-1029/) |
+| **Muse Spark Open** (`meta-models/muse-spark-open-1026`) | `https://inference.baseten.co/v1` (Baseten) | 같은 가구 판단, 스위치 하나 `--provider baseten` | 같은 모듈 | [실제 호출 3건](docs/evidence/muse-spark-open-2026-10-31.json), Spark 1.3과 139곳 중 120곳 같은 선택 |
+| **Muse Code** (`muse-spark-1.3` 에이전트 모드) | Muse Code CLI | 단계별 지시서를 받아 이 저장소의 제품 코드와 테스트를 모두 작성 | — | [`briefs/`](briefs/) (단계마다 지시서 + 결과) |
+| Muse Voice Transcribe | — | 말로 조건 입력 | *준비 중* | — |
+| SAM 3.1 | — | 매물 사진에서 창문 면적 | *준비 중* | — |
+
+Spark Open은 Baseten이 공개한 그대로 서빙해요. 서빙된 두 모델을 비교했을 뿐, 어느 쪽도 파인튜닝하지 않았어요.
+
+## 구조
+
+```text
+ithaca/
+├── pipeline/          Python: OSM 추출, 건축물대장 결합, 보행 그래프, 지하철망, 지형, 3D 상자
+├── web/
+│   ├── src/engine/    순수 JS 생활 엔진: 일과, 이유가 있는 이동, 짝지은 30일 실행(결정적, 시드 고정)
+│   ├── src/judge/     Muse 호출: 판단 프롬프트, 숫자 가드, 정확히 다시 보기 위한 기록
+│   ├── src/consult/   상담 에이전트: 도구 호출(extract_profile, find_homes, pick_homes, start_life_run …), 답변 가드
+│   ├── src/verify/    보고서 검사: 정답 체크리스트, 숫자 주장, 재시도 루프
+│   ├── src/money/     급여, 매매·전세·월세 공식, 실거래가 로더, 공공임대
+│   ├── src/transit/   운영사 시간표와 구간 분
+│   ├── src/render/    three.js 장면: 외벽, 지형, 도로, 나무, 차량, 보행자, 열차
+│   ├── src/ui/        React 19 + Astryx(Meta 디자인 시스템)
+│   ├── scripts/       CLI: simulate, money, judge, 정적 서버
+│   └── tests/         node:test 묶음
+├── relay/             키를 브라우저에 보내지 않는 서버: /api/consult, 지도 타일(Vercel 또는 docker compose)
+├── scenarios/         커밋된 가구·집·기록된 Muse 판단
+├── tests/             파이프라인 Python 테스트
+├── Dockerfile, docker-compose.yml, package.json, .env.example
+└── briefs/            Muse Code 단계마다 지시서 + 결과
+```
+
+**흐름**
+1. **조건 정리.** 브라우저가 대화를 `/api/consult`(개발 서버 또는 중계 서버)로 보내요. 에이전트가 도구와 함께 Muse를 부르고, 도구 결과는 `web/src/engine`과 `web/src/money`가 계산해요.
+2. **숫자 검사.** 답변 가드(`web/src/consult/guards.js`)는 도구 결과에 없는 숫자가 든 답을 돌려보내요.
+3. **30일 살아 보기.** 엔진이 브라우저 워커(`web/src/sim-worker.js`)에서 두 집을 함께 돌려요.
+4. **일기.** Muse가 실행 기록으로 일기를 쓰고, `web/src/consult/diary.js`가 줄마다 그 기록과 대조해요.
+5. **가구 판단.** Muse는 판단 CLI(`web/scripts/judge.mjs`)로 가구의 선택을 내리고, 기록된 파일로 똑같이 다시 볼 수 있어요.
+
+루트에서 `npm test`는 JS 테스트를, `npm run test:py`는 Python 테스트를 돌려요. CI는 PR마다, 그리고 main에 푸시할 때마다 둘 다 돌려요.
 
 ## 이렇게 작동해요
 
@@ -170,7 +218,18 @@
 
 ## 빠른 시작
 
-필요한 것: Node 20 이상, Python 3.12, 원본 데이터용 디스크 약 6GB.
+**가장 빠른 방법: Docker.** 키가 없어도 돼요.
+
+```bash
+cp .env.example .env    # 선택: 실제 Muse를 쓰려면 MODEL_API_KEY를 채워요
+docker compose up       # 웹 http://localhost:8080, 중계 서버 :8787
+```
+
+- 공개 사이트와 같은 정적 사이트를 만들고, [`data-v1` 릴리스](https://github.com/halo-sw/ithaca/releases/tag/data-v1)의 미리 만든 데이터를 넣어요.
+- 키가 없으면 머리글에 **규칙 모드**가 뜨고, 대화에서도 한 번 알려 줘요. 숫자는 그대로 엔진이 계산해요.
+- 루트에서 `npm test`를 실행하면 JS 테스트가 돌아요.
+
+**소스에서 직접.** 필요한 것: Node 20 이상, Python 3.12, 원본 데이터용 디스크 약 6GB.
 
 ```bash
 # 1. Python 파이프라인

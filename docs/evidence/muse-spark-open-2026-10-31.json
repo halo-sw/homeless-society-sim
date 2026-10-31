@@ -1,0 +1,289 @@
+{
+  "what": "Real calls captured from Ithaca's household-decision path (web/src/judge/run.js judgeHome -> providers.js complete), scenario demo-two-homes, home A. The Authorization header is replaced with [REDACTED]; nothing else is edited.",
+  "captured_at": "2026-10-31T05:28:20.016Z",
+  "provider": "baseten",
+  "label": "Muse Spark Open",
+  "base_url": "https://inference.baseten.co/v1",
+  "model": "meta-models/muse-spark-open-1026",
+  "calls": [
+    {
+      "sent_at": "2026-10-31T05:28:02.768Z",
+      "latency_ms": 2645,
+      "request": {
+        "method": "POST",
+        "url": "https://inference.baseten.co/v1/chat/completions",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "[REDACTED]"
+        },
+        "body": {
+          "model": "meta-models/muse-spark-open-1026",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You decide for one simulated household member in a housing life simulator.\nThe household is fictional; every place and number below is real simulation data.\nRules:\n- Choose only keys from the options list (60-char Korean reason, 90-char English reason).\n- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.\n- Never state the home option's distance or walk time.\n- Keep reasons about the person's routine and preferences.\n- Never mention price, cost, safety, danger, crime, school quality, or health topics.\n- Reply with a single JSON object matching the schema, nothing else."
+            },
+            {
+              "role": "user",
+              "content": "Member: 구성원 1 (adult), simulated.\nPreferences: 아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.\nDay: 2026-11-02 (Mon), time 18:33.\n\nToday's trips so far:\n- 07:37→07:51 commute 레이크팰리스→잠실 (13.6 min, 1058 m)\n- 17:51→18:03 commute 잠실→레이크팰리스 (11.8 min, 923 m)\n\nRecent decisions:\n- (none yet)\n\nBranch: park_or_home at 18:33. Decide between an evening park walk and staying home.\nOptions (key: place — walk minutes, metres):\n- park: 송파나루공원 — 11.2 min, 871 m\n- home: 집 — stay home\n\nAnswer {\"chosen_key\": \"...\", \"reason_ko\": \"...\", \"reason_en\": \"...\"}."
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 2000,
+          "reasoning_effort": "low",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "decision",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chosen_key",
+                  "reason_ko",
+                  "reason_en"
+                ],
+                "properties": {
+                  "chosen_key": {
+                    "type": "string",
+                    "description": "Exactly one key from the options list."
+                  },
+                  "reason_ko": {
+                    "type": "string",
+                    "description": "Short Korean reason, at most 60 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  },
+                  "reason_en": {
+                    "type": "string",
+                    "description": "Short English reason, at most 90 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "date": "Sat, 31 Oct 2026 05:28:05 GMT",
+        "body": {
+          "id": "chatcmpl-995262808e5d4f3abbefaff3762500af",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "content": "{\"chosen_key\":\"park\",\"reason_ko\":\"아침 산책을 즐기듯 저녁에도 가볍게 걷기 위해 공원을 선택한다\",\"reason_en\":\"Park is 11.2 min, 871 m away, ideal for a light evening stroll after commute\"}",
+                "role": "assistant",
+                "reasoning_content": "We need to choose between park and home. Member likes morning walk and evening market. But now it's evening park walk vs home. Need to decide.\n\nWe have trips: morning commute 07:37-07:51, evening commute 17:51-18:03. Now at 18:33 at branch park_or_home. Options: park 11.2 min 871m, home stay.\n\nWe must provide reason 60-char Korean, 90-char English, cite at most one number exactly from options, or none. Never state home option's distance or walk time. Keep reasons about routine and preferences. Never mention price etc.\n\nWe should choose? Preferences: likes morning walk, enjoys market on way home. Evening park walk aligns with walking preference. So choose park.\n\nWe need to cite at most one number and copy exactly. So we can cite \"11.2 min, 871 m\" exactly? The option shows \"11.2 min, 871 m\". Must copy exactly. Or we can cite none. Better cite one.\n\nWe must not state home option's distance. Home is stay home, no distance anyway.\n\nProvide JSON.\n\nReason Korean 60 char: need to count. Let's craft ~50 chars.\n\nKorean reason: \"아침 산책을 좋아해 저녁에도 가볍게 걷고 싶어 공원을 선택한다\" Count? Let's approximate. Need <=60 char. That sentence maybe ~30 chars. OK.\n\nEnglish reason: \"Enjoys walking routine and wants a light evening stroll at the park after commute.\" Need <=90 char. Count ~80.\n\nWe must cite number? We can include \"11.2 min, 871 m\" in reason. But requirement: cite at most one number and copy it exactly from options, or cite none. Never invent. So if we include, must be exact. Let's include in English reason: \"Park is 11.2 min, 871 m away, perfect for light evening stroll after work.\" That's within 90 char? Let's count: \"Park is 11.2 min, 871 m away, perfect for light evening stroll after work.\" That's ~71 chars. OK.\n\nKorean reason also could include number but only one number total? It says in reasons, cite at most one number. Does that mean across both reasons combined at most one? Probably per reason? Wording: \"In reasons, cite at most one number\" likely total across both. Safer to cite only in one reason, not both. So include in English only.\n\nMake sure not to state home distance.\n\nProvide JSON.\n\n"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "created": 1793424483,
+          "model": "meta-models/muse-spark-open-1026",
+          "object": "chat.completion",
+          "usage": {
+            "prompt_tokens": 487,
+            "completion_tokens": 596,
+            "total_tokens": 1083,
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 401,
+              "audio_tokens": 0,
+              "reasoning_tokens": 529,
+              "rejected_prediction_tokens": 971
+            }
+          }
+        }
+      }
+    },
+    {
+      "sent_at": "2026-10-31T05:28:05.558Z",
+      "latency_ms": 3039,
+      "request": {
+        "method": "POST",
+        "url": "https://inference.baseten.co/v1/chat/completions",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "[REDACTED]"
+        },
+        "body": {
+          "model": "meta-models/muse-spark-open-1026",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You decide for one simulated household member in a housing life simulator.\nThe household is fictional; every place and number below is real simulation data.\nRules:\n- Choose only keys from the options list (60-char Korean reason, 90-char English reason).\n- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.\n- Never state the home option's distance or walk time.\n- Keep reasons about the person's routine and preferences.\n- Never mention price, cost, safety, danger, crime, school quality, or health topics.\n- Reply with a single JSON object matching the schema, nothing else."
+            },
+            {
+              "role": "user",
+              "content": "Member: 구성원 1 (adult), simulated.\nPreferences: 아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.\nDay: 2026-11-03 (Tue), time 19:23.\n\nToday's trips so far:\n- 08:27→08:41 commute 레이크팰리스→잠실 (13.6 min, 1058 m)\n- 18:41→18:53 commute 잠실→레이크팰리스 (11.8 min, 923 m)\n\nRecent decisions:\n- day 0 18:33 park_or_home chose park: 아침 산책을 즐기듯 저녁에도 가볍게 걷기 위해 공원을 선택한다\n\nBranch: shop_choice at 19:23. Pick one shop to visit.\nOptions (key: place — walk minutes, metres):\n- s0: 세븐일레븐 잠실 갤러리아점 — 2.8 min, 218 m\n- s1: 세븐일레븐 — 5.2 min, 408 m\n- s2: 세븐일레븐 — 12 min, 935 m\n\nAnswer {\"chosen_key\": \"...\", \"reason_ko\": \"...\", \"reason_en\": \"...\"}."
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 2000,
+          "reasoning_effort": "low",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "decision",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chosen_key",
+                  "reason_ko",
+                  "reason_en"
+                ],
+                "properties": {
+                  "chosen_key": {
+                    "type": "string",
+                    "description": "Exactly one key from the options list."
+                  },
+                  "reason_ko": {
+                    "type": "string",
+                    "description": "Short Korean reason, at most 60 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  },
+                  "reason_en": {
+                    "type": "string",
+                    "description": "Short English reason, at most 90 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "date": "Sat, 31 Oct 2026 05:28:08 GMT",
+        "body": {
+          "id": "chatcmpl-36ef0627ca564005a7a55af2fb040f88",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "content": "{\"chosen_key\": \"s0\",\"reason_ko\": \"아침 산책처럼 저녁에도 가볍게 걷며 퇴근길 구경을 즐기기 위해 선택한다\",\"reason_en\": \"A light 2.8 min walk fits my morning stroll habit and lets me browse on the way home\"}",
+                "role": "assistant",
+                "reasoning_content": "We need to choose shop. Preferences: likes morning walk, enjoys market browsing on way home. Currently 19:23, just returned home? Trips: commute back 18:41-18:53. Now shop_choice. Should pick something that fits routine. Need to provide reasons with at most one number exactly from options, or none. Never state home option's distance or walk time. Keep reasons about person's routine and preferences. Never mention price etc.\n\nWe have options s0 2.8 min 218m, s1 5.2 min 408m, s2 12 min 935m.\n\nWe should choose s0? Closest, allows light evening walk like park choice earlier. Or s2 longer walk? Person likes morning walk and evening market browsing. Could choose s2 for longer walk? But 12 min is longer. However recent decision chose park for light walk. So maybe choose s0 for light walk.\n\nWe need to provide 60-char Korean reason, 90-char English reason. Must cite at most one number and copy exactly from options, or cite none. Never invent times etc. So we can include \"2.8 min\" or \"218 m\" exactly. Must not state home option's distance or walk time - but we are not home option? This is shop_choice, not home. So we can mention shop distances? Probably allowed. But rule says Never state the home option's distance or walk time. This is shop, so okay.\n\nWe must choose only keys from options list.\n\nProvide JSON.\n\nNeed to ensure reason length? 60-char Korean reason, 90-char English reason. Probably max? The instruction says 60-char Korean reason, 90-char English reason. So keep within limits. Let's craft ~50 Korean chars, ~80 English chars.\n\nKorean reason: 아침 산책처럼 가볍게 걷고 퇴근길 구경 즐기려 가까운 곳을 선택한다\n\nCount? Let's approximate. Need to ensure not too long. Provide.\n\nEnglish: Like morning walks, I want a light evening stroll to browse on my way home.\n\nWe should cite one number maybe. Add \"2.8 min\" in reason? Could include. But must copy exactly. Let's include in English: \"2.8 min walk fits my light evening stroll habit.\"\n\nCheck length: English reason must be <=90 chars. Let's count: \"2.8 min walk fits my light evening stroll habit.\" That's 44 chars. Good.\n\nKorean reason also maybe include number. But at most one number total? It says in reasons, cite at most one number and copy it exactly from the options, or cite none. Does that mean across both reasons combined at most one number? Probably per reasons total. Safer to include only one number in one of the reasons, none in other.\n\nSo include number in English only.\n\nProvide JSON.\n\n"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "created": 1793424485,
+          "model": "meta-models/muse-spark-open-1026",
+          "object": "chat.completion",
+          "usage": {
+            "prompt_tokens": 549,
+            "completion_tokens": 658,
+            "total_tokens": 1207,
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 256
+            },
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 439,
+              "audio_tokens": 0,
+              "reasoning_tokens": 585,
+              "rejected_prediction_tokens": 1094
+            }
+          }
+        }
+      }
+    },
+    {
+      "sent_at": "2026-10-31T05:28:08.726Z",
+      "latency_ms": 2961,
+      "request": {
+        "method": "POST",
+        "url": "https://inference.baseten.co/v1/chat/completions",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "[REDACTED]"
+        },
+        "body": {
+          "model": "meta-models/muse-spark-open-1026",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You decide for one simulated household member in a housing life simulator.\nThe household is fictional; every place and number below is real simulation data.\nRules:\n- Choose only keys from the options list (60-char Korean reason, 90-char English reason).\n- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.\n- Never state the home option's distance or walk time.\n- Keep reasons about the person's routine and preferences.\n- Never mention price, cost, safety, danger, crime, school quality, or health topics.\n- Reply with a single JSON object matching the schema, nothing else."
+            },
+            {
+              "role": "user",
+              "content": "Member: 구성원 1 (adult), simulated.\nPreferences: 아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.\nDay: 2026-11-03 (Tue), time 20:14.\n\nToday's trips so far:\n- 08:27→08:41 commute 레이크팰리스→잠실 (13.6 min, 1058 m)\n- 18:41→18:53 commute 잠실→레이크팰리스 (11.8 min, 923 m)\n- 19:23→19:26 errand 레이크팰리스→세븐일레븐 잠실 갤러리아점 (2.8 min, 218 m)\n- 19:41→19:44 errand 세븐일레븐 잠실 갤러리아점→레이크팰리스 (2.8 min, 218 m)\n\nRecent decisions:\n- day 0 18:33 park_or_home chose park: 아침 산책을 즐기듯 저녁에도 가볍게 걷기 위해 공원을 선택한다\n- day 1 19:23 shop_choice chose s0: 아침 산책처럼 저녁에도 가볍게 걷며 퇴근길 구경을 즐기기 위해 선택한다\n\nBranch: park_or_home at 20:14. Decide between an evening park walk and staying home.\nOptions (key: place — walk minutes, metres):\n- park: 송파나루공원 — 11.2 min, 871 m\n- home: 집 — stay home\n\nAnswer {\"chosen_key\": \"...\", \"reason_ko\": \"...\", \"reason_en\": \"...\"}."
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 2000,
+          "reasoning_effort": "low",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "decision",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chosen_key",
+                  "reason_ko",
+                  "reason_en"
+                ],
+                "properties": {
+                  "chosen_key": {
+                    "type": "string",
+                    "description": "Exactly one key from the options list."
+                  },
+                  "reason_ko": {
+                    "type": "string",
+                    "description": "Short Korean reason, at most 60 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  },
+                  "reason_en": {
+                    "type": "string",
+                    "description": "Short English reason, at most 90 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "date": "Sat, 31 Oct 2026 05:28:11 GMT",
+        "body": {
+          "id": "chatcmpl-7d0c1cd113ac4fa49ff2b2c4d1138346",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "content": "{\"chosen_key\": \"park\",\"reason_ko\": \"아침 산책을 즐기듯 저녁에도 가볍게 걸으며 하루를 마무리하려 공원을 선택한다\",\"reason_en\": \"I love morning walks and want an evening stroll to unwind, park at 11.2 min, 871 m fits my routine.\"}",
+                "role": "assistant",
+                "reasoning_content": "We need to choose between park and home. Member likes morning walk and market browsing on way home. Recent decisions: chose park at day0 18:33, chose shop s0. Today trips: commute etc. At 20:14 evening park walk vs stay home.\n\nWe need to provide JSON with chosen_key, reason_ko 60-char Korean reason, reason_en 90-char English reason. Cite at most one number and copy exactly from options, or cite none. Never invent times, distances, prices or counts. Never state home option's distance or walk time. Keep reasons about person's routine and preferences. Never mention price, cost, safety, danger, crime, school quality, or health topics.\n\nWe must choose only keys from options list: park or home.\n\nWe should not state home option's distance. But we can cite park distance if we choose park. Must copy exactly: \"11.2 min, 871 m\" or \"11.2 min\" etc. The options show \"11.2 min, 871 m\". So we can cite that.\n\nWe need to provide Korean reason 60-char? Probably max 60 characters. Need to ensure Korean reason is about routine and preferences. Mention morning walk habit.\n\nWe must not invent times, distances. So if we cite, must be exactly \"11.2 min, 871 m\" or \"11.2 min\" or \"871 m\". Let's cite \"11.2 min, 871 m\" exactly.\n\nWe should choose park likely because person likes walks. Recent decisions also chose park. So choose park.\n\nProvide reason_ko: Must be Korean, 60-char. Let's craft ~50 chars. Example: \"아침 산책을 좋아해 저녁에도 가볍게 걸으며 하루를 마무리하려 공원을 선택한다\" Count characters? Need to ensure under 60. Let's count roughly. That sentence maybe ~35 chars. Need to include citation? Requirement: cite at most one number and copy it exactly from options, or cite none. So we can include number in reason. But Korean reason must be 60-char. If we include number, must be exact. Could include \"11.2 min, 871 m\" in reason. But Korean reason with English numbers maybe okay. However we can also cite none. Safer to cite in English reason.\n\nWe need to provide both reasons. Let's make reason_ko without number, reason_en with number.\n\nReason_en 90-char English reason. Must be about routine. Include citation: \"11.2 min, 871 m\" . Example: \"Enjoying morning walks, I want an evening stroll to unwind after commute, park at 11.2 min, 871 m fits routine.\"\n\nNeed to keep under 90 chars. Count: That sentence length? Let's approximate: \"Enjoying morning walks, I want an evening stroll to unwind after commute, park at 11.2 min, 871 m fits routine.\" That's about 105 chars maybe too long. Need shorter.\n\nTry: \"I love morning walks and want an evening stroll to end the day, park 11.2 min, 871 m suits me.\" Count characters: Let's count: I(1) (2)love... Let's approximate 85 chars. Might be okay under 90.\n\nWe must ensure we don't state home option's distance. We are not.\n\nWe must not mention price etc.\n\nProvide JSON.\n\n"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "created": 1793424488,
+          "model": "meta-models/muse-spark-open-1026",
+          "object": "chat.completion",
+          "usage": {
+            "prompt_tokens": 630,
+            "completion_tokens": 778,
+            "total_tokens": 1408,
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 256
+            },
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 549,
+              "audio_tokens": 0,
+              "reasoning_tokens": 699,
+              "rejected_prediction_tokens": 1054
+            }
+          }
+        }
+      }
+    }
+  ]
+}
