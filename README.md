@@ -1,3 +1,5 @@
+<p align="center"><img src="web/public/landing/ithaca-intro.jpg" width="100%" alt="Ithaca — The Pre-living Agent for Your Next Home. An engraved night scene: an arch on a hill, two glowing paths (orange and blue, homes A and B) winding down through a lit neighbourhood to the sea. We walk the odyssey. You just come home."></p>
+
 <h1 align="center">Ithaca</h1>
 
 <p align="center"><sub>(formerly homeless-society-sim)</sub></p>
