@@ -73,7 +73,7 @@ import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
-import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../homes.js";
+import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint, displayNameFor } from "../homes.js";
 import { chipSourceIds } from "../sources.js";
 import { META_HQ_EXAMPLE } from "../places-us.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
@@ -93,6 +93,7 @@ import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { recordingUrl, validateRecording, replaySchedule, RECORDINGS } from "../chat/recording.js";
+import { ruleTurnPlan } from "../chat/intent.js";
 import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { shouldCallMuse, isNoKeyError, KEYLESS_LINE,
   getMuseLive, subscribeMuseLive, setMuseLive, refreshMuseLive } from "./muse-status.js";
@@ -386,7 +387,7 @@ export function runReadiness(picks, candidates) {
   const hint = picked.length < 2
     ? `비교할 집을 2–3곳 담아 주세요 (지금 ${picked.length}곳)`
     : unready.length > 0
-      ? `살아 보기를 못 하는 집이 있어요 (${unready.map((c) => c.name).join("·")})`
+      ? `살아 보기를 못 하는 집이 있어요 (${unready.map((c) => displayNameFor(c)).join("·")})`
       : `${picked.length}곳을 30일씩 살아 보고 비교해 드려요`;
   return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
 }
@@ -1140,7 +1141,7 @@ export function sceneForEffect(eff, { picks = [], candidates = [], latestRun = n
       return { say: "이 집은 아직 3D 동네 자료가 없어요." };
     }
     return { url: tourUrl({ area: candidate.scene, embed: true }),
-      title: `${candidate.name} 동네` };
+      title: `${displayNameFor(candidate)} 동네` };
   }
   if (!latestRun || !latestRun.customId) {
     return { say: "먼저 두 집을 찜하고 살아 보기를 맡겨 주세요." };
@@ -1175,6 +1176,19 @@ export function chipsForLatest(messages, fallback) {
     }
   }
   return fallback;
+}
+
+// 30g: the "기록된 대화 보기" replay entry lives as the first suggestion
+// chip (above the composer), never below it. Same condition the old
+// bottom fallback used: Muse failed, or the off/keyless notice is on
+// screen, and no replay is open. Pure; unit-tested.
+export const REPLAY_CHIP_LABEL = "기록된 대화 보기";
+
+export function replayChipVisible({ museFails = 0, messages = [], replayId = null } = {}) {
+  if (replayId) return false;
+  if (museFails > 0) return true;
+  return (messages || []).some((m) => m && (m.content === STATIC_OFF_LINE
+    || (typeof KEYLESS_LINE === "string" && m.content === KEYLESS_LINE)));
 }
 
 const US_NO_JEONSE_SUPPORT = "미국 자료에는 전세·공공임대·지원 제도 정보가 없어요.";
@@ -1458,6 +1472,31 @@ export function ChatScreen() {
 
   // --- structured flow ---
   async function structuredFlow(text) {
+    // 30c: typed picks/runs while candidates are on screen — the same
+    // state the Pick buttons and tray run button use, no
+    // extract_profile, no profile change.
+    const onScreen = (((stateRef.current.candidatesData || {}).result || {})
+      .candidates) || [];
+    if (onScreen.length > 0) {
+      const plan = ruleTurnPlan(
+        { text, candidates: onScreen, picks: stateRef.current.picks });
+      if (plan) {
+        if (plan.type === "pick") {
+          setPicks(plan.ids);
+          stateRef.current.picks = plan.ids;
+          pushMsg({ role: "assistant", kind: "text", content: plan.message });
+          if (plan.thenRun) {
+            if (plan.runReady) await handleRun(plan.ids);
+            else pushMsg({ role: "assistant", kind: "text", content: plan.gate });
+          }
+        } else if (plan.type === "run") {
+          await handleRun(plan.ids);
+        } else if (plan.type === "gate") {
+          pushMsg({ role: "assistant", kind: "text", content: plan.message });
+        }
+        return;
+      }
+    }
     const words = regionWordsIn(text, REGION_NAME_ALIASES);
     let named = words.length > 0 ? regionsForNames(words) : null;
     // 26c: a US search loads exactly us-menlo — never Korean regions.
@@ -1653,7 +1692,7 @@ export function ChatScreen() {
   function handlePreview3D(candidate) {
     if (!candidate.scene) return;
     setScene({ url: tourUrl({ area: candidate.scene, embed: true }),
-      title: `${candidate.name} 동네` });
+      title: `${displayNameFor(candidate)} 동네` });
     setWorkOpen(true);
     setView("work");
   }
@@ -1724,7 +1763,7 @@ export function ChatScreen() {
     const blocked = picked.filter((c) => readinessNote(c));
     if (blocked.length > 0) {
       pushMsg({ role: "assistant", kind: "text",
-        content: `살아 보기를 못 하는 집이 있어요: ${blocked.map((c) => `${c.name} (${readinessNote(c)})`).join(" · ")}` });
+        content: `살아 보기를 못 하는 집이 있어요: ${blocked.map((c) => `${displayNameFor(c)} (${readinessNote(c)})`).join(" · ")}` });
       return;
     }
     busyRef.current = true;
@@ -1769,7 +1808,7 @@ export function ChatScreen() {
       const scenValue = sc.value;
       setScenario(scenValue);
       const buildId = addToolRow({ name: "build_scenario", ok: true,
-        summary: picked.map((p) => p.name).join(" · "), ms: sc.ms });
+        summary: picked.map((p) => displayNameFor(p)).join(" · "), ms: sc.ms });
       const labels = picked.map((_, i) => "ABC"[i]);
       const runner = createWorkerRunner(() => new Worker(new URL("../sim-worker.js", import.meta.url), { type: "module" }));
       const { runs, compare, ms } = await runStep(
@@ -1814,7 +1853,7 @@ export function ChatScreen() {
       const customId = newCustomId();
       await saveCustomRun({ id: customId, scenario: scenValue, runs, labels,
         moneyDoc, moneyMissing,
-        names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])) });
+        names: Object.fromEntries(picked.map((p, i) => [labels[i], displayNameFor(p)])) });
       const moments = labels.map((l) => ({ label: l, ...firstMomentOfRun(runs[l]) }));
       const anchors = labels.map((l) => ({ label: l,
         method: (runs[l].meta.home_anchor || {}).method || "complex" }));
@@ -1845,7 +1884,7 @@ export function ChatScreen() {
           + `하루 평균 피곤한 정도 ${Math.round((hh.fatigue_avg_30d || 0) * 10) / 10} — 3D에서 보기로 하루를 보세요.`;
       }
       const payload = { status: "done", compare, moments, labels, customId,
-        names: Object.fromEntries(picked.map((p, i) => [labels[i], p.name])),
+        names: Object.fromEntries(picked.map((p, i) => [labels[i], displayNameFor(p)])),
         moneyDoc, moneyMissing, anchors, momentTexts, extraLine, noCommute };
       // The chat drawer tabs read the same custom docs as the sim.
       store.set({ compare });
@@ -2597,8 +2636,13 @@ export function ChatScreen() {
                 const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
                 const chips = chipsForLatest(messages, fallback);
                 const live = chips !== fallback;
+                const showReplay = replayChipVisible({ museFails, messages, replayId });
                 return (
               <div className="ui-chat-chips" role="group" aria-label="추천 질문">
+                {showReplay && (
+                  <Button key="__replay__" size="sm" variant="secondary"
+                    label={REPLAY_CHIP_LABEL} onClick={openReplay} />
+                )}
                 {chips.map((chip) => (
                   <Button key={chip} size="sm" variant="secondary" label={chip}
                     onClick={() => (live ? send(chip) : chipAction(chip))} />
@@ -2611,11 +2655,6 @@ export function ChatScreen() {
             {error && (
               <Banner status="error" title="요청 실패" description={error}
                 isDismissable onDismiss={() => setError("")} />
-            )}
-            {(museFails > 0 || messages.some((m) => m.content === STATIC_OFF_LINE)) && !replayId && (
-              <div className="ui-chat-fallback">
-                <Button size="sm" variant="secondary" label="기록된 대화 보기" onClick={openReplay} />
-              </div>
             )}
           </section>
           {workOpen && (
@@ -2933,7 +2972,7 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
     return (
       <div className="ui-picks-compact" role="group" aria-label="고른 집">
         <span className="ui-picks-compact-names">
-          {picked.map((c, i) => `${PICK_LETTERS[i] || "·"} ${c.name}`).join(" · ")}
+          {picked.map((c, i) => `${PICK_LETTERS[i] || "·"} ${displayNameFor(c)}`).join(" · ")}
         </span>
         <span className="ui-picks-compact-sep" aria-hidden="true">—</span>
         <Button label={label} variant="primary" className="ui-picks-run"
@@ -2963,9 +3002,9 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
               <span className="ui-pick-disc" aria-hidden="true">
                 {PICK_LETTERS[i] || "·"}
               </span>
-              <span className="ui-pick-name"><HomeName name={c.name} /></span>
+              <span className="ui-pick-name"><HomeName name={displayNameFor(c)} /></span>
               <button type="button" className="ui-pick-x"
-                aria-label={`${c.name} 빼기`}
+                aria-label={`${displayNameFor(c)} 빼기`}
                 onClick={() => onRemove && onRemove(c)}>×</button>
             </span>
           ))}

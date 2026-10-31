@@ -305,6 +305,7 @@ const seedPatterns = [
   // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
   { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
+  { ko: "{0}을 담았어요. \"살아 봐 줘\"라고 하면 30일을 살아 봐요", en: "Saved {0}. Say \"live in them\" to live 30 days in each" },
   // 29a4: top-bar summary edit button (aria-label carries the summary).
   { ko: "조건 고치기: {0}", en: "Edit conditions: {0}" },
   // 29a2: candidate-list commute row (total first), budget difference,

@@ -189,7 +189,7 @@ export function TopBar({ mode, summary, extra, settings }) {
       <div className="ui-bar-left">
         <span className="ui-bar-title">Ithaca</span>
         {mode === "chat" ? (
-          <PoweredByMuse size="sm" live={museLive === true} showStatus />
+          <PoweredByMuse size="sm" live={museLive} showStatus />
         ) : (
           <Button size="sm" variant="ghost" label="← 대화로"
             onClick={() => gotoMode("chat", mode)} />

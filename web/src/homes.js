@@ -542,18 +542,28 @@ export function applyKindPreference(candidates, homeKinds) {
 
 // --- 21a: lot-number names ------------------------------------------------------
 // A bare lot number ("(242-4)", "242-4") is not a name: show
-// "{동} {유형} ({지번})", e.g. "대치동 연립·다세대 (242-4)". Pure.
+// "{동} {유형} ({지번})", e.g. "대치동 연립·다세대 (242-4)". Without a
+// 동, the nearest station names it ("판교역 근처 오피스텔 (647)").
+// region is an English id ("bundang") and is never shown. Pure.
 const LOT_NAME_RE = /^\(?\d+(-\d+)?\)?$/;
 
 export function displayNameFor(candidate) {
   const name = candidate ? String(candidate.name || "").trim() : "";
   if (!name || !LOT_NAME_RE.test(name)) return candidate ? candidate.name : name;
   const lot = name.replace(/^\(/, "").replace(/\)$/, "");
-  const place = (candidate.dong || candidate.region || "").trim();
-  const kind = (candidate.kind || "").trim();
-  if (place && kind) return `${place} ${kind} (${lot})`;
+  const dong = ((candidate && candidate.dong) || "").trim();
+  const kind = ((candidate && candidate.kind) || "").trim();
+  const walkStation = candidate && candidate.commute
+    && candidate.commute.walk && candidate.commute.walk.station;
+  const stationRaw = (typeof walkStation === "string" && walkStation.trim())
+    ? walkStation : (candidate && candidate.station);
+  const station = (typeof stationRaw === "string" ? stationRaw
+    : (stationRaw && stationRaw.station) || "").trim();
+  if (dong && kind) return `${dong} ${kind} (${lot})`;
+  if (dong) return `${dong} (${lot})`;
+  if (station && kind) return `${station}역 근처 ${kind} (${lot})`;
+  if (station) return `${station}역 근처 (${lot})`;
   if (kind) return `${kind} (${lot})`;
-  if (place) return `${place} (${lot})`;
   return candidate.name;
 }
 
