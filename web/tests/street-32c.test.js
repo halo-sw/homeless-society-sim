@@ -411,3 +411,13 @@ describe("32c2 list photo note per language", () => {
     assert.ok(tag !== -1 && idx - tag < 300, "the note node carries data-no-i18n");
   });
 });
+
+describe("32c3 dev-only street import", () => {
+  it("vite.config.js has no top-level relay import, only a dynamic one", () => {
+    const src = readFileSync(join(HERE, "..", "vite.config.js"), "utf8");
+    const topLevel = src.split("\n").filter((line) => /^import\s.*from\s+["']\.\.\/relay\//.test(line));
+    assert.deepEqual(topLevel, [], "no static import of relay/ (vite build must not resolve it)");
+    assert.match(src, /await\s+import\(\s*["']\.\.\/relay\/street\.js["']\s*\)/,
+      "street handler loads lazily inside configureServer");
+  });
+});

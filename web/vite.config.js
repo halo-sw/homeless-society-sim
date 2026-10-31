@@ -8,7 +8,6 @@ import { emptyUsage, judgeSingle } from "./src/judge/run.js";
 import { createConsultHandler } from "./src/consult/server.js";
 import { createTranscribeHandler } from "./src/consult/voice.js";
 import { serveTile } from "./src/aerial/proxy.js";
-import { createStreetHandler } from "../relay/street.js";
 
 // Serves the pipeline output (data/build/<area>/*.json) at /data/<area>/*
 // in dev. The data stays outside web/ (never copied); the production build
@@ -276,15 +275,18 @@ function aerialApiPlugin() {
 // in the upstream header only, is never logged, never echoed in errors,
 // and never reaches the browser. Nothing is written to disk.
 function streetApiPlugin() {
-  // One handler for the dev server: it holds its photo cache and rate
-  // buckets. The token is read per request, never stored in the bundle.
-  const handler = createStreetHandler({
-    getToken: () => process.env.MAPILLARY_TOKEN || null,
-    fetchImpl: fetch,
-  });
   return {
     name: "street-api",
-    configureServer(server) {
+    async configureServer(server) {
+      // Dev-only: loaded lazily so `vite build` (which never calls
+      // configureServer) never resolves relay/. One handler for the dev
+      // server: it holds its photo cache and rate buckets. The token is
+      // read per request, never stored in the bundle.
+      const { createStreetHandler } = await import("../relay/street.js");
+      const handler = createStreetHandler({
+        getToken: () => process.env.MAPILLARY_TOKEN || null,
+        fetchImpl: fetch,
+      });
       // connect strips the mount prefix from req.url; the query string
       // (lon/lat) survives, which is all the handler reads.
       server.middlewares.use("/api/street", (req, res) => {
