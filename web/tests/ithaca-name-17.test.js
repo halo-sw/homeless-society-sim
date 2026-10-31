@@ -67,7 +67,7 @@ describe("17-1 Ithaca name", () => {
     const share = readFileSync(join(SRC, "ui", "share.js"), "utf8");
     assert.ok(share.includes("Ithaca · 파일은 이 브라우저에만 저장돼요"));
     const index = readFileSync(join(HERE, "..", "index.html"), "utf8");
-    assert.ok(index.includes("<title>Ithaca — 미니어처 3D</title>"));
+    assert.ok(index.includes("<title>Ithaca — The Pre-living Agent for Your Next Home</title>"));
   });
 
   it("landing scrim is a bright warm-white veil (18: AA over the 3D)", () => {
