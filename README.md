@@ -37,6 +37,7 @@
 
 <p align="center">
   <a href="#summary">Summary</a> ·
+  <a href="#start-here">Start here</a> ·
   <a href="#project-brief">Project brief</a> ·
   <a href="#meta-ai-usage">Meta AI usage</a> ·
   <a href="#architecture">Architecture</a> ·
@@ -56,7 +57,7 @@
 - **What it is.** Ithaca lets an AI household live 30 days in each of two candidate homes before you sign, then shows what only living there reveals: the commute day by day, the money, the walk home after dark.
 - **Who it is for.** First-job workers renting their first place, couples about to marry, and families with young children choosing between two homes.
 - **How it works.** <img src="web/public/brand/muse-logo.png" width="18" alt=""> **Muse Spark 1.3** runs the conversation and makes the household's everyday choices with reasons; **Muse Voice** takes spoken input; a deterministic engine computes every minute and every won; every diary sentence is checked against the run's record before you see it.
-- **Try it.** Open <https://halo-sw.github.io/ithaca/> (English unless your browser is Korean, or add `?lang=en`).
+- **Try it.** Open <https://halo-sw.github.io/ithaca/> (English unless your browser is Korean, or add `?lang=en`). Where to begin for each situation is in [Start here](#start-here).
   - **Watch a recorded month** replays a real Muse Spark 1.3 session recorded on 2026-10-31, without any key: Meta HQ in Menlo Park, real apartments near 1 Hacker Way, two picked, 30 days in each, and the diary.
   - **I work at Meta HQ** runs it live: six real apartments on a map with aerial photos, Zillow ZIP rent estimates and bike/walk minutes. Say *"Save 1 and 2"*, then *"Live in both homes"* (type it, or tap the microphone).
   - No key is needed: the site calls Muse through our relay. If Muse is unavailable, the header shows **Rule mode** and the chat says so; the engine still computes every number. Locally, `docker compose up` runs the same app ([Quick start](#quick-start)).
@@ -77,6 +78,34 @@
 </p>
 
 <p align="center"><sub>Meta HQ in Menlo Park, replayed from a real Muse Spark 1.3 session: the checked diary and "Only living there tells you" on the left, six candidates with ZIP rent and door-to-work minutes on the map. Real GPU capture, 2026-10-31.</sub></p>
+
+## Start here
+
+Pick the row that sounds like you. Every link opens the live site; nothing to install and no key to bring.
+
+| You want to… | Start with | What you get |
+|---|---|---|
+| **See the whole thing first** | [Watch a recorded month](https://halo-sw.github.io/ithaca/?replay=menlo-month&lang=en) · Korean: [기록된 한 달 보기](https://halo-sw.github.io/ithaca/?replay=seoul-couple&lang=ko) | A real Muse Spark 1.3 session replayed: homes on the map, two picked, 30 days in each, the checked diary. Plays without a key or a live model. |
+| **Find a home near your work in Seoul / Gyeonggi** | Type one sentence on the [landing page](https://halo-sw.github.io/ithaca/?lang=ko), or start from an [example](https://halo-sw.github.io/ithaca/?chat=%ED%8C%90%EA%B5%90%EB%A1%9C+%EC%B6%9C%EA%B7%BC%ED%95%98%EB%8A%94+%EC%8B%A0%EC%9E%85%2C+%EC%97%B0%EB%B4%89+4%EC%B2%9C%2C+%EB%AA%A8%EC%9D%80+%EB%8F%88+5%EC%B2%9C%2C+%EC%A0%84%EC%84%B8+2%EC%96%B5+%EC%9D%B4%ED%95%98&lang=ko) | Live Muse. Candidates from real transactions in 11 areas, then 30 days in the two you pick. [Step by step ↓](#your-first-live-session) |
+| **Commute to Meta HQ in Menlo Park** | [I work at Meta HQ](https://halo-sw.github.io/ithaca/?chat=I+work+at+Meta+HQ+in+Menlo+Park.+Two+of+us%2C+rent+up+to+%244%2C500+a+month.&lang=en) | Live Muse in English: real apartments near 1 Hacker Way, Zillow ZIP rent estimates, bike and walk minutes. |
+| **Check a listing you already found** | [Paste a listing](https://halo-sw.github.io/ithaca/?chat=&listing=1&lang=en), then tap **Read it** | Only the values in the text are read. You see where the price sits among last year's real deals, and the home can join the comparison as home C. |
+| **Talk instead of typing** | The microphone in the chat box | Muse Voice writes what you said into the box. Nothing is sent until you send it. |
+| **Look around a neighbourhood in 3D** | [Guided tour](https://halo-sw.github.io/ithaca/?mode=sim&scenario=demo-two-homes&tour=demo) | The 3D neighbourhood with a household moving through its day. |
+| **Run it on your own computer** | [Quick start → Docker](#quick-start) | The same app at `localhost:8080`. Without a Meta API key it runs in **Rule mode**; the engine still computes every number. |
+| **Change the code or rebuild the data** | [Quick start → From source](#quick-start) | Python pipeline, simulation scripts and the Vite dev server. |
+
+The live chat shares a daily Muse limit. When it runs out, or the relay is down, the header shows **Rule mode** and the chat says so.
+
+### Your first live session
+
+1. **Say it in one sentence**: who lives there, where you work, and your budget. For example *"판교로 출근하는 신입, 연봉 4천, 모은 돈 5천, 전세 2억 이하"*. Anything missing shows up as a chip (*Who with?*, *Deposit limit?*). Tap one to fill it in, or skip it.
+2. **Read the candidates.** Each card and map pin shows the median of real deals and the door-to-work minutes. The pins show the same minutes as the cards.
+3. **Save two.** Tap **Pick** on two cards, or say *"1번, 2번 담아 줘"* (*"Save 1 and 2"*).
+4. **Let them live there.** Say *"두 집에서 살아 봐 줘"* (*"Live in both homes"*). The household lives 30 days in each home, and the chat shows each check while it runs.
+5. **Read the result.** It shows your own 내 기준 점수, the monthly cost, the commute side by side, the checked diary, and *Only living there tells you*. No winner is named; the choice is yours.
+6. **Ask more.** For example *"밤 10시 이후 귀가를 보여 줘"*. You can also set your own weights, or open the 3D view at the moment a sentence talks about.
+
+Covered today: Seoul 성동 · 송파 · 강남 · 강동 · 위례 and 판교 · 성남 · 정자 · 분당 · 미금 · 수지, plus Menlo Park in the US.
 
 ## Project brief
 
