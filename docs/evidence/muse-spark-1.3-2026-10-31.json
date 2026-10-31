@@ -1,0 +1,280 @@
+{
+  "what": "Real calls captured from Ithaca's household-decision path (web/src/judge/run.js judgeHome -> providers.js complete), scenario demo-two-homes, home A. The Authorization header is replaced with [REDACTED]; nothing else is edited.",
+  "captured_at": "2026-10-31T05:24:19.814Z",
+  "provider": "meta",
+  "label": "Muse Spark 1.3",
+  "base_url": "https://api.meta.ai/v1",
+  "model": "muse-spark-1.3",
+  "calls": [
+    {
+      "sent_at": "2026-10-31T05:23:56.593Z",
+      "latency_ms": 4777,
+      "request": {
+        "method": "POST",
+        "url": "https://api.meta.ai/v1/chat/completions",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "[REDACTED]"
+        },
+        "body": {
+          "model": "muse-spark-1.3",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You decide for one simulated household member in a housing life simulator.\nThe household is fictional; every place and number below is real simulation data.\nRules:\n- Choose only keys from the options list (60-char Korean reason, 90-char English reason).\n- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.\n- Never state the home option's distance or walk time.\n- Keep reasons about the person's routine and preferences.\n- Never mention price, cost, safety, danger, crime, school quality, or health topics.\n- Reply with a single JSON object matching the schema, nothing else."
+            },
+            {
+              "role": "user",
+              "content": "Member: 구성원 1 (adult), simulated.\nPreferences: 아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.\nDay: 2026-11-02 (Mon), time 18:33.\n\nToday's trips so far:\n- 07:37→07:51 commute 레이크팰리스→잠실 (13.6 min, 1058 m)\n- 17:51→18:03 commute 잠실→레이크팰리스 (11.8 min, 923 m)\n\nRecent decisions:\n- (none yet)\n\nBranch: park_or_home at 18:33. Decide between an evening park walk and staying home.\nOptions (key: place — walk minutes, metres):\n- park: 송파나루공원 — 11.2 min, 871 m\n- home: 집 — stay home\n\nAnswer {\"chosen_key\": \"...\", \"reason_ko\": \"...\", \"reason_en\": \"...\"}."
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 2000,
+          "reasoning_effort": "low",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "decision",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chosen_key",
+                  "reason_ko",
+                  "reason_en"
+                ],
+                "properties": {
+                  "chosen_key": {
+                    "type": "string",
+                    "description": "Exactly one key from the options list."
+                  },
+                  "reason_ko": {
+                    "type": "string",
+                    "description": "Short Korean reason, at most 60 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  },
+                  "reason_en": {
+                    "type": "string",
+                    "description": "Short English reason, at most 90 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "date": "Sat, 31 Oct 2026 05:24:01 GMT",
+        "body": {
+          "id": "chatcmpl-01a1906a-328b-721d-8542-4574a86c8330",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "{\"chosen_key\": \"home\", \"reason_en\": \"Enjoys early morning walks so relaxes at home in the evening.\", \"reason_ko\": \"아침 산책을 즐기므로 저녁에는 집에서 쉰다\"}",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "logprobs": null
+            }
+          ],
+          "created": 1793424241,
+          "model": "muse-spark-1.3",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 973,
+            "prompt_tokens": 496,
+            "total_tokens": 1469,
+            "completion_tokens_details": {
+              "reasoning_tokens": 916
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sent_at": "2026-10-31T05:24:01.508Z",
+      "latency_ms": 6538,
+      "request": {
+        "method": "POST",
+        "url": "https://api.meta.ai/v1/chat/completions",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "[REDACTED]"
+        },
+        "body": {
+          "model": "muse-spark-1.3",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You decide for one simulated household member in a housing life simulator.\nThe household is fictional; every place and number below is real simulation data.\nRules:\n- Choose only keys from the options list (60-char Korean reason, 90-char English reason).\n- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.\n- Never state the home option's distance or walk time.\n- Keep reasons about the person's routine and preferences.\n- Never mention price, cost, safety, danger, crime, school quality, or health topics.\n- Reply with a single JSON object matching the schema, nothing else."
+            },
+            {
+              "role": "user",
+              "content": "Member: 구성원 1 (adult), simulated.\nPreferences: 아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.\nDay: 2026-11-03 (Tue), time 19:23.\n\nToday's trips so far:\n- 08:27→08:41 commute 레이크팰리스→잠실 (13.6 min, 1058 m)\n- 18:41→18:53 commute 잠실→레이크팰리스 (11.8 min, 923 m)\n\nRecent decisions:\n- day 0 18:33 park_or_home chose home: 아침 산책을 즐기므로 저녁에는 집에서 쉰다\n\nBranch: shop_choice at 19:23. Pick one shop to visit.\nOptions (key: place — walk minutes, metres):\n- s0: 세븐일레븐 잠실 갤러리아점 — 2.8 min, 218 m\n- s1: 세븐일레븐 — 5.2 min, 408 m\n- s2: 세븐일레븐 — 12 min, 935 m\n\nAnswer {\"chosen_key\": \"...\", \"reason_ko\": \"...\", \"reason_en\": \"...\"}."
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 2000,
+          "reasoning_effort": "low",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "decision",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chosen_key",
+                  "reason_ko",
+                  "reason_en"
+                ],
+                "properties": {
+                  "chosen_key": {
+                    "type": "string",
+                    "description": "Exactly one key from the options list."
+                  },
+                  "reason_ko": {
+                    "type": "string",
+                    "description": "Short Korean reason, at most 60 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  },
+                  "reason_en": {
+                    "type": "string",
+                    "description": "Short English reason, at most 90 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "date": "Sat, 31 Oct 2026 05:24:07 GMT",
+        "body": {
+          "id": "chatcmpl-01a1906a-4c9e-73b1-8166-bb6829923801",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "{\"chosen_key\": \"s0\", \"reason_en\": \"Enjoys morning walks so prefers brief evening stop near home\", \"reason_ko\": \"아침 산책을 즐겨 저녁에는 가볍게 다녀오려 함\"}",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "logprobs": null
+            }
+          ],
+          "created": 1793424247,
+          "model": "muse-spark-1.3",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 1454,
+            "prompt_tokens": 551,
+            "total_tokens": 2005,
+            "completion_tokens_details": {
+              "reasoning_tokens": 1394
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sent_at": "2026-10-31T05:24:08.195Z",
+      "latency_ms": 3386,
+      "request": {
+        "method": "POST",
+        "url": "https://api.meta.ai/v1/chat/completions",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "[REDACTED]"
+        },
+        "body": {
+          "model": "muse-spark-1.3",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You decide for one simulated household member in a housing life simulator.\nThe household is fictional; every place and number below is real simulation data.\nRules:\n- Choose only keys from the options list (60-char Korean reason, 90-char English reason).\n- In reasons, cite at most one number and copy it exactly from the options, or cite none. Never invent times, distances, prices or counts.\n- Never state the home option's distance or walk time.\n- Keep reasons about the person's routine and preferences.\n- Never mention price, cost, safety, danger, crime, school quality, or health topics.\n- Reply with a single JSON object matching the schema, nothing else."
+            },
+            {
+              "role": "user",
+              "content": "Member: 구성원 1 (adult), simulated.\nPreferences: 아침에 일찍 일어나 산책하기를 좋아하고, 퇴근길에 시장 구경을 즐긴다.\nDay: 2026-11-03 (Tue), time 20:14.\n\nToday's trips so far:\n- 08:27→08:41 commute 레이크팰리스→잠실 (13.6 min, 1058 m)\n- 18:41→18:53 commute 잠실→레이크팰리스 (11.8 min, 923 m)\n- 19:23→19:26 errand 레이크팰리스→세븐일레븐 잠실 갤러리아점 (2.8 min, 218 m)\n- 19:41→19:44 errand 세븐일레븐 잠실 갤러리아점→레이크팰리스 (2.8 min, 218 m)\n\nRecent decisions:\n- day 0 18:33 park_or_home chose home: 아침 산책을 즐기므로 저녁에는 집에서 쉰다\n- day 1 19:23 shop_choice chose s0: 아침 산책을 즐겨 저녁에는 가볍게 다녀오려 함\n\nBranch: park_or_home at 20:14. Decide between an evening park walk and staying home.\nOptions (key: place — walk minutes, metres):\n- park: 송파나루공원 — 11.2 min, 871 m\n- home: 집 — stay home\n\nAnswer {\"chosen_key\": \"...\", \"reason_ko\": \"...\", \"reason_en\": \"...\"}."
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 2000,
+          "reasoning_effort": "low",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "decision",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chosen_key",
+                  "reason_ko",
+                  "reason_en"
+                ],
+                "properties": {
+                  "chosen_key": {
+                    "type": "string",
+                    "description": "Exactly one key from the options list."
+                  },
+                  "reason_ko": {
+                    "type": "string",
+                    "description": "Short Korean reason, at most 60 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  },
+                  "reason_en": {
+                    "type": "string",
+                    "description": "Short English reason, at most 90 characters. At most one number, copied exactly from the options, or none; never state the home option's distance."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "date": "Sat, 31 Oct 2026 05:24:11 GMT",
+        "body": {
+          "id": "chatcmpl-01a1906a-5a6e-755b-b696-5d874b540d41",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "{\"chosen_key\": \"home\", \"reason_en\": \"Enjoys morning walks so rests at home in evening\", \"reason_ko\": \"아침 산책을 즐기므로 저녁에는 집에서 쉰다\"}",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "logprobs": null
+            }
+          ],
+          "created": 1793424251,
+          "model": "muse-spark-1.3",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 884,
+            "prompt_tokens": 627,
+            "total_tokens": 1511,
+            "completion_tokens_details": {
+              "reasoning_tokens": 830
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 241
+            }
+          }
+        }
+      }
+    }
+  ]
+}

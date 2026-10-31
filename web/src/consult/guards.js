@@ -15,6 +15,7 @@
 
 import { findInventedNumbers } from "../judge/guards.js";
 import { fmtWon, fmtPct, fmtDistance, fmtMinutes } from "../money/format.js";
+import { displayNameFor } from "../homes.js";
 
 // Investment advice on top of the judge's price/safety/school/health list.
 // Tight on purpose: generic words like 전망 (view) stay allowed.
@@ -564,8 +565,9 @@ export function actionConfirmation(toolResults, opts = {}) {
   const namesById = new Map();
   for (const r of list) {
     for (const c of r.candidates || []) {
-      if (c && typeof c.id === "string" && typeof c.name === "string") {
-        namesById.set(c.id, c.name);
+      if (c && typeof c.id === "string" && typeof c.name === "string"
+        && !namesById.has(c.id)) {
+        namesById.set(c.id, displayNameFor(c));
       }
     }
   }
@@ -575,7 +577,7 @@ export function actionConfirmation(toolResults, opts = {}) {
   for (const [id, name] of Object.entries(fallback)) {
     if (typeof id === "string" && typeof name === "string"
       && !namesById.has(id)) {
-      namesById.set(id, name);
+      namesById.set(id, displayNameFor({ id, name }));
     }
   }
   const picks = [];

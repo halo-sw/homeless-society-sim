@@ -132,12 +132,12 @@ describe("21a lot-number names", () => {
       displayNameFor({ name: "(242-4)", dong: "대치동", kind: "연립·다세대" }),
       "대치동 연립·다세대 (242-4)");
   });
-  it("falls back to kind, then region, then the raw name", () => {
+  it("falls back to kind, never the English region id", () => {
     assert.equal(
       displayNameFor({ name: "242-4", kind: "오피스텔" }), "오피스텔 (242-4)");
     assert.equal(
       displayNameFor({ name: "(242-4)", region: "gangnam", kind: "오피스텔" }),
-      "gangnam 오피스텔 (242-4)");
+      "오피스텔 (242-4)");
     assert.equal(displayNameFor({ name: "푸르지오" }), "푸르지오");
   });
 });
