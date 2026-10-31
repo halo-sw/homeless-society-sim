@@ -180,7 +180,8 @@ describe("no demo numbers without 예시", () => {
     }
     const figs = [...text.matchAll(FIGURE)].map((m) => m[0]).filter((f) => f !== "30일"); // 30일은 제품명(30일 살아 보기)이라 데모 수치가 아님
     assert.deepEqual(figs, []);
-    assert.ok(text.includes("Ithaca"));
+    // 32e: the product name in the top bar is the Ithaca logo image now.
+    assert.ok(html.includes("brand/ithaca-logo.svg"), "top bar shows the Ithaca logo");
   });
 
   it("example input labels every card 예시", () => {

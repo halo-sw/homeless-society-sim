@@ -25,6 +25,7 @@ import { AssumptionsPanel } from "./assumptions.jsx";
 import { newUsageLog } from "../models/catalog.js";
 import { LangToggle } from "./lang-toggle.jsx";
 import { PoweredByMuse } from "./powered-by-muse.jsx";
+import { IthacaLogo } from "./ithaca-logo.jsx";
 
 const EMPTY_LOG = newUsageLog();
 
@@ -187,7 +188,7 @@ export function TopBar({ mode, summary, extra, settings }) {
   return (
     <header className="ui-bar overlay">
       <div className="ui-bar-left">
-        <span className="ui-bar-title">Ithaca</span>
+        <span className="ui-bar-title"><IthacaLogo height={20} /></span>
         {mode === "chat" ? (
           <PoweredByMuse size="sm" live={museLive} showStatus />
         ) : (

@@ -10,6 +10,7 @@ import { META_HQ_EXAMPLE } from "../places-us.js";
 import { COVERAGE_LINE, EXAMPLE_PROMPTS } from "./landing.jsx";
 import { LangToggle } from "./lang-toggle.jsx";
 import { PoweredByMuse, MUSE_LOGO_PATH } from "./powered-by-muse.jsx";
+import { IthacaLogo } from "./ithaca-logo.jsx";
 
 const NOTICE = "지금은 서울 동남권과 분당·판교·수지 11곳에서 시작했어요";
 const HERO_PLACEHOLDER = "판교 출근인데 전세 2억 이하로 혼자 살 집 찾아 줘";
@@ -149,10 +150,10 @@ export function LandingPage() {
     window.location.href = chatUrl(content);
   };
   return (
-    <div className="ds-lp">
+    <div className="ds-lp" id="top">
       <nav className="ds-lp-nav">
         <div className="ds-lp-nav-inner">
-          <span className="ds-lp-brand">Ithaca</span>
+          <a className="ds-lp-brand" href="#top" aria-label="Ithaca"><IthacaLogo height={24} /></a>
           <div className="ds-lp-links">
             <a href="#features">기능</a>
             <a href="#living">살아 보기</a>
@@ -412,7 +413,7 @@ export function LandingPage() {
       <footer className="ds-lp-foot">
         <div className="ds-lp-foot-inner">
           <div className="ds-lp-foot-brand">
-            <span>Ithaca</span>
+            <IthacaLogo height={20} />
             <p>We walk the odyssey. You just come home.</p>
           </div>
           <nav className="ds-lp-foot-links" aria-label="랜딩 이동">
