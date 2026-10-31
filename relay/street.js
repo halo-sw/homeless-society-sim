@@ -11,8 +11,10 @@
 // lon/lat, 10 min, 500 entries) → Mapillary ±0.0005° box (limit 20),
 // then one ±0.0015° box (limit 30) → pick (drop panos, prefer a camera
 // facing the home, then newest, then nearest). Each upstream call has
-// its own timeout and the whole lookup is capped; any failure answers
-// { photo: null, reason: "none" }. Nothing is written to disk and image
+// its own timeout and the whole lookup is capped; a real miss answers
+// { photo: null, reason: "none" }, while any upstream failure answers
+// { photo: null, reason: "unavailable" } with no-store and no caching.
+// Nothing is written to disk and image
 // bytes are never proxied — the browser loads thumb_1024_url directly
 // from Mapillary's CDN.
 import { US_BBOX } from "../web/src/basemap.js";
@@ -172,9 +174,15 @@ export function createStreetHandler({ getToken = () => null, fetchImpl = fetch,
     return `${GRAPH_URL}?fields=${FIELDS}&bbox=${bbox}&limit=${limit}`;
   }
 
+  // 32c4: null means every box answered and none held a usable
+  // image (a real "none"). When any box failed or timed out and no
+  // photo was found, throw — the handler answers "unavailable"
+  // without caching, so one flaky upstream answer never hides the
+  // home's photo.
   async function lookup(lon, lat, token) {
     const start = now();
     const boxes = [[SMALL_HALF, SMALL_LIMIT], [BIG_HALF, BIG_LIMIT]];
+    let failed = false;
     for (const [half, limit] of boxes) {
       const remain = Math.min(perTryMs, totalMs - (now() - start));
       if (remain <= 0) throw new Error("timeout");
@@ -184,12 +192,14 @@ export function createStreetHandler({ getToken = () => null, fetchImpl = fetch,
         items = (json && json.data) || [];
       } catch {
         items = null; // this box failed — the bigger box may still work
+        failed = true;
       }
       if (items) {
         const picked = pickStreetImage(items, { lon, lat });
         if (picked) return streetPhotoFrom(picked);
       }
     }
+    if (failed) throw new Error("unavailable");
     return null;
   }
 
@@ -259,10 +269,22 @@ export function createStreetHandler({ getToken = () => null, fetchImpl = fetch,
       return;
     }
     let photo = null;
+    let failed = false;
     try {
       photo = await lookup(lon, lat, token);
     } catch {
       photo = null;
+      failed = true;
+    }
+    if (failed) {
+      // 32c4: an upstream failure is not a "none" — answer
+      // unavailable with no-store and without touching the memory
+      // cache, so the next request tries upstream again.
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(JSON.stringify({ photo: null, reason: "unavailable" }));
+      return;
     }
     const body = photo ? { photo } : { photo: null, reason: "none" };
     cacheSet(key, body, t);
