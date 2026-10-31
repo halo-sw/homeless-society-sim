@@ -176,6 +176,7 @@ export const SOURCES = [
   {
     id: "osm-us",
     name: "OpenStreetMap (미국 북캘리포니아 추출본, Geofabrik)",
+    short: "OSM (US)",
     use: "미국 후보 집 위치와 도보·자전거 경로 계산의 바탕 지도.",
     licence: "ODbL (Open Database License)",
     version: "미국 북캘리포니아 추출본",

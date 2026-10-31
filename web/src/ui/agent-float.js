@@ -12,6 +12,8 @@
 import { memberLabelFor } from "../profile.js";
 import { sourceById } from "../sources.js";
 
+export { sourceById };
+
 export const TAB_KO = {
   compare: "A·B 비교", priorities: "내 기준으로 보기", money: "생활비",
   worthit: "살 만한가?", quality: "삶의 질", safety: "안전·교육",
@@ -178,7 +180,56 @@ function isUsHomeList(list) {
     c && (c.country === "US" || c.currency === "USD"));
 }
 
+const US_CITATIONS = {
+  find_homes: ["zillow-zori", "osm-us"],
+  price_reference: ["zillow-zori"],
+  living_cost: ["zillow-zori"],
+  worth_it: ["zillow-zori"],
+  check_listing: ["zillow-zori"],
+  run_simulation: ["osm-us"],
+  compare: ["osm-us"],
+  get_day: ["osm-us"],
+  build_scenario: ["osm-us"],
+  find_places: ["osm-us"],
+  list_stations: ["osm-us"],
+  get_journey: ["osm-us"],
+  get_education: ["osm-us"],
+};
+
+export function isUsToolContext(toolCalls) {
+  for (const c of toolCalls || []) {
+    const args = (c && c.args) || {};
+    if (args.profile && args.profile.currency === "USD") return true;
+    const ids = [];
+    if (Array.isArray(args.candidate_ids)) ids.push(...args.candidate_ids);
+    if (Array.isArray(args.home_ids)) ids.push(...args.home_ids);
+    if (args.candidate_id) ids.push(args.candidate_id);
+    if (ids.some((id) => typeof id === "string" && id.startsWith("us-"))) return true;
+  }
+  return false;
+}
+
 export function citationsFor(toolNames = [], opts = {}) {
+  const candidates = opts && opts.candidates;
+  const toolCalls = opts && opts.toolCalls;
+  if (isUsHomeList(candidates) || isUsToolContext(toolCalls)) {
+    const seen = new Set();
+    const out = [];
+    for (const name of toolNames || []) {
+      for (const id of US_CITATIONS[name] || []) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const s = sourceById(id);
+        if (s) out.push({ title: s.name, url: s.url });
+      }
+    }
+    if (isUsHomeList(candidates) && out.length === 0
+      && (toolNames || []).includes("find_homes")) {
+      return US_FIND_HOMES_IDS.map((id) => sourceById(id)).filter(Boolean)
+        .map((s) => ({ title: s.name, url: s.url }));
+    }
+    return out;
+  }
   if ((toolNames || []).includes("find_homes")
     && isUsHomeList(opts && opts.candidates)) {
     return US_FIND_HOMES_IDS.map((id) => sourceById(id)).filter(Boolean)

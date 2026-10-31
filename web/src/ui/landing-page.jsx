@@ -170,6 +170,10 @@ export function LandingPage() {
 
       <div className="ds-lp-heroband">
       <header className="ds-lp-hero">
+        <p className="ds-lp-heroeyebrow">
+          <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={16} height={16} />
+          <span data-no-i18n>Pre-simulation by Muse Agent</span>
+        </p>
         <h1 className="ds-lp-title">어떤 집을 고민 중이세요?</h1>
         <p className="ds-lp-lede">Muse가 직접 확인하고, 대신 30일 살아 보고, 대화로 알려 줘요.</p>
         <div className="ds-lp-composer">
@@ -197,21 +201,35 @@ export function LandingPage() {
             예시로 써 보기
           </button>
         </div>
-        <div className="ds-lp-judge">
-          <a className="ds-lp-btn ds-lp-btn--primary" href={replayEntryUrl(currentLang())}>기록된 한 달 보기</a>
-          <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(META_HQ_PROMPT)}>Meta 본사 출근으로 해 보기</a>
-        </div>
-        <p className="ds-lp-replaynote">기록 재생은 키 없이 돼요. 직접 해 보기는 Muse에 실시간으로 물어요(하루 한도 있음).</p>
-        <div className="ds-lp-proof">
-          {PROOFS.map((p) => (
-            <span key={p.num} className="ds-lp-prooffact">
-              <b>{p.num}</b>
-              <span>{p.rest}</span>
-            </span>
-          ))}
-        </div>
-        <PoweredByMuse size="md" />
-        <p className="ds-lp-cover">{COVERAGE_LINE}</p>
+        <section className="ds-lp-try" aria-label="바로 해 보기">
+          <p className="ds-lp-trylabel">바로 해 보기</p>
+          <div className="ds-lp-judge">
+            <div className="ds-lp-judgeitem">
+              <a className="ds-lp-btn ds-lp-btn--primary" href={replayEntryUrl(currentLang())}>기록된 한 달 보기</a>
+              <p className="ds-lp-judgecap">키 없이 바로 재생</p>
+            </div>
+            <div className="ds-lp-judgeitem">
+              <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(META_HQ_PROMPT)}>Meta 본사 출근으로 해 보기</a>
+              <p className="ds-lp-judgecap">Muse 실시간 · 하루 한도</p>
+            </div>
+            <div className="ds-lp-judgeitem">
+              <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(EXAMPLE_PROMPTS[0].prompt)}>서울로 해 보기</a>
+              <p className="ds-lp-judgecap">Muse 실시간 · 하루 한도</p>
+            </div>
+          </div>
+          <div className="ds-lp-proof">
+            {PROOFS.map((p) => (
+              <span key={p.num} className="ds-lp-prooffact">
+                <b>{p.num}</b>
+                <span>{p.rest}</span>
+              </span>
+            ))}
+          </div>
+          <div className="ds-lp-tryfoot">
+            <PoweredByMuse size="sm" />
+            <p className="ds-lp-coverline">{COVERAGE_LINE}</p>
+          </div>
+        </section>
       </header>
       </div>
 

@@ -25,7 +25,7 @@ describe("30e landing hero judge buttons (SSR, no DOM)", () => {
 
   it("the two hero links sit inside ds-lp-judge, not ds-lp-cta", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
-    const judge = html.match(/<div class="ds-lp-judge">([\s\S]*?)<\/div>/);
+    const judge = html.match(/<div class="ds-lp-judge">([\s\S]*?)<\/div>\s*<div class="ds-lp-proof">/);
     assert.ok(judge, "hero ds-lp-judge wrapper missing");
     const links = judge[1].match(/<a /g) || [];
     assert.equal(links.length, 2);
@@ -41,22 +41,20 @@ describe("30e landing hero judge buttons (SSR, no DOM)", () => {
     assert.ok(html.includes('<section class="ds-lp-cta"'));
   });
 
-  it("the replay note uses a class, not an inline style", () => {
+  it("the judge captions replace the replay note", () => {
     const html = renderToStaticMarkup(React.createElement(LandingPage));
-    assert.ok(html.includes("ds-lp-replaynote"));
-    const note = html.match(/<p class="ds-lp-replaynote"([^>]*)>/);
-    assert.ok(note, "replay note missing");
-    assert.ok(!note[1].includes("style"));
-    const css = read("../src/ui/ui.css");
-    assert.match(css, /\.ds-lp-replaynote\s*\{[^}]*var\(--ds-ink-2\)/);
+    assert.ok(!html.includes("ds-lp-replaynote"));
+    assert.ok(html.includes("ds-lp-judgecap"));
+    assert.ok(html.includes("키 없이 바로 재생"));
+    assert.ok(html.includes("Muse 실시간 · 하루 한도"));
   });
 
   it("ui.css has the judge button rules and no ellipsis", () => {
     const css = read("../src/ui/ui.css");
     assert.match(css, /\.ds-lp-btn--primary\s*\{[^}]*background:/);
     assert.match(css, /\.ds-lp-btn\s*\{[^}]*height:/);
-    assert.match(css, /\.ds-lp-judge\s*\{[^}]*display:\s*flex/);
-    assert.match(css, /\.ds-lp-judge\s*\{[^}]*flex-wrap:\s*wrap/);
+    assert.match(css, /\.ds-lp-judge\s*\{[^}]*display:\s*grid/);
+    assert.match(css, /\.ds-lp-judge\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*1fr\)/);
     assert.ok(!css.includes("ellipsis"), "ui.css must not contain ellipsis");
   });
 });
