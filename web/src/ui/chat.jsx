@@ -805,6 +805,12 @@ export function ReportCheck({ report, names, onRetry }) {
           </span>
         )}
       </div>
+      {attempts.map((a, i) => (!a.pass ? (
+        <span key={`reason-${a.attempt ?? i}`} className="ui-check-reason"
+          {...(currentLang() === "ko" ? { "data-no-i18n": true } : null)}>
+          {`${a.attempt ?? (i + 1)}차 반려 · ${String(a.summary_ko || "").replace(/^검증 실패:\s*/, "")}`}
+        </span>
+      ) : null))}
     </VStack>
   );
   if (status === "checking" && attempts.length === 0) {

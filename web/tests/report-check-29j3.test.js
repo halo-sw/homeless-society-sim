@@ -133,6 +133,21 @@ describe("29j3 ReportCheck SSR", () => {
     assert.ok(html.includes("2차 통과 (83%)"));
     assert.ok(html.includes("통근은 평균 22분이에요"));
   });
+  it("rejected attempts show the reason line, passed ones do not", () => {
+    const html = renderToStaticMarkup(React.createElement(ReportCheck, {
+      report: { status: "pass", persona: "newlywed_couple",
+        attempts: [
+          { attempt: 1, pass: false, weighted_coverage: 0.88,
+            summary_ko: "검증 실패: 근거가 문장을 뒷받침하지 않아요 1개, 커버리지 88%" },
+          { attempt: 2, pass: true, weighted_coverage: 1,
+            summary_ko: "검증 통과: 커버리지 100%" }],
+        report: { sentences },
+        result: { failures: [], feedback_ko: [] } },
+      names: { A: "역삼" },
+    }));
+    assert.ok(html.includes("1차 반려 · 근거가 문장을 뒷받침하지 않아요 1개, 커버리지 88%"));
+    assert.ok(!html.includes("2차 반려"));
+  });
   it("unsupported names the family type", () => {
     const html = renderToStaticMarkup(React.createElement(ReportCheck, {
       report: { status: "unsupported", persona: "pet_owner", attempts: [] },

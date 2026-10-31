@@ -10,7 +10,7 @@ import { TOOL_DEFS, callTool } from "../src/consult/tools.js";
 import { chatToolDefs, formatAgentContext } from "../src/consult/agent.js";
 import { validateReportBody } from "../src/consult/server.js";
 import { reportDigest } from "../src/verify/compare.js";
-import { writeReport } from "../src/consult/report.js";
+import { REPORT_PROMPT, makeJudge, writeReport } from "../src/consult/report.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GT = JSON.parse(readFileSync(
@@ -178,6 +178,27 @@ describe("29j2 writeReport revise loop", () => {
       labels: LABELS, homes: HOMES, persona: "pet_owner", groundTruth: GT });
     assert.equal(out.status, "unsupported");
     assert.equal(calls, 0);
+  });
+});
+
+describe("29j4 report voice and judge label", () => {
+  it("REPORT_PROMPT asks for 해요체, comma numbers, dated records", () => {
+    assert.match(REPORT_PROMPT, /해요체/);
+    assert.match(REPORT_PROMPT, /1,109,367원/);
+    assert.match(REPORT_PROMPT, /날짜·시각·분/);
+  });
+
+  it("makeJudge sends label_ko when given a labels map", async () => {
+    const seen = [];
+    const call = async (args) => {
+      seen.push(args);
+      return judgeReply({ supported: true, reason: "ok" });
+    };
+    const judge = makeJudge({ call, provider: "meta",
+      labels: new Map([["C06", "늦은 귀가"]]) });
+    await judge({ text_ko: "늦은 귀가 문장", item_id: "C06" }, [{ id: "e1" }]);
+    const userMsg = seen[0].messages.find((m) => m.role === "user");
+    assert.equal(JSON.parse(userMsg.content).label_ko, "늦은 귀가");
   });
 });
 

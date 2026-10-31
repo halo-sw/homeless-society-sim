@@ -398,6 +398,13 @@ const seedPatterns = [
   { ko: "{0}차 확인 중…", en: "Checking try {0}…" },
   { ko: "근거 {0}개", en: "{0} records cited" },
   { ko: "이 가족 유형({0})은 아직 시뮬레이션 시나리오가 없어 비교 리포트를 검증할 수 없어요.", en: "This family type ({0}) has no simulation scenario yet, so the comparison report can't be verified." },
+  // 29j4: rejected-attempt reason lines under the report timeline.
+  { ko: "{0}차 반려 · {1}", en: "Try {0} sent back · {1}" },
+  { ko: "근거가 문장을 뒷받침하지 않아요", en: "the cited records do not support the sentence" },
+  { ko: "근거 없는 문장", en: "sentence without a record" },
+  { ko: "근거 없는 숫자", en: "number without a claim" },
+  { ko: "커버리지", en: "coverage" },
+  { ko: "누락 항목 있음", en: "items missing" },
   // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
   { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
   // 29c1: seated-commute and late-walk-home card lines (whole-string).
