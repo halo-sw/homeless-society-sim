@@ -4,7 +4,7 @@
 // 가정, sources, intro, restart). Sim/tour view options live in a
 // small floating MapTools group instead. SSR-safe (no window at
 // render; navigation only in handlers).
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Drawer } from "@astryxdesign/core/Drawer";
@@ -19,6 +19,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { store } from "./store.js";
 import { LIVE_API, appUrl } from "../paths.js";
+import { getMuseLive, subscribeMuseLive, refreshMuseLive } from "./muse-status.js";
 import { ModelPanel } from "./model-panel.jsx";
 import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
@@ -28,12 +29,14 @@ import { LangToggle } from "./lang-toggle.jsx";
 const EMPTY_LOG = newUsageLog();
 
 export function museStatusLabel(live) {
+  if (live === null) return "연결 확인 중";
   return live ? "연결됨 · Muse Spark 1.3" : "규칙 모드";
 }
 
 // 26w3: short status for phones (390 px) — the full label above does not
 // fit next to the product name. The long label stays as the badge title.
 export function museStatusShort(live) {
+  if (live === null) return "연결 확인 중";
   return live ? "연결됨" : "규칙 모드";
 }
 
@@ -163,8 +166,13 @@ export function TopBar({ mode, summary, extra, settings }) {
   // 26w3: on phones the status badge shows the short label; the long
   // label stays reachable as the badge title.
   const phone = usePhoneMedia();
-  const museLong = museStatusLabel(LIVE_API);
-  const museLabel = phone ? museStatusShort(LIVE_API) : museLong;
+  // 30b: tri-state key status (one fetch per page load); unknown shows
+  // "연결 확인 중" instead of claiming a connection.
+  const museLive = useSyncExternalStore(subscribeMuseLive, getMuseLive,
+    () => (LIVE_API ? null : false));
+  useEffect(() => { refreshMuseLive().catch(() => {}); }, []);
+  const museLong = museStatusLabel(museLive);
+  const museLabel = phone ? museStatusShort(museLive) : museLong;
   return (
     <header className="ui-bar overlay">
       <div className="ui-bar-left">

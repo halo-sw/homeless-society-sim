@@ -92,6 +92,8 @@ import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
 import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
+import { shouldCallMuse, isNoKeyError, KEYLESS_LINE,
+  getMuseLive, subscribeMuseLive, setMuseLive, refreshMuseLive } from "./muse-status.js";
 import { LIVE_API, appUrl } from "../paths.js";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
@@ -1208,6 +1210,11 @@ export function ChatScreen() {
   const [composer, setComposer] = useState("");
   // 27j: straight Muse failures (3 → rules answer); liveRows → the busy bubble rows.
   const [museFails, setMuseFails] = useState(0);
+  // 30b: tri-state key status (one fetch per page load, shared with the
+  // header badge). false = keyless: the rule flow answers, never consult.
+  const museLive = useSyncExternalStore(subscribeMuseLive, getMuseLive,
+    () => (LIVE_API ? null : false));
+  useEffect(() => { refreshMuseLive().catch(() => {}); }, []);
   const [liveRows, setLiveRows] = useState([]);
   const [error, setError] = useState("");
   // 13f: usage lives in the 설정 sheet's 모델 section (usage log).
@@ -1289,6 +1296,14 @@ export function ChatScreen() {
     const id = row.id || nextId();
     setToolRows((prev) => ({ ...prev, [id]: { ...row, id } }));
     return id;
+  };
+
+  // 30b: keyless servers say so once per session (never per turn).
+  const keylessNoticedRef = useRef(false);
+  const noticeKeylessOnce = () => {
+    if (keylessNoticedRef.current) return;
+    keylessNoticedRef.current = true;
+    pushMsg({ role: "system", kind: "system", content: KEYLESS_LINE });
   };
 
   // --- data (loaded once, cached) ---
@@ -1896,6 +1911,17 @@ export function ChatScreen() {
       setMuseFails(0);
     } catch (err) {
       setLiveRows([]);
+      // 30b: no server key is not slowness — same rules answer, said
+      // once, and the session stays keyless (no 27j counter).
+      if (isNoKeyError(err)) {
+        setMuseLive(false);
+        setModelErrors((e) => ({ ...e, [provider]: {
+          httpStatus: err.httpStatus || null, message: String(err.message || err).slice(0, 200),
+        } }));
+        noticeKeylessOnce();
+        await structuredFlow(text);
+        return;
+      }
       setModelErrors((e) => ({ ...e, [provider]: {
         httpStatus: err.httpStatus || null, message: String(err.message || err).slice(0, 200),
       } }));
@@ -1953,9 +1979,11 @@ export function ChatScreen() {
     // 27j: the rules path always answers — count replies added after this point.
     const repliesBefore = replyCountRef.current;
     try {
+      // 30b: keyless servers say so once, then the rule flow answers.
+      if (museLive === false) noticeKeylessOnce();
       if (content === "매물 글 붙여 넣기") {
         pushMsg({ role: "assistant", kind: "listing", data: {} });
-      } else if (routeTurn({ live: LIVE_API, museFails }) === "agent") {
+      } else if (routeTurn({ live: shouldCallMuse({ museLive }), museFails }) === "agent") {
         await askAgent(content);
       } else if (/check_listing으로 확인해줘|add_listing_c로 C에 추가해줘|C로 추가해줘/.test(content)) {
         pushMsg({ role: "assistant", kind: "text",
@@ -1997,7 +2025,7 @@ export function ChatScreen() {
         await structuredFlow(content);
       }
       // 27j: the rules path always answers — fallback line when nothing replied.
-      if (routeTurn({ live: LIVE_API, museFails }) !== "agent") {
+      if (routeTurn({ live: shouldCallMuse({ museLive }), museFails }) !== "agent") {
         const answered = answeredSince(replyCountRef.current, repliesBefore);
         if (!answered) {
           pushMsg({ role: "assistant", kind: "text", content: localNoAnswerLine(content) });
