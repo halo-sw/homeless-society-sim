@@ -65,6 +65,7 @@ export const SYSTEM_PROMPT = [
   "decisions=muse 실행은 느리고 비용이 든다: 실행 전에 경고하고 고객 확인을 받는다. 한 대화에서 1회까지만.",
   "설명할 때는 set_view로 화면을 함께 보여준다(홈·일차·시간·따라가기).",
   "도구 호출은 턴당 최대 6라운드까지다. 짧게, 먼저 보여줄 것부터.",
+  "도구가 쓰는 id(home-004607, us-home-0027 같은 것)는 답에 쓰지 않는다. 집은 이름으로 부른다.",
 ].join("\n");
 
 export function countMuseRuns(messages) {
@@ -129,6 +130,36 @@ export function splitSuggestions(reply) {
   const suggestions = m[1].split("|").map((s) => s.trim())
     .filter((s) => s !== "").slice(0, 3).map((s) => s.slice(0, 20));
   return { text: before.trim(), suggestions };
+}
+
+// 29a11: internal home ids (home-004607, us-home-0027) never reach the
+// customer — replace with the home name when known, else "this home"/"이 집".
+export function replaceInternalIds(text, nameById, lang) {
+  const map = nameById || {};
+  const fallback = lang === "en" ? "this home" : "이 집";
+  return String(text || "").replace(/\b(?:us-)?home-\d{3,}\b/g, (id) => map[id] || fallback);
+}
+
+function nameByIdFromResults(results) {
+  const map = {};
+  const visit = (v) => {
+    if (Array.isArray(v)) {
+      v.forEach(visit);
+      return;
+    }
+    if (v && typeof v === "object") {
+      if (Array.isArray(v.candidates)) {
+        for (const c of v.candidates) {
+          if (c && c.id && (c.name || c.complex_name)) map[c.id] = c.name || c.complex_name;
+        }
+      }
+      for (const k of Object.keys(v)) {
+        if (k !== "candidates") visit(v[k]);
+      }
+    }
+  };
+  (results || []).forEach(visit);
+  return map;
 }
 
 export function summarizeToolCall(name, args, result, ms) {
@@ -327,6 +358,9 @@ export async function runTurn(opts) {
   let view = null;
   let rounds = 0;
 
+  // 29a11: scrub internal home ids from an accepted final text.
+  const cleanFinal = (text) => replaceInternalIds(
+    text, nameByIdFromResults(toolResults), isEnglish ? "en" : "ko");
   // 29a7: one English rewrite of an accepted reply ("same facts and
   // numbers"). Returns the split reply plus its guard verdict; callers
   // keep the retry text when it passes, never the first Korean reply.
@@ -341,7 +375,8 @@ export async function runTurn(opts) {
     usage.completion_tokens += (retry.usage && retry.usage.completion_tokens) || 0;
     usage.calls++;
     const text = (retry.message && retry.message.content) || "";
-    const split = splitSuggestions(text);
+    const raw = splitSuggestions(text);
+    const split = { text: cleanFinal(raw.text), suggestions: raw.suggestions };
     return { split, checked: checkConsultReply(split.text, toolResults) };
   }
   // A guard-fallback text rewritten in English when it is still Korean;
@@ -366,6 +401,7 @@ export async function runTurn(opts) {
     if (calls.length === 0) {
       const reply = (res.message && res.message.content) || "";
       const split = splitSuggestions(reply);
+      split.text = cleanFinal(split.text);
       appended.push({ role: "assistant", content: split.text });
       const checked = checkConsultReply(split.text, toolResults);
       if (checked.ok) {
@@ -420,6 +456,7 @@ export async function runTurn(opts) {
       usage.calls++;
       const reply2 = (retry.message && retry.message.content) || "";
       const split2 = splitSuggestions(reply2);
+      split2.text = cleanFinal(split2.text);
       const checked2 = checkConsultReply(split2.text, toolResults);
       if (checked2.ok) {
         // 26x3: English retry that is still Korean — prefer the

@@ -1038,7 +1038,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
         )}
       </ChatMessageBubble>
       <ToolRows rows={rows} />
-      <CiteRows tools={tools} sourceIds={chipIds} />
+      <CiteRows tools={tools} sourceIds={chipIds} toolCalls={msg.tool_calls || []} />
     </ChatMessage>
   );
 }
