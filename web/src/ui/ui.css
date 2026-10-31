@@ -325,8 +325,11 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 }
 
 /* ---------- 12b: chat shell ---------- */
+/* 32a: ai-chat structure — one surface for the page and the thread,
+   the thread panel beside the stage with a resize handle between. */
 .ui-chat { position: absolute; inset: 0; display: flex;
-  --ui-thread-w: clamp(400px, 34vw, 520px); }
+  background: var(--ui-page);
+  --ui-thread-w: clamp(380px, 36%, 600px); }
 .ui-chat > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 .ui-chat main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; }
 .ui-chat-main { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%;
@@ -334,13 +337,17 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-thread {
   flex: none; width: var(--ui-thread-w); min-height: 0; height: 100%;
   display: flex; flex-direction: column;
-  background: var(--ui-card);
+  background: var(--ui-page);
   border-right: 1px solid var(--ui-border);
 }
-/* 19a: chips stay above the composer on one scrollable row. */
-/* 26t: chips never shrink at any width — the row scrolls sideways. */
-.ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: nowrap;
-  overflow-x: auto; padding: var(--ui-s8) var(--ds-s-16); }
+/* 32a: the resize handle between the thread and the stage never
+   collapses out of the row. */
+.ui-chat-main > [role="separator"] { flex: none; }
+/* 19a: chips live in the composer drawer (ChatComposerDrawer) — they
+   wrap inside it and are never clipped. 32a2: no added side indent —
+   the drawer surface owns the inset. */
+.ui-chat-chips { display: flex; gap: var(--ui-s8); flex-wrap: wrap;
+  flex: none; padding: var(--ui-s8) 0; }
 /* 31a: one left edge — plain text, cards, the source line, chips and
    the composer all start at the message list's own 16px padding. */
 .ui-chat-thread .astryx-chat-message-list {
@@ -388,9 +395,11 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-chips > * { flex: none; }
 /* 29a4: source chips say what was checked and never truncate. */
 .ui-cite-label { font-size: var(--ds-t-12); color: var(--ds-ink-2); flex: none; }
-/* 31a: citations are text links — underline on hover, no pill. */
+/* 31a: citations are text links — underline on hover, no pill.
+   32a2: the sources footer uses real Badges, so only text anchors are
+   un-pilled — never the Badge itself. */
 .ui-cite { max-width: 100%; min-width: 0; }
-.ui-cites .ui-cite, .ui-cites .ui-cite * {
+.ui-cites a, .ui-cites a * {
   background-color: transparent; border-color: transparent; box-shadow: none; }
 .ui-cites a, .ui-cites span { max-width: 100%; }
 .ui-cites a, .ui-cites a * { text-decoration: none; }
@@ -398,29 +407,30 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-cites a > span, .ui-cites span > span {
   white-space: normal; overflow: visible; }
 .ui-chat-thread > p { padding: var(--ds-s-4) var(--ds-s-16) var(--ds-s-8); }
-/* 29a6c: replay banner — one compact sticky row at the top of the
-   thread. The text wraps inside its own flex item; the buttons keep
-   their size and never slide under the text. */
-.ds-replay-bar { display: flex; align-items: center; gap: var(--ds-s-8);
-  padding: var(--ds-s-8) var(--ds-s-12); background: var(--ds-sunken);
-  border-bottom: 1px solid var(--ds-line);
-  position: sticky; top: 0; z-index: 5; }
-.ds-replay-bar > * { flex: none; }
-.ds-replay-bar > :first-child { flex: 1 1 auto; min-width: 0; margin: 0;
-  font-size: var(--ds-t-12); color: var(--ds-ink-2); }
-/* 29a6c: when the replay finishes, the bar hides and Try-it-yourself
+/* 32a: the replay notice renders through Banner (info) — no custom
+   strip. The actions ride its endContent. */
+/* 29a6c: when the replay finishes, the notice hides and Try-it-yourself
    stays as one chip under the last message. */
 .ds-replay-done { display: flex; justify-content: center;
   padding: var(--ds-s-8) var(--ds-s-12); }
+/* 32a2: the replay notice sits in normal flow at the top of the thread
+   column — static, never over the messages — with the same 16px
+   gutters as the message list. */
+.ui-chat-thread > .ui-replay-notice { flex: none; position: static;
+  min-width: 0; padding: var(--ds-s-12) var(--ds-s-16) 0; }
 .ui-chat-work { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%;
   overflow: auto; padding: var(--ui-s12); pointer-events: none; }
 .ui-chat-workcol { pointer-events: none; }
 .ui-chat-workcol > * { pointer-events: auto; }
 .ui-chat-narrowtabs { display: none; }
-/* Responsive contract: < 1100px the work area becomes a tab. */
-@media (max-width: 1099px) {
+/* 32a: one breakpoint for the whole narrow layout (≤ 900 px) — the
+   tabs show and the work area becomes a tab. Shared with
+   useNarrowMedia so the CSS and the JS can't drift. */
+@media (max-width: 900px) {
   .ui-chat-narrowtabs { display: block; }
   .ui-chat-thread { width: 100%; border-right: none; }
+  /* 32a2: no resize handle on the full-width thread. */
+  .ui-chat-main > [role="separator"] { display: none; }
   .ui-chat-work { display: none; }
   .ui-chat-narrow-work .ui-chat-thread { display: none; }
   .ui-chat-narrow-work .ui-chat-work { display: block; }
@@ -835,6 +845,24 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-empty-cards > * { flex: none; min-width: 0; }
 .ui-chat-main[data-work="closed"] .ui-chat-thread { width: 100%;
   max-width: 760px; margin: 0 auto; border-right: none; }
+/* 32a: chat-only gutters — 24 px at ≤ 1024, 16 px at ≤ 480; above
+   that the centred 760 px column carries the margins. */
+@media (max-width: 1024px) {
+  .ui-chat-main[data-work="closed"] .ui-chat-thread {
+    padding-left: var(--ds-s-24); padding-right: var(--ds-s-24); }
+}
+@media (max-width: 480px) {
+  .ui-chat-main[data-work="closed"] .ui-chat-thread {
+    padding-left: var(--ds-s-16); padding-right: var(--ds-s-16); }
+}
+/* 32a: the stage's top-right buttons — full-map expand next to the
+   close ×. The expand button hides at ≤ 900 px (the tabs do this). */
+.ui-stage-headbtns { position: absolute; top: var(--ds-s-12);
+  right: var(--ds-s-12); z-index: 5;
+  display: flex; align-items: center; gap: var(--ds-s-4); }
+@media (max-width: 900px) {
+  .ui-stage-expand { display: none; }
+}
 /* 26w3: while empty the thread goes full-bleed so the scrim washes the
    whole area with no visible edge; the content body stays centred. */
 .ui-chat-main[data-work="closed"] .ui-chat-thread.ui-chat-thread-empty {
@@ -1050,7 +1078,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-picks-compact .ui-picks-run { flex: none; max-width: none;
   overflow: visible; white-space: nowrap; }
 .ui-picks-compact .ui-picks-run span { overflow: visible; }
-@media (min-width: 1100px) {
+@media (min-width: 901px) {
   .ui-picks-compact { display: none; }
 }
 /* 19g: while the side panel is open, the tray clears its 380 px. */
@@ -1062,7 +1090,7 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
   background: var(--ui-card); border-radius: var(--ui-r-sheet);
   box-shadow: var(--ui-shadow); padding: var(--ui-s12); overflow-y: auto; }
 .ui-token { font-size: var(--ui-t12); white-space: nowrap; color: var(--ui-ink2); }
-@media (max-width: 1099px) {
+@media (max-width: 900px) {
   .ui-chat-stage { display: none; }
   .ui-chat-narrow-work .ui-chat-stage { display: flex; }
   .ui-chat-scene { display: none; }
@@ -1153,8 +1181,6 @@ body.printing-share #share-print { display: block !important; padding: var(--ui-
 .ui-chat-thread > .astryx-chat-layout > :first-child {
   flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto;
 }
-.ds-replay-bar { flex: none; flex-direction: row; }
-.ds-replay-bar > :first-child { flex: 1 1 auto; overflow: visible; }
 .ui-chat-thread [class*="message-list"],
 .ui-chat-thread [class*="messagelist"],
 .ui-chat-thread [class*="MessageList"] {
@@ -1409,8 +1435,9 @@ button.ui-result-moment:hover { background: var(--ui-sunken); }
   /* 4. Chips: one scrollable row, chips never shrink, the page never
      scrolls sideways. */
   .ui-chat, .ui-chat-main { overflow-x: hidden; }
+  /* 32a2: drawer chips wrap on phones too — never a clipped row. */
   .ui-chat-chips {
-    overflow-x: auto; flex-wrap: nowrap; max-width: 100%; flex: none;
+    flex-wrap: wrap; max-width: 100%; flex: none;
   }
   .ui-chat-chips > * { flex-shrink: 0; }
 

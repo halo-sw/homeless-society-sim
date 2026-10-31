@@ -100,12 +100,46 @@ export function toolActionKo(name) {
   return TOOL_ACTION_KO[name] || name;
 }
 
+// 32a: one short English label per tool, next to TOOL_ACTION_KO —
+// live rows render per language, so English never romanizes Korean.
+export const TOOL_ACTION_EN = {
+  get_scenario: "Viewing conditions", update_scenario: "Updating conditions",
+  list_criteria: "Viewing how it's calculated", explain_criterion: "Explaining a criterion",
+  list_areas: "Viewing areas", list_complexes: "Finding complexes",
+  find_places: "Finding nearby places", neighborhood: "Walking the neighborhood", list_stations: "Finding stations",
+  run_simulation: "Running the simulation", compare: "Comparing A and B",
+  get_day: "Viewing a day", explain_decision: "Viewing why it was picked",
+  get_journey: "Viewing the commute", get_fatigue: "Checking tiredness",
+  apply_persona: "Picking a situation", get_priorities: "Viewing priorities",
+  set_priorities: "Saving weights", get_safety: "Viewing safety stats",
+  get_education: "Viewing schools", define_term: "Explaining simply",
+  set_view: "Moving the view", set_money: "Updating money conditions",
+  estimate_net_pay: "Calculating take-home pay", price_reference: "Checking actual prices",
+  living_cost: "Calculating living costs", recommend_public_rental: "Finding public rentals",
+  add_home_c: "Adding as C", worth_it: "Checking value for money",
+  jeonse_check: "Checking the deposit", mock_deposit_loss: "Running a what-if",
+  support_programs: "Comparing support programmes", parse_listing: "Reading the listing",
+  check_listing: "Checking the listing", add_listing_c: "Adding listing as C",
+  extract_profile: "Reading your situation", find_homes: "Finding homes",
+  find_public_rentals: "Finding public rentals", build_scenario: "Building a scenario",
+  open_panel: "Opening a view", pick_homes: "Saving picks",
+  start_life_run: "Starting the 30-day preview",
+};
+
+export function toolActionEn(name) {
+  return TOOL_ACTION_EN[name] || name;
+}
+
 // 13e2: tool rows say the label once — the summary carries only the
 // result, so strip a leading copy of the label.
 export function stripToolLabel(name, summary) {
   const label = toolActionKo(name);
   const s = String(summary || "");
-  if (label && s.startsWith(label)) return s.slice(label.length).trimStart();
+  if (label && s.startsWith(label)) {
+    // 32a: the summary may repeat the label with a separator
+    // ("화면 열기: 지도") — drop the leftover leading : / · too.
+    return s.slice(label.length).replace(/^[\s:·•\-—–]+/, "");
+  }
   return s;
 }
 

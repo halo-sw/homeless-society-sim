@@ -1,4 +1,6 @@
 import { romanizeName } from "./romanize.js";
+import { phrases as exactPhrases, patterns as exactPatterns } from "./en.js";
+import { WORDS as exactWords } from "./en-words.js";
 
 const HANGUL = /[가-힣]/;
 
@@ -303,5 +305,65 @@ export function createTranslator({ phrases = {}, patterns = [], words = {} } = {
     return m[1] + translateCore(m[2]) + m[3];
   }
 
-  return { translate, missing };
+  // 32a: exact-only lookup for live rows — the phrases table and the
+  // patterns, never word-fallback or romanization. A Hangul capture
+  // counts only when it too has an exact translation, so a generic
+  // "{0} ({1})" pattern can never launder romanized Korean.
+  function exactCore(core) {
+    if (Object.hasOwn(phrases, core)) {
+      const v = phrases[core];
+      return (typeof v === "string" && v !== "" && !HANGUL.test(v)) ? v : null;
+    }
+    for (const p of compiled) {
+      const m = core.match(p.re);
+      if (!m) continue;
+      const caps = [];
+      let ok = true;
+      for (let i = 0; i < p.slots.length; i += 1) {
+        const cap = m[i + 1] ?? "";
+        if (HANGUL.test(cap)) {
+          if (cap === core) { ok = false; break; }
+          const t = exactCore(cap);
+          if (t === null) { ok = false; break; }
+          caps.push(t);
+        } else caps.push(cap);
+      }
+      if (!ok) continue;
+      if (typeof p.en === "function") {
+        const out = p.en(caps);
+        if (typeof out === "string" && out !== "" && !HANGUL.test(out)) return out;
+        continue;
+      }
+      let en = String(p.en);
+      p.slots.forEach((n, i) => {
+        en = en.split(`{${n}}`).join(caps[i]);
+      });
+      if (!HANGUL.test(en)) return en;
+    }
+    return null;
+  }
+
+  function exact(text) {
+    if (typeof text !== "string") return null;
+    const m = text.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    const core = m ? m[2] : text;
+    if (!core) return null;
+    if (!HANGUL.test(core)) return core;
+    return exactCore(core);
+  }
+
+  return { translate, missing, exact };
+}
+
+let defaultTranslator = null;
+
+// 32a: the table value for a known Korean string, null for an unknown
+// one — never romanized. Live rows show the summary only on a hit.
+export function translateExact(text) {
+  if (typeof text !== "string") return null;
+  if (!defaultTranslator) {
+    defaultTranslator = createTranslator(
+      { phrases: exactPhrases, patterns: exactPatterns, words: exactWords });
+  }
+  return defaultTranslator.exact(text);
 }

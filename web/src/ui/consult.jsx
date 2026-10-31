@@ -7,13 +7,13 @@
 // Dev: live agent over POST /api/consult (key on the dev server only),
 // with the current view attached so "이거" resolves. Conversations
 // live in browser memory only; the server stores nothing.
-import { Citation } from "@astryxdesign/core/Citation";
+import { Badge } from "@astryxdesign/core/Badge";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
 import { Text } from "@astryxdesign/core/Text";
 import {
-  ChatMessage, ChatMessageBubble, ChatToolCalls,
+  ChatMessage, ChatMessageBubble, ChatMessageMetadata, ChatToolCalls,
 } from "@astryxdesign/core/Chat";
 import { store } from "./store.js";
 import { citationsFor, toolActionKo, toolDurationKo } from "./agent-float.js";
@@ -58,18 +58,23 @@ export function CiteRows({ tools, sourceIds = null, candidates = null, toolCalls
   const cites = fromIds.length > 0 ? fromIds : citationsFor(tools || [], { candidates, toolCalls })
     .map((c) => ({ short: shortSourceName(c.title), title: c.title, url: c.url }));
   if (cites.length === 0) return null;
+  // 32a: the sources line is a message metadata footer — each source
+  // a neutral Badge (short name, full name in title). The "N things
+  // checked" disclosure in ToolRows stays as it is.
   return (
     <ChatMessageBubble variant="ghost" width="100%">
       <div className="ui-cites">
-        <HStack gap={1} vAlign="center" wrap="wrap">
-          <span className="ui-cite-label">확인한 출처</span>
-          {cites.map((c, i) => (
-            <span key={`${c.title}-${i}`} title={c.title} className="ui-cite">
-              <Citation variant="label" number={i + 1}
-                source={c.url ? { title: c.short, url: c.url } : { title: c.short }} />
-            </span>
-          ))}
-        </HStack>
+        <ChatMessageMetadata
+          footer={(
+            <HStack gap={1} vAlign="center" wrap="wrap">
+              <span className="ui-cite-label">확인한 출처</span>
+              {cites.map((c, i) => (
+                <span key={`${c.title}-${i}`} title={c.title} className="ui-cite">
+                  <Badge variant="neutral" label={c.short} />
+                </span>
+              ))}
+            </HStack>
+          )} />
       </div>
     </ChatMessageBubble>
   );
