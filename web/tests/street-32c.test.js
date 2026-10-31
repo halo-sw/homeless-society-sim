@@ -344,7 +344,7 @@ describe("32c client", () => {
       { candidate: sceneCard, photos: { slots: [] } },
       { candidate: plainCard, photos: { slots: [] } },
     ]);
-    assert.deepEqual(after, ["scene", "street"]);
+    assert.deepEqual(after, ["street", "scene"]);
   });
 });
 

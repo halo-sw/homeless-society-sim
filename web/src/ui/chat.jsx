@@ -41,7 +41,7 @@ import { percent, pixel } from "@astryxdesign/core/Resizable/utils";
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
-import { CandidateCard, CandidateSkeleton, areaForList, HomeName, listPhotoNote, listThumbKinds } from "./candidate-card.jsx";
+import { CandidateCard, CandidateSkeleton, areaForList, HomeName, listPhotoNote, listThumbKinds, sharedZipRent, sharedRentNote } from "./candidate-card.jsx";
 import { exampleLine } from "./copy.js";
 import { TopBar, usePhoneMedia } from "./topbar.jsx";
 import { EXAMPLE_PROMPTS, COVERAGE_AREAS, COVERAGE_US_LINE, LANDING_HEADING, LANDING_SUB } from "./landing.jsx";
@@ -479,6 +479,8 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
     onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId,
     budgetWon = null, onAsk = null }) {
   const candidates = (data && data.candidates) || [];
+  // 29h3: one ZIP rent stated once — shared by every card in this list.
+  const shared = sharedZipRent(candidates, tenure);
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
   return (
@@ -511,6 +513,11 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
             {`조건에 맞는 집 ${data.total_matching.toLocaleString()}곳 중 ${candidates.length}곳 · ${data.sort_note || ""}`}
           </Text>
         )}
+        {shared && (
+          <Text type="supporting" data-no-i18n>
+            <span data-no-i18n>{sharedRentNote(shared, { budgetWon, tenure, lang: currentLang() })}</span>
+          </Text>
+        )}
         {candidates.length === 0 && (
           <Text>조건에 맞는 집이 없어요. 예산·크기·지역을 조금 넓혀 보세요.</Text>
         )}
@@ -531,6 +538,7 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
                 onMouseLeave={() => onHover && onHover(null)}>
                 <CandidateCard candidate={c} tenure={tenure} destName={destName}
                   variant="row" photos={photos} index={i} picked={pickIdx >= 0}
+                  sharedRent={!!shared}
                   pickLetter={pickIdx >= 0 ? (PICK_LETTERS[pickIdx] || null) : null}
                   highlighted={highlightId === `home:${c.id}`}
                   note={readinessNote(c)} budgetWon={budgetWon}
