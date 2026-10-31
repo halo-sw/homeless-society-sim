@@ -72,6 +72,8 @@
 
 People make the most expensive decision of their lives from a few photos and a 30-minute viewing. For a first-job worker, a couple about to marry or a young family in Korea, that decision is also the riskiest: about 75 % of the victims of deposit fraud (전세사기) are in their 20s and 30s (press report of March 2025 citing Ministry of Land data). Everyone who has moved knows the feeling of finding out what a home is really like only after moving in.
 
+**Who it is for:** first-job workers renting their first place, couples about to marry, and families with young children choosing between two homes.
+
 So an AI household moves in first. Tell it about your life, pick candidate homes from real transactions, and the household lives 30 days in home A and home B, side by side, in a 3D model of the real neighbourhood. Muse Spark makes the household's everyday choices and explains each one. A deterministic engine counts every minute and every won. The app then compares the two homes on the customer's own priorities, with a source or an "assumption" label on every number. It shows, explains and lets you decide. It never decides for you.
 
 > Status (2026-10-31): work in progress. The hackathon runs 2026-10-27 → 11-05. The first commit is 2026-10-28, and nothing here predates the hackathon. Items marked *coming soon* are not built yet.
@@ -197,7 +199,7 @@ Status: the scorer, claim checks and retry loop are in `main` (stages 16a and 16
 
 ## Built by Muse
 
-Every line of product code, every test and every pipeline script in this repository was written by **Muse** (`muse-spark-1.3`, Muse Code agent mode). A human and an orchestrating assistant wrote the stage briefs, downloaded data, ran tests, captured screenshots on a real GPU and did the git work. Two kinds of file are not Muse's, and we say so: the English phrase tables `web/src/i18n/en.js`, `en-table.js` and `en-words.js` (translation content, written by the orchestrating assistant; the translation engine `translate.js` is Muse's), and the verification ground truth `scenarios/verify/ground_truth.json` with its reference scorer `tools/verify_checklist.py` (written by the team, used to check Muse's scorer). Each stage has a brief and a result note in [`briefs/`](briefs/), and the rules are in [`AGENTS.md`](AGENTS.md).
+Every line of product code, every test and every pipeline script in this repository was written by **Muse** (`muse-spark-1.3`, Muse Code agent mode). A human set the direction and checked every screen. **Claude (Anthropic)** was the orchestrator: it wrote the stage briefs, downloaded data, ran tests, captured screenshots on a real GPU and did the git work. This is also why GitHub lists `claude` among the contributors: Claude made the commits, so each one carries a `Co-Authored-By: Claude` line, and each commit message names the Muse brief that produced the code (`Written by Muse (Muse Spark) from briefs/…`). Two kinds of file are not Muse's, and we say so: the English phrase tables `web/src/i18n/en.js`, `en-table.js` and `en-words.js` (translation content, written by Claude; the translation engine `translate.js` is Muse's), and the verification ground truth `scenarios/verify/ground_truth.json` with its reference scorer `tools/verify_checklist.py` (written by the team, used to check Muse's scorer). Each stage has a brief and a result note in [`briefs/`](briefs/), and the rules are in [`AGENTS.md`](AGENTS.md).
 
 | Layer | Where | Notes |
 |---|---|---|
