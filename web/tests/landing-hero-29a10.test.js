@@ -66,4 +66,33 @@ describe("29a10 landing hero (SSR, no DOM)", () => {
     assert.ok(!css.includes("13px"), "ui.css must not contain 13px");
     assert.ok(!css.includes("ellipsis"), "ui.css must not contain ellipsis");
   });
+
+  it("29a10b: judge and proof tracks stay at equal thirds, labels on one line", () => {
+    const css = read("../src/ui/ui.css");
+    assert.match(css, /\.ds-lp-judge\s*\{[^}]*minmax\(0,\s*1fr\)/);
+    assert.match(css, /\.ds-lp-proof\s*\{[^}]*minmax\(0,\s*1fr\)/);
+    assert.match(css, /\.ds-lp-judge \.ds-lp-btn\s*\{[^}]*white-space:\s*nowrap/);
+  });
+
+  it("29a10b: judge stacks at 720px, proof stacks with row dividers on phones", () => {
+    const css = read("../src/ui/ui.css");
+    assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*?\.ds-lp-judge\s*\{\s*grid-template-columns:\s*1fr;\s*\}/);
+    const starts = [...css.matchAll(/@media\s*\(max-width:\s*480px\)\s*\{/g)];
+    let last = "";
+    for (const m of starts) {
+      let depth = 0;
+      let i = m.index;
+      for (; i < css.length; i++) {
+        if (css[i] === "{") depth += 1;
+        else if (css[i] === "}") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      const block = css.slice(m.index, i + 1);
+      if (block.includes(".ds-lp-prooffact")) last = block;
+    }
+    assert.ok(last, "480px proof-fact block missing");
+    assert.ok(last.includes("border-top: 1px solid var(--ds-line)"), "phone proof rows need top dividers");
+  });
 });

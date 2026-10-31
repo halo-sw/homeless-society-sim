@@ -1444,7 +1444,7 @@ button.ui-tag:hover { color: var(--ui-ink); }
   text-align: left; }
 .ds-lp-trylabel { font-size: var(--ds-t-12); font-weight: 600;
   color: var(--ds-ink-3); letter-spacing: 0.04em; margin: 0; }
-.ds-lp-proof { display: grid; grid-template-columns: repeat(3, 1fr);
+.ds-lp-proof { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--ds-line); padding-top: var(--ds-s-16); }
 .ds-lp-prooffact { display: flex; flex-direction: column; align-items: center;
   gap: var(--ds-s-4); text-align: center; padding: 0 var(--ds-s-12); }
@@ -1536,8 +1536,9 @@ button.ui-tag:hover { color: var(--ui-ink); }
 .ds-lp-exrow + .ds-lp-exrow { border-top: 1px solid var(--ds-line); }
 .ds-lp-exprompt { font-size: var(--ds-t-16); }
 .ds-lp-judge { display: grid; grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--ds-s-8); }
-.ds-lp-judge .ds-lp-btn { height: 44px; width: 100%; }
+.ds-lp-judge .ds-lp-btn { height: 44px; width: 100%; white-space: nowrap; }
 .ds-lp-btn { border-radius: var(--ds-r-pill); font-size: var(--ds-t-14);
   font-weight: var(--ds-w-medium); cursor: pointer; white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1588,6 +1589,9 @@ button.ui-tag:hover { color: var(--ui-ink); }
   align-content: start; }
 .ds-lp-foot-meta { display: flex; gap: var(--ds-s-16); flex-wrap: wrap;
   align-content: start; justify-content: flex-end; align-items: center; }
+@media (max-width: 720px) {
+  .ds-lp-judge { grid-template-columns: 1fr; }
+}
 @media (max-width: 480px) {
   .ds-lp-band .ds-lp-section { padding: 64px var(--ds-s-16); }
   .ds-lp-cta .ds-lp-section { padding: 64px var(--ds-s-16); }
@@ -1595,8 +1599,15 @@ button.ui-tag:hover { color: var(--ui-ink); }
   .ds-lp-title { font-size: 32px; }
   .ds-lp-ctatitle { font-size: 32px; }
   .ds-lp-try { padding: var(--ds-s-16); }
-  .ds-lp-judge { grid-template-columns: 1fr; }
   .ds-lp-judge .ds-lp-btn { width: 100%; }
+  .ds-lp-proof { grid-template-columns: 1fr; }
+  .ds-lp-prooffact { flex-direction: row; align-items: baseline;
+    justify-content: flex-start; gap: var(--ds-s-12);
+    padding: var(--ds-s-8) 0; text-align: left; }
+  .ds-lp-prooffact b { min-width: 96px; white-space: nowrap;
+    font-size: var(--ds-t-16); }
+  .ds-lp-prooffact + .ds-lp-prooffact { border-left: 0;
+    border-top: 1px solid var(--ds-line); }
   .ds-lp-tryfoot { flex-direction: column; align-items: flex-start; }
   .ds-lp-steps::before { top: var(--ds-s-24); bottom: var(--ds-s-24);
     left: 18px; right: auto; width: 1px; height: auto; }
