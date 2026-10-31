@@ -3,6 +3,9 @@
 
 export const US_REGION_ID = "us-menlo";
 
+export const META_HQ_EXAMPLE =
+  "I work at Meta HQ in Menlo Park. Two of us, rent up to $4,500 a month.";
+
 export const US_WORKPLACES = [
   {
     id: "meta-hq",

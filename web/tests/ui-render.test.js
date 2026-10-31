@@ -366,7 +366,7 @@ describe("stage 10b UI render smoke (SSR, no DOM)", { skip: SKIP_ALL }, () => {
   it("renders the landing with no React errors", () => {
     const html = renderCase({ mode: "landing", ready: true,
       area: { id: "songpa-jamsil", label: "송파·잠실" } }, null);
-    assert.ok(html.includes("계약 전에, 그 집에서 30일 먼저 살아 봐요"), "heading");
+    assert.ok(html.includes("어떤 집을 고민 중이세요?"), "heading");
     assert.ok(html.includes("다루는 지역 11곳"), "coverage line");
   });
 

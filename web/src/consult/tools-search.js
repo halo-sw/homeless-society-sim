@@ -133,7 +133,10 @@ function stationNames(network) {
 }
 
 async function extract_profile(session, args) {
-  const text = String(args.text || "");
+  // 29a1: English mode passes an English paraphrase as text — the
+  // Korean parser reads the customer's original words with it.
+  const text = [...((session.context && session.context.customer_text) || []), args.text]
+    .filter((s) => typeof s === "string" && s.trim() !== "").join("\n");
   if (!text.trim()) return fail("text must be a non-empty string");
   const network = await needNetwork(session);
   const ctxProfile = session.context && session.context.profile;
@@ -177,6 +180,12 @@ export async function boxesForHomes(session, homes, max = 6) {
   return boxes;
 }
 
+// 29a7: default regions for a US profile — exactly us-menlo, the same
+// rule as the 26c client path; implemented with isUsProfile.
+export function usRegionsForProfile(profile) {
+  return isUsProfile(profile) ? ["us-menlo"] : null;
+}
+
 // 26y: the server tool mirrors the browser rule flow — a US profile
 // searches only the Menlo Park file, never the Korean index.
 function isUsHome(home) {
@@ -216,14 +225,28 @@ async function find_homes(session, args) {
   const network = await needNetwork(session);
   const manifest = await needPhotos(session);
   const schedule = await needTransit(session);
-  const regions = args.regions ? regionsForNames(args.regions) : null;
+  // 29a7: a USD profile (or a Meta-HQ workplace) searches exactly
+  // us-menlo — never Korean regions (same rule as the 26c client path).
+  const regions = args.regions ? regionsForNames(args.regions) : usRegionsForProfile(profile);
   let index;
   let effRegions = regions;
   if (isUsProfile(profile, regions)) {
-    try {
-      index = await needUsHomes(session);
-    } catch {
-      return fail("US homes are not available on this server");
+    if (session.loadUsHomes) {
+      try {
+        index = await needUsHomes(session);
+      } catch {
+        return fail("US homes are not available on this server");
+      }
+    } else {
+      // 29a7: no US loader on this session — search the merged index
+      // (regions still narrow it to us-menlo); fail honestly when the
+      // merged index carries no US home at all.
+      const raw = await needHomes(session);
+      const homes = raw && Array.isArray(raw.homes) ? raw.homes : [];
+      if (!homes.some((h) => isUsHome(h) || (h && h.region === "us-menlo"))) {
+        return fail("US homes are not available on this server");
+      }
+      index = raw;
     }
     effRegions = ["us-menlo"];
   } else {
@@ -346,7 +369,7 @@ async function build_scenario(session, args) {
 
 export const SEARCH_TOOL_DEFS = [
   { type: "function", function: { name: "extract_profile",
-    description: "Read the customer's situation text into a profile (household, workplace, salary, cash, tenure, budget, size, commute ceiling). Fills only values present in the text; every number must appear in the customer's words. Returns the profile plus at most 2 plain-word questions for the missing essentials.",
+    description: "Read the customer's situation text into a profile (household, workplace, salary, cash, tenure, budget, size, commute ceiling). Fills only values present in the text; every number must appear in the customer's words. Returns the profile plus at most 2 plain-word questions for the missing essentials. In English mode pass the customer's words as written (do not translate); the tool also reads the original messages.",
     parameters: { type: "object", additionalProperties: false,
       properties: {
         text: { type: "string", description: "The customer's words, verbatim (Korean or English). Do not translate or paraphrase." },

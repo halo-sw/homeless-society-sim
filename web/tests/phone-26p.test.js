@@ -13,20 +13,29 @@ register("./jsx-loader.mjs", import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(HERE, "..", "src", "ui", "ui.css"), "utf8");
 
-// The last @media (max-width: 480px) block in ui.css.
+// All @media (max-width: 480px) blocks in ui.css, joined.
 function phoneBlock() {
-  const at = css.lastIndexOf("@media (max-width: 480px)");
-  assert.ok(at >= 0, "ui.css has a @media (max-width: 480px) block");
-  let depth = 0;
-  let started = false;
-  for (let i = at; i < css.length; i += 1) {
-    if (css[i] === "{") { depth += 1; started = true; }
-    if (css[i] === "}") {
-      depth -= 1;
-      if (started && depth === 0) return css.slice(at, i + 1);
+  const blocks = [];
+  let from = 0;
+  for (;;) {
+    const at = css.indexOf("@media (max-width: 480px)", from);
+    if (at < 0) break;
+    let depth = 0;
+    let started = false;
+    let end = -1;
+    for (let i = at; i < css.length; i += 1) {
+      if (css[i] === "{") { depth += 1; started = true; }
+      if (css[i] === "}") {
+        depth -= 1;
+        if (started && depth === 0) { end = i; break; }
+      }
     }
+    assert.ok(end > at, "balanced braces in phone media block");
+    blocks.push(css.slice(at, end + 1));
+    from = end + 1;
   }
-  throw new Error("unbalanced braces in phone media block");
+  assert.ok(blocks.length > 0, "ui.css has a @media (max-width: 480px) block");
+  return blocks.join("\n");
 }
 
 let React;
@@ -81,9 +90,13 @@ describe("26p SSR labels", () => {
     const src = readFileSync(join(HERE, "..", "src", "ui", "chat.jsx"), "utf8");
     assert.ok(src.includes('label="대화"'), "chat label");
     assert.ok(src.includes('label="지도·후보"'), "map-and-candidates label");
-    assert.ok(src.includes("extra={workOpen && !phone ? narrowTabs : null}"),
+    assert.ok(src.includes("if (!workOpen) return null"),
+      "toggle mounts only when workOpen");
+    assert.ok(src.includes('return phone ? "shell" : "top"'),
+      "tabsMount top only when workOpen and not phone, shell only when workOpen and phone");
+    assert.ok(src.includes('tabsMount === "top" ? narrowTabs'),
       "desktop toggle needs workOpen");
-    assert.ok(src.includes("{workOpen && phone ? narrowTabs : null}"),
+    assert.ok(src.includes('tabsMount === "shell" ? narrowTabs'),
       "phone row needs workOpen");
   });
 

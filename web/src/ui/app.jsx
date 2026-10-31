@@ -19,6 +19,7 @@ import { TopBar, MapTools } from "./topbar.jsx";
 import { SourceBadge, GroupBadges } from "./source-badge.jsx";
 import { COMPARE_GROUPS, groupForTab, labelForTab, tabsInGroup, tabsForCurrency } from "./compare-tabs.js";
 import { Landing } from "./landing.jsx";
+import { LandingPage } from "./landing-page.jsx";
 // Cycle with chat.jsx (it reuses CompareCard): render-time use only,
 // so module evaluation order is safe.
 import { ChatScreen, AgentTourCard } from "./chat.jsx";
@@ -1026,7 +1027,7 @@ export function App() {
   const [legendOpen, setLegendOpen] = useState(false);
   if (!state.ready) return null;
   if (state.mode === "landing") {
-    return <Landing />;
+    return <LandingPage />;
   }
   if (state.mode === "chat") {
     return <ChatScreen />;

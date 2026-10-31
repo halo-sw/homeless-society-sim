@@ -51,6 +51,19 @@ function underNoI18n(node) {
     }
     n = n.parentNode || null;
   }
+  // Editable regions (the composer, textareas, inputs): never translate
+  // what the customer is typing. Ancestors only — the element itself
+  // still keeps its own attributes (e.g. an input's placeholder).
+  n = node ? node.parentNode || null : null;
+  while (n) {
+    if (n.nodeType === ELEMENT_NODE) {
+      const tag = String(n.tagName || "").toUpperCase();
+      if (tag === "TEXTAREA" || tag === "INPUT") return true;
+      const ce = getAttr(n, "contenteditable");
+      if (ce != null && ce !== "false") return true;
+    }
+    n = n.parentNode || null;
+  }
   return false;
 }
 

@@ -1,5 +1,7 @@
 <h1 align="center">Ithaca</h1>
 
+<p align="center"><sub>(formerly homeless-society-sim)</sub></p>
+
 <p align="center"><b>The Pre-living Agent for Your Next Home</b><br><i>“We walk the odyssey. You just come home.”</i></p>
 
 <p align="center">An AI household lives 30 days in each candidate home and finds the problems you only learn by living there,<br>the ones a listing photo, a map and a 30-minute viewing never show.</p>

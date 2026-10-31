@@ -112,7 +112,7 @@ describe("26z2 compact run row above the phone chips", () => {
     const html = compactHtml({ ok: true });
     assert.ok(html.includes("ui-picks-compact"), "compact row rendered");
     assert.ok(html.includes(RUN_BUTTON_LABEL), "same run label as the tray");
-    assert.ok(html.includes("이 집들로 30일 살아 보기"), "Korean run label");
+    assert.ok(html.includes("30일 살아 보기"), "short Korean run label");
     assert.ok(html.includes("10 Coleman Place"), "first pick named");
     assert.ok(html.includes("777 Hamilton Avenue"), "second pick named");
     assert.ok(!html.includes("ui-picks-tray"), "no absolute tray in this state");

@@ -1,0 +1,19 @@
+{
+  "messages": [
+    { "role": "user", "kind": "text", "content": "hello" },
+    { "role": "assistant", "kind": "text", "content": "hi there" },
+    { "role": "assistant", "kind": "candidates", "data": { "result": { "candidates": [] } } }
+  ],
+  "toolRows": {},
+  "profile": null,
+  "candidatesData": null,
+  "picks": [],
+  "exampleId": "",
+  "scenario": null,
+  "intake": null,
+  "household": null,
+  "overrides": null,
+  "usageLog": null,
+  "compare": null,
+  "meta": { "id": "mini", "title": "mini", "titleEn": "mini", "recordedAt": "2026-10-29", "model": "fixture", "lang": "ko" }
+}

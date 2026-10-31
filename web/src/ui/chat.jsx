@@ -39,7 +39,7 @@ import {
 import { store, selectState } from "./store.js";
 import { AssistantMsg, ToolRows, CiteRows, mergeMoneyResults } from "./consult.jsx";
 import { IntakeCard, HouseholdCard } from "./intake.jsx";
-import { CandidateCard, CandidateSkeleton, areaForList } from "./candidate-card.jsx";
+import { CandidateCard, CandidateSkeleton, areaForList, HomeName } from "./candidate-card.jsx";
 import { aerialCreditFor } from "../aerial/drape.js";
 import { exampleLine } from "./copy.js";
 import { TopBar, usePhoneMedia } from "./topbar.jsx";
@@ -47,8 +47,8 @@ import { EXAMPLE_PROMPTS, COVERAGE_AREAS, COVERAGE_US_LINE, LANDING_HEADING, LAN
 // 18: StageArea renders ChatMap (./chatmap.jsx), not the slab OrbView.
 import { toast, Toaster } from "./toast.jsx";
 import {
-  INTAKE_STEPS, intakeState0, currentStep, prefillFromExtract,
-  answerStep, skipStep, household0, addMember, removeMember,
+  INTAKE_STEPS, INTAKE_KO, intakeState0, currentStep, prefillFromExtract,
+  answerStep, skipStep, household0, householdFromExtract, addMember, removeMember,
   intakeToProfilePatch, intakeTookLine, householdHint,
 } from "../intake.js";
 import { selectPhotosForList } from "../places/select-photos.js";
@@ -75,6 +75,7 @@ import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
 import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint } from "../homes.js";
 import { chipSourceIds } from "../sources.js";
+import { META_HQ_EXAMPLE } from "../places-us.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
 import { outingsFor, hhmm } from "../timeline.js";
 import { runDigest } from "../diary/digest.js";
@@ -91,14 +92,16 @@ import { buildCustomMoneyDoc, buildUsRentMoneyDoc } from "../chat/custom-money.j
 import { newCustomId, saveCustomRun } from "../chat/idb.js";
 import { chatUrl, simMomentUrl, tourUrl, withoutEmbed, saveTranscript, loadTranscript,
   clearTranscript, parseChatSearch } from "../chat/urls.js";
+import { recordingUrl, validateRecording, replaySchedule, RECORDINGS } from "../chat/recording.js";
 import { postConsultStream, postDiary, loadScenario } from "./consult-client.js";
 import { shouldCallMuse, isNoKeyError, KEYLESS_LINE,
   getMuseLive, subscribeMuseLive, setMuseLive, refreshMuseLive } from "./muse-status.js";
 import { LIVE_API, appUrl } from "../paths.js";
+import { PoweredByMuse } from "./powered-by-muse.jsx";
 import { recordedReplyFor } from "./demotour.js";
 import { REGION_NAME_ALIASES } from "../region-names.js";
 import { agentContext, stripToolLabel, toolActionKo, viewSystemLine } from "./agent-float.js";
-import { LANG } from "../i18n/lang.js";
+import { LANG, currentLang } from "../i18n/lang.js";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const IS_DEV = ENV.DEV === true;
@@ -177,7 +180,7 @@ export function ProfileCard({ profile, example, onChip }) {
             </HStack>
           </VStack>
         )}
-        <details className="ui-section">
+        <details className="ui-section" data-profile-details="">
           <summary className="ui-section-head">자세히</summary>
           <div className="ui-section-body">
             <MetadataList>
@@ -214,7 +217,8 @@ function readinessNote(candidate) {
 // 18: one run-readiness verdict shared by the chat card, the drawer
 // card and the sticky run button — same label, same disabled state,
 // same handler, so no copy can stall while another works.
-export const RUN_BUTTON_LABEL = "이 집들로 30일 살아 보기";
+// 29a6c: short tray CTA — the full sentence truncated in the map tray.
+export const RUN_BUTTON_LABEL = "30일 살아 보기";
 
 // 26m: split a joined money cell ("월 $4,261 (ZIP 추정)",
 // "$4,261 (ZIP estimate)/mo") into its amount line and its small source
@@ -268,6 +272,32 @@ export function scrollChatToSim(simId, root) {
   } catch {
     return false;
   }
+}
+
+// 29a4: suggestion chips fold while the customer reads — the chip row
+// shows only while the thread scroller is within 160 px of the bottom.
+export function chipsVisible(scrollTop, scrollHeight, clientHeight) {
+  return scrollHeight - scrollTop - clientHeight <= 160;
+}
+
+// 29a4: the single Chat/View pane toggle — one mount point per layout
+// (top bar on desktop, its own row on phones), never both at once.
+export function ChatPaneTabs({ view, onChange }) {
+  return (
+    <div className="ui-chat-narrowtabs">
+      <SegmentedControl label="화면 선택" value={view}
+        onChange={onChange} size="sm" layout="fill">
+        <SegmentedControlItem value="chat" label="대화" />
+        <SegmentedControlItem value="work" label="지도·후보" />
+      </SegmentedControl>
+    </div>
+  );
+}
+
+// 29a4: where the single pane toggle mounts — null keeps it unmounted.
+export function paneTabsMount({ workOpen, phone }) {
+  if (!workOpen) return null;
+  return phone ? "shell" : "top";
 }
 
 // 27f: follow the conversation — scroll the message list to the end.
@@ -361,8 +391,17 @@ export function runReadiness(picks, candidates) {
   return { picked, unready, canRun, hint, label: RUN_BUTTON_LABEL };
 }
 
+// 29a2: the profile budget (won) for the shown tenure, if set.
+export function budgetWonFor(profile, tenure) {
+  const v = tenure === "jeonse" ? profile?.depositMax?.value
+    : tenure === "wolse" ? profile?.monthlyMax?.value
+    : profile?.priceMax?.value;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, onTogglePick,
-    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId }) {
+    onPreview3D, onJeonse, onRun, onDetail, onHover, photoDeps, destName, example, highlightId,
+    budgetWon = null, onAsk = null }) {
   const candidates = (data && data.candidates) || [];
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
@@ -371,6 +410,7 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
       <VStack gap={2}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>{`집 후보 ${candidates.length}곳`}</Heading>
+          <Text type="supporting">{`2곳 중 ${(picks || []).length}곳 담음`}</Text>
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
           <span className="ui-panel-spacer" />
           <DropdownMenu
@@ -394,6 +434,11 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
         {candidates.length === 0 && data.emptyHint && (
           <Text type="supporting">{data.emptyHint}</Text>
         )}
+        {candidates.length > 0 && (
+          <Text type="supporting">
+            {`사진은 항공사진·3D 미리보기예요(실제 매물 사진 아님) · ${aerialCreditFor(areaForList(candidates))}`}
+          </Text>
+        )}
         <div className="ui-cand-list">
           {withPhotos.map(({ candidate: c, photos }, i) => {
             const pickIdx = (picks || []).indexOf(c.id);
@@ -405,22 +450,28 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
                   variant="row" photos={photos} index={i} picked={pickIdx >= 0}
                   pickLetter={pickIdx >= 0 ? (PICK_LETTERS[pickIdx] || null) : null}
                   highlighted={highlightId === `home:${c.id}`}
-                  note={readinessNote(c)}
+                  note={readinessNote(c)} budgetWon={budgetWon}
                   onLive={() => onTogglePick(c)}
                   onJeonse={() => onJeonse(c)} onDetail={() => onDetail && onDetail(c)} />
               </div>
             );
           })}
         </div>
+        {data && data.total_matching > candidates.length && (() => {
+          const rest = data.total_matching - candidates.length;
+          const n = Math.min(6, rest);
+          return (
+            <Button size="sm" variant="ghost"
+              label={`다른 후보 ${n}곳 더 보기 · 남은 ${rest}곳`}
+              onClick={() => onAsk && onAsk("다른 후보 더 보여 줘")} />
+          );
+        })()}
         {candidates.length > 0 && (
           <Text type="supporting">
             {picks.length < 2
               ? "마음에 드는 집을 2곳 담고 \"살아 봐 줘\"라고 말해 보세요"
               : "\"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요"}
           </Text>
-        )}
-        {candidates.length > 0 && (
-          <Text type="supporting">{aerialCreditFor(areaForList(candidates))}</Text>
         )}
       </VStack>
     </Card>
@@ -542,7 +593,7 @@ export function ResultSummary({ data, onScene }) {
       {labels.map((l) => (
         <span key={l} className="ui-result-head">
           <span className="ui-pick-disc" aria-hidden="true">{l}</span>
-          <span className="ui-result-name">{(names[l] || "").trim() || l}</span>
+          <span className="ui-result-name"><HomeName name={(names[l] || "").trim() || l} /></span>
         </span>
       ))}
       {scored.ok && [
@@ -798,7 +849,29 @@ export function ListingCard({ onAsk }) {
 // (up to 4), then the profile summary + 후보 찾기. Free conversation
 // continues at any point (the composer stays live).
 
-export function IntakeFlowCard({ intake, household, profile, handlers }) {
+// 29a3: short value text for a folded (answered) intake step chip.
+function intakeChipText(step, value, skipped) {
+  if (skipped) return "건너뜀";
+  if (value === undefined || value === null) return "아직";
+  if (step === "income") {
+    if (!value.amount) return "아직";
+    return `${value.kind === "annual" ? "연봉" : "월 실수령"} ${fmtWon(value.amount)}`;
+  }
+  if (step === "current") return String(value);
+  if (step === "areas") return Array.isArray(value) ? `${value.length}곳` : "아직";
+  if (step === "living") return (value === null || value === undefined) ? "아직" : `한 달 ${fmtWon(value)}`;
+  if (step === "commute") return value.maxMin ? `출퇴근 ${value.maxMin}분` : "아직";
+  if (step === "budget") {
+    if (value.unknown) return "아직 모름";
+    const m = value.depositMax ?? value.monthlyMax ?? value.priceMax;
+    return (m === null || m === undefined) ? "정함" : fmtWon(m);
+  }
+  return "정함";
+}
+
+export function IntakeFlowCard({ intake, household, profile, handlers, stations, search }) {
+  const [reopened, setReopened] = useState(null);
+  const [showAll, setShowAll] = useState(false);
   const step = currentStep(intake);
   const took = profile ? intakeTookLine(profile) : "";
   const hhHint = householdHint(profile, household);
@@ -813,20 +886,58 @@ export function IntakeFlowCard({ intake, household, profile, handlers }) {
     && Array.isArray(profile.workplaces.value)
     && profile.workplaces.value[0]
     ? profile.workplaces.value[0].text || "" : "";
+  // 29a3: answered steps fold into chips; tapping one re-opens it.
+  // Only one step card is ever open.
+  const skipped = intake.skipped || [];
+  const answered = INTAKE_STEPS.filter((s) =>
+    intake.values[s] !== undefined || skipped.includes(s));
+  const open = reopened ?? step;
+  const answer = (s, v, k) => { setReopened(null); handlers.onIntakeAnswer(s, v, k); };
+  const skip = (s) => { setReopened(null); handlers.onIntakeSkip(s); };
+  // 29a3: once results exist the cards step back — chips stay, the
+  // open step and the household form hide unless 자세히 opens them.
+  const hasResults = Boolean(search && search.hasResults) && !showAll;
   return (
     <VStack gap={2}>
       {took && <Text type="supporting">{took}</Text>}
-      {step && !intake.done && (
-        <IntakeCard step={step} index={INTAKE_STEPS.indexOf(step)}
-          total={INTAKE_STEPS.length}
-          value={intake.values[step]} said={Boolean(intake.said[step])}
-          onAnswer={handlers.onIntakeAnswer} onSkip={handlers.onIntakeSkip} />
+      {answered.length > 0 && (
+        <div className="ui-intake-row">
+          {answered.map((s) => (
+            <Button key={s} size="sm" variant="secondary"
+              label={`${INTAKE_STEPS.indexOf(s) + 1}/${INTAKE_STEPS.length} · ${INTAKE_KO[s]} · ${intakeChipText(s, intake.values[s], skipped.includes(s))} ✎`}
+              onClick={() => { setReopened(s); setShowAll(true); }} />
+          ))}
+        </div>
       )}
-      {showHousehold && (
+      {search && search.hasResults && search.changed && !showAll && (
+        <HStack gap={1} vAlign="center">
+          <Text>조건이 바뀌었어요</Text>
+          <Button size="sm" variant="primary" label="다시 찾기"
+            onClick={() => search.onResearch && search.onResearch()} />
+        </HStack>
+      )}
+      {!hasResults && step && !intake.done && open !== null && (
+        <IntakeCard step={open} index={INTAKE_STEPS.indexOf(open)}
+          total={INTAKE_STEPS.length}
+          value={intake.values[open]} said={Boolean(intake.said[open])}
+          onAnswer={answer} onSkip={skip} />
+      )}
+      {intake.done && open && (
+        <IntakeCard step={open} index={INTAKE_STEPS.indexOf(open)}
+          total={INTAKE_STEPS.length}
+          value={intake.values[open]} said={Boolean(intake.said[open])}
+          onAnswer={answer} onSkip={skip} />
+      )}
+      {!hasResults && showHousehold && (
         <HouseholdCard household={household} defaultWorkplace={saidWork}
+          stations={stations || []}
           onAdd={handlers.onHouseholdAdd} onRemove={handlers.onHouseholdRemove} />
       )}
-      {showHousehold && hhHint && <Text type="supporting">{hhHint}</Text>}
+      {!hasResults && showHousehold && hhHint && <Text type="supporting">{hhHint}</Text>}
+      {search && search.hasResults && (
+        <Button size="sm" variant="ghost" label="자세히"
+          onClick={() => setShowAll((v) => !v)} />
+      )}
       {profile && (
         <ProfileCard profile={profile} example={handlers.exampleId}
           onChip={handlers.onChip} />
@@ -903,11 +1014,14 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
             onRun={handlers.onRun} onDetail={handlers.onDetail}
             onHover={handlers.onHover} photoDeps={handlers.photoDeps}
             destName={handlers.destName} example={msg.example}
+            budgetWon={budgetWonFor(handlers.profile, data.tenure)}
+            onAsk={handlers.onAsk}
             highlightId={cardHi} />
         )}
         {msg.kind === "intake" && (
           <IntakeFlowCard intake={handlers.intake} household={handlers.household}
-            profile={handlers.profile} handlers={handlers} />
+            profile={handlers.profile} handlers={handlers}
+            stations={handlers.stations} search={handlers.searchState} />
         )}
         {msg.kind === "simulation" && (
           <div data-sim-card={msg.id}>
@@ -955,7 +1069,7 @@ export function localNoAnswerLine(text) {
   const t = String(text || "");
   if (t.includes("찜")) return "찜은 후보 카드의 ‘담기’로 할 수 있어요.";
   if (t.includes("동네")) return "동네는 후보 카드의 3D 미리보기에서 볼 수 있어요.";
-  if (t.includes("살아")) return "두 곳을 담으면 지도 아래 ‘이 집들로 30일 살아 보기’로 시작할 수 있어요.";
+  if (t.includes("살아")) return "두 곳을 담고 \"두 집에서 살아 봐 줘\"라고 말하면 30일을 살아 봐요.";
   return "이 요청은 Muse가 다시 연결되면 할 수 있어요. 잠시 뒤 다시 말씀해 주세요.";
 }
 
@@ -1208,6 +1322,14 @@ export function ChatScreen() {
   const [scenario, setScenario] = useState(null);
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState("");
+  // 29a6: recorded replay — keyless step-by-step playback, never the consult client.
+  const [replayId, setReplayId] = useState(null);
+  const [replayMeta, setReplayMeta] = useState(null);
+  const [replaying, setReplaying] = useState(false);
+  const replayTimers = useRef([]);
+  const replayDoc = useRef(null);
+  // 29a4: suggestion chips fold while the customer reads up-thread.
+  const [chipsNearBottom, setChipsNearBottom] = useState(true);
   // 27j: straight Muse failures (3 → rules answer); liveRows → the busy bubble rows.
   const [museFails, setMuseFails] = useState(0);
   // 30b: tri-state key status (one fetch per page load, shared with the
@@ -1389,6 +1511,8 @@ export function ChatScreen() {
     // 21b: one 상황 card — the intake card already shows the latest
     // profile, so no standalone profile card joins it.
     setIntake(prefillFromExtract(intake, { profile: prof }));
+    // 29a3: a couple sentence starts with the spouse pre-filled.
+    setHousehold(householdFromExtract({ profile: prof }));
     pushMsg({ role: "assistant", kind: "profile", replace: true,
       data: { profile: prof }, example: stateRef.current.exampleId,
       tool_calls: [{ id: exId, name: "extract_profile" }] });
@@ -1451,7 +1575,8 @@ export function ChatScreen() {
     setHousehold(r.household);
     setProfile((prof) => {
       const patch = intakeToProfilePatch(intake, r.household);
-      const merged = applyIntakePatch(prof, { members: patch.members });
+      // 29a3: a member commute cap settles the profile ceiling too.
+      const merged = applyIntakePatch(prof, { members: patch.members, commuteMax: patch.commuteMax });
       store.set({ chatSummary: profileSummary(merged) });
       return merged;
     });
@@ -1465,7 +1590,11 @@ export function ChatScreen() {
     pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
   }
 
+  // 29a3: profile summary the last search ran with — a newer
+  // profile means "조건이 바뀌었어요" until 다시 찾기 runs again.
+  const lastSearchRef = useRef("");
   async function runSearch(prof, data, { sort }) {
+    lastSearchRef.current = profileSummary(prof);
     const tenure = (prof.tenure && prof.tenure.value) || "undecided";
     const t0 = Date.now();
     let result = searchStep(prof, data.index, data, { sort, limit: 6 }).value;
@@ -1804,10 +1933,16 @@ export function ChatScreen() {
       scene: c.scene ?? null, lon: c.lon ?? null, lat: c.lat ?? null,
       ...(c.price !== undefined && c.price !== null ? { price: c.price } : {}),
     }));
+    // 29a1: the customer's own words — extract_profile reads these,
+    // not Muse's English paraphrase.
+    const customer_text = [...st.messages
+      .filter((m) => m.role === "user" && m.kind === "text"
+        && typeof m.content === "string" && m.content)
+      .map((m) => m.content).slice(-6), text];
     const ctx = { ...agentContext(store.getState()), lang: LANG,
       candidates: liveCands,
       picks: st.picks.map((id, i) => ({ label: "ABC"[i], id })),
-      work_open: workOpen, profile: st.profile || null };
+      work_open: workOpen, profile: st.profile || null, customer_text };
     try {
       let byoKey = "";
       try {
@@ -1928,9 +2063,13 @@ export function ChatScreen() {
       // 27j: count straight failures; Muse gets another chance on the next turn.
       const fails = (typeof museFails === "number" ? museFails : 0) + 1;
       setMuseFails(fails);
-      pushMsg({ role: "system", kind: "system", content: fails >= 3
-        ? "Muse 연결이 계속 안 돼서 규칙으로 이어 갈게요"
-        : "Muse 답이 늦어서 이번엔 규칙으로 답했어요. 다시 말하면 Muse가 이어받아요" });
+      if (err && err.httpStatus === 429) {
+        pushMsg({ role: "system", kind: "system", content: "오늘 Muse 사용 한도에 닿았어요. 기록된 대화로 보시거나 내일 다시 와 주세요." });
+      } else {
+        pushMsg({ role: "system", kind: "system", content: fails >= 3
+          ? "Muse 연결이 계속 안 돼서 규칙으로 이어 갈게요"
+          : "Muse 답이 늦어서 이번엔 규칙으로 답했어요. 다시 말하면 Muse가 이어받아요" });
+      }
       await structuredFlow(text);
     }
   }
@@ -1971,9 +2110,12 @@ export function ChatScreen() {
   async function send(text) {
     const content = String(text || "").trim();
     if (!content || busyRef.current) return;
+    // 29a6: replay mode never calls the consult client — the composer is read-only while replaying.
+    if (replayId || replaying) return;
     busyRef.current = true;
     setBusy(true);
     setError("");
+    setChipsNearBottom(true);
     pushMsg({ role: "user", kind: "text", content });
     setComposer("");
     // 27j: the rules path always answers — count replies added after this point.
@@ -2062,6 +2204,52 @@ export function ChatScreen() {
     send(EXAMPLE_PROMPTS[0].prompt);
   }
 
+  // 29a6: replay helpers — skip reveals all now, exit keeps the language.
+  function replayIdForChat() {
+    return LANG === "en" ? "menlo-month" : "seoul-couple";
+  }
+  function skipReplay() {
+    const timers = replayTimers.current || [];
+    timers.forEach((t) => clearTimeout(t));
+    replayTimers.current = [];
+    const doc = replayDoc.current;
+    if (doc && Array.isArray(doc.messages)) {
+      const shown = new Set((stateRef.current.messages || []).map((m) => m.content));
+      doc.messages.forEach((m) => {
+        if (m && m.kind === "candidates" && doc.candidatesData) {
+          setCandidatesData(doc.candidatesData);
+          setWorkOpen(true);
+        }
+      });
+      setMessages((prev) => {
+        const rest = doc.messages.filter((m) => !shown.has(m.content)).map((m) => ({ ...m }));
+        if (rest.length === 0) return prev;
+        let id = idRef.current || prev.length + 10;
+        const stamped = rest.map((m) => ({ ...m, id: id++ }));
+        idRef.current = id;
+        return [...prev, ...stamped];
+      });
+    }
+    setReplaying(false);
+  }
+  function exitReplay() {
+    const timers = replayTimers.current || [];
+    timers.forEach((t) => clearTimeout(t));
+    replayTimers.current = [];
+    setReplayId(null);
+    setReplayMeta(null);
+    setReplaying(false);
+    setMessages([]);
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("replay");
+      window.history.replaceState(null, "", u.toString());
+    } catch { /* keep the thread as it is */ }
+  }
+  function openReplay() {
+    window.location.href = appUrl("?replay=" + replayIdForChat());
+  }
+
   // --- boot from URL / memory ---
   const booted = useRef(false);
   useEffect(() => {
@@ -2106,6 +2294,51 @@ export function ChatScreen() {
           content: exampleLine(initial.example) });
       }
       send(initial.message);
+      return;
+    }
+    // 29a6: ?replay=<id> — keyless recorded conversation, revealed step by step.
+    let replayParam = "";
+    try { replayParam = new URLSearchParams(window.location.search).get("replay") || ""; } catch { replayParam = ""; }
+    if (replayParam) {
+      setReplayId(replayParam);
+      setReplaying(true);
+      fetch(recordingUrl(replayParam))
+        .then((r) => (r.ok ? r.json() : null))
+        .then((doc) => {
+          const v = validateRecording(doc);
+          if (!v.ok || !doc) {
+            pushMsg({ role: "system", kind: "system", content: "기록을 불러오지 못했어요 · 직접 해 보기" });
+            setReplaying(false);
+            return;
+          }
+          replayDoc.current = doc;
+          setReplayMeta(doc.meta || null);
+          if (doc.toolRows) setToolRows(doc.toolRows);
+          if (doc.profile) { setProfile(doc.profile); store.set({ chatSummary: profileSummary(doc.profile) }); }
+          if (doc.household) setHousehold(doc.household);
+          if (doc.intake) setIntake(doc.intake);
+          if (doc.scenario) setScenario(doc.scenario);
+          if (Array.isArray(doc.picks)) setPicks(doc.picks);
+          const sched = replaySchedule(doc.messages);
+          let t = 0;
+          const timers = [];
+          doc.messages.forEach((m, i) => {
+            t += (sched[i] && sched[i].delayMs) || 1200;
+            timers.push(setTimeout(() => {
+              pushMsg({ ...m });
+              if (m && m.kind === "candidates" && doc.candidatesData) {
+                setCandidatesData(doc.candidatesData);
+                setWorkOpen(true);
+              }
+              if (i === doc.messages.length - 1) setReplaying(false);
+            }, t));
+          });
+          replayTimers.current = timers;
+        })
+        .catch(() => {
+          pushMsg({ role: "system", kind: "system", content: "기록을 불러오지 못했어요 · 직접 해 보기" });
+          setReplaying(false);
+        });
       return;
     }
     const mem = loadTranscript();
@@ -2173,6 +2406,36 @@ export function ChatScreen() {
     if (last && last.kind === "simulation" && last.data && last.data.status === "done") return;
     soon(() => scrollChatToEnd());
   }, [messages.length, liveRows.length]);
+  // 29a4: fold the chip row while the customer reads up-thread; the
+  // composer stays. Sending a message brings the chips back.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const list = document.querySelector(".ui-chat-thread .astryx-chat-message-list");
+    if (!list) return undefined;
+    const onScroll = () => {
+      try {
+        setChipsNearBottom(chipsVisible(list.scrollTop, list.scrollHeight, list.clientHeight));
+      } catch { /* keep the chips as they are */ }
+    };
+    onScroll();
+    list.addEventListener("scroll", onScroll, { passive: true });
+    return () => list.removeEventListener("scroll", onScroll);
+  }, [messages.length]);
+  // 29a4: the top-bar summary button scrolls to the latest 고객님 상황
+  // card and opens its 자세히 section.
+  const profileDetailsRequest = useSyncExternalStore(store.subscribe,
+    () => store.getState().profileDetailsRequest || 0, () => 0);
+  useEffect(() => {
+    if (!profileDetailsRequest) return;
+    try {
+      if (typeof document === "undefined") return;
+      const cards = [...document.querySelectorAll(".ui-chat-thread [data-profile-details]")];
+      const last = cards[cards.length - 1];
+      if (!last) return;
+      if (last.tagName === "DETAILS" && !last.open) last.open = true;
+      if (typeof last.scrollIntoView === "function") last.scrollIntoView({ block: "start" });
+    } catch { /* keep the thread as it is */ }
+  }, [profileDetailsRequest]);
   // 26c: a resolved place (Meta HQ) names the destination and pins
   // the map's work pin at its lon/lat.
   const wpResolved = (profile && profile.workplaces && profile.workplaces.value
@@ -2208,29 +2471,40 @@ export function ChatScreen() {
     onHover: (key) => setCardHi(key),
     photoDeps: { named: namedPhotos, manifest: dataRef.current?.manifest || null },
     destName,
+    // 29a3: station suggestions for the household 직장 box.
+    stations: dataRef.current && dataRef.current.network
+      ? stationNames(dataRef.current.network) : [],
+    // 29a3: results-vs-profile state for the intake card fold.
+    searchState: {
+      hasResults: Boolean(candidatesData && candidatesData.result
+        && (candidatesData.result.candidates || []).length > 0),
+      changed: Boolean(candidatesData && candidatesData.result
+        && (candidatesData.result.candidates || []).length > 0)
+        && lastSearchRef.current !== (profile ? profileSummary(profile) : ""),
+      onResearch: () => {
+        if (profileRef.current && dataRef.current && !busyRef.current) {
+          runSearch(profileRef.current, dataRef.current, { sort: "commute" });
+        }
+      },
+    },
   };
 
   const summary = profile ? profileSummary(profile) : "";
   // 26p: one toggle instance — its mount point moves with the viewport.
-  const narrowTabs = (
-    <div className="ui-chat-narrowtabs">
-      <SegmentedControl label="화면 선택" value={view}
-        onChange={setView} size="sm" layout="fill">
-        <SegmentedControlItem value="chat" label="대화" />
-        <SegmentedControlItem value="work" label="지도·후보" />
-      </SegmentedControl>
-    </div>
-  );
+  // 29a4: paneTabsMount keeps exactly one mount point per layout.
+  const tabsMount = paneTabsMount({ workOpen, phone });
+  const narrowTabs = (<ChatPaneTabs view={view} onChange={setView} />);
 
   return (
     <div className={`ui-chat overlay${view === "work" ? " ui-chat-narrow-work" : ""}`}>
       <AppShell
         variant="surface"
         contentPadding={0}
+        mobileNav={false}
         topNav={(
           <>
           <TopBar mode="chat" summary={summary}
-            extra={workOpen && !phone ? narrowTabs : null}
+            extra={tabsMount === "top" ? narrowTabs : null}
             settings={{
               mode: "chat",
               model: { usageLog, serverKeys, errors: modelErrors },
@@ -2250,13 +2524,20 @@ export function ChatScreen() {
               onIntro: null,
               onRestart: () => { clearTranscript(); window.location.href = appUrl(); },
             }} />
-          {workOpen && phone ? narrowTabs : null}
+          {tabsMount === "shell" ? narrowTabs : null}
           </>
         )}>
         <div className="ui-chat-main"
           data-panel={chatMainPanelAttr(detail, compareOpen)}
           data-work={chatWorkAttr(workOpen)}>
           <section className={messages.length === 0 && !busy ? "ui-chat-thread ui-chat-thread-empty" : "ui-chat-thread"} aria-label="대화">
+            {replayId && replaying && (
+              <div className="ds-replay-bar">
+                <Text type="supporting" data-no-i18n>{currentLang() === "en" ? `Recorded conversation · real ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} answers from ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} · plays without a key` : `기록된 대화 · ${replayMeta && replayMeta.recordedAt ? String(replayMeta.recordedAt) : ""} ${replayMeta && replayMeta.model ? String(replayMeta.model) : ""} 실제 답변 · 키 없이 재생`}</Text>
+                <Button size="sm" variant="ghost" label="건너뛰기" onClick={skipReplay} />
+                <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
+              </div>
+            )}
             {messages.length === 0 && !busy ? (
               <ChatEmpty onSend={(text) => send(text)}
                 onListing={() => chipAction("매물 글 붙여 넣기")}
@@ -2265,7 +2546,7 @@ export function ChatScreen() {
             <ChatLayout
               density="compact"
               composer={(
-                <ChatComposer onSubmit={send} isDisabled={busy}
+                <ChatComposer onSubmit={send} isDisabled={busy || !!replayId}
                   value={composer} onChange={setComposer}
                   placeholder={busy ? "Muse가 일하는 중…" : "이어서 말씀해 보세요…"} />
               )}>
@@ -2274,7 +2555,7 @@ export function ChatScreen() {
                   <MsgBoundary key={m.id}>
                     {m.role === "user" ? (
                       <ChatMessage sender="user">
-                        <ChatMessageBubble>{m.content}</ChatMessageBubble>
+                        <ChatMessageBubble data-no-i18n>{m.content}</ChatMessageBubble>
                       </ChatMessage>
                     ) : m.role === "system" ? (
                       <ChatSystemMessage>{m.content}</ChatSystemMessage>
@@ -2299,6 +2580,11 @@ export function ChatScreen() {
                   </ChatMessage>
                 )}
               </ChatMessageList>
+              {replayId && !replaying && (
+                <div className="ds-replay-done">
+                  <Button size="sm" variant="secondary" label="직접 해 보기" onClick={exitReplay} />
+                </div>
+              )}
               {/* 26z2: phone chat pane keeps the run action in flow
                   above the chips (the full tray is hidden there). */}
               {view !== "work" && (
@@ -2307,7 +2593,7 @@ export function ChatScreen() {
                 gate={runGate(profile)}
                 onRun={handleRun} onRemove={handleTogglePick} />
               )}
-              {messages.length > 0 && (() => {
+              {messages.length > 0 && chipsNearBottom && (() => {
                 const fallback = chatChipsFor(profile && profile.currency && profile.currency.value);
                 const chips = chipsForLatest(messages, fallback);
                 const live = chips !== fallback;
@@ -2325,6 +2611,11 @@ export function ChatScreen() {
             {error && (
               <Banner status="error" title="요청 실패" description={error}
                 isDismissable onDismiss={() => setError("")} />
+            )}
+            {(museFails > 0 || messages.some((m) => m.content === STATIC_OFF_LINE)) && !replayId && (
+              <div className="ui-chat-fallback">
+                <Button size="sm" variant="secondary" label="기록된 대화 보기" onClick={openReplay} />
+              </div>
             )}
           </section>
           {workOpen && (
@@ -2409,12 +2700,16 @@ export function chatMainPanelAttr(detail, compareOpen) {
 // 27a: chat-first empty state (no greeting, no form). The composer
 // is the same ChatComposer; the starters fill it or send once.
 export const EMPTY_STARTERS = [
+  { id: "replay", label: "기록된 한 달 보기" },
+  { id: "metahq", label: "Meta 본사 출근으로 해 보기" },
+  { id: "seoul", label: "서울로 해 보기" },
   { id: "find", label: "출근지로 집 찾기" },
   { id: "listing", label: "본 매물 붙여 넣기" },
   { id: "example", label: "예시로 써 보기" },
 ];
 
 const EMPTY_FIND_TEXT = "판교로 출근해요. 전세 2억 이하로 혼자 살 집 찾아 줘";
+const META_HQ_TEXT = META_HQ_EXAMPLE;
 
 // 26w: an example card sends its prompt as the first message, the same
 // path as typing it (exported for the no-DOM test).
@@ -2472,6 +2767,11 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
     if (id === "find") setValue(EMPTY_FIND_TEXT);
     else if (id === "listing") { if (onListing) onListing(); }
     else if (id === "example") { if (onExample) onExample(); }
+    else if (id === "replay") {
+      try { window.location.href = appUrl("?replay=" + (LANG === "en" ? "menlo-month" : "seoul-couple")); } catch { /* keep the thread as it is */ }
+    }
+    else if (id === "metahq") { if (onSend) onSend(META_HQ_TEXT); }
+    else if (id === "seoul") { if (onExample) onExample(); }
   };
   return (
     <div className="ui-chat-empty">
@@ -2485,6 +2785,7 @@ export function ChatEmpty({ onSend, onListing, onExample }) {
         <ChatComposer onSubmit={(text) => onSend && onSend(text)}
           value={value} onChange={setValue}
           placeholder="예: 판교로 출근해요. 전세로 혼자 살 집 찾아 줘" />
+        <PoweredByMuse size="sm" live={LIVE_API} showStatus />
         <div className="ui-chat-empty-row">
           {EMPTY_STARTERS.map((s) => (
             <Button key={s.id} size="sm" variant="secondary" label={s.label}
@@ -2662,7 +2963,7 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
               <span className="ui-pick-disc" aria-hidden="true">
                 {PICK_LETTERS[i] || "·"}
               </span>
-              <span className="ui-pick-name">{c.name}</span>
+              <span className="ui-pick-name"><HomeName name={c.name} /></span>
               <button type="button" className="ui-pick-x"
                 aria-label={`${c.name} 빼기`}
                 onClick={() => onRemove && onRemove(c)}>×</button>

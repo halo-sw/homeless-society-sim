@@ -44,10 +44,10 @@ describe("13e2 chat column scrolling", () => {
   });
 
   it("message list scrolls, composer/chips/banner stay pinned", () => {
-    const list = rule(".ui-chat-thread > :first-child > :first-child");
+    const list = rule(".ui-chat-thread > .astryx-chat-layout > :first-child");
     assert.ok(list.includes("overflow-y: auto"), "list scrolls");
     assert.ok(list.includes("min-height: 0"), "list min-height 0");
-    const first = rule(".ui-chat-thread > :first-child");
+    const first = rule(".ui-chat-thread > .astryx-chat-layout");
     assert.ok(first.includes("overflow: hidden"), "chat layout clips");
     assert.ok(rule(".ui-chat-chips").includes("flex: none"), "chips pinned");
     const thread = rule(".ui-chat-thread");

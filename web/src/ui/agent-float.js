@@ -10,6 +10,7 @@
 
 // --- context payload ----------------------------------------------------------
 import { memberLabelFor } from "../profile.js";
+import { sourceById } from "../sources.js";
 
 export const TAB_KO = {
   compare: "A·B 비교", priorities: "내 기준으로 보기", money: "생활비",
@@ -168,7 +169,21 @@ const CITATIONS = {
   ],
 };
 
-export function citationsFor(toolNames = []) {
+// 29a7b: find_homes over an all-US home list cites the US entries
+// from sources.js (Zillow ZORI + OpenStreetMap), never MOLIT.
+const US_FIND_HOMES_IDS = ["zillow-zori", "osm-us"];
+
+function isUsHomeList(list) {
+  return Array.isArray(list) && list.length > 0 && list.every((c) =>
+    c && (c.country === "US" || c.currency === "USD"));
+}
+
+export function citationsFor(toolNames = [], opts = {}) {
+  if ((toolNames || []).includes("find_homes")
+    && isUsHomeList(opts && opts.candidates)) {
+    return US_FIND_HOMES_IDS.map((id) => sourceById(id)).filter(Boolean)
+      .map((s) => ({ title: s.name, url: s.url }));
+  }
   const out = [];
   const seen = new Set();
   for (const name of toolNames || []) {

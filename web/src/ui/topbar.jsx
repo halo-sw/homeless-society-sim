@@ -5,7 +5,6 @@
 // small floating MapTools group instead. SSR-safe (no window at
 // render; navigation only in handlers).
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Drawer } from "@astryxdesign/core/Drawer";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -25,8 +24,20 @@ import { SourcesDrawer } from "./sources.jsx";
 import { AssumptionsPanel } from "./assumptions.jsx";
 import { newUsageLog } from "../models/catalog.js";
 import { LangToggle } from "./lang-toggle.jsx";
+import { PoweredByMuse } from "./powered-by-muse.jsx";
 
 const EMPTY_LOG = newUsageLog();
+
+// 29a4: the summary reads as an edit affordance (ghost button + ✎),
+// never a blue status badge. Clicking it asks the chat thread to scroll
+// to the latest 고객님 상황 card and open its 자세히 section.
+export function requestProfileDetails() {
+  try {
+    const n = (store.getState().profileDetailsRequest || 0) + 1;
+    store.set({ profileDetailsRequest: n });
+  } catch { /* SSR: no store */ }
+  return true;
+}
 
 export function museStatusLabel(live) {
   if (live === null) return "연결 확인 중";
@@ -178,11 +189,7 @@ export function TopBar({ mode, summary, extra, settings }) {
       <div className="ui-bar-left">
         <span className="ui-bar-title">Ithaca</span>
         {mode === "chat" ? (
-          <>
-            <span className="ui-bar-muse">Muse</span>
-            <Badge variant="info" label={museLabel} title={museLong}
-              className="ui-bar-status" />
-          </>
+          <PoweredByMuse size="sm" live={museLive === true} showStatus />
         ) : (
           <Button size="sm" variant="ghost" label="← 대화로"
             onClick={() => gotoMode("chat", mode)} />
@@ -190,7 +197,13 @@ export function TopBar({ mode, summary, extra, settings }) {
       </div>
       <div className="ui-bar-center">
         {mode === "chat" && (summary
-          ? <Badge variant="info" label={summary} />
+          ? (
+            <Button size="sm" variant="ghost" label={`조건 고치기: ${summary}`}
+              onClick={requestProfileDetails}
+              style={{ background: "var(--ds-sunken)", color: "var(--ds-ink-1)" }}>
+              <span>{summary} <span aria-hidden="true">✎</span></span>
+            </Button>
+          )
           : <Text type="supporting">상황을 알려주세요</Text>)}
       </div>
       <div className="ui-bar-right">

@@ -40,7 +40,7 @@ function memStorage() {
 
 describe("chat urls", () => {
   it("routes screens from the search string", () => {
-    assert.equal(routeForSearch(""), "chat");
+    assert.equal(routeForSearch(""), "landing");
     assert.equal(routeForSearch("?chat="), "chat");
     assert.equal(routeForSearch("?chat=hello"), "chat");
     assert.equal(routeForSearch("?mode=sim"), "sim");
@@ -56,7 +56,7 @@ describe("chat urls", () => {
     assert.equal(chatUrl("a", { example: "single-firstjob" }),
       "/?chat=a&example=single-firstjob");
     assert.deepEqual(parseChatSearch("?chat=a&area=b&ask=c"),
-      { message: "a", area: "b", ask: "c" });
+      { message: "a", area: "b", ask: "c", replay: "" });
     assert.equal(chatReopenUrl(), "/?chat=");
     assert.equal(landingUrl(), "/");
   });

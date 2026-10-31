@@ -13,6 +13,8 @@ import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
   pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
 import { basemapApiBase, basemapTileUrl, basemapTiles, basemapProvider,
   viewTransform, zoomAt } from "../basemap.js";
+import { currentLang } from "../i18n/lang.js";
+import { romanizeName } from "../i18n/romanize.js";
 
 function ptsAttr(pts, toXYz) {
   return pts.map(([lon, lat]) => {
@@ -28,6 +30,13 @@ const PILL_H = 24;
 const PILL_TAIL = 5;
 
 const noSpace = (s) => String(s || "").replace(/\s+/g, "");
+
+// 29a5: workplace pill label per language. The station name keeps
+// data-no-i18n (never re-translated), so English is built here.
+export function workPinLabel(name, lang) {
+  if (lang === "en") return `Work · ${romanizeName(name)}`;
+  return `회사 · ${name}`;
+}
 
 function pillTextWidthPx(text, px) {
   let tw = 0;
@@ -128,7 +137,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const pillItems = [];
   if (m.workPin && Number.isFinite(m.workPin.lon) && Number.isFinite(m.workPin.lat)) {
     const [x, y] = toXYz(m.workPin.lon, m.workPin.lat);
-    const label = `회사 · ${m.workPin.name}`;
+    const label = workPinLabel(m.workPin.name, currentLang());
     pillItems.push({ id: "work", kind: "work", x, y,
       w: pillTextWidthPx(label, 12) + 24, h: 26, rank: 0 });
   }
@@ -263,7 +272,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           </filter>
         </defs>
         <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground} />
-        <g filter="url(#basemap-mute)">
+        <g filter="url(#basemap-mute)" opacity={currentLang() === "en" ? 0.45 : 1}>
         {tiles.filter((t) => !failedRef.current.has(t.key)).map((t) => {
           const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
           const [x1, y1] = toXYz(t.se[0], t.se[1]);
@@ -348,13 +357,15 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         })}
         {stationLabels.map((l, i) => (
           <text key={`stn${i}`} x={l.x} y={l.y} fontSize={fs(11)}
-            fill={MAP_COLORS.muted}>{l.name}</text>
+            fill={MAP_COLORS.regionLabel} stroke="#ffffff" strokeWidth={fs(3)}
+            paintOrder="stroke" strokeLinejoin="round">{l.name}</text>
         ))}
         {dongPlaced.map((l, i) => (
           <text key={`dong${i}`} data-layer="dong-label"
             x={l.x + stationNameWidthPx(l.name) / 2} y={l.y} fontSize={fs(12)}
             fontWeight={500} textAnchor="middle"
-            fill={MAP_COLORS.regionLabel}>{l.name}</text>
+            fill={MAP_COLORS.regionLabel} stroke="#ffffff" strokeWidth={fs(3)}
+            paintOrder="stroke" strokeLinejoin="round">{l.name}</text>
         ))}
         {(m.commutes || []).flatMap((c) => c.legs.flatMap((leg, i) => [
           <polyline key={`${c.pinId}c${i}`} points={ptsAttr(leg.pts, toXYz)} fill="none"
@@ -407,7 +418,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           if (!m.workPin || !l) return null;
           const [px, py] = toXYz(m.workPin.lon, m.workPin.lat);
           const { box } = l;
-          const label = `회사 · ${m.workPin.name}`;
+          const label = workPinLabel(m.workPin.name, currentLang());
           const cx = box.x + box.w / 2;
           return (
             <g key="work">
@@ -419,7 +430,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
                 <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={box.h / 2}
                   fill={MAP_COLORS.workPin} />
                 <text x={cx} y={box.y + fs(17)} fontSize={fs(12)} fontWeight={600}
-                  textAnchor="middle" fill="#ffffff">{label}</text>
+                  textAnchor="middle" fill="#ffffff" data-no-i18n>{label}</text>
               </g>
               {!l.leader && (
                 <polygon points={`${cx - fs(5)},${box.y + box.h} ${cx + fs(5)},${box.y + box.h} ${px},${py}`}
@@ -532,8 +543,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             );
           })}
       </svg>
-      <div style={{ position: "absolute", top: 12, right: 12, background: "#ffffff",
-        borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a" }}>
+      <div role="note" aria-hidden={false} style={{ position: "absolute", bottom: 32, left: 12,
+        maxWidth: "calc(100% - 96px)", background: "#ffffff",
+        borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a",
+        whiteSpace: "normal" }}>
         {provider === "usgs"
           ? "● 후보 · ■ 회사 · 숫자는 출근 편도(추정)"
           : "● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)"}

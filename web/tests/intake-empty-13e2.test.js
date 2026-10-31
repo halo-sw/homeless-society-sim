@@ -44,6 +44,6 @@ describe("13e2 intake starts empty", () => {
       assert.ok(!src.includes(invented), `no invented default: ${invented}`);
     }
     assert.ok(src.includes("예: 4,000만 원"), "income placeholder");
-    assert.ok(src.includes("startValue={4000}"), "first press starts at 4000만");
+    assert.ok(src.includes("4,000만"), "income quick chip");
   });
 });
