@@ -359,7 +359,7 @@ flowchart TD
 - **모르는 건 모른다고 해요.** 엔진이 아직 근거를 댈 수 없는 항목(소음, 채광, 수납, 하자, 아침 동선)은 미지원으로 보여 주고 통과로 치지 않아요. 신혼부부, 미취학 자녀 가족, 사회초년생 1인 가구는 검증된 비교를 받아요. 1인 재택근무자, 3세대 가족, 반려견 가구는 리포트용 모델을 부르지 않고, 결과에 미지원 표시를 달아 열어요.
 - **실제 거주자 비교** *(준비 중)*. 실제 거주자 10~20명의 집과 살아 보고 알게 된 불편을 시뮬레이터 결과와 비교해서 일치율을 낼 거예요.
 
-상태: 완료, 화면에도 보여요(채점기·숫자 검사는 16a–16b 단계, `submit_report`·Muse 판정자·두 집 루프·검증 과정 화면은 29j1–29j4 단계). 2026-11-01 첫 실서비스 실행(서울 신혼부부, 실제 Muse Spark 1.3): 이유가 붙은 반려 3번 뒤 4번째에 100%로 통과했고, 네 번 시도에 약 100초 걸렸어요.
+상태: 완료, 화면에도 보여요(채점기·숫자 검사는 16a–16b 단계, `submit_report`·Muse 판정자·두 집 루프·검증 과정 화면은 29j1–29k3 단계). 2026-11-01 실제 실행(서울 신혼부부, 실제 Muse Spark 1.3): 첫 실행은 네 번 만에 통과했고, 반려 이유 덕분에 우리 쪽 버그 3개를 찾았어요(엔진이 모르는 구성원 id, 숫자 없는 문장을 다룸으로 침, 이동 수단이 빠진 걷기 기록을 판정자에게 보냄). 29k 단계 뒤에는 같은 가족이 첫 시도에 100%로 통과하고, 문장마다 엔진이 확인한 숫자나 인용 기록이 붙어요.
 
 ## Muse가 만들었어요
 
@@ -530,6 +530,7 @@ cd web && META_API_KEY=... npm run dev
 | 29c1–29c1d | "살아 봐야 아는 것": 해 진 뒤 걷거나 자전거로 귀가, 앉아서 간 출근, 늦은 귀가 | [`29c1`](briefs/29c1-life-events.md) … [`29c1d`](briefs/29c1d-dark-bike.md) |
 | 29g1–29g3, 29m1 | 거짓 "시작했어요" 막기, 재생할 때 지도 데이터 불러오기, 이름 붙은 주소 상수와 `META_API_KEY` | [`29g1`](briefs/29g1-start-claim-guard.md), [`29g2`](briefs/29g2-replay-map-data.md), [`29m1`](briefs/29m1-meta-api-key.md) |
 | 29h1–29h5 | 채팅 여백, 대화 안에 이어지는 다음 단계 칩, 같은 ZIP 월세는 한 번만, 거리 사진 먼저·출처 표시, 머리글 말줄임 없애기 | [`29h1`](briefs/29h1-chat-insets.md) … [`29h5`](briefs/29h5-street-credit-fit.md) |
+| 29k1–29k3 | 진짜 숫자로만 통과하는 리포트(엔진과 맞는 구성원 id, 숫자 없는 문장 막기, 기록에 이동 수단·장면, 덧붙임 없애기), 모든 집 ZIP 월세가 같으면 지도 핀은 출근 시간 먼저 | [`29k1`](briefs/29k1-report-members-no-empty-pass.md), [`29k2`](briefs/29k2-pins-commute-first-check-tags.md), [`29k3`](briefs/29k3-report-no-padding.md) |
 | 29j1–29j4 | 검증된 비교: C06·N03을 엔진 이동 기록으로 뒷받침, Muse 판정자, 두 집 검증 루프를 도는 `submit_report`, 반려 이유까지 보이는 검증 과정 화면, 확인 요청과 미지원 | [`29j1`](briefs/29j1-verify-core-judge.md) … [`29j4`](briefs/29j4-report-voice-reasons.md) |
 | 30a–30h | Docker 작업 환경, 키 없을 때 솔직한 규칙 모드, Docker CI, 랜딩의 심사 버튼, 테마 모듈 | [`30a`](briefs/30a-docker-workspace.md) … [`30h`](briefs/30h-theme-module.md) |
 | 31a–31n | 대화 위계와 지도: 마커, 조작 버튼, 필터, 후보 탭, 누르기 판정, 폰 다듬기, 지도 맞춤 | [`31a`](briefs/31a-chat-hierarchy.md) … [`31n`](briefs/31n-map-fit-chrome.md) |
