@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="briefs/img/ithaca-logo-light.png">
-    <img src="briefs/img/ithaca-logo.png" width="560" alt="Ithaca — The Pre-living Agent for Your Next Home">
+    <source media="(prefers-color-scheme: dark)" srcset="briefs/img/ithaca-logo-light.svg">
+    <img src="briefs/img/ithaca-logo.svg" width="480" alt="Ithaca">
   </picture>
 </h1>
 
