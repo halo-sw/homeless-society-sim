@@ -3,9 +3,10 @@
 // the status route never fetches.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import http from "node:http";
 import { createRelayServer, startRelayServer } from "../../relay/server.mjs";
 
@@ -106,6 +107,82 @@ describe("30d docker compose smoke in CI", () => {
     assert.match(text, /pytest/, "pytest");
   });
 });
+
+  it("relay stage copies scenarios/ (30f: engine/criteria.js imports it)", () => {
+    const text = read("Dockerfile");
+    const relayStage = text.slice(text.indexOf("AS relay"));
+    assert.match(relayStage, /COPY scenarios\/ \.\/scenarios\//, "relay copies scenarios/");
+  });
+
+  it("relay image layout (relay/ + web/src/ + scenarios/) answers /api/model/status", async (t) => {
+    // Mirror of the relay image layout: no node_modules, just the
+    // copied folders. web/src/engine/criteria.js imports
+    // ../../../scenarios/criteria/kr-default.json, so a layout without
+    // scenarios/ must fail to import while the full layout serves.
+    const full = mkdtempSync(join(tmpdir(), "relay-30f-full-"));
+    cpSync(join(ROOT, "relay"), join(full, "relay"), { recursive: true });
+    cpSync(join(ROOT, "web", "src"), join(full, "web", "src"), { recursive: true });
+    cpSync(join(ROOT, "scenarios"), join(full, "scenarios"), { recursive: true });
+    const bad = mkdtempSync(join(tmpdir(), "relay-30f-bad-"));
+    try {
+      cpSync(join(ROOT, "relay"), join(bad, "relay"), { recursive: true });
+      cpSync(join(ROOT, "web", "src"), join(bad, "web", "src"), { recursive: true });
+      await assert.rejects(
+        () => import(pathToFileURL(join(bad, "relay", "server.mjs")).href),
+        "layout without scenarios/ fails to import",
+      );
+
+      const mod = await import(pathToFileURL(join(full, "relay", "server.mjs")).href);
+      const env = { ALLOWED_ORIGINS: "http://x" };
+      let started;
+      try {
+        started = await mod.startRelayServer({ port: 0, env, host: "127.0.0.1" });
+      } catch (err) {
+        if (err && (err.code === "EPERM" || err.code === "EACCES")) {
+          // Sandbox blocks bind: drive the copied server via emit, the
+          // way the existing status test does.
+          const { server } = mod.createRelayServer({ env });
+          try {
+            const { res, done } = mockRes();
+            server.emit("request",
+              { method: "GET", url: "/api/model/status", headers: { origin: "http://x" }, socket: {} },
+              res);
+            const finished = await done;
+            assert.equal(finished.statusCode, 200);
+            const json = JSON.parse(Buffer.concat(finished.chunks).toString("utf8"));
+            assert.equal(json.meta.hasServerKey, false);
+          } finally {
+            await new Promise((resolve) => server.close(resolve));
+          }
+          return;
+        }
+        throw err;
+      }
+      const { server, port } = started;
+      try {
+        const { statusCode, body } = await new Promise((resolve, reject) => {
+          const req = http.get(
+            { host: "127.0.0.1", port, path: "/api/model/status", headers: { Origin: "http://x" } },
+            (res) => {
+              const chunks = [];
+              res.on("data", (c) => chunks.push(c));
+              res.on("end", () => resolve({ statusCode: res.statusCode, body: Buffer.concat(chunks).toString("utf8") }));
+            },
+          );
+          req.on("error", reject);
+        });
+        assert.equal(statusCode, 200);
+        const json = JSON.parse(body);
+        assert.equal(json.ok, true);
+        assert.equal(json.meta.hasServerKey, false);
+      } finally {
+        await new Promise((resolve) => server.close(resolve));
+      }
+    } finally {
+      rmSync(full, { recursive: true, force: true });
+      rmSync(bad, { recursive: true, force: true });
+    }
+  });
 
   it("relay server starts on port 0 and closes (skips where bind is blocked)", async (t) => {
     let started;
