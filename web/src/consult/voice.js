@@ -5,13 +5,15 @@
 //
 // Upstream (measured 2026-10-31):
 //   POST https://api.meta.ai/v1/asr/transcribe
-//   Authorization: Bearer <MODEL_API_KEY>
+//   Authorization: Bearer <META_API_KEY>
 //   multipart/form-data: request={"model":"muse-voice-transcribe-1.0",
 //     "audioEncoding":"WAV"} + audio=<wav file>
 //   → 200 {"transcript": "..."} (language detected automatically)
 
+import { META_API_BASE, metaApiKey } from "../judge/providers.js";
+
 export const VOICE_MODEL = "muse-voice-transcribe-1.0";
-export const VOICE_URL = "https://api.meta.ai/v1/asr/transcribe";
+export const VOICE_URL = META_API_BASE + "/asr/transcribe";
 // ≈ 37 s of 16 kHz mono 16-bit PCM plus the 44-byte WAV header.
 export const VOICE_MAX_BYTES = 1_200_000;
 
@@ -78,7 +80,7 @@ export function createTranscribeHandler({ env = process.env, fetchImpl = fetch }
       send(400, { ok: false, error: "bad_audio" });
       return;
     }
-    const key = env && env.MODEL_API_KEY;
+    const key = metaApiKey(env || {});
     if (!key) {
       send(503, { ok: false, error: "no_key" });
       return;

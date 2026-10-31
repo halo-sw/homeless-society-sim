@@ -307,7 +307,10 @@ export function createConsultHandler({ dataDir, scenDir, rawDir = null, fetchImp
         provider, env,
       });
       if (!apiKey) {
-        const err = new Error(`${cfg.keyEnv} is not set on the dev server`);
+        const keyNames = (cfg.keyEnvFallback && cfg.keyEnvFallback.length)
+          ? `${cfg.keyEnv} (or ${cfg.keyEnvFallback.join(", ")})`
+          : cfg.keyEnv;
+        const err = new Error(`${keyNames} is not set on the dev server`);
         err.code = "missing_key";
         throw err;
       }

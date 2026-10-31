@@ -226,7 +226,7 @@ ithaca/
 **가장 빠른 방법: Docker.** 키가 없어도 돼요.
 
 ```bash
-cp .env.example .env    # 선택: 실제 Muse를 쓰려면 MODEL_API_KEY를 채워요
+cp .env.example .env    # 선택: 실제 Muse를 쓰려면 META_API_KEY를 채워요 (MODEL_API_KEY도 돼요)
 docker compose up       # 웹 http://localhost:8080, 중계 서버 :8787
 ```
 
@@ -250,7 +250,7 @@ node web/scripts/simulate.mjs --scenario scenarios/demo-two-homes.json --home bo
 node web/scripts/money.mjs   --scenario scenarios/demo-two-homes.json --out data/build/sim/
 
 # 3. 앱 (상담 에이전트와 실시간 판단에는 서버 환경에 Meta API 키가 필요해요)
-cd web && MODEL_API_KEY=... npm run dev
+cd web && META_API_KEY=... npm run dev
 ```
 
 자주 쓰는 주소(`/?mode=sim&scenario=demo-two-homes` 뒤에 붙여요):

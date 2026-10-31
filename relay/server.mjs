@@ -8,7 +8,7 @@ import http from "node:http";
 import { pathToFileURL } from "node:url";
 import { createRelay } from "./handler.js";
 
-const KEY_NAMES = ["MODEL_API_KEY", "VWORLD_KEY", "HOUSING_API_KEY"];
+const KEY_NAMES = ["META_API_KEY", "MODEL_API_KEY", "VWORLD_KEY", "HOUSING_API_KEY"];
 const DEFAULT_PORT = 8787;
 
 function resolvePort(port, env) {

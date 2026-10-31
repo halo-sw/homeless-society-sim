@@ -227,7 +227,7 @@ Where they differ, it is mostly which shop to stop at after work (15 of 19). Wit
 **Fastest: Docker.** No key is needed.
 
 ```bash
-cp .env.example .env    # optional: fill in MODEL_API_KEY for live Muse
+cp .env.example .env    # optional: fill in META_API_KEY for live Muse (MODEL_API_KEY also works)
 docker compose up       # web on http://localhost:8080, relay on :8787
 ```
 
@@ -251,7 +251,7 @@ node web/scripts/simulate.mjs --scenario scenarios/demo-two-homes.json --home bo
 node web/scripts/money.mjs   --scenario scenarios/demo-two-homes.json --out data/build/sim/
 
 # 3. App (the consult agent and live decisions need a Meta API key in the server environment)
-cd web && MODEL_API_KEY=... npm run dev
+cd web && META_API_KEY=... npm run dev
 ```
 
 Useful URLs (add to `/?mode=sim&scenario=demo-two-homes`):

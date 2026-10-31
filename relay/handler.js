@@ -2,7 +2,7 @@
 // server). One Vercel serverless function serves Muse chat and the
 // VWorld tiles, keeping every key in its own env, never in the browser.
 //
-// Keys (MODEL_API_KEY, VWORLD_KEY, HOUSING_API_KEY) are read from env
+// Keys (META_API_KEY (or MODEL_API_KEY), VWORLD_KEY, HOUSING_API_KEY) are read from env
 // only, server-side. They never appear in a response body, a header,
 // an error message or a log line. Tiles stream through and are never
 // stored (Cache-Control: no-store). Public data is read over HTTP from
@@ -12,6 +12,9 @@ import { serveTile } from "../web/src/aerial/proxy.js";
 import { createConsultHandler, httpReadText, readBody } from "../web/src/consult/server.js";
 import { VOICE_MAX_BYTES, createTranscribeHandler } from "../web/src/consult/voice.js";
 import { BYOK_HEADER } from "../web/src/consult/byok.js";
+// Model endpoints this relay calls with the server key: Meta (META_API_BASE) for chat and voice; Baseten (BASETEN_API_BASE) only with a browser-supplied key.
+export { META_API_BASE, BASETEN_API_BASE } from "../web/src/judge/providers.js";
+import { metaApiKey } from "../web/src/judge/providers.js";
 
 const DEFAULT_ORIGINS = [
   "https://halo-sw.github.io",
@@ -214,8 +217,8 @@ export function createRelay({ env = {}, fetchImpl = fetch, now = () => Date.now(
       // Booleans only — never key text.
       return sendJson(res, 200, {
         ok: true,
-        meta: { hasServerKey: Boolean(env.MODEL_API_KEY) },
-        voice: { hasServerKey: Boolean(env.MODEL_API_KEY) },
+        meta: { hasServerKey: Boolean(metaApiKey(env)) },
+        voice: { hasServerKey: Boolean(metaApiKey(env)) },
         baseten: { hasServerKey: false },
         recorded: { hasServerKey: true },
         relay: true,

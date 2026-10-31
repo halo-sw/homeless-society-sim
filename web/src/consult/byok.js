@@ -5,6 +5,8 @@
 // it. Node + browser safe; the no-log rule is tested in
 // byok-13.test.js (logs and errors never contain the key).
 
+import { PROVIDERS, envKey } from "../judge/providers.js";
+
 export const BYOK_HEADER = "x-model-key";
 export const BYOK_PROVIDER_HEADER = "x-model-provider";
 export const STORAGE_PREFIX = "sim13.key.";
@@ -42,10 +44,10 @@ export function resolveProxyKey({ headers = {}, provider, env = {} }) {
   if (typeof byok === "string" && byok.length > 0) {
     return { key: byok, from: "byok" };
   }
-  const envName = provider === "baseten" ? "BASETEN_API_KEY" : "MODEL_API_KEY";
-  const envKey = env[envName];
-  if (typeof envKey === "string" && envKey.length > 0) {
-    return { key: envKey, from: "env" };
+  const cfg = provider === "baseten" ? PROVIDERS.baseten : PROVIDERS.meta;
+  const serverKey = envKey(cfg, env);
+  if (typeof serverKey === "string" && serverKey.length > 0) {
+    return { key: serverKey, from: "env" };
   }
   return { key: null, from: null };
 }

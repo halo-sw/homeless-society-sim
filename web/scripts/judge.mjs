@@ -13,7 +13,7 @@
 //
 // --dry-run prints the planned call count and token/cost estimates
 // without network or keys. Keys come from the environment only:
-// MODEL_API_KEY (meta) or BASETEN_API_KEY (baseten).
+// META_API_KEY (MODEL_API_KEY still works as a fallback for meta) or BASETEN_API_KEY (baseten).
 //
 // muse-spark-1.3 reasons before answering: --effort sets reasoning_effort
 // (meta default "low", baseten omits unless set), --max-tokens the cap

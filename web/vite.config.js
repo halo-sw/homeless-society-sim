@@ -3,7 +3,7 @@ import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { buildPrompt } from "./src/judge/context.js";
-import { providerConfig } from "./src/judge/providers.js";
+import { envKey, metaApiKey, providerConfig } from "./src/judge/providers.js";
 import { emptyUsage, judgeSingle } from "./src/judge/run.js";
 import { createConsultHandler } from "./src/consult/server.js";
 import { createTranscribeHandler } from "./src/consult/voice.js";
@@ -174,8 +174,11 @@ function judgeApiPlugin() {
           const body = JSON.parse(await readBody(req));
           const cfg = providerConfig(body.provider); // throws on unknown provider
           checkShell(body.shell);
-          if (!process.env[cfg.keyEnv]) {
-            const err = new Error(`${cfg.keyEnv} is not set on the dev server`);
+          if (!envKey(cfg, process.env)) {
+            const keyNames = (cfg.keyEnvFallback && cfg.keyEnvFallback.length)
+              ? `${cfg.keyEnv} (or ${cfg.keyEnvFallback.join(", ")})`
+              : cfg.keyEnv;
+            const err = new Error(`${keyNames} is not set on the dev server`);
             err.code = "missing_key";
             throw err;
           }
@@ -230,8 +233,8 @@ function consultApiPlugin() {
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify({
           ok: true,
-          meta: { hasServerKey: Boolean(process.env.MODEL_API_KEY) },
-          voice: { hasServerKey: Boolean(process.env.MODEL_API_KEY) },
+          meta: { hasServerKey: Boolean(metaApiKey(process.env)) },
+          voice: { hasServerKey: Boolean(metaApiKey(process.env)) },
           baseten: { hasServerKey: Boolean(process.env.BASETEN_API_KEY) },
           recorded: { hasServerKey: true },
         }));
