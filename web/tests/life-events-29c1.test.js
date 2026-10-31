@@ -225,3 +225,57 @@ describe("29c1c dark-walk from work", () => {
     assert.ok(!line.includes("가정: 판교역 인근)역"), line);
   });
 });
+
+describe("29c1d after-dark bike commute", () => {
+  const novMeta = (home) => ({ start_date: "2026-11-02", area: "songpa-jamsil", home });
+  const workHome = (id, day, extra = {}) => ({
+    id, agent: "h1", day, depart_min: 1073, minutes: 11, distance_m: 2850,
+    from: { id: "workplace:h1", kind: "poi", label: "Meta HQ (1 Hacker Way)" },
+    to: { kind: "home" }, purpose: "commute", ...extra,
+  });
+  const bikeRun = (home) => ({ agents, decisions: [], aways: [],
+    trips: [workHome("t-bike-0", 0, { mode: "bike" }), workHome("t-bike-1", 1, { mode: "bike" })],
+    meta: novMeta(home) });
+  const walkRun = (home) => ({ agents, decisions: [], aways: [],
+    trips: [workHome("t-walk-0", 0), workHome("t-walk-1", 1)],
+    meta: novMeta(home) });
+
+  it("both bike sides print the bike label, never 걸어서", () => {
+    const rows = lifeEvents(bikeRun("A"), bikeRun("B"), { labels: ["A", "B"] });
+    const dw = rows.find((r) => r.kind === "dark_walk");
+    assert.ok(dw, "dark_walk row present");
+    assert.equal(dw.a.mode, "bike");
+    assert.equal(dw.b.mode, "bike");
+    const lines = lifeEventLines(rows, ["A", "B"]);
+    const line = lines.find((l) => l.startsWith("해 진 뒤 자전거로 퇴근:"));
+    assert.ok(line, lines.join("\n"));
+    assert.ok(line.includes("직장에서 자전거로 평균"), line);
+    assert.ok(!line.includes("걸어서"), line);
+  });
+
+  it("A walking, B bike keeps the neutral label with each side's mode", () => {
+    const rows = lifeEvents(walkRun("A"), bikeRun("B"), { labels: ["A", "B"] });
+    const lines = lifeEventLines(rows, ["A", "B"]);
+    const line = lines.find((l) => l.startsWith("해 진 뒤 퇴근:"));
+    assert.ok(line, lines.join("\n"));
+    const cut = line.indexOf(" · B ");
+    assert.ok(cut > 0, line);
+    const aSeg = line.slice(0, cut);
+    const bSeg = line.slice(cut);
+    assert.ok(aSeg.includes("걸어서"), aSeg);
+    assert.ok(!aSeg.includes("자전거로"), aSeg);
+    assert.ok(bSeg.includes("자전거로"), bSeg);
+    assert.ok(!bSeg.includes("걸어서"), bSeg);
+  });
+
+  it("translates the both-bike line with Rode home", () => {
+    const rows = lifeEvents(bikeRun("A"), bikeRun("B"), { labels: ["A", "B"] });
+    const line = lifeEventLines(rows, ["A", "B"])
+      .find((l) => l.startsWith("해 진 뒤 자전거로 퇴근:"));
+    assert.ok(line, "bike line present");
+    const { translate } = createTranslator({ phrases, patterns, words: WORDS });
+    const en = translate(line);
+    assert.ok(en.startsWith("Rode home from work after dark:"), en);
+    assert.ok(en.includes("by bike from work"), en);
+  });
+});

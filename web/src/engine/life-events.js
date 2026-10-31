@@ -75,6 +75,7 @@ function darkSide(run) {
   let mN = 0;
   const fromCounts = new Map();
   let evTrip = null;
+  let bikeN = 0;
   for (const t of run.trips || []) {
     if (!hh.has(t.agent)) continue;
     if (!t.to || t.to.kind !== "home") continue;
@@ -89,6 +90,7 @@ function darkSide(run) {
     if (arr === null || arr < sunset) continue;
     count += 1;
     evTrip = t;
+    if (t.mode === "bike") bikeN += 1;
     if (typeof t.minutes === "number" && Number.isFinite(t.minutes)) {
       minSum += t.minutes;
       minN += 1;
@@ -127,6 +129,7 @@ function darkSide(run) {
     avgM: mN === 0 ? null : Math.round(mSum / mN / 10) * 10,
     from,
     fromKind,
+    mode: count > 0 && bikeN * 2 > count ? "bike" : "walk",
     evidence: evTrip ? { type: "trip", id: evTrip.id } : null,
   };
 }
@@ -197,8 +200,8 @@ export function lifeEvents(runA, runB, { labels = ["A", "B"] } = {}) {
     rows.push({
       kind: "dark_walk",
       sunset: hhmm(sunsetMinFor(runA.meta)),
-      a: { count: da.count, avgMin: da.avgMin, avgM: da.avgM, from: da.from, fromKind: da.fromKind },
-      b: { count: db.count, avgMin: db.avgMin, avgM: db.avgM, from: db.from, fromKind: db.fromKind },
+      a: { count: da.count, avgMin: da.avgMin, avgM: da.avgM, from: da.from, fromKind: da.fromKind, mode: da.mode },
+      b: { count: db.count, avgMin: db.avgMin, avgM: db.avgM, from: db.from, fromKind: db.fromKind, mode: db.mode },
       source: "기록 · 해 지는 시각 가정",
       evidence: { a: da.evidence, b: db.evidence },
     });
@@ -248,7 +251,7 @@ function darkPart(side, label) {
   if (side.count === 0) return `${label} 0번`;
   if (typeof side.avgMin !== "number") return `${label} ${side.count}번`;
   const dist = fmtDist(side.avgM);
-  if (side.fromKind === "work") return `${label} ${side.count}번 · 직장에서 걸어서 평균 ${side.avgMin}분${dist ? `(${dist})` : ""}`;
+  if (side.fromKind === "work") return `${label} ${side.count}번 · 직장에서 ${side.mode === "bike" ? "자전거로" : "걸어서"} 평균 ${side.avgMin}분${dist ? `(${dist})` : ""}`;
   return `${label} ${side.count}번 · ${stationName(side.from)}에서 평균 ${side.avgMin}분${dist ? `(${dist})` : ""}`;
 }
 
@@ -266,7 +269,11 @@ export function lifeEventLines(rows, labels) {
   const [la = "A", lb = "B"] = labels || [];
   return (rows || []).map((row) => {
     if (row.kind === "dark_walk") {
-      return `해 진 뒤 걸어서 퇴근: ${darkPart(row.a, la)} · ${darkPart(row.b, lb)} · 해 지는 시각 ${row.sunset} 기준`;
+      const bikeA = row.a.mode === "bike";
+      const bikeB = row.b.mode === "bike";
+      const head = bikeA && bikeB ? "해 진 뒤 자전거로 퇴근:"
+        : bikeA || bikeB ? "해 진 뒤 퇴근:" : "해 진 뒤 걸어서 퇴근:";
+      return `${head} ${darkPart(row.a, la)} · ${darkPart(row.b, lb)} · 해 지는 시각 ${row.sunset} 기준`;
     }
     if (row.kind === "seated") {
       const noData = row.a.measured === 0 || row.b.measured === 0;
