@@ -6,6 +6,8 @@
 // the hover-card data for one building. main.js projects anchors with the
 // same helper the station labels use and renders into the #tags layer.
 
+import { displayNameFor } from "./homes.js";
+
 export const OVERVIEW_MIN_M = 400;
 export const DONG_MAX_M = 250;
 export const MAX_LABELS = 40;
@@ -150,11 +152,19 @@ function clean(parts) {
 // 26i: US complexes can carry an OSM id as their name (e.g.
 // "w112348084"). Then the pill shows the run's home name instead
 // ("10 Coleman Place"); Korean names are never replaced.
+// 30g: when the label's raw name is a candidate's bare lot number,
+// the candidate's readable name (동 / station 근처 + kind) shows
+// instead — via the optional candidate (displayNameFor passes real
+// names through, so they never change).
 const OSM_ID_RE = /^[wnr]\d+$/;
 
-export function homeDisplayName(name, runHomeName) {
+export function homeDisplayName(name, runHomeName, candidate = null) {
   const n = name === undefined || name === null ? "" : String(name);
   if (runHomeName && OSM_ID_RE.test(n.trim())) return String(runHomeName);
+  if (candidate && candidate.name !== undefined
+    && String(candidate.name).trim() === n.trim()) {
+    return displayNameFor(candidate);
+  }
   return n;
 }
 
@@ -162,7 +172,7 @@ export function homeDisplayName(name, runHomeName) {
 // Order: home pill first, then destination, then complexes / POIs / dongs.
 export function labelItemsFor(area, opts = {}) {
   const { homeBuildingId = null, destination = null, destinationSuffix = "",
-    cameraDistM = 600, homeName = null } = opts;
+    cameraDistM = 600, homeName = null, homeCandidate = null } = opts;
   const items = [];
   const buildings = area?.buildings || [];
   const byId = new Map(buildings.map((b) => [b.id, b]));
@@ -171,7 +181,7 @@ export function labelItemsFor(area, opts = {}) {
     const b = byId.get(homeBuildingId);
     const complex = complexOfBuilding(area, homeBuildingId);
     const raw = (b && buildingNameOf(b, complex)) || String(homeBuildingId);
-    const name = homeDisplayName(raw, homeName) || raw;
+    const name = homeDisplayName(raw, homeName, homeCandidate) || raw;
     const anchor = (b && anchorOf(b)) || (complex && anchorOf(complex)) || null;
     items.push({
       id: `home:${String(homeBuildingId)}`,

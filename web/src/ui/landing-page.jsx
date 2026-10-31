@@ -201,7 +201,7 @@ export function LandingPage() {
             예시로 써 보기
           </button>
         </div>
-        <div className="ds-lp-cta">
+        <div className="ds-lp-judge">
           <a className="ds-lp-btn ds-lp-btn--primary" href={replayEntryUrl(currentLang())}>기록된 한 달 보기</a>
           <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(META_HQ_PROMPT)}>Meta 본사 출근으로 해 보기</a>
           <a className="ds-lp-btn ds-lp-btn--secondary" href={chatUrl(EXAMPLE_PROMPTS[0].prompt)}>서울로 해 보기</a>

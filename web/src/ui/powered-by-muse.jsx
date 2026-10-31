@@ -4,6 +4,7 @@ import { assetUrl } from "../paths.js";
 export const MUSE_LOGO_PATH = "brand/muse-logo.png";
 
 export function museModelLabel(live) {
+  if (live === null || live === undefined) return "연결 확인 중";
   return live ? "Muse Spark 1.3" : "규칙 모드";
 }
 
@@ -15,7 +16,7 @@ export function PoweredByMuse({ size = "sm", live, showStatus = false }) {
       <img src={assetUrl(MUSE_LOGO_PATH)} alt="" width={px} height={px} className="ds-pbm-logo" />
       <span className="ds-pbm-text">Powered by <b>Muse</b></span>
       {showStatus ? (
-        <span className="ds-pbm-status" data-live={live ? "1" : "0"}>
+        <span className="ds-pbm-status" data-live={live === true ? "1" : "0"}>
           <i className="ds-pbm-dot" />{museModelLabel(live)}
         </span>
       ) : null}

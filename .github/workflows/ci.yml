@@ -44,3 +44,41 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
+
+  docker:
+    name: Docker compose smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images (keyless, no .env)
+        run: docker compose build
+      - name: Start services
+        run: docker compose up -d
+      - name: Wait for ports (up to 60s)
+        run: |
+          for i in $(seq 1 60); do
+            web_ok=0
+            relay_ok=0
+            if curl -fsS http://localhost:8080/ >/dev/null 2>&1; then web_ok=1; fi
+            if curl -fsS http://localhost:8787/api/model/status >/dev/null 2>&1; then relay_ok=1; fi
+            if [ "$web_ok" = "1" ] && [ "$relay_ok" = "1" ]; then
+              echo "both ports up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "timed out waiting for ports"
+          exit 1
+      - name: Smoke checks
+        run: |
+          html="$(curl -fsS http://localhost:8080/)"
+          echo "$html" | grep -E -q '<div id=|<script'
+          curl -fsS http://localhost:8080/data/areas-index.json | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{JSON.parse(s)})"
+          curl -fsS http://localhost:8080/scenarios/demo-two-homes.json | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{JSON.parse(s)})"
+          curl -fsS -H "Origin: http://localhost:8080" http://localhost:8787/api/model/status | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const j=JSON.parse(s);if(j.meta.hasServerKey!==false){console.error(JSON.stringify(j.meta));process.exit(1)}})"
+      - name: Compose logs
+        if: failure()
+        run: docker compose logs
+      - name: Compose down
+        if: always()
+        run: docker compose down
