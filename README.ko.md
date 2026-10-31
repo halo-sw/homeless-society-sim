@@ -2,7 +2,7 @@
 
 <p align="center"><i>“We walk the odyssey. You just come home.”</i></p>
 
-<p align="center"><b>계약하기 전에, 그 집에서 먼저 살아 보세요.</b><br>AI 가족이 후보 집 두 곳에서 30일씩 먼저 살아 보고,<br>매물 사진·지도·30분 집 구경으로는 안 보이는 출퇴근, 돈, 밤 귀갓길을 보여 줘요.</p>
+<p align="center"><b>계약하기 전에, 그 집에서 먼저 살아 보세요.</b><br>AI 가족이 후보 집 두 곳에서 30일씩 먼저 살아 보고, 매물 사진·지도·30분 집 구경으로는 안 보이는 출퇴근, 돈, 밤 귀갓길을 보여 줘요.</p>
 
 <p align="center"><b>Meta AI로 만들었어요:</b> Meta Model API (<code>api.meta.ai</code>) · Muse Spark 1.3 · Muse Spark Open · Muse Code · Muse Voice</p>
 

@@ -2,7 +2,7 @@
 
 <p align="center"><i>“We walk the odyssey. You just come home.”</i></p>
 
-<p align="center">Before you sign, an AI household lives 30 days in each of your two candidate homes.<br>Then you see what a listing photo, a map and a 30-minute viewing never show:<br>the commute day by day, the money, the walk home after dark.</p>
+<p align="center">Before you sign, an AI household lives 30 days in each of your two candidate homes.<br>Then you see what a listing photo, a map and a 30-minute viewing never show: the commute day by day, the money, the walk home after dark.</p>
 
 <p align="center"><b>Built with Meta AI:</b> Meta Model API (<code>api.meta.ai</code>) · Muse Spark 1.3 · Muse Spark Open · Muse Code · Muse Voice</p>
 
