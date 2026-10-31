@@ -300,6 +300,27 @@ const seedPhrases = {
   "건너뛰기": "Skip",
   "직접 해 보기": "Try it yourself",
   "기록된 대화 보기": "Watch the recorded conversation",
+  // 31b: tray button once the run for these picks is done.
+  "결과 보기": "See the result",
+  // 31f-31i: map pin card, legend, filter chips, control stack, sort tabs.
+  "카드 보기": "View card",
+  "핀 카드 닫기": "Close pin card",
+  "2곳까지 담을 수 있어요": "You can pick up to 2",
+  "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철": "No.·area / price / commute · Ⓐ Ⓑ picked · ■ work · ━ subway",
+  "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사": "No.·area / price / commute · Ⓐ Ⓑ picked · ■ work",
+  "거래 방식": "Deal type",
+  "출근 시간": "Commute",
+  "집 종류": "Home type",
+  "상관없어요": "Any",
+  "지도 조건": "Map filters",
+  "내 위치": "My location",
+  "지도 확대 축소": "Zoom",
+  "지금 계신 곳이 이 지도 밖이에요": "You are outside this map right now",
+  "위치를 가져오지 못했어요. 브라우저에서 위치 권한을 확인해 주세요": "Couldn't get your location. Check the location permission in your browser",
+  "출근순": "Commute",
+  "비용순": "Cost",
+  "거래순": "Deals",
+  "우선순위순": "Priority",
   // 29a6c: USGS source whole name (the 29a4 chip uses short: "USGS").
   "USGS The National Map (지도·항공사진, 퍼블릭 도메인)": "USGS The National Map (map · aerial photo, public domain)",
   "퍼블릭 도메인": "public domain",
@@ -312,6 +333,13 @@ const seedPatterns = [
   // 29a6c: evening-at-home moment line (whole-string; captures stay raw).
   { ko: "저녁에 집에 있던 시간: {0} {1}시간 · {2} {3}시간", en: "Evenings at home: {0} {1} h · {2} {3} h" },
   { ko: "{0} 예시로 시작하기", en: "Start with the {0} example" },
+  // 31a: diary show-all button and the scene row aria prefix.
+  { ko: "일기 {0}줄 모두 보기", en: "Show all {0} diary lines" },
+  { ko: "장면 보기: {0}", en: "Open scene: {0}" },
+  { ko: "가까운 후보 {0}곳 펼치기", en: "Show {0} nearby candidates" },
+  { ko: "출근 {0}분 이내", en: "Commute within {0} min" },
+  { ko: "출근 {0}분", en: "{0} min commute" },
+  { ko: "{0}분 이내", en: "Within {0} min" },
   { ko: "{0}을 담았어요. \"살아 봐 줘\"라고 하면 30일을 살아 봐요", en: "Saved {0}. Say \"live in them\" to live 30 days in each" },
   // 29a4: top-bar summary edit button (aria-label carries the summary).
   { ko: "조건 고치기: {0}", en: "Edit conditions: {0}" },

@@ -175,13 +175,15 @@ describe("26t CSS never cuts labels", () => {
       ".ui-chat-chips > * flex none at base");
   });
 
-  it("moment 3D buttons keep their label; the text takes the shrink", () => {
+  it("moment rows are one grid button; the text takes the shrink", () => {
     const base = stripMedia(css);
-    assert.ok(/\.ui-result-moment button\s*\{[^}]*flex:\s*none/.test(base),
-      "moment button flex none at base");
+    const row = base.match(/\.ui-result-moment\s*\{[^}]*\}/);
+    assert.ok(row, ".ui-result-moment rule exists at base");
+    assert.ok(/display:\s*grid/.test(row[0]), "row is a grid");
+    assert.ok(!/\.ui-result-moment button\s*\{/.test(base), "no inner buttons");
     const m = base.match(/\.ui-result-text\s*\{[^}]*\}/);
     assert.ok(m, ".ui-result-text rule exists at base");
-    assert.ok(/flex:\s*1\s+1\s+0/.test(m[0]), "text column takes the shrink");
+    assert.ok(/overflow-wrap:\s*anywhere/.test(m[0]), "text wraps in its column");
   });
 
   it("result values never break inside the number", () => {

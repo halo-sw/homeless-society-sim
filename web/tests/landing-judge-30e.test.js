@@ -1,4 +1,5 @@
-// 30e: the three hero judge buttons render as buttons (ds-lp-judge, not ds-lp-cta).
+// 30e: the hero judge buttons render as buttons (ds-lp-judge, not ds-lp-cta).
+// 31l: three judge links — recorded month, Meta HQ, Seoul — as on main.
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -28,6 +29,11 @@ describe("30e landing hero judge buttons (SSR, no DOM)", () => {
     assert.ok(judge, "hero ds-lp-judge wrapper missing");
     const links = judge[1].match(/<a /g) || [];
     assert.equal(links.length, 3);
+    const first = judge[1].indexOf("기록된 한 달 보기");
+    const second = judge[1].indexOf("Meta 본사 출근으로 해 보기");
+    const third = judge[1].indexOf("서울로 해 보기");
+    assert.ok(first !== -1 && second !== -1 && third !== -1, "all three entries present");
+    assert.ok(first < second && second < third, "order");
     assert.ok(judge[1].includes("ds-lp-btn--primary"));
     assert.ok(judge[1].includes("ds-lp-btn--secondary"));
   });

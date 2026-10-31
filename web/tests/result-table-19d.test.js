@@ -101,7 +101,8 @@ describe("19d result card as an A|B table", () => {
     const html = renderToString(
       React.createElement(SimulationCard,
         { data: doneData(), example: "single-firstjob" }));
-    assert.equal(count(html, "3D로 보기"), 1, "A text links, B text does not");
+    assert.equal(count(html, 'aria-label="장면 보기:'), 1, "A text links, B text does not");
+    assert.ok(!html.includes("3D로 보기"), "ghost buttons gone");
     assert.ok(!html.includes("3D에서 보기"), "old buttons gone");
   });
 

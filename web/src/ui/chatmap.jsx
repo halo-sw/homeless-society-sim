@@ -9,12 +9,17 @@
 // clicking a region still filters. SSR renders the container only.
 import { useEffect, useRef, useState } from "react";
 import { fitMapView, layoutMapPills, layoutStationLabels, pickDongLabels,
-  stationNameWidthPx, haversineKm, shortPinPrice,
-  pinPillWidthPx, MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
+  stationNameWidthPx, haversineKm,
+  tagSizePx, tagLines, tagFontPx, clusterSizePx,
+  MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
 import { basemapApiBase, basemapTileUrl, basemapTiles, basemapProvider,
   viewTransform, zoomAt } from "../basemap.js";
 import { currentLang } from "../i18n/lang.js";
 import { romanizeName } from "../i18n/romanize.js";
+import { displayNameFor } from "../homes.js";
+import { pinCardModel } from "./candidate-card.jsx";
+import { toast } from "./toast.jsx";
+import { locateResult } from "./map-filters.js";
 
 function ptsAttr(pts, toXYz) {
   return pts.map(([lon, lat]) => {
@@ -27,7 +32,6 @@ function ptsAttr(pts, toXYz) {
 // 96 px); the fit keeps every pin anchor inside the free rectangle.
 const CHATMAP_INSET = { top: 56, right: 24, bottom: 96, left: 24 };
 const PILL_H = 24;
-const PILL_TAIL = 5;
 
 const noSpace = (s) => String(s || "").replace(/\s+/g, "");
 
@@ -38,21 +42,117 @@ export function workPinLabel(name, lang) {
   return `회사 · ${name}`;
 }
 
+// 31j: the drag threshold shared by the svg pan handlers —
+// 4 px in client px. A press-and-release inside it is a click.
+export function pastDragThreshold(ax, ay, bx, by, px = 4) {
+  return Math.hypot(bx - ax, by - ay) > px;
+}
+
 function pillTextWidthPx(text, px) {
   let tw = 0;
   for (const ch of String(text || "")) tw += ch.codePointAt(0) > 0xff ? px : Math.round(px * 0.58);
   return tw;
 }
 
-export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
+// 31f: A/B pick fills, home pins as real buttons, and a pin card
+// over the map (담기 + 카드 보기 work on desktop and phone).
+function letterFillFor(letter) {
+  if (letter === "A") return MAP_COLORS.pinA;
+  if (letter === "B") return MAP_COLORS.pinB;
+  return null;
+}
+
+// 31f: the pin's accessible name — number + name + price +
+// commute minutes, leaving out the parts that are missing.
+// 31j: built per language in code (the DOM translator never sees
+// it — the tag carries data-no-i18n), so English reads
+// `Candidate 1: name · price · 5 min commute`.
+export function pinAriaLabel(p, short, lang) {
+  if (lang === "en") {
+    const parts = [`Candidate ${p.n}: ${displayNameFor(p.candidate)}`];
+    if (short) parts.push(short);
+    if (p.commuteMin !== null && p.commuteMin !== undefined
+      && Number.isFinite(Number(p.commuteMin))) {
+      parts.push(`${Math.round(p.commuteMin)} min commute`);
+    }
+    return parts.join(" · ");
+  }
+  const parts = [`${p.n}번 후보 ${displayNameFor(p.candidate)}`];
+  if (short) parts.push(short);
+  if (p.commuteMin !== null && p.commuteMin !== undefined
+    && Number.isFinite(Number(p.commuteMin))) {
+    parts.push(`출근 ${Math.round(p.commuteMin)}분`);
+  }
+  return parts.join(" · ");
+}
+
+// 31h: 20 px ink control icons — inline SVG (Astryx semantic
+// names do not include plus, minus, locate or expand).
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M10 4v12M4 10h12" />
+    </svg>
+  );
+}
+
+function MinusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M4 10h12" />
+    </svg>
+  );
+}
+
+function LocateIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor">
+      <circle cx={10} cy={10} r={6} strokeWidth={2} />
+      <path d="M10 1v3.5M10 15.5V19M1 10h3.5M15.5 10H19"
+        strokeWidth={2} strokeLinecap="round" />
+      <circle cx={10} cy={10} r={1.5} fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function FitIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" />
+    </svg>
+  );
+}
+
+export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
+  picks, onTogglePick, hasFilters }) {
   const mountRef = useRef(null);
   const [size, setSize] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  // 31f: the open pin card (pin id) and the hovered cluster.
+  const [selectedId, setSelectedId] = useState(null);
+  const [clusterHi, setClusterHi] = useState(null);
   // 25a: screen-space zoom/pan (zoom around W/2, H/2).
   const [vt, setVt] = useState({ zoom: 1, panX: 0, panY: 0 });
+  // 31h: the "you are here" marker (stage px, never stored outside
+  // this component) and the locate-button state.
+  const [you, setYou] = useState(null);
+  const [locating, setLocating] = useState(false);
+  // Rendered until the client proves otherwise, so SSR keeps the
+  // button; a client without geolocation hides it after mount.
+  const [geoOk, setGeoOk] = useState(true);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) setGeoOk(false);
+  }, []);
   const [grabbing, setGrabbing] = useState(false);
   const dragRef = useRef(null);
   const dragged = useRef(false);
+  // 31k: which pin (if any) the pointer went down on, with the
+  // client coords — so a pointer-up on the same pin can open its
+  // card even when the click event is retargeted elsewhere.
+  const downPinRef = useRef(null);
   // 25a: basemap tiles that failed to load are never rendered again.
   const failedRef = useRef(new Set());
   const [failCount, setFailCount] = useState(0);
@@ -68,6 +168,10 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   }, []);
   const W = (size && size[0]) || 640;
   const H = (size && size[1]) || 420;
+  // 31j: the rendering language (tags build their own lines, never
+  // the DOM translator) and the compact phone tag size.
+  const lang = currentLang();
+  const compact = W <= 480;
   // 25a: wheel zoom around the cursor. A native non-passive listener
   // so preventDefault stops the page scroll.
   useEffect(() => {
@@ -99,10 +203,12 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
       focus.push({ lon: r.bbox[0], lat: r.bbox[1] }, { lon: r.bbox[2], lat: r.bbox[3] });
     }
   }
-  // A new focus set re-fits the map, so the zoom/pan resets.
+  // A new focus set re-fits the map, so the zoom/pan resets —
+  // and a new search clears the "you are here" marker with it.
   const focusKey = focus.map((p) => `${p.lon},${p.lat}`).join(";");
   useEffect(() => {
     setVt({ zoom: 1, panX: 0, panY: 0 });
+    setYou(null);
   }, [focusKey]);
   // One projected space: fitMapView maps lon/lat into stage px, and
   // the viewBox IS that stage (0 0 W H) — never the raw degree view.
@@ -114,6 +220,45 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const T = viewTransform({ ...vt, cx: W / 2, cy: H / 2 });
   const toXYz = (lon, lat) => T.apply(fit.toXY(lon, lat));
   const toLonLatZ = (x, y) => fit.toLonLat(...T.invert([x, y]));
+  // 31h: my-location — the fix is read once per click and never
+  // stored (no state outside this component, no URL, no network,
+  // no log). The extent is the map's current lon/lat corners.
+  const [exMinLon, exMaxLat] = toLonLatZ(0, 0);
+  const [exMaxLon, exMinLat] = toLonLatZ(W, H);
+  const onLocate = () => {
+    const geo = (typeof navigator !== "undefined" && navigator.geolocation) || null;
+    if (!geo) {
+      toast.show("위치를 가져오지 못했어요. 브라우저에서 위치 권한을 확인해 주세요");
+      return;
+    }
+    setLocating(true);
+    geo.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const lon = Number(pos && pos.coords && pos.coords.longitude);
+        const lat = Number(pos && pos.coords && pos.coords.latitude);
+        const r = locateResult(pos, {
+          minLon: exMinLon, minLat: exMinLat,
+          maxLon: exMaxLon, maxLat: exMaxLat, W, H,
+        });
+        if (!r.inside) {
+          toast.show("지금 계신 곳이 이 지도 밖이에요");
+          return;
+        }
+        setYou({ x: r.x, y: r.y });
+        // Centre the fix, keeping the current zoom.
+        const [bx, by] = fit.toXY(lon, lat);
+        setVt((v) => {
+          const z = Number(v.zoom) || 1;
+          return { ...v, panX: -(bx - W / 2) * z, panY: -(by - H / 2) * z };
+        });
+      },
+      () => {
+        setLocating(false);
+        toast.show("위치를 가져오지 못했어요. 브라우저에서 위치 권한을 확인해 주세요");
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
+  };
   // 25a: light raster under the vector layers when the tile source
   // is available. 26k: the provider follows the map centre — USGS
   // topo in the US (direct, no relay, so apiBase may be null),
@@ -137,17 +282,30 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const pillItems = [];
   if (m.workPin && Number.isFinite(m.workPin.lon) && Number.isFinite(m.workPin.lat)) {
     const [x, y] = toXYz(m.workPin.lon, m.workPin.lat);
-    const label = workPinLabel(m.workPin.name, currentLang());
+    const label = workPinLabel(m.workPin.name, lang);
+    // 31f: the work marker carries a 10 px square glyph before the
+    // text, so its box reserves the extra width.
     pillItems.push({ id: "work", kind: "work", x, y,
-      w: pillTextWidthPx(label, 12) + 24, h: 26, rank: 0 });
+      w: pillTextWidthPx(label, 12) + 38, h: 26, rank: 0 });
   }
   for (const p of pins) {
     const [x, y] = toXYz(p.lon, p.lat);
-    const short = shortPinPrice(p.candidate, m.tenure);
+    // 31g: home pins lay out as two-part tags, so the collision
+    // boxes are the measured tag sizes. 31j: measured on the
+    // rendering-language lines, in the phone size when narrow.
+    const sz = tagSizePx(p, m.tenure, lang, { compact });
     pillItems.push({ id: p.id, kind: "pill", x, y,
-      w: pinPillWidthPx(short), h: PILL_H, rank: p.picked ? 1 : 2 });
+      w: sz.w, h: sz.h, rank: p.picked ? 1 : 2 });
   }
-  const laid = layoutMapPills(pillItems, W, H);
+  // 31j: overlay chrome the tags must never cover — the top-left
+  // title/legend/filter stack and the right control column. Tags
+  // move with a leader line instead. (The work marker's own box is
+  // already occupied: rank 0 places first.)
+  const chromeObstacles = [
+    { x: 0, y: 0, w: Math.min(300, W * 0.5), h: hasFilters ? 140 : 100 },
+    { x: W - 64, y: 0, w: 64, h: H },
+  ];
+  const laid = layoutMapPills(pillItems, W, H, chromeObstacles);
   const layById = new Map(laid.map((l) => [l.id, l]));
   // Pills folded into a cluster render through the cluster instead —
   // the open cluster fans its members out below.
@@ -218,18 +376,26 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   const onSvgPointerDown = (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     dragged.current = false;
-    dragRef.current = { x: e.clientX, y: e.clientY, vt };
-    setGrabbing(true);
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no capture */ }
+    dragRef.current = { x: e.clientX, y: e.clientY, vt, captured: false };
   };
   const onSvgPointerMove = (e) => {
     const d = dragRef.current;
     if (!d) return;
+    // 31j: past the drag threshold this is a pan — capture the
+    // pointer (and show grabbing) only now, so a press-and-release
+    // keeps its click on the real target (the tag button). Touch
+    // pans through this same handler.
+    if (!pastDragThreshold(d.x, d.y, e.clientX, e.clientY)) return;
+    if (!d.captured) {
+      d.captured = true;
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no capture */ }
+      setGrabbing(true);
+    }
+    dragged.current = true;
     const el = mountRef.current;
     const r = el ? el.getBoundingClientRect() : null;
     const sx = r && r.width > 0 ? W / r.width : 1;
     const sy = r && r.height > 0 ? H / r.height : 1;
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) dragged.current = true;
     setVt({ zoom: d.vt.zoom,
       panX: d.vt.panX + (e.clientX - d.x) * sx,
       panY: d.vt.panY + (e.clientY - d.y) * sy });
@@ -244,11 +410,103 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
   };
   const handlePinClick = (id) => {
     if (dragged.current) { dragged.current = false; return; }
+    // 31f: the pin opens its card on the map; 카드 보기 scrolls to
+    // the card (onPinClick stays for compatibility).
+    setSelectedId(id);
     if (onPinClick) onPinClick(id);
   };
-  // The hovered pin renders last so it sits on top.
-  const ordered = [...pins].sort((a, b) =>
-    ((cardHi === `home:${a.id}`) ? 1 : 0) - ((cardHi === `home:${b.id}`) ? 1 : 0));
+  // 31f: Esc closes the pin card.
+  useEffect(() => {
+    if (!selectedId || typeof window === "undefined") return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setSelectedId(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId]);
+  // 31f: shared button behaviour for every home pin (main pills and
+  // fanned-out cluster members). Focus also highlights the card, so
+  // the 2 px ink hover outline doubles as the focus ring.
+  const pinButtonProps = (p, short) => ({
+    role: "button",
+    tabIndex: 0,
+    "aria-label": pinAriaLabel(p, short, lang),
+    onMouseEnter: () => onPinHover && onPinHover(`home:${p.id}`),
+    onMouseLeave: () => onPinHover && onPinHover(null),
+    onFocus: () => onPinHover && onPinHover(`home:${p.id}`),
+    onBlur: () => onPinHover && onPinHover(null),
+    onPointerDown: (e) => {
+      downPinRef.current = { id: p.id, x: e.clientX, y: e.clientY };
+    },
+    // 31k: belt and braces — open the card when the pointer goes
+    // down and up on the same pin without passing the drag
+    // threshold. onClick stays for keyboard and assistive tech;
+    // setting the same id twice is idempotent, so no double-open.
+    onPointerUp: (e) => {
+      const d = downPinRef.current;
+      downPinRef.current = null;
+      if (!d || d.id !== p.id) return;
+      if (pastDragThreshold(d.x, d.y, e.clientX, e.clientY)) return;
+      handlePinClick(p.id);
+    },
+    onKeyDown: (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      handlePinClick(p.id);
+    },
+    onClick: () => handlePinClick(p.id),
+    style: { cursor: "pointer" },
+  });
+  // 31g: the two-part price tag — an 18 px header strip (number·
+  // area, white on ink, or on the A/B colour when picked) over a
+  // white body (price line, commute line) with a 1 px border in the
+  // header colour and a small tail at the bottom-left corner. Hover
+  // adds a 2 px ink outline around header + body.
+  const homeTagShape = (box, lines, accent, hi, isCompact) => {
+    const x = box.x, y = box.y, w = box.w, h = box.h;
+    const cx = x + w / 2;
+    // 31j: phone tags use the compact type sizes; every tag line
+    // is built in code per language, so the translator skips them.
+    const t = tagFontPx({ compact: isCompact });
+    return (
+      <g filter="url(#chat-pill-shadow)">
+        <path d={`M${x},${y + 18} L${x},${y + 8} A8,8 0 0 1 ${x + 8},${y} L${x + w - 8},${y} A8,8 0 0 1 ${x + w},${y + 8} L${x + w},${y + 18} Z`}
+          fill={accent} />
+        <path d={`M${x},${y + 18} L${x + w},${y + 18} L${x + w},${y + h - 8} A8,8 0 0 1 ${x + w - 8},${y + h} L${x + 8},${y + h} A8,8 0 0 1 ${x},${y + h - 8} Z`}
+          fill={MAP_COLORS.pinFill} stroke={accent} strokeWidth={fs(1)} />
+        <text x={cx} y={y + fs(13)} fontSize={fs(t.header)} fontWeight={600}
+          textAnchor="middle" fill={MAP_COLORS.pinFill} data-no-i18n>{lines.header}</text>
+        <text x={x + fs(t.padX)} y={y + 18 + fs(17)} fontSize={fs(t.price)} fontWeight={700}
+          fill={MAP_COLORS.pinText} data-no-i18n>{lines.price}</text>
+        {lines.commute && (
+          <text x={x + fs(t.padX)} y={y + 18 + fs(36)} fontSize={fs(t.commute)} fontWeight={600}
+            fill={MAP_COLORS.commute} data-no-i18n>{lines.commute}</text>
+        )}
+        <polygon points={`${x + fs(9)},${y + h} ${x + fs(17)},${y + h} ${x + fs(11)},${y + h + 6}`}
+          fill={accent} />
+        {hi && (
+          <rect x={x - fs(1.5)} y={y - fs(1.5)} width={w + fs(3)} height={h + fs(3)}
+            rx={fs(9.5)} fill="none" stroke={MAP_COLORS.pinHi} strokeWidth={fs(2)} />
+        )}
+      </g>
+    );
+  };
+  // 31f: a click on empty map closes the pin card (a drag is not a click).
+  const onSvgBackgroundClick = (e) => {
+    const t = e.target;
+    if (t && t.getAttribute && t.getAttribute("data-layer") === "map-ground") {
+      if (dragged.current) { dragged.current = false; return; }
+      setSelectedId(null);
+    }
+  };
+  // 31k: home tags render in a fixed order (pin rank, then id) so a
+  // hover highlight never moves the clickable node in the DOM —
+  // moving it between mousedown and mouseup retargets the browser's
+  // click to the svg, so the pin card never opens. The highlighted /
+  // selected tag is drawn again as a non-interactive copy in a top
+  // layer below. (Confirmed in source: the old pillOrder/ordered
+  // sorts re-ordered the live <g> nodes on every cardHi change; no
+  // live browser was available here to re-run the mouse click.)
+  const tagOrder = [...pins].sort((a, b) =>
+    (((a.n ?? 0) - (b.n ?? 0)) || String(a.id).localeCompare(String(b.id))));
   return (
     <div ref={mountRef} className="ui-chatmap" style={{ width: "100%", height: "100%", position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%"
@@ -256,7 +514,7 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
         style={{ cursor: grabbing ? "grabbing" : "grab" }}
         onPointerDown={onSvgPointerDown} onPointerMove={onSvgPointerMove}
         onPointerUp={onSvgPointerUp} onPointerCancel={onSvgPointerUp}
-        onDoubleClick={onSvgDoubleClick}>
+        onDoubleClick={onSvgDoubleClick} onClick={onSvgBackgroundClick}>
         <defs>
           <filter id="chat-pill-shadow" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx={0} dy={1} stdDeviation={2}
@@ -271,7 +529,8 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             </feComponentTransfer>
           </filter>
         </defs>
-        <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground} />
+        <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground}
+          data-layer="map-ground" />
         <g filter="url(#basemap-mute)" opacity={currentLang() === "en" ? 0.45 : 1}>
         {tiles.filter((t) => !failedRef.current.has(t.key)).map((t) => {
           const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
@@ -403,12 +662,11 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             .find(([x, y]) => x >= 0 && x <= W && y >= 0 && y <= H && !hitsPinBox(x, y));
           if (!spot) return null;
           const [x, y] = spot;
+          // 31f: region names are plain text, never buttons.
           return (
             <text key={r.id} data-layer="region-label" x={x} y={y}
               fontSize={fs(12)} fontWeight={500} letterSpacing="0.02em"
-              fill={MAP_COLORS.regionLabel} textAnchor="middle"
-              onClick={() => onRegion && onRegion(r.id)}
-              style={{ cursor: onRegion ? "pointer" : "default" }}>
+              fill={MAP_COLORS.regionLabel} textAnchor="middle">
               {r.label}
             </text>
           );
@@ -418,19 +676,28 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
           if (!m.workPin || !l) return null;
           const [px, py] = toXYz(m.workPin.lon, m.workPin.lat);
           const { box } = l;
-          const label = workPinLabel(m.workPin.name, currentLang());
+          const label = workPinLabel(m.workPin.name, lang);
+          // 31f: the work marker is a label, not a button — an ink
+          // rounded rect (chip radius, never a pill) with a 10 px
+          // white square glyph before the text, matching "■ 회사" in
+          // the legend. No pointer, no hover.
+          const gx = box.x + fs(10);
+          const gy = box.y + box.h / 2 - fs(5);
+          const tx = gx + fs(10 + 6);
           const cx = box.x + box.w / 2;
           return (
-            <g key="work">
+            <g key="work" data-layer="work-marker">
               {l.leader && (
                 <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
                   stroke={MAP_COLORS.workPin} strokeWidth={fs(1.5)} />
               )}
               <g filter="url(#chat-pill-shadow)">
-                <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={box.h / 2}
+                <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={fs(8)}
                   fill={MAP_COLORS.workPin} />
-                <text x={cx} y={box.y + fs(17)} fontSize={fs(12)} fontWeight={600}
-                  textAnchor="middle" fill="#ffffff" data-no-i18n>{label}</text>
+                <rect x={gx} y={gy} width={fs(10)} height={fs(10)}
+                  fill={MAP_COLORS.pinFill} />
+                <text x={tx} y={box.y + fs(17)} fontSize={fs(12)} fontWeight={600}
+                  textAnchor="start" fill={MAP_COLORS.pinFill} data-no-i18n>{label}</text>
               </g>
               {!l.leader && (
                 <polygon points={`${cx - fs(5)},${box.y + box.h} ${cx + fs(5)},${box.y + box.h} ${px},${py}`}
@@ -439,71 +706,135 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             </g>
           );
         })()}
-        {ordered.map((p) => {
-          if (clustered.has(p.id)) return null;
-          const l = layById.get(p.id);
-          const [px, py] = toXYz(p.lon, p.lat);
-          const short = shortPinPrice(p.candidate, m.tenure);
-          const pw = pinPillWidthPx(short);
-          const box = (l && l.box) || { x: px - pw / 2, y: py - fs(12) - PILL_H, w: pw, h: PILL_H };
-          const hi = cardHi === `home:${p.id}`;
-          const picked = !!p.picked;
-          const fill = picked ? MAP_COLORS.pinPicked : MAP_COLORS.pinFill;
-          const glyph = picked ? (p.letter || String(p.n)) : String(p.n);
-          const dotFill = picked ? "#ffffff" : MAP_COLORS.pinText;
-          const dotText = picked ? MAP_COLORS.pinPicked : "#ffffff";
-          const mainText = picked ? "#ffffff" : MAP_COLORS.pinText;
-          const dcx = box.x + fs(8 + 8);
-          const dcy = box.y + PILL_H / 2;
-          const txx = box.x + fs(8 + 16 + 6);
-          const tailX = box.x + box.w / 2;
-          const tailTipX = tailX;
-          const tailTipY = box.y + PILL_H + PILL_TAIL;
-          const needLeader = !!(l && l.leader);
-          const zoom = hi
-            ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
+        {(() => {
+          // 31b: two passes over the same ordered list so a close pin's
+          // dot and leader never paint over another pin's pill. Same
+          // geometry as the old single pass; the highlighted pill last.
+          const geom = (p) => {
+            const l = layById.get(p.id);
+            const [px, py] = toXYz(p.lon, p.lat);
+            // 31g: the tag's three lines and its measured box.
+            const { header, price, commute } = tagLines(p, { tenure: m.tenure, lang });
+            const sz = tagSizePx(p, m.tenure, lang, { compact });
+            const box = (l && l.box) || { x: px - sz.w / 2, y: py - fs(12) - sz.h, w: sz.w, h: sz.h };
+            const hi = cardHi === `home:${p.id}`;
+            const picked = !!p.picked;
+            // 31f: a picked tag wears its letter's colour (A/B) in
+            // the header and border; later letters fall back to the
+            // old picked blue. Hover is a 2 px ink outline + lift,
+            // never a fill.
+            const accent = picked
+              ? (letterFillFor(p.letter) || MAP_COLORS.pinPicked)
+              : MAP_COLORS.pinText;
+            const needLeader = !!(l && l.leader);
+            const tailTipX = box.x + fs(11);
+            const tailTipY = box.y + box.h + 6;
+            const zoom = hi
+              ? `translate(${tailTipX} ${tailTipY}) scale(1.08) translate(${-tailTipX} ${-tailTipY})` : undefined;
+            return { l, px, py, header, price, commute, box, hi, picked,
+              accent, needLeader, zoom };
+          };
+          // 31k: pills stay in the fixed order — never re-sorted by
+          // hover. The highlighted pin's outline is re-drawn as a
+          // separate non-interactive copy in the top layer below.
+          const visible = tagOrder.filter((p) => !clustered.has(p.id));
+          const hiPin = visible.find((p) => cardHi === `home:${p.id}`)
+            || visible.find((p) => p.id === selectedId) || null;
           return (
-            <g key={p.id}
-              onMouseEnter={() => onPinHover && onPinHover(`home:${p.id}`)}
-              onMouseLeave={() => onPinHover && onPinHover(null)}
-              onClick={() => handlePinClick(p.id)}
-              style={{ cursor: onPinClick ? "pointer" : "default" }}>
-              {needLeader && l.leader && (
-                <line x1={l.leader[0]} y1={l.leader[1]} x2={px} y2={py}
-                  stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
-              )}
-              <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />
-              <g transform={zoom}>
-                <g filter="url(#chat-pill-shadow)">
-                  <rect x={box.x} y={box.y} width={box.w} height={fs(PILL_H)} rx={fs(999)}
-                    fill={fill} stroke={picked ? "none" : "#e2ddd3"} strokeWidth={fs(1)} />
-                  <circle cx={dcx} cy={dcy} r={fs(8)} fill={dotFill} />
-                  <text x={dcx} y={dcy + fs(3.5)} fontSize={fs(10)} textAnchor="middle"
-                    fill={dotText}>{glyph}</text>
-                  <text x={txx} y={box.y + fs(16)} fontSize={fs(12)} fontWeight={600}
-                    fill={mainText}>{short}</text>
-                </g>
-                <polygon points={`${tailX - fs(4)},${box.y + PILL_H} ${tailX + fs(4)},${box.y + PILL_H} ${tailTipX},${tailTipY}`}
-                  fill={fill} />
-              </g>
-            </g>
+            <>
+              {visible.map((p) => {
+                const g = geom(p);
+                // 31g: a tag sitting right on its spot needs no
+                // leader and no ground dot; only a moved tag keeps
+                // the 31f leader line and ground dot.
+                if (!g.needLeader) return null;
+                return (
+                  <g key={`pin-under-${p.id}`}>
+                    {g.l.leader && (
+                      <line x1={g.l.leader[0]} y1={g.l.leader[1]} x2={g.px} y2={g.py}
+                        stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
+                    )}
+                    {/* 31f: the ground dot is ink-2 with a white ring
+                      (picked: the A/B colour) — never the black of
+                      the work marker. */}
+                    <circle cx={g.px} cy={g.py} r={fs(4)}
+                      fill={g.picked ? g.accent : MAP_COLORS.pinDot}
+                      stroke={MAP_COLORS.pinFill} strokeWidth={fs(1.5)} />
+                  </g>
+                );
+              })}
+              {visible.map((p) => {
+                const g = geom(p);
+                // 31g: the invisible hit rect covers the whole tag
+                // (44 px or taller, so always ≥ 32 px).
+                return (
+                  <g key={`pin-pill-${p.id}`} data-layer="home-pin"
+                    {...pinButtonProps(p, g.price)}>
+                    <rect x={g.box.x - fs(4)} y={g.box.y}
+                      width={g.box.w + fs(8)} height={g.box.h}
+                      fill="transparent" />
+                    <g transform={g.zoom}>
+                      {homeTagShape(g.box, g, g.accent, g.hi, compact)}
+                    </g>
+                  </g>
+                );
+              })}
+              {hiPin && (() => {
+                // 31k: the top-layer copy of the highlighted tag —
+                // outline only, no handlers, no button role, out of
+                // the hit path. The real clickable <g> above never
+                // moves; data-layer avoids the "home-pin" name so pin
+                // counts and label sequences are unchanged.
+                const g = geom(hiPin);
+                return (
+                  <g key="pin-hi-top" data-layer="home-pin-top"
+                    aria-hidden="true" pointerEvents="none">
+                    <g transform={g.zoom}>
+                      <rect x={g.box.x - fs(1.5)} y={g.box.y - fs(1.5)}
+                        width={g.box.w + fs(3)} height={g.box.h + fs(3)}
+                        rx={fs(9.5)} fill="none"
+                        stroke={MAP_COLORS.pinHi} strokeWidth={fs(2)} />
+                    </g>
+                  </g>
+                );
+              })()}
+            </>
           );
-        })}
+        })()}
         {laid.filter((l) => l.kind === "cluster").map((l) => {
           const open = expanded === l.id;
+          // 31g: the cluster is a button — a count circle (soft
+          // accent tint, white ring, ink count, no "+").
+          const d = clusterSizePx(l.count);
           const cx = l.box.x + l.box.w / 2;
+          const cy = l.box.y + l.box.h / 2;
+          const hi = clusterHi === l.id;
+          const toggle = () => setExpanded(open ? null : l.id);
           return (
-            <g key={l.id} onClick={() => setExpanded(open ? null : l.id)}
+            <g key={l.id} data-layer="cluster" role="button" tabIndex={0}
+              aria-label={`가까운 후보 ${l.count}곳 펼치기`}
+              onClick={toggle}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                toggle();
+              }}
+              onMouseEnter={() => setClusterHi(l.id)}
+              onMouseLeave={() => setClusterHi(null)}
+              onFocus={() => setClusterHi(l.id)}
+              onBlur={() => setClusterHi(null)}
               style={{ cursor: "pointer" }}>
               {l.leader && (
                 <line x1={l.leader[0]} y1={l.leader[1]} x2={l.x} y2={l.y}
                   stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
               )}
               <g filter="url(#chat-pill-shadow)">
-                <rect x={l.box.x} y={l.box.y} width={l.box.w} height={fs(l.box.h)} rx={fs(999)}
-                  fill="#ffffff" stroke={MAP_COLORS.pinHi} strokeWidth={fs(1.5)} />
-                <text x={cx} y={l.box.y + fs(16)} fontSize={fs(12)} fontWeight={700}
-                  textAnchor="middle" fill={MAP_COLORS.pinHi}>{`+${l.count}`}</text>
+                <circle cx={cx} cy={cy} r={fs(d / 2)}
+                  fill={MAP_COLORS.cluster}
+                  stroke={hi ? MAP_COLORS.pinHi : "#ffffff"}
+                  strokeWidth={fs(2)} />
+                <text x={cx} y={cy + fs(5)} fontSize={fs(15)} fontWeight={700}
+                  textAnchor="middle" fill={MAP_COLORS.pinText}>{l.count}</text>
               </g>
               <title>{`가까운 후보 ${l.count}곳 묶음 — 눌러서 펼치기`}</title>
             </g>
@@ -514,58 +845,133 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onRegion }) {
             const pin = pins.find((p) => p.id === mb.id);
             if (!pin) return null;
             const cluster = laid.find((l) => l.id === expanded);
-            const short = shortPinPrice(pin.candidate, m.tenure);
-            const pw = pinPillWidthPx(short);
+            // 31g: fanned-out members draw as the new tags.
+            const sz = tagSizePx(pin, m.tenure, lang, { compact });
             const R = Math.max(48, 18 * arr.length);
             const ang = (-Math.PI / 2) + ((i + 0.5) * 2 * Math.PI) / arr.length;
-            const bx = cluster.box.x + cluster.box.w / 2 + R * Math.cos(ang) - pw / 2;
-            const by = cluster.box.y + cluster.box.h / 2 + R * Math.sin(ang) - PILL_H / 2;
+            const bx = cluster.box.x + cluster.box.w / 2 + R * Math.cos(ang) - sz.w / 2;
+            const by = cluster.box.y + cluster.box.h / 2 + R * Math.sin(ang) - sz.h / 2;
             const [px, py] = toXYz(pin.lon, pin.lat);
+            // 31f: fanned-out members are home pins too — buttons
+            // with the same fills and hover outline.
+            const hi = cardHi === `home:${pin.id}`;
+            const picked = !!pin.picked;
+            const accent = picked
+              ? (letterFillFor(pin.letter) || MAP_COLORS.pinPicked)
+              : MAP_COLORS.pinText;
+            const box = { x: bx, y: by, w: sz.w, h: sz.h };
+            const lines = tagLines(pin, { tenure: m.tenure, lang });
             return (
-              <g key={`open-${mb.id}`}
-                onMouseEnter={() => onPinHover && onPinHover(`home:${pin.id}`)}
-                onMouseLeave={() => onPinHover && onPinHover(null)}
-                onClick={() => handlePinClick(pin.id)}
-                style={{ cursor: onPinClick ? "pointer" : "default" }}>
-                <line x1={bx + pw / 2} y1={by + PILL_H} x2={px} y2={py}
+              <g key={`open-${mb.id}`} data-layer="home-pin"
+                {...pinButtonProps(pin, lines.price)}>
+                <rect x={bx - fs(4)} y={by}
+                  width={sz.w + fs(8)} height={sz.h} fill="transparent" />
+                <line x1={bx + sz.w / 2} y1={by + sz.h} x2={px} y2={py}
                   stroke={MAP_COLORS.muted} strokeWidth={fs(1)} />
-                <circle cx={px} cy={py} r={fs(4)} fill={MAP_COLORS.pinText} />
-                <g filter="url(#chat-pill-shadow)">
-                  <rect x={bx} y={by} width={pw} height={fs(PILL_H)} rx={fs(999)}
-                    fill={MAP_COLORS.pinFill} stroke="#e2ddd3" strokeWidth={fs(1)} />
-                  <circle cx={bx + fs(16)} cy={by + PILL_H / 2} r={fs(8)} fill={MAP_COLORS.pinText} />
-                  <text x={bx + fs(16)} y={by + PILL_H / 2 + fs(3.5)} fontSize={fs(10)}
-                    textAnchor="middle" fill="#ffffff">{pin.n}</text>
-                  <text x={bx + fs(30)} y={by + fs(16)} fontSize={fs(12)} fontWeight={600}
-                    fill={MAP_COLORS.pinText}>{short}</text>
-                </g>
+                <circle cx={px} cy={py} r={fs(4)}
+                  fill={picked ? accent : MAP_COLORS.pinDot}
+                  stroke={MAP_COLORS.pinFill} strokeWidth={fs(1.5)} />
+                {homeTagShape(box, lines, accent, hi, compact)}
               </g>
             );
           })}
+        {/* 31h: "you are here" — an 8 px accent dot with a white
+          ring and a 24 px halo. Click-only, cleared on new data. */}
+        {you && (
+          <g data-layer="you-are-here">
+            <circle cx={you.x} cy={you.y} r={fs(12)}
+              fill="var(--ds-accent)" opacity={0.25} />
+            <circle cx={you.x} cy={you.y} r={fs(8)}
+              fill="var(--ds-accent)"
+              stroke="#ffffff" strokeWidth={fs(2)} />
+          </g>
+        )}
       </svg>
-      <div role="note" aria-hidden={false} style={{ position: "absolute", bottom: 32, left: 12,
-        maxWidth: "calc(100% - 96px)", background: "#ffffff",
-        borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#55514a",
-        whiteSpace: "normal" }}>
+      {/* 31g: the legend describes the tag — number·area /
+        price / commute minutes; A/B are picked homes. The 분
+        badges on commute paths appear only for picked homes. */}
+      <div role="note" className={hasFilters
+        ? "ui-float ui-chatmap-legend has-filters" : "ui-float ui-chatmap-legend"}>
         {provider === "usgs"
-          ? "● 후보 · ■ 회사 · 숫자는 출근 편도(추정)"
-          : "● 후보 · ■ 회사 · ━ 지하철 · 숫자는 출근 편도(추정)"}
+          ? "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사"
+          : "번호·면적 / 가격 / 출근 시간 · Ⓐ Ⓑ 담은 집 · ■ 회사 · ━ 지하철"}
       </div>
-      <div className="ui-chatmap-zoom">
-        <button type="button" aria-label="확대"
-          onClick={() => setVt((v) => zoomAt(v, 2, W / 2, H / 2, W / 2, H / 2))}>+</button>
-        <button type="button" aria-label="축소"
-          onClick={() => setVt((v) => zoomAt(v, 0.5, W / 2, H / 2, W / 2, H / 2))}>−</button>
-        <button type="button" className="fit" aria-label="후보 모두 보기"
-          onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}>맞추기</button>
-      </div>
-      <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 10,
-        color: MAP_COLORS.muted, background: "rgba(255,255,255,0.8)", padding: "2px 6px" }}>
-        {basemapOn
-          ? (provider === "usgs"
-            ? "Map: USGS The National Map"
-            : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
-          : "© OpenStreetMap contributors"}
+      {(() => {
+        // 31f: the pin card — anchored above its pin (below when
+        // there is no room), on the shared float surface. Shows the
+        // same name / price / commute lines as the candidate card,
+        // with 담기·빼기 and 카드 보기. Esc, empty-map click, or
+        // opening another pin closes it.
+        const pin = pins.find((p) => p.id === selectedId);
+        if (!pin) return null;
+        const model = pinCardModel(pin, { tenure: m.tenure, picks: picks || [] });
+        const lay = layById.get(pin.id);
+        const anchor = lay ? { x: lay.box.x + lay.box.w / 2, y: lay.box.y }
+          : (() => { const [x, y] = toXYz(pin.lon, pin.lat); return { x, y }; })();
+        const below = anchor.y < 170;
+        const left = Math.min(Math.max(anchor.x, 128), Math.max(W - 128, 128));
+        const top = below ? anchor.y + (lay ? lay.box.h : PILL_H) + 8 : anchor.y - 8;
+        const disc = model.picked ? (pin.letter || String(pin.n)) : String(pin.n);
+        const viewCard = () => {
+          setSelectedId(null);
+          if (onViewCard) onViewCard(pin.id);
+          else if (onPinClick) onPinClick(pin.id);
+        };
+        return (
+          <div className={`ui-float ui-chatmap-pincard${below ? " is-below" : ""}`}
+            role="dialog" aria-label={`${model.title} 후보 카드`}
+            style={{ left, top }}>
+            <div className="ui-pincard-row">
+              <span className="ui-pick-disc" aria-hidden="true"
+                {...(/^[AB]$/.test(disc) ? { "data-home": disc } : null)}>{disc}</span>
+              <span className="ui-pincard-title">{model.title}</span>
+              <button type="button" className="ui-pincard-x" aria-label="핀 카드 닫기"
+                onClick={() => setSelectedId(null)}>×</button>
+            </div>
+            <div className="ui-pincard-price">{model.price}</div>
+            <div className="ui-pincard-commute">{model.commute}</div>
+            <div className="ui-pincard-actions">
+              <button type="button" className="ui-pincard-btn"
+                disabled={!model.canPick}
+                aria-label={`${model.title} ${model.picked ? "빼기" : "담기"}`}
+                onClick={() => onTogglePick && onTogglePick(pin.candidate)}>
+                {model.picked ? "빼기" : "담기"}
+              </button>
+              <button type="button" className="ui-pincard-btn ghost"
+                aria-label={`${model.title} 카드 보기`}
+                onClick={viewCard}>카드 보기</button>
+            </div>
+            {!model.canPick && (
+              <div className="ui-pincard-meta">2곳까지 담을 수 있어요</div>
+            )}
+          </div>
+        );
+      })()}
+      {/* 31h: one bottom-right control stack — my-location, the
+        zoom pair on one card, then fit. Icon buttons, same zoom
+        functions as before. */}
+      <div className="ui-chatmap-side">
+        {geoOk && (
+          <button type="button" className="ui-float" aria-label="내 위치"
+            title="내 위치" aria-busy={locating}
+            onClick={onLocate}><LocateIcon /></button>
+        )}
+        <div className="ui-float ui-chatmap-zoom" role="group" aria-label="지도 확대 축소">
+          <button type="button" aria-label="확대" title="확대"
+            onClick={() => setVt((v) => zoomAt(v, 2, W / 2, H / 2, W / 2, H / 2))}><PlusIcon /></button>
+          <button type="button" aria-label="축소" title="축소"
+            onClick={() => setVt((v) => zoomAt(v, 0.5, W / 2, H / 2, W / 2, H / 2))}><MinusIcon /></button>
+        </div>
+        <button type="button" className="ui-float" aria-label="후보 모두 보기"
+          title="후보 모두 보기"
+          onClick={() => setVt({ zoom: 1, panX: 0, panY: 0 })}><FitIcon /></button>
+        <div className="ui-float ui-chatmap-credit">
+          {basemapOn
+            ? (provider === "usgs"
+              ? "Map: USGS The National Map"
+              : "지도 © 국토교통부 공간정보 오픈플랫폼(VWorld) · © OpenStreetMap contributors")
+            : "© OpenStreetMap contributors"}
+        </div>
       </div>
     </div>
   );

@@ -84,6 +84,24 @@ export function commuteShortLine(candidate, destName) {
 // 29a2: one shape, total minutes first, detail after. { text, estimate,
 // source } so the row renders its source tag (추정/공식/내가 말한 값)
 // the same way on every row.
+// 31f: the map pin card shows the same content as the candidate
+// card — name, price and commute lines. Pure (no DOM) so it can be
+// tested directly. picks holds picked candidate ids (max 2 from the
+// pin card); an already-picked pin can always be removed.
+export const PIN_CARD_MAX_PICKS = 2;
+export function pinCardModel(pin, { tenure, picks } = {}) {
+  const candidate = (pin && pin.candidate) || {};
+  const ids = Array.isArray(picks) ? picks.map(String) : [];
+  const picked = ids.includes(String(pin && pin.id));
+  return {
+    title: displayNameFor(candidate),
+    price: tenurePriceLine(candidate, tenure).price,
+    commute: commuteRowLine(candidate).text,
+    picked,
+    canPick: picked || ids.length < PIN_CARD_MAX_PICKS,
+  };
+}
+
 export function commuteRowLine(candidate, destName) {
   const c = candidate.commute;
   if (!c) return { text: "출퇴근 정보를 확인 중이에요", estimate: false, source: "unknown" };
@@ -127,8 +145,10 @@ export function HomeName({ name, lang = LANG }) {
 
 export function SourceDot({ source }) {
   if (!source || source === "unknown" || !SRC_KO[source]) return null;
+  // 31d: the word is visible text, so no redundant title — the row
+  // would otherwise count it twice.
   return (
-    <span title={SRC_KO[source]}>
+    <span>
       <span className={`ui-srcdot ${SRC_CLS[source] || ""}`} aria-hidden="true" />
       <Text type="supporting">{SRC_KO[source]}</Text>
     </span>
@@ -253,10 +273,11 @@ function pickAriaLabel(candidate) {
 
 // 29a2: the row source tag (추정/공식/내가 말한 값) renders on every
 // row the same way; unknown sources show no tag.
+// 31a: plain meta text with the coloured dot — never a pill.
 function RowSourceTag({ row }) {
   if (!row || !row.source || row.source === "unknown" || !SRC_KO[row.source]) return null;
   return (
-    <span className="ui-cand-est">{SRC_KO[row.source]}</span>
+    <span className="ui-cand-est"><SourceDot source={row.source} /></span>
   );
 }
 
@@ -299,7 +320,7 @@ export function CandidateCard({ candidate, tenure, destName, photos, index,
       </div>
       <div className="ui-cand-row-main">
         <div className="ui-cand-row-top">
-          <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true">{disc}</span>
+          <span className={`ui-cand-disc${picked ? " is-pick" : ""}`} aria-hidden="true"{...(/^[AB]$/.test(disc) ? { "data-home": disc } : null)}>{disc}</span>
           <span className="ui-cand-row-name"><HomeName name={displayNameFor(candidate)} /></span>
           <Button size="sm" variant={picked ? "primary" : "secondary"}
             label={picked ? "담음 ✓" : "담기"}

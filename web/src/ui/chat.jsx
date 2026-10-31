@@ -56,6 +56,7 @@ import { newUsageLog, recordTurn } from "../models/catalog.js";
 import { loadByoKey } from "../consult/byok.js";
 import { buildChatMap, extractGreenRings } from "../chatmap.js";
 import { ChatMap } from "./chatmap.jsx";
+import { mapFilterChips, filterPatch } from "./map-filters.js";
 import { defaultOverrides, setOverride, resetOverride,
   encodeOverrides, decodeOverrides } from "../assumptions.js";
 // Cycle with app.jsx (it renders ChatScreen): render-time use only,
@@ -73,7 +74,7 @@ import { JeonseTab } from "./jeonse.jsx";
 import { WorthItTab } from "./worthit.jsx";
 import { SupportTab } from "./support.jsx";
 import { PasteCheck } from "./listings.jsx";
-import { HOME_SORTS, HOME_SORT_KO, applyKindPreference, usEmptyHint, displayNameFor } from "../homes.js";
+import { HOME_SORTS, HOME_SORT_KO, HOME_SORT_SHORT_KO, applyKindPreference, usEmptyHint, displayNameFor } from "../homes.js";
 import { chipSourceIds } from "../sources.js";
 import { META_HQ_EXAMPLE } from "../places-us.js";
 import { EXAMPLE_PROFILE_LABEL, noCommuteEntry } from "../profile.js";
@@ -158,21 +159,17 @@ export function ProfileCard({ profile, example, onChip }) {
   const chips = missingChips(profile);
   const said = customerChips(profile);
   return (
-    <Card padding={3}>
-      <VStack gap={2}>
+    <Card padding={4}>
+      <VStack gap={3}>
         <HStack gap={1} vAlign="center">
           <Heading level={4}>고객님 상황</Heading>
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
         </HStack>
         {said.length > 0 && (
-          <div className="ui-tags">
-            {said.map((s, i) => (
-              <span key={i} className="ui-tag">{s}</span>
-            ))}
-          </div>
+          <Text>{said.join(" · ")}</Text>
         )}
         {chips.length > 0 && (
-          <VStack gap={1}>
+          <VStack gap={2}>
             <Text type="supporting">{`모르는 값 ${chips.length}개 — 채우면 더 정확해요`}</Text>
             <HStack gap={1} vAlign="center" wrap="wrap">
               {chips.map((c) => (
@@ -281,6 +278,14 @@ export function scrollChatToSim(simId, root) {
 // shows only while the thread scroller is within 160 px of the bottom.
 export function chipsVisible(scrollTop, scrollHeight, clientHeight) {
   return scrollHeight - scrollTop - clientHeight <= 160;
+}
+
+// 31d: keep the list pinned while the reader is at the bottom —
+// true only when they were already at the bottom (within the same
+// 160 px threshold) and still are after the content grew. A reader
+// who scrolled up is never moved.
+export function shouldPinToBottom(wasAtBottom, scrollTop, scrollHeight, clientHeight) {
+  return !!wasAtBottom && chipsVisible(scrollTop, scrollHeight, clientHeight);
 }
 
 // 29a4: the single Chat/View pane toggle — one mount point per layout
@@ -409,23 +414,30 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
   // 13: one photo per card at most — dedup across the whole list.
   const withPhotos = selectPhotosForList(candidates, photoDeps || {});
   return (
-    <Card padding={3}>
-      <VStack gap={2}>
+    <Card padding={4}>
+      <VStack gap={3}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>{`집 후보 ${candidates.length}곳`}</Heading>
           <Text type="supporting">{`2곳 중 ${(picks || []).length}곳 담음`}</Text>
           {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
-          <span className="ui-panel-spacer" />
-          <DropdownMenu
-            button={{ label: HOME_SORT_KO[sort] || HOME_SORT_KO.commute, variant: "ghost", size: "sm" }}
-            menuWidth={220}
-            items={HOME_SORTS.map((s) => ({
-              label: `${s === sort ? "✓ " : ""}${HOME_SORT_KO[s]}`,
-              onClick: () => onSort && onSort(s),
-            }))} />
-          <Button size="sm" variant="ghost" label="지도에서 보기"
-            onClick={() => onOpenWork && onOpenWork()} />
         </HStack>
+        {candidates.length > 0 && (
+          <div className="ui-cand-sortrow">
+            <div className="ui-cand-tabs" role="group" aria-label="정렬">
+              {HOME_SORTS.map((s) => (
+                <button key={s} type="button"
+                  className={`ui-cand-tab${s === sort ? " is-on" : ""}`}
+                  aria-pressed={s === sort ? "true" : "false"}
+                  aria-label={HOME_SORT_KO[s]} title={HOME_SORT_KO[s]}
+                  onClick={() => onSort && onSort(s)}>
+                  {HOME_SORT_SHORT_KO[s]}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" variant="secondary" label="지도에서 보기"
+              onClick={() => onOpenWork && onOpenWork()} />
+          </div>
+        )}
         {data && (
           <Text type="supporting">
             {`조건에 맞는 집 ${data.total_matching.toLocaleString()}곳 중 ${candidates.length}곳 · ${data.sort_note || ""}`}
@@ -464,7 +476,7 @@ export function CandidatesCard({ data, tenure, sort, onSort, onOpenWork, picks, 
           const rest = data.total_matching - candidates.length;
           const n = Math.min(6, rest);
           return (
-            <Button size="sm" variant="ghost"
+            <Button size="sm" variant="secondary"
               label={`다른 후보 ${n}곳 더 보기 · 남은 ${rest}곳`}
               onClick={() => onAsk && onAsk("다른 후보 더 보여 줘")} />
           );
@@ -552,7 +564,72 @@ export function diaryCheckLine(check) {
   return line;
 }
 
-export function ResultSummary({ data, onScene }) {
+// 31a: diary lines and 살아 보니 lines share one row-link grid —
+// the whole row is a single button opening its scene. Rows without
+// a scene URL render the same grid without the link affordance.
+export function SceneRowLink({ disc, when, text, url, title, onScene, noI18n }) {
+  const cells = (
+    <>
+      <span className="ui-pick-disc" aria-hidden="true"{...(/^[AB]$/.test(disc) ? { "data-home": disc } : null)}>{disc}</span>
+      <span className="ui-result-when">{when}</span>
+      <span className="ui-result-text" {...(noI18n ? { "data-no-i18n": true } : null)}>{text}</span>
+    </>
+  );
+  if (!url) {
+    return (
+      <div className="ui-result-moment">
+        {cells}
+        <span className="ui-result-go" aria-hidden="true" />
+      </div>
+    );
+  }
+  return (
+    <button type="button" className="ui-result-moment"
+      aria-label={`장면 보기: ${when} · ${disc}`}
+      onClick={() => { if (onScene) onScene({ url, title }); }}>
+      {cells}
+      <span className="ui-result-go" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
+// 31a: 살아 본 일기 — Muse's summary line, the first 3 lines as row
+// links, then one secondary button revealing the rest in place.
+export function DiarySection({ diary, customId, onScene }) {
+  const [open, setOpen] = useState(false);
+  if (!diary) return null;
+  if (diary.status === "writing") {
+    return (
+      <Text type="supporting">Muse가 기록을 읽고 일기를 쓰는 중…</Text>
+    );
+  }
+  if (diary.status !== "done") return null;
+  const lines = diary.lines || [];
+  const shown = open ? lines : lines.slice(0, 3);
+  return (
+    <VStack gap={2}>
+      <span className="ui-result-sect">살아 본 일기</span>
+      <p><span className="ui-result-muse">Muse</span> <span {...(diaryNoI18n(diary) ? { "data-no-i18n": true } : null)}>{diary.summary}</span></p>
+      {shown.map((line, i) => {
+        const when = `${line.day + 1}일째 ${hhmm(line.minute)}`;
+        return (
+          <SceneRowLink key={i} disc={line.home} when={when} text={line.text}
+            url={simMomentUrl({ custom: customId, home: line.home,
+              day: line.day + 1, t: hhmm(line.minute), follow: 1, embed: true })}
+            title={`${when} · ${line.home}`}
+            onScene={onScene} noI18n={LANG === "en"} />
+        );
+      })}
+      {!open && lines.length > 3 && (
+        <Button size="sm" variant="secondary" label={`일기 ${lines.length}줄 모두 보기`}
+          onClick={() => setOpen(true)} />
+      )}
+      <Text type="supporting">{diaryCheckLine(diary.check)}</Text>
+    </VStack>
+  );
+}
+
+export function ResultSummary({ data }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const labels = data.labels || [];
   const names = data.names || {};
@@ -565,37 +642,12 @@ export function ResultSummary({ data, onScene }) {
   const oneWay = oneWayDelta(data.compare && data.compare.one_way);
   const commutes = oneWay ? [] : commuteOneWayOf(data.compare);
   const showMoney = !!(data.moneyDoc || data.moneyMissing);
-  const diary = data.diary || null;
   return (
-    <>
-      {diary && diary.status === "writing" && (
-        <div className="ui-result-diary"><Text type="supporting">Muse가 기록을 읽고 일기를 쓰는 중…</Text></div>
-      )}
-      {diary && diary.status === "done" && (
-        <div className="ui-result-diary">
-          <p><span className="ui-result-muse">Muse</span> <span {...(diaryNoI18n(diary) ? { "data-no-i18n": true } : null)}>{diary.summary}</span></p>
-          <div className="ui-result-diary-lines">
-            <Text>살아 본 일기</Text>
-            {(diary.lines || []).map((line, i) => (
-              <div key={i} className="ui-result-moment">
-                <span className="ui-pick-disc" aria-hidden="true">{line.home}</span>
-                <span className="ui-result-when">{`${line.day + 1}일째 ${hhmm(line.minute)}`}</span>
-                <span className="ui-result-text" {...(LANG === "en" ? { "data-no-i18n": true } : null)}>{line.text}</span>
-                <Button size="sm" variant="ghost" label="장면 보기"
-                  onClick={() => {
-                    if (onScene) onScene({ url: simMomentUrl({ custom: data.customId, home: line.home, day: line.day + 1, t: hhmm(line.minute), follow: 1, embed: true }), title: `${line.day + 1}일째 ${hhmm(line.minute)} · ${line.home}` });
-                  }} />
-              </div>
-            ))}
-          </div>
-          <Text type="supporting">{diaryCheckLine(diary.check)}</Text>
-        </div>
-      )}
     <div className="ui-result-grid">
       <span aria-hidden="true" />
       {labels.map((l) => (
         <span key={l} className="ui-result-head">
-          <span className="ui-pick-disc" aria-hidden="true">{l}</span>
+          <span className="ui-pick-disc" aria-hidden="true"{...(/^[AB]$/.test(l) ? { "data-home": l } : null)}>{l}</span>
           <span className="ui-result-name"><HomeName name={(names[l] || "").trim() || l} /></span>
         </span>
       ))}
@@ -670,7 +722,6 @@ export function ResultSummary({ data, onScene }) {
         </span>,
       ]}
     </div>
-    </>
   );
 }
 
@@ -704,8 +755,8 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
   if (data.status === "running") {
     const p = data.progress || { done: 0, total: 1, label: "" };
     return (
-      <Card padding={3}>
-        <VStack gap={2}>
+      <Card padding={4}>
+        <VStack gap={3}>
           <HStack gap={1} vAlign="center">
             <Heading level={4}>30일 살아 보는 중</Heading>
             {example && <Text type="supporting">{EXAMPLE_PROFILE_LABEL}</Text>}
@@ -721,8 +772,8 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
   }
   if (data.status === "error") {
     return (
-      <Card padding={3}>
-        <VStack gap={2}>
+      <Card padding={4}>
+        <VStack gap={3}>
           <Heading level={4}>30일 살아 보기</Heading>
           <Banner status="warning" title="실행하지 못했어요"
             description={plainRunError(data.error)} />
@@ -753,8 +804,8 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
   const texts = data.momentTexts || [];
   const moments = data.moments || [];
   return (
-    <Card padding={3}>
-      <VStack gap={2}>
+    <Card padding={4}>
+      <VStack gap={3}>
         <HStack gap={1} vAlign="center" wrap="wrap">
           <Heading level={4}>30일 살아 보기 결과</Heading>
           {data.noCommute && <Text type="supporting">출근 없이</Text>}
@@ -764,10 +815,10 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
         <Text type="supporting">
           같은 식구가 두 집에서 30일씩 살아 봤어요. 고르는 건 고객님 몫이에요.
         </Text>
-        <ResultSummary data={data} onScene={onScene} />
+        <ResultSummary data={data} />
         {texts.length > 0 && (
-          <VStack gap={1}>
-            <Text>살아 보니</Text>
+          <VStack gap={2}>
+            <span className="ui-result-sect">살아 보니</span>
             {texts.map((t, i) => {
               // 19i: the row opens its own moment (day, time, person);
               // only older recorded payloads (no day/minute) use the
@@ -777,21 +828,13 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
                 fallback: moments.find((m) => m.label === t.home) || null,
                 embed: true });
               return (
-                <div key={i} className="ui-result-moment">
-                  <span className="ui-result-when">{t.when_ko}</span>
-                  <span className="ui-pick-disc" aria-hidden="true">{t.home}</span>
-                  <span className="ui-result-text">{t.text_ko}</span>
-                  {url && (
-                    <Button size="sm" variant="ghost" label="3D로 보기 →"
-                      onClick={() => {
-                        if (onScene) onScene({ url, title: `${t.when_ko} · ${t.home}` });
-                      }} />
-                  )}
-                </div>
+                <SceneRowLink key={i} disc={t.home} when={t.when_ko} text={t.text_ko}
+                  url={url} title={`${t.when_ko} · ${t.home}`} onScene={onScene} />
               );
             })}
           </VStack>
         )}
+        <DiarySection diary={data.diary} customId={data.customId} onScene={onScene} />
         {calcs.length > 0 && (
           <details className="ui-section">
             <summary className="ui-section-head">어떻게 계산했나요</summary>
@@ -799,7 +842,7 @@ export function SimulationCard({ data, example, onRetry, onScene }) {
               {calcs.map(({ label, mh }) => (
                 <VStack gap={1} key={label}>
                   <HStack gap={1} vAlign="center">
-                    <span className="ui-pick-disc" aria-hidden="true">{label}</span>
+                    <span className="ui-pick-disc" aria-hidden="true"{...(/^[AB]$/.test(label) ? { "data-home": label } : null)}>{label}</span>
                     <Text type="supporting">{(names[label] || "").trim() || label}</Text>
                   </HStack>
                   <HowCalculated tenure={mh.tenure} housing={mh.housingDoc}
@@ -828,8 +871,8 @@ const TAB_TITLES = { jeonse: "전세 점검", worthit: "살 만한가?", support
 export function TabCard({ tab }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   return (
-    <Card padding={3}>
-      <VStack gap={2}>
+    <Card padding={4}>
+      <VStack gap={3}>
         <Heading level={4}>{TAB_TITLES[tab] || "자세히"}</Heading>
         {tab === "jeonse" && <JeonseTab state={state} />}
         {tab === "worthit" && <WorthItTab state={state} />}
@@ -841,7 +884,7 @@ export function TabCard({ tab }) {
 
 export function ListingCard({ onAsk }) {
   return (
-    <Card padding={3}>
+    <Card padding={4}>
       <PasteCheck onAsk={onAsk} />
     </Card>
   );
@@ -970,7 +1013,7 @@ export class MsgBoundary extends Component {
     const { error } = this.state;
     if (error) {
       return (
-        <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
+        <ChatMessage sender="assistant">
           <ChatMessageBubble variant="ghost" width="100%">
             <VStack gap={1}>
               <Text>이 카드를 그리지 못했어요 · 다시 시도</Text>
@@ -997,7 +1040,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
   const chipIds = (msg.kind === "candidates" || msg.kind === "simulation")
     ? chipSourceIds({ candidates: cands, currency: runCur }) : null;
   return (
-    <ChatMessage sender="assistant" avatar={<span className="ui-mark" aria-hidden="true" />}>
+    <ChatMessage sender="assistant">
       {msg.recorded && (
         <ChatMessageBubble variant="ghost" width="100%">
           <Text type="supporting">기록된 답변</Text>
@@ -1027,7 +1070,7 @@ export function CardMsg({ msg, handlers, toolRows, cardHi }) {
             stations={handlers.stations} search={handlers.searchState} />
         )}
         {msg.kind === "simulation" && (
-          <div data-sim-card={msg.id}>
+          <div data-sim-card={msg.id} id={`sim-card-${msg.id}`}>
             <SimulationCard data={data} example={msg.example}
               onRetry={handlers.onRun} onScene={handlers.onScene} />
           </div>
@@ -1371,6 +1414,10 @@ export function ChatScreen() {
   const replayDoc = useRef(null);
   // 29a4: suggestion chips fold while the customer reads up-thread.
   const [chipsNearBottom, setChipsNearBottom] = useState(true);
+  // 31d: whether the reader is at the bottom — the pin decision for
+  // content that grows after the message lands (streaming text, cards
+  // finishing, the replay-done row). A plain ref, never a re-render.
+  const pinRef = useRef(true);
   // 27j: straight Muse failures (3 → rules answer); liveRows → the busy bubble rows.
   const [museFails, setMuseFails] = useState(0);
   // 30b: tri-state key status (one fetch per page load, shared with the
@@ -1408,7 +1455,6 @@ export function ChatScreen() {
   const [overrides, setOverrides] = useState(() => defaultOverrides());
   const [namedPhotos, setNamedPhotos] = useState(null);
   const [cardHi, setCardHi] = useState(null);
-  const [orbFilter, setOrbFilter] = useState(null);
   // 18: corridor ground tiles (real 시군구 boundaries + open water)
   // intersecting the current pins; the map paints fine without them.
   const [mapTiles, setMapTiles] = useState([]);
@@ -1628,6 +1674,26 @@ export function ChatScreen() {
     store.set({ chatSummary: profileSummary(merged) });
     liveResearch(merged);
     pushMsg({ role: "assistant", kind: "intake", replace: true, data: {} });
+  }
+
+  // 31h: map filter chips re-run the search through the same intake
+  // path (patch → applyIntakePatch → store → liveResearch, so the
+  // 조건 바뀜 toast confirms it). A null patch value clears its
+  // field — applyIntakePatch skips nulls, so cleared keys are
+  // deleted from the merged profile after the merge.
+  function handleFilterChange(patch) {
+    const clean = {};
+    const clears = [];
+    for (const [key, value] of Object.entries(patch || {})) {
+      if (value === null || value === undefined) clears.push(key);
+      else clean[key] = value;
+    }
+    const merged = applyIntakePatch(profileRef.current, clean);
+    for (const key of clears) delete merged[key];
+    profileRef.current = merged;
+    setProfile(merged);
+    store.set({ chatSummary: profileSummary(merged) });
+    liveResearch(merged);
   }
 
   function handleIntakeSkip(step) {
@@ -2472,6 +2538,23 @@ export function ChatScreen() {
     if (last && last.kind === "simulation" && last.data && last.data.status === "done") return;
     soon(() => scrollChatToEnd());
   }, [messages.length, liveRows.length]);
+  // 31d: the replay-done row mounts under the last message after the
+  // content already scrolled — re-pin only while the reader is at the
+  // bottom, never when they scrolled up to read.
+  useEffect(() => {
+    if (!replayId || replaying) return;
+    soon(() => {
+      try {
+        if (typeof document === "undefined") return;
+        const list = document.querySelector(".ui-chat-thread .astryx-chat-message-list");
+        if (!list) return;
+        if (shouldPinToBottom(pinRef.current,
+          list.scrollTop, list.scrollHeight, list.clientHeight)) {
+          list.scrollTop = list.scrollHeight;
+        }
+      } catch { /* keep the reader where they are */ }
+    });
+  }, [replayId, replaying]);
   // 29a4: fold the chip row while the customer reads up-thread; the
   // composer stays. Sending a message brings the chips back.
   useEffect(() => {
@@ -2480,12 +2563,37 @@ export function ChatScreen() {
     if (!list) return undefined;
     const onScroll = () => {
       try {
-        setChipsNearBottom(chipsVisible(list.scrollTop, list.scrollHeight, list.clientHeight));
+        const atBottom = chipsVisible(list.scrollTop, list.scrollHeight, list.clientHeight);
+        pinRef.current = atBottom;
+        setChipsNearBottom(atBottom);
       } catch { /* keep the chips as they are */ }
     };
     onScroll();
     list.addEventListener("scroll", onScroll, { passive: true });
-    return () => list.removeEventListener("scroll", onScroll);
+    // 31d: the last message grows after it lands (streaming text, cards
+    // finishing) — while the reader is at the bottom, keep the list
+    // pinned so the newest line is never cut under the fold. A reader
+    // who scrolled up is never moved. Direct scrollTop assignment has
+    // no animation, so there is nothing to reduce for reduced motion.
+    let ro = null;
+    try {
+      const content = list.firstElementChild || list;
+      if (typeof ResizeObserver !== "undefined") {
+        ro = new ResizeObserver(() => {
+          try {
+            if (shouldPinToBottom(pinRef.current,
+              list.scrollTop, list.scrollHeight, list.clientHeight)) {
+              list.scrollTop = list.scrollHeight;
+            }
+          } catch { /* keep the reader where they are */ }
+        });
+        ro.observe(content);
+      }
+    } catch { /* the message-landing scroll still runs */ }
+    return () => {
+      list.removeEventListener("scroll", onScroll);
+      try { if (ro) ro.disconnect(); } catch { /* already gone */ }
+    };
   }, [messages.length]);
   // 29a4: the top-bar summary button scrolls to the latest 고객님 상황
   // card and opens its 자세히 section.
@@ -2556,10 +2664,34 @@ export function ChatScreen() {
   };
 
   const summary = profile ? profileSummary(profile) : "";
+  // 31b: the tray offers 결과 보기 (instead of a second identical run)
+  // once the done simulation in the thread ran for these exact picks.
+  const trayCandidates = (candidatesData && candidatesData.result.candidates) || [];
+  const trayResultReady = resultReadyFor(messages, picks, trayCandidates);
+  const handleViewResult = () => {
+    // On the phone Chat / Map toggle the result lives in Chat.
+    if (phone) setView("chat");
+    const sim = [...messages].reverse().find((m) => m && m.kind === "simulation");
+    soon(() => scrollChatToSim(sim && sim.id));
+  };
   // 26p: one toggle instance — its mount point moves with the viewport.
   // 29a4: paneTabsMount keeps exactly one mount point per layout.
   const tabsMount = paneTabsMount({ workOpen, phone });
   const narrowTabs = (<ChatPaneTabs view={view} onChange={setView} />);
+  // 31f: scroll a candidate card into view (best-effort).
+  function scrollToCandidateCard(id) {
+    try {
+      const el = typeof document !== "undefined"
+        ? document.getElementById(`cand-${id}`) : null;
+      if (el && typeof el.scrollIntoView === "function") {
+        const reduced = typeof window !== "undefined" && window.matchMedia
+          && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        el.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+      }
+    } catch {
+      // Hover still highlights the card; scroll is best-effort.
+    }
+  }
 
   return (
     <div className={`ui-chat overlay${view === "work" ? " ui-chat-narrow-work" : ""}`}>
@@ -2667,6 +2799,7 @@ export function ChatScreen() {
               <PicksTray compact picks={picks}
                 candidates={(candidatesData && candidatesData.result.candidates) || []}
                 gate={runGate(profile)}
+                resultReady={trayResultReady} onViewResult={handleViewResult}
                 onRun={handleRun} onRemove={handleTogglePick} />
               )}
               {messages.length > 0 && chipsNearBottom && (() => {
@@ -2718,23 +2851,20 @@ export function ChatScreen() {
             contextLine={stageContextLine(profile, candidatesData)}
             cardHi={cardHi}
             onPinHover={(key) => setCardHi(key)}
-            onPinClick={(id) => {
-              try {
-                const el = typeof document !== "undefined"
-                  ? document.getElementById(`cand-${id}`) : null;
-                if (el && typeof el.scrollIntoView === "function") {
-                  const reduced = typeof window !== "undefined" && window.matchMedia
-                    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-                  el.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
-                }
-              } catch {
-                // Hover still highlights the card; scroll is best-effort.
-              }
+            onPinClick={(id) => scrollToCandidateCard(id)}
+            onViewCard={(id) => {
+              // 31f: the pin card's 카드 보기 — on the narrow
+              // layout the card lives in the 대화 tab.
+              if (phone) setView("chat");
+              scrollToCandidateCard(id);
             }}
-            onOrbRegion={(regionId) => {
-              setOrbFilter(regionId);
-              toast.show(`‘${regionId}’ 지역만 보기 — 후보 찾기를 눌러주세요`);
-            }} />
+            picks={picks} onTogglePick={handleTogglePick}
+            profile={profile}
+            kindsAvailable={Array.from(new Set(
+              ((candidatesData && candidatesData.result
+                && candidatesData.result.candidates) || [])
+                .map((c) => c && c.kind).filter(Boolean)))}
+            onFilterChange={handleFilterChange} />
           )}
           </MsgBoundary>
           )}
@@ -2745,6 +2875,7 @@ export function ChatScreen() {
             stations={dataRef.current && dataRef.current.network
               ? stationNames(dataRef.current.network) : []}
             onWorkplaceText={handleTrayWorkplace} onNoCommute={handleTrayNoCommute}
+            resultReady={trayResultReady} onViewResult={handleViewResult}
             onRun={handleRun} onRemove={handleTogglePick} />
           )}
           {workOpen && (
@@ -2977,12 +3108,43 @@ export function SceneFrame({ scene, onBack, onClose }) {
   );
 }
 
-export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, contextLine, onClose }) {
+// 31f: StageArea passes the picks wiring through so the map pin
+// card can 담기/빼기 with the same toggle as the candidate card.
+// 31h: the filter chip row is the top line (a real DropdownMenu per
+// chip, same ✓ look as the sort menu); the stage title drops to the
+// line under it. Chips render only with a profile + onFilterChange,
+// so older callers (and the empty stage) stay as they were.
+export function StageArea({ map, cardHi, onPinHover, onPinClick, onViewCard,
+  picks, onTogglePick, contextLine, onClose,
+  profile, kindsAvailable, onFilterChange }) {
   const regions = (map && map.regions) || [];
+  const kinds = Array.isArray(kindsAvailable) ? kindsAvailable
+    : Array.from(new Set(((map && map.pins) || [])
+      .map((p) => p && p.candidate && p.candidate.kind).filter(Boolean)));
+  const chips = (profile && onFilterChange)
+    ? mapFilterChips(profile, { kindsAvailable: kinds }) : [];
   return (
-    <section className="ui-chat-stage" aria-label="중심 무대">
+    <section className={chips.length > 0 ? "ui-chat-stage has-filters" : "ui-chat-stage"} aria-label="중심 무대">
       <div className="ui-chat-stage-body">
-        <div className="ui-stage-pill" role="status">
+        {chips.length > 0 && (
+          <div className="ui-chatmap-filters" role="group" aria-label="지도 조건">
+            {chips.map((chip) => (
+              <DropdownMenu key={chip.key} menuWidth={220}
+                renderTrigger={(props) => (
+                  <button type="button" {...props}
+                    className={chip.set ? "ui-chatmap-chip is-set" : "ui-float ui-chatmap-chip"}>
+                    {chip.label}
+                    <span aria-hidden="true" className="ui-chatmap-chev">▾</span>
+                  </button>
+                )}
+                items={chip.options.map((o) => ({
+                  label: `${o.selected ? "✓ " : ""}${o.label}`,
+                  onClick: () => onFilterChange(filterPatch(chip.key, o.value, profile)),
+                }))} />
+            ))}
+          </div>
+        )}
+        <div className="ui-float ui-stage-title" role="status">
           {contextLine || "출근지를 말하면 후보가 지도에 표시돼요"}
         </div>
         <span style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}>
@@ -2991,7 +3153,9 @@ export function StageArea({ map, cardHi, onPinHover, onPinClick, onOrbRegion, co
         </span>
         {regions.length > 0 ? (
           <ChatMap map={map} cardHi={cardHi}
-            onPinHover={onPinHover} onPinClick={onPinClick} onRegion={onOrbRegion} />
+            onPinHover={onPinHover} onPinClick={onPinClick} onViewCard={onViewCard}
+            picks={picks} onTogglePick={onTogglePick}
+            hasFilters={chips.length > 0} />
         ) : (
           <div style={{ padding: 16 }}>
             <Card padding={3}>
@@ -3018,15 +3182,89 @@ const PICK_LETTERS = ["A", "B", "C"];
 // resolved workplace (or 출근 안 해요) restores the run label.
 export const WORKPLACE_ASK_LABEL = "회사 위치를 알려 주세요";
 
+// 31b: label for the tray button once the 30-day run for these exact
+// picks already finished — it scrolls to the result, never re-runs.
+export const RESULT_VIEW_LABEL = "결과 보기";
+
+// 31b: true when the thread's latest simulation message is done AND it
+// ran for the same picks as now. Candidate ids win when the payload
+// carries them; otherwise data.names is compared against the picks'
+// display names. Any pick change, running or errored run → false.
+export function resultReadyFor(messages, picks, candidates) {
+  const list = Array.isArray(messages) ? messages : [];
+  let sim = null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const mm = list[i];
+    if (mm && mm.kind === "simulation") { sim = mm; break; }
+  }
+  if (!sim || !sim.data || sim.data.status !== "done") return false;
+  const ids = Array.isArray(picks) ? picks : [];
+  if (ids.length === 0) return false;
+  const data = sim.data;
+  for (const f of ["pickIds", "candidateIds", "ids", "picks"]) {
+    if (Array.isArray(data[f]) && data[f].length > 0) {
+      const a = data[f].map(String).sort();
+      const b = ids.map(String).sort();
+      return a.length === b.length && a.every((v, i) => v === b[i]);
+    }
+  }
+  if (!data.names || typeof data.names !== "object") return false;
+  const picked = (Array.isArray(candidates) ? candidates : [])
+    .filter((c) => ids.includes(c.id));
+  if (picked.length !== ids.length || picked.length === 0) return false;
+  const a = Object.values(data.names).map(String).sort();
+  const b = picked.map((c) => displayNameFor(c)).map(String).sort();
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 export function PicksTray({ picks, candidates, onRun, onRemove,
-  gate, stations, onWorkplaceText, onNoCommute, compact }) {
+  gate, stations, onWorkplaceText, onNoCommute, compact,
+  resultReady, onViewResult }) {
   const { picked, canRun, hint } = runReadiness(picks, candidates);
   const [workText, setWorkText] = useState("");
   const [workError, setWorkError] = useState("");
   const workRef = useRef(null);
+  const trayRef = useRef(null);
+  // 31j: the map credit clears the tray's real height — measure it
+  // and publish it as --ui-chat-tray-h on the chat root.
+  useEffect(() => {
+    const el = trayRef.current;
+    if (!el || typeof window === "undefined" || !window.ResizeObserver) return undefined;
+    const set = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      const host = (el.closest && el.closest(".ui-chat-main")) || document.documentElement;
+      if (host && host.style) host.style.setProperty("--ui-chat-tray-h", `${h}px`);
+    };
+    set();
+    const ro = new window.ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   if (picked.length === 0) return null;
   const needWorkplace = !!(gate && !gate.ok);
-  const label = needWorkplace ? WORKPLACE_ASK_LABEL : RUN_BUTTON_LABEL;
+  // 31b: the run already finished for these picks — offer the result
+  // as a quiet secondary button instead of a second identical run.
+  const showResult = resultReady === true && !needWorkplace;
+  const label = needWorkplace ? WORKPLACE_ASK_LABEL
+    : showResult ? RESULT_VIEW_LABEL : RUN_BUTTON_LABEL;
+  const variant = showResult ? "secondary" : "primary";
+  const activate = () => {
+    if (showResult) {
+      if (onViewResult) onViewResult();
+      return;
+    }
+    if (needWorkplace) {
+      // 26z2: the compact row has no input — it funnels through
+      // onRun, which explains the missing workplace.
+      if (compact) {
+        if (onRun) onRun();
+        return;
+      }
+      if (workRef.current && workRef.current.focus) workRef.current.focus();
+      return;
+    }
+    if (onRun) onRun();
+  };
   // 26z2: compact in-flow run row for the phone chat pane (the full
   // tray is hidden there by CSS). Same label, same onRun, same
   // workplace gate as the tray; without its input the button funnels
@@ -3038,9 +3276,9 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
           {picked.map((c, i) => `${PICK_LETTERS[i] || "·"} ${displayNameFor(c)}`).join(" · ")}
         </span>
         <span className="ui-picks-compact-sep" aria-hidden="true">—</span>
-        <Button label={label} variant="primary" className="ui-picks-run"
+        <Button label={label} variant={variant} className="ui-picks-run"
           isDisabled={!needWorkplace && !canRun}
-          onClick={() => { if (onRun) onRun(); }} />
+          onClick={activate} />
       </div>
     );
   }
@@ -3057,12 +3295,13 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
     }
   };
   return (
-    <div className="ui-picks-tray" role="group" aria-label="고른 집">
+    <div className="ui-picks-tray" role="group" aria-label="고른 집" ref={trayRef}>
       <div className="ui-picks-tray-row">
         <div className="ui-picks-tray-chips">
           {picked.map((c, i) => (
             <span key={c.id} className="ui-pick-chip">
-              <span className="ui-pick-disc" aria-hidden="true">
+              <span className="ui-pick-disc" aria-hidden="true"
+                data-home={/^[AB]$/.test(PICK_LETTERS[i] || "") ? PICK_LETTERS[i] : undefined}>
                 {PICK_LETTERS[i] || "·"}
               </span>
               <span className="ui-pick-name"><HomeName name={displayNameFor(c)} /></span>
@@ -3072,15 +3311,9 @@ export function PicksTray({ picks, candidates, onRun, onRemove,
             </span>
           ))}
         </div>
-        <Button label={label} variant="primary" className="ui-picks-run"
+        <Button label={label} variant={variant} className="ui-picks-run"
           isDisabled={!needWorkplace && !canRun}
-          onClick={() => {
-            if (needWorkplace) {
-              if (workRef.current && workRef.current.focus) workRef.current.focus();
-              return;
-            }
-            if (onRun) onRun();
-          }} />
+          onClick={activate} />
       </div>
       {needWorkplace && (
         <div className="ui-picks-work">
@@ -3140,11 +3373,13 @@ export function SidePanel({ picks, candidatesData, detail, onCloseDetail,
 
 // 19a: kept for older callers — the tray + panel without a drawer column.
 export function DrawerArea({ picks, candidatesData, onRun,
-  detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse }) {
+  detail, onCloseDetail, photoDeps, destName, tenure, onTogglePick, onJeonse,
+  resultReady, onViewResult }) {
   const candidates = (candidatesData && candidatesData.result.candidates) || [];
   return (
     <>
       <PicksTray picks={picks} candidates={candidates}
+        resultReady={resultReady} onViewResult={onViewResult}
         onRun={onRun} onRemove={onTogglePick} />
       <SidePanel picks={picks} candidatesData={candidatesData}
         detail={detail} onCloseDetail={onCloseDetail} photoDeps={photoDeps}
