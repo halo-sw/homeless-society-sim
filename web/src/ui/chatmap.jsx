@@ -12,7 +12,7 @@ import { fitMapView, fitInsetFromChrome, layoutMapPills, layoutStationLabels, pi
   stationNameWidthPx, haversineKm,
   tagSizePx, tagLines, tagPriceLine, tagFontPx, clusterSizePx,
   MAP_COLORS, MAP_FIT_MARGIN, BASEMAP_MUTE } from "../chatmap.js";
-import { basemapApiBase, basemapTileUrl, basemapTiles, basemapProvider,
+import { basemapApiBase, basemapTileUrl, basemapTiles, basemapUnderlayTiles, basemapProvider,
   viewTransform, zoomAt } from "../basemap.js";
 import { currentLang } from "../i18n/lang.js";
 import { romanizeName } from "../i18n/romanize.js";
@@ -443,7 +443,17 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
   const provider = basemapProvider(centerLon, centerLat);
   const tiles = (provider === "vworld" && apiBase === null) ? []
     : basemapTiles({ toLonLat: toLonLatZ, W, H,
-      lat: midLat, metersPerPx: fit.metersPerPx / vt.zoom });
+      lat: midLat, metersPerPx: fit.metersPerPx / vt.zoom, provider });
+  // 33a2: low-zoom underlay under the clipped normal tiles — same
+  // view at min(z, 10), so out-of-area corners show the blurrier map
+  // instead of bare ground. Skipped when it would duplicate the
+  // normal tiles (z ≤ 10) or for USGS (no bounds). Not counted in
+  // tiles, so basemapOn still counts only requested normal tiles.
+  const tileKeys = new Set(tiles.map((t) => t.key));
+  const underlay = (provider === "vworld" && apiBase !== null && tiles.length > 0)
+    ? basemapUnderlayTiles({ toLonLat: toLonLatZ, W, H,
+        z: tiles[0].z, provider }).filter((t) => !tileKeys.has(t.key))
+    : [];
   const basemapOn = (provider === "usgs" || apiBase !== null)
     && failCount * 2 < tiles.length;
   // Constant screen sizes: one viewBox unit is one stage px at 1:1, so
@@ -729,6 +739,19 @@ export function ChatMap({ map, cardHi, onPinHover, onPinClick, onViewCard,
         <rect x={0} y={0} width={W} height={H} fill={MAP_COLORS.ground}
           data-layer="map-ground" />
         <g filter="url(#basemap-mute)" opacity={currentLang() === "en" ? 0.45 : 1}>
+        {underlay.filter((t) => !failedRef.current.has(t.key)).map((t) => {
+          const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
+          const [x1, y1] = toXYz(t.se[0], t.se[1]);
+          return (
+            <image key={`under/${t.key}`} href={basemapTileUrl(apiBase, t.z, t.y, t.x, { provider })}
+              x={Math.min(x0, x1)} y={Math.min(y0, y1)}
+              width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)}
+              preserveAspectRatio="none" pointerEvents="none"
+              onError={() => {
+                failedRef.current.add(t.key);
+              }} />
+          );
+        })}
         {tiles.filter((t) => !failedRef.current.has(t.key)).map((t) => {
           const [x0, y0] = toXYz(t.nw[0], t.nw[1]);
           const [x1, y1] = toXYz(t.se[0], t.se[1]);

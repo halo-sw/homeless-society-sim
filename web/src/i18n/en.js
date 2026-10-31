@@ -373,6 +373,8 @@ const seedPhrases = {
   "잠실 아이 스페이스": "Jamsil I-Space",
   "마이크로 하우징": "Micro Housing",
   "레이크 해모로": "Lake Haemoro",
+  // 33a: the working card header.
+  "Muse가 일하는 중": "Muse is working",
   "출근 중": "Commuting",
   // 29j3: the verified comparison on screen.
   "비교 리포트 검증": "Report check",
