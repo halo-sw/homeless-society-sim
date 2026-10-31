@@ -247,10 +247,16 @@ export function areaForCandidate(candidate) {
 // The request carries the home's lon/lat only, never the viewer's.
 // Memoised per candidate for the page session; at most 3 requests in
 // flight. Null (without fetching) when there is no relay (static site
-// without one), when the home has no coordinates, or on any failure.
+// without one) or when the home has no coordinates. A relay miss
+// ("none") memoises null; an upstream failure ("unavailable" or a
+// network error) retries once after ~3 s and only then gives up for
+// this candidate on this page — the thumbnail falls through to the
+// silhouette, and the 6 s skeleton is never held longer (a late photo
+// simply swaps in).
 const streetMemo = new Map();
 let streetInflight = 0;
 const streetWaiters = [];
+const STREET_RETRY_MS = 3000;
 
 function streetRelease() {
   streetInflight = Math.max(0, streetInflight - 1);
@@ -258,7 +264,9 @@ function streetRelease() {
   if (next) next();
 }
 
-async function fetchStreetPhoto(base, lon, lat) {
+// One relay attempt: { ok: true, photo } on a real answer (a photo or
+// a real none), { ok: false } on "unavailable" or a network error.
+async function fetchStreetOnce(base, lon, lat) {
   await new Promise((resolve) => {
     if (streetInflight < 3) resolve();
     else streetWaiters.push(resolve);
@@ -266,14 +274,24 @@ async function fetchStreetPhoto(base, lon, lat) {
   streetInflight += 1;
   try {
     const res = await fetch(`${base}/api/street?lon=${lon}&lat=${lat}`);
-    if (!res || !res.ok) return null;
+    if (!res || !res.ok) return { ok: false };
     const json = await res.json();
-    return (json && json.photo) || null;
+    if (json && json.photo) return { ok: true, photo: json.photo };
+    if (json && json.reason === "unavailable") return { ok: false };
+    return { ok: true, photo: null };
   } catch {
-    return null;
+    return { ok: false };
   } finally {
     streetRelease();
   }
+}
+
+async function fetchStreetPhoto(base, lon, lat) {
+  const first = await fetchStreetOnce(base, lon, lat);
+  if (first.ok) return first.photo;
+  await new Promise((resolve) => { setTimeout(resolve, STREET_RETRY_MS); });
+  const second = await fetchStreetOnce(base, lon, lat);
+  return second.ok ? second.photo : null;
 }
 
 export async function streetPhotoFor(candidate, { apiBase } = {}) {
