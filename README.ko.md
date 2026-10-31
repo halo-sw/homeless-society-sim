@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="제품 코드는 모두 Muse Code가 작성">
-  <img src="https://img.shields.io/badge/tests-1783_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 1783개, Python 테스트 266개">
+  <img src="https://img.shields.io/badge/tests-2225_JS_·_266_Python-2f5d50?style=flat-square" alt="JS 테스트 2225개, Python 테스트 266개">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="결정적 엔진">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT 라이선스"></a>
@@ -46,8 +46,11 @@
 ## 2분 안에 심사하기
 
 1. **공개 사이트 열기:** <https://halo-sw.github.io/ithaca/>. 브라우저 언어가 한국어가 아니면 영어로 시작해요(`?lang=ko`로 한국어).
-2. **Meta 본사 예시 눌러 보기.** **Meta HQ, Menlo Park (US)** 를 누르면 1 Hacker Way 근처 실제 아파트 6곳이 지도에 떠요. 집마다 실시간 항공사진, Zillow ZIP 월세 추정, 자전거·걷기 분이 붙어요. *"1번이랑 2번 찜해 줘"* → *"두 집에서 살아 봐 줘"* 라고 하면 Muse가 두 집에서 30일씩 살고 일기를 써요. 일기 문장은 보여 주기 전에 하나하나 기록과 대조해요.
-3. **키 없이 돼요.** 사이트는 중계 서버로 Muse를 불러서 키를 넣을 필요가 없어요. 중계 서버가 멈추거나 크레딧이 끝나면 대화는 규칙 모드로 바뀌고 그렇게 표시해요. 숫자는 그때도 결정적 엔진이 계산하고, 함께 든 시나리오는 기록된 Muse 판단으로 다시 돌릴 수 있어요. 키 없이 로컬에서도 돌아가요([빠른 시작](#빠른-시작)).
+2. **입력 없이 먼저 보기.** 첫 화면에서 **기록된 한 달 보기**를 누르세요. 2026-10-31에 기록한 실제 Muse Spark 1.3 대화를 키 없이 한 단계씩 재생해요. Meta 본사 출근, 1 Hacker Way 근처 실제 아파트, 2곳 담기, 집마다 30일, 일기까지 보여 줘요.
+3. **직접 해 보기.** **Meta 본사 출근으로 해 보기**를 누르면 실제 아파트 6곳이 지도에 떠요. 집마다 항공사진, Zillow ZIP 월세 추정, 자전거·걷기 분이 붙어요. *"1번이랑 2번 담아 줘"* → *"두 집에서 살아 봐 줘"* 라고 하면 Muse가 두 집에서 30일씩 살고 일기를 써요. 일기 문장은 보여 주기 전에 하나하나 기록과 대조해요.
+   - **키는 필요 없어요.** 사이트가 중계 서버로 Muse를 불러서 키를 넣을 일이 없어요.
+   - **Muse를 못 쓰면**(중계 서버가 멈추거나 하루 한도에 닿으면) 머리글에 **규칙 모드**가 뜨고 대화에서도 알려 줘요. 숫자는 그때도 결정적 엔진이 계산하고, 기록된 한 달은 한 번 누르면 볼 수 있어요.
+   - **로컬에서는** `docker compose up`으로 같은 앱이 돌아가요([빠른 시작](#빠른-시작)).
 4. **증거 확인.**
 
 | 주장 | 숫자 | 자세히 |
@@ -56,7 +59,7 @@
 | 모델이 바뀌어도 판단이 같아요 | Spark 1.3과 Spark Open이 같은 판단 지점 **139곳 중 120곳(86 %)** 에서 같은 선택 | [Meta 모델](#meta-모델) |
 | 가드가 실제 실행에서 버텨요 | 모델마다 판단 **154개 모두** 답함, 가드 대체 **0건** | [Meta 모델](#meta-모델) |
 | 일기 문장을 검사해요 | 문장마다 실행 기록의 사실을 인용해야 하고, 기록에 없는 숫자는 돌려보내 다시 쓰게 해요. 2026-10-31 실제 영어 실행(판교, 집 2곳): 일기 8문장 모두 기록과 일치(1번 고쳐 씀) | [검증](#검증) |
-| 테스트 | JavaScript **1,783**개, Python **266**개, PR과 main 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| 테스트 | JavaScript **2,225**개, Python **266**개, PR과 main 푸시마다 CI | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 <p align="center">
   <img src="briefs/img/19-chat.jpg" width="760" alt="대화 화면. 왼쪽은 대화와 후보 집 목록이에요. 줄마다 지도 번호, 이름, 실거래 전세 가격, 면적·연식, 예상 출퇴근 시간이 있고, 두 집이 A·B로 담겨 있어요. 오른쪽은 도로와 노선 색 지하철이 그려진 밝은 지도에 회사 · 판교 표시, 후보마다 가격 말풍선(A·B는 파란색), 출퇴근 분이 있어요. 지도 아래 줄에 담은 두 집과 버튼 하나, 이 집들로 30일 살아 보기가 있어요.">

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Meta_Global_AI_Hackathon-Build_for_Your_World-2f5d50?style=flat-square" alt="Meta Global AI Developer Hackathon, Build for Your World">
   <img src="https://img.shields.io/badge/Muse_Spark-1.3-2f5d50?style=flat-square" alt="Muse Spark 1.3">
   <img src="https://img.shields.io/badge/code_written_by-Muse_Code-2f5d50?style=flat-square" alt="All product code written by Muse Code">
-  <img src="https://img.shields.io/badge/tests-1783_JS_·_266_Python-2f5d50?style=flat-square" alt="1783 JavaScript and 266 Python tests">
+  <img src="https://img.shields.io/badge/tests-2225_JS_·_266_Python-2f5d50?style=flat-square" alt="2225 JavaScript and 266 Python tests">
   <img src="https://img.shields.io/badge/engine-deterministic-2f5d50?style=flat-square" alt="Deterministic engine">
   <a href="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml"><img src="https://github.com/halo-sw/ithaca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f5d50?style=flat-square" alt="MIT license"></a>
@@ -46,8 +46,11 @@
 ## Judge in 2 minutes
 
 1. **Open the live site:** <https://halo-sw.github.io/ithaca/>. It starts in English when your browser is not set to Korean (or add `?lang=en`).
-2. **Try the Meta HQ example.** Click **Meta HQ, Menlo Park (US)**. Six real apartments near 1 Hacker Way appear on a map, each with a live aerial photo, a Zillow ZIP rent estimate and bike/walk minutes. Type *"Save 1 and 2"*, then *"Live in both homes"*. Muse runs 30 days in each home and writes a diary, and every diary sentence is checked against the run's record before you see it.
-3. **No key needed.** The site calls Muse through our relay; you never paste a key. If the relay is down or out of credit, the chat falls back to rule mode and says so; the deterministic engine still computes every number, and the bundled scenarios can replay recorded Muse decisions. The same app runs locally without any key (see [Quick start](#quick-start)).
+2. **Watch it work without typing.** On the first screen, click **Watch a recorded month**. It replays a real Muse Spark 1.3 session recorded on 2026-10-31, step by step and without any key: Meta HQ in Menlo Park, real apartments near 1 Hacker Way, two picked, 30 days in each, and the diary.
+3. **Try it yourself.** Click **I work at Meta HQ**. Six real apartments appear on a map, each with an aerial photo, a Zillow ZIP rent estimate and bike/walk minutes. Type *"Save 1 and 2"*, then *"Live in both homes"*. Muse runs 30 days in each home and writes a diary, and every diary sentence is checked against the run's record before you see it.
+   - **No key needed.** The site calls Muse through our relay, so you never paste a key.
+   - **If Muse is unavailable** (the relay is down or the daily limit is reached), the header shows **Rule mode** and the chat says so. The deterministic engine still computes every number, and the recorded month is one click away.
+   - **Locally,** `docker compose up` runs the same app (see [Quick start](#quick-start)).
 4. **Check the proof.**
 
 | Claim | Number | Where |
@@ -56,7 +59,7 @@
 | Muse's choices are stable across models | Spark 1.3 and Spark Open made the same choice at **120 of 139** shared decision points (**86 %**) | [Meta models](#meta-models) |
 | Guards hold on real runs | **154 of 154** decisions answered per model, **0** guard fallbacks | [Meta models](#meta-models) |
 | Diary sentences are checked | Each sentence must cite a fact of the run; lines with an unrecorded number are sent back and rewritten. Live English run on 2026-10-31 (Pangyo, 2 homes): all 8 diary sentences matched the record, after 1 rewrite | [Verification](#verification) |
-| Tested | **1,783** JavaScript and **266** Python tests, CI on every pull request and push to main | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
+| Tested | **2,225** JavaScript and **266** Python tests, CI on every pull request and push to main | [CI](https://github.com/halo-sw/ithaca/actions/workflows/ci.yml) |
 
 
 <p align="center">
